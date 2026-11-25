@@ -6,9 +6,10 @@ import { connect } from "node:net";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { DisconnectReason } from "../src/index";
 import { Msg, OpenFailure } from "../src/messages";
-import { WireWriter } from "../src/wire";
+import { WireReader, WireWriter } from "../src/wire";
 import { Disconnected, generateUserKey, TestClient, type UserKey } from "./client";
 import {
+  ALL_CIPHERS,
   createWorkspace,
   generateKey,
   MISSING_TOOLS,
@@ -102,7 +103,8 @@ describe.skipIf(MISSING_TOOLS.length > 0)("protocol", () => {
       users,
       exec,
       ...(limits ? { limits } : {}),
-      ...(overrides ? { overrides } : {}),
+      // Every cipher unless the test says otherwise: several tests force ChaCha20-Poly1305.
+      overrides: { ciphers: ALL_CIPHERS, ...overrides },
     });
     servers.push(started);
     return started;
@@ -245,6 +247,35 @@ describe.skipIf(MISSING_TOOLS.length > 0)("protocol", () => {
       const client = await session({ wrongGuess: true });
       const { id } = await client.openSession();
       await client.exec(id, "whoami");
+    });
+
+    it("offers only what the host listed, AES-GCM unless it says otherwise", async () => {
+      const offered = async (overrides: Parameters<typeof start>[1]) => {
+        const client = await dial({ manual: true }, await start(undefined, overrides));
+        const lists = new WireReader((await client.readRaw())!, 17);
+        lists.nameList();
+        lists.nameList();
+        return [lists.nameList(), lists.nameList()];
+      };
+      const aes = ["aes256-gcm@openssh.com", "aes128-gcm@openssh.com"];
+      expect(await offered({ ciphers: undefined as never })).toEqual([aes, aes]);
+      const chosen = ["chacha20-poly1305@openssh.com", "aes128-gcm@openssh.com"] as const;
+      expect(await offered({ ciphers: chosen })).toEqual([chosen, chosen]);
+
+      const plain = await start(undefined, { ciphers: undefined as never });
+      await expect(dial({ cipher: "chacha20-poly1305@openssh.com" }, plain)).rejects.toMatchObject({
+        message: "no matching cipher found",
+      });
+      await session({ cipher: "aes128-gcm@openssh.com" }, plain);
+    });
+
+    it("refuses to start with an empty or unknown cipher list", async () => {
+      for (const ciphers of [[], ["aes256-ctr"]]) {
+        const broken = await start(undefined, { ciphers: ciphers as never });
+        const client = await dial({ manual: true }, broken).catch(() => null);
+        await client?.closed();
+        expect(String(broken.errors[0])).toMatch(/cipher/);
+      }
     });
 
     it("refuses a client with no cipher in common", async () => {

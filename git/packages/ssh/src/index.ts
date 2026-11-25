@@ -1,6 +1,7 @@
 export {
   serveConnection,
   type AuthPhase,
+  type CipherName,
   type DuplexStream,
   type ExecChannel,
   type SshConnectionSummary,

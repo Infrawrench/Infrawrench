@@ -12,6 +12,7 @@ import { open } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createWorkspace,
+  ALL_CIPHERS,
   generateKey,
   MISSING_TOOLS,
   sshOptions,
@@ -43,6 +44,7 @@ describe.skipIf(!process.env.SSH_BENCH || MISSING_TOOLS.length > 0)("throughput"
     server = await startServer({
       hostKey: hostKey.privateKey,
       users: new Map([[user.publicKey.fingerprint, "bench"]]),
+      overrides: { ciphers: ALL_CIPHERS },
       exec: async (_principal, command, channel) => {
         if (command === "sink") {
           received = 0;

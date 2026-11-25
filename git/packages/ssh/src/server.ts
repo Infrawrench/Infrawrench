@@ -12,6 +12,8 @@ import { DisconnectReason, SshError, protocolError } from "./errors";
 import { loadHostKey, type HostKey } from "./hostkey";
 import { curve25519Sha256 } from "./kex/curve25519";
 import { mlkem768x25519Sha256, mlkemAvailable } from "./kex/mlkem768x25519";
+import { DEFAULT_CIPHERS, resolveCiphers, type CipherName } from "./kex/negotiate";
+import type { CipherAlgorithm } from "./cipher/cipher";
 import type { SshPublicKey } from "./keys/public";
 import { Msg } from "./messages";
 import { Transport, type DuplexStream } from "./transport/transport";
@@ -21,6 +23,7 @@ import { WireReader, WireWriter } from "./wire";
 export type { DuplexStream } from "./transport/transport";
 export type { ExecChannel } from "./channel";
 export type { AuthPhase } from "./userauth";
+export type { CipherName } from "./kex/negotiate";
 
 export interface SshServerLimits {
   /**
@@ -98,6 +101,15 @@ export interface SshServerOptions<Principal> {
   shellGreeting?(principal: Principal): string;
   readonly limits?: SshServerLimits;
   /**
+   * The ciphers to offer, in the server's order of preference (the client's
+   * own order decides among those both sides have). Default: the two
+   * AES-GCM ciphers, which WebCrypto runs natively.
+   * `chacha20-poly1305@openssh.com` is implemented in TypeScript and costs
+   * several times the CPU per byte; OpenSSH prefers it when it is offered,
+   * so it is only offered when listed here.
+   */
+  readonly ciphers?: readonly CipherName[];
+  /**
    * The software name in the identification line (`SSH-2.0-<this>`).
    * Printable ASCII without spaces or `-`. Default `InfrawrenchGit`.
    */
@@ -163,8 +175,8 @@ function serverVersion(software: string | undefined): string {
  *
  * Resolves when the connection is over, however it ended; a client that
  * misbehaves is disconnected and the reason is in the `onClose` summary.
- * Rejects only for a configuration error (an unusable host key or software
- * version), before anything is sent.
+ * Rejects only for a configuration error (an unusable host key, cipher list
+ * or software version), before anything is sent.
  */
 export async function serveConnection<Principal>(
   stream: DuplexStream,
@@ -172,7 +184,9 @@ export async function serveConnection<Principal>(
 ): Promise<void> {
   let hostKeys: HostKey[];
   let version: string;
+  let ciphers: CipherAlgorithm[];
   try {
+    ciphers = resolveCiphers(options.ciphers ?? DEFAULT_CIPHERS);
     hostKeys = await resolveHostKeys(options.hostKeys);
     version = serverVersion(options.softwareVersion);
   } catch (error) {
@@ -215,6 +229,7 @@ export async function serveConnection<Principal>(
   const transport = new Transport(stream, {
     hostKeys,
     kexMethods,
+    ciphers,
     serverVersion: version,
     rekeyAfterBytes: limits.rekeyAfterBytes,
     kexTimeoutMs: limits.authTimeoutMs,

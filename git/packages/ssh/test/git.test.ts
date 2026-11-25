@@ -125,7 +125,8 @@ describe.skipIf(MISSING_TOOLS.length > 0)("git over the server", () => {
     expect(text).toBe("content 19\n".repeat(200));
   });
 
-  it.each(["aes128-gcm@openssh.com", "chacha20-poly1305@openssh.com"])(
+  // The server here is as the Worker will run it: AES-GCM only.
+  it.each(["aes128-gcm@openssh.com", "aes256-gcm@openssh.com"])(
     "clones under %s",
     async (cipher) => {
       const target = `clone-${cipher.split("-")[0]}`;

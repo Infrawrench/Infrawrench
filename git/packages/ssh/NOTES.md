@@ -28,22 +28,26 @@ The three key helpers are async because the fingerprint is a WebCrypto digest.
 
 ## Algorithms
 
-| What         | Supported                                                                                                          | Notes                                                                                                                       |
-| ------------ | ------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| Key exchange | `mlkem768x25519-sha256`, `curve25519-sha256`, `curve25519-sha256@libssh.org`                                       | The hybrid only where the runtime has ML-KEM (see below). `kex-strict-s-v00@openssh.com` in the first exchange.             |
-| Host key     | `ssh-ed25519`                                                                                                      | One key. RSA and ECDSA host keys are not implemented.                                                                       |
-| Cipher       | `aes256-gcm@openssh.com`, `aes128-gcm@openssh.com`, `chacha20-poly1305@openssh.com`                                | In that order of server preference; the client's own order decides. AEAD only: there is no CBC, no CTR and no separate MAC. |
-| Compression  | `none`                                                                                                             |                                                                                                                             |
-| User keys    | `ssh-ed25519`, `ecdsa-sha2-nistp256`, `ecdsa-sha2-nistp384`, `ecdsa-sha2-nistp521`, `rsa-sha2-512`, `rsa-sha2-256` | Advertised through `server-sig-algs` (`ext-info`). `ssh-rsa` (SHA-1) is refused. RSA moduli from 2048 to 8192 bits.         |
-| Extensions   | `ext-info-c` answered with `server-sig-algs`                                                                       | The server does not ask for the client's extensions, but ignores an `EXT_INFO` if one arrives.                              |
+| What         | Supported                                                                                                          | Notes                                                                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key exchange | `mlkem768x25519-sha256`, `curve25519-sha256`, `curve25519-sha256@libssh.org`                                       | The hybrid only where the runtime has ML-KEM (see below). `kex-strict-s-v00@openssh.com` in the first exchange.                                          |
+| Host key     | `ssh-ed25519`                                                                                                      | One key. RSA and ECDSA host keys are not implemented.                                                                                                    |
+| Cipher       | `aes256-gcm@openssh.com`, `aes128-gcm@openssh.com`; `chacha20-poly1305@openssh.com` when the host opts in          | `options.ciphers` decides what is offered, in its order; the client then picks by its own order. AEAD only: there is no CBC, no CTR and no separate MAC. |
+| Compression  | `none`                                                                                                             |                                                                                                                                                          |
+| User keys    | `ssh-ed25519`, `ecdsa-sha2-nistp256`, `ecdsa-sha2-nistp384`, `ecdsa-sha2-nistp521`, `rsa-sha2-512`, `rsa-sha2-256` | Advertised through `server-sig-algs` (`ext-info`). `ssh-rsa` (SHA-1) is refused. RSA moduli from 2048 to 8192 bits.                                      |
+| Extensions   | `ext-info-c` answered with `server-sig-algs`                                                                       | The server does not ask for the client's extensions, but ignores an `EXT_INFO` if one arrives.                                                           |
 
 AES-GCM, X25519, Ed25519, ECDSA, RSA and SHA-2 are WebCrypto. ChaCha20 and Poly1305 are not in WebCrypto, so `src/cipher/chacha20.ts` and `src/cipher/poly1305.ts` are this package's own: checked against the RFC 8439 vectors, against Node's ChaCha20, against Poly1305 computed from its definition in big integers, and against the real OpenSSH client.
+
+### ChaCha20-Poly1305 is opt-in
+
+`SshServerOptions.ciphers` lists what the server offers; the default is the two AES-GCM ciphers. OpenSSH puts ChaCha20-Poly1305 first in its own list and the client's order decides, so a server that offered it would put nearly every client on the cipher that is JavaScript here: about 33 MiB/s against 195 MiB/s for uploads in local workerd, on CPU time a Worker is billed for. Left out of the offer, those clients land on `aes128-gcm@openssh.com`. A host that needs it (a client with no AES-GCM) passes `ciphers: ["aes256-gcm@openssh.com", "aes128-gcm@openssh.com", "chacha20-poly1305@openssh.com"]`. An empty list or an unknown name makes `serveConnection` reject.
 
 ### The post-quantum hybrid needs a compatibility flag
 
 A current OpenSSH client (seen with 10.3) prints a three-line warning on every connection whose key exchange is not post-quantum ("store now, decrypt later"). That is every `git fetch` for anyone on one, so the server offers `mlkem768x25519-sha256`, the method those clients prefer.
 
-ML-KEM-768 encapsulation comes from WebCrypto's Modern Algorithms API, which Node 24 has (checked on 24.21) and Workers has behind the `webcrypto_modern_algorithms` compatibility flag. `mlkemAvailable()` tries one encapsulation per isolate and the method is offered only if it works; without it the server offers curve25519 alone and everything still connects, with the warning. **The worker's `wrangler.jsonc` should add `"webcrypto_modern_algorithms"` to `compatibility_flags`.** Checked both ways in local workerd (wrangler 4.162).
+ML-KEM-768 encapsulation comes from WebCrypto's Modern Algorithms API, which Node 24 has (checked on 24.21) and Workers has behind the `webcrypto_modern_algorithms` compatibility flag. `mlkemAvailable()` tries one encapsulation per isolate and the method is offered only if it works; without it the server offers curve25519 alone and everything still connects, with the warning. **The worker's `wrangler.jsonc` must list `"webcrypto_modern_algorithms"` in `compatibility_flags`** (next to `nodejs_compat`); nothing in the package can turn it on. Checked both ways in local workerd (wrangler 4.162).
 
 ## Security decisions
 
@@ -120,7 +124,7 @@ export default {
 - **Long silences.** The idle timer counts packets in either direction. A command that works for minutes without output (indexing a large push) must send something (git's side-band keepalive) or the host must raise `idleTimeoutMs`.
 - **Rate limiting by address** is the host's: the package never sees `remoteAddress`. So is a cap on connections per principal.
 - **`signal`**: pass one to disconnect clients cleanly when the host wants them gone.
-- **CPU.** Every byte is encrypted in the isolate. AES-GCM is native; ChaCha20-Poly1305 is JavaScript and costs several times more per byte (below). Clients that list AES-GCM first get it; OpenSSH lists ChaCha20 first.
+- **CPU.** Every byte is encrypted in the isolate. AES-GCM is native, and is all the server offers unless `ciphers` adds ChaCha20-Poly1305, which is JavaScript and costs several times more per byte (below).
 
 ## Throughput
 

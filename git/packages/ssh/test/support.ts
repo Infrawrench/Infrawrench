@@ -43,6 +43,13 @@ if (MISSING_TOOLS.length > 0) {
   console.warn(`skipping tests that need: ${MISSING_TOOLS.join(", ")} (not installed)`);
 }
 
+/** Every cipher the package has. A server offers only the AES-GCM pair unless told to offer these. */
+export const ALL_CIPHERS = [
+  "aes256-gcm@openssh.com",
+  "aes128-gcm@openssh.com",
+  "chacha20-poly1305@openssh.com",
+] as const;
+
 export interface Workspace {
   readonly dir: string;
   path(...parts: string[]): string;

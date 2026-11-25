@@ -16,14 +16,36 @@ const EXT_INFO_CLIENT = "ext-info-c";
 const STRICT_CLIENT = "kex-strict-c-v00@openssh.com";
 const STRICT_SERVER = "kex-strict-s-v00@openssh.com";
 
-/**
- * In the server's order of preference. AES-GCM comes first because WebCrypto
- * runs it natively; ChaCha20-Poly1305 is this package's own TypeScript.
- */
-export const CIPHERS: readonly CipherAlgorithm[] = [aes256Gcm, aes128Gcm, chacha20Poly1305];
+/** Every cipher the package implements. Which of them a server offers is its host's choice. */
+export const CIPHERS = [aes256Gcm, aes128Gcm, chacha20Poly1305] as const;
+
+export type CipherName =
+  "aes256-gcm@openssh.com" | "aes128-gcm@openssh.com" | "chacha20-poly1305@openssh.com";
 
 /**
- * Every cipher above authenticates itself, so no MAC is ever used. The list
+ * What a server offers unless told otherwise: the two WebCrypto runs
+ * natively. ChaCha20-Poly1305 is this package's own TypeScript and costs
+ * several times the CPU per byte, and OpenSSH lists it first, so offering it
+ * by default would put most clients on the slow path.
+ */
+export const DEFAULT_CIPHERS: readonly CipherName[] = [
+  "aes256-gcm@openssh.com",
+  "aes128-gcm@openssh.com",
+];
+
+/** The algorithms for `names`, in that order. Throws on an unknown name or an empty list. */
+export function resolveCiphers(names: readonly string[]): CipherAlgorithm[] {
+  const resolved = [...new Set(names)].map((name) => {
+    const cipher = CIPHERS.find((candidate) => candidate.name === name);
+    if (!cipher) throw new Error(`unknown cipher ${name}`);
+    return cipher;
+  });
+  if (resolved.length === 0) throw new Error("at least one cipher must be offered");
+  return resolved;
+}
+
+/**
+ * Every cipher authenticates itself, so no MAC is ever used. The list
  * still cannot be empty: some clients refuse a server that offers none
  * before they look at which cipher was chosen.
  */
@@ -42,11 +64,12 @@ export interface KexInit {
 /** The server's KEXINIT payload. The markers only mean something in a connection's first exchange. */
 export function encodeServerKexInit(
   kexMethods: readonly KexMethod[],
+  offeredCiphers: readonly CipherAlgorithm[],
   hostKeyAlgorithms: readonly string[],
   initial: boolean,
 ): Uint8Array {
   const kex = kexMethods.flatMap((method) => method.names);
-  const ciphers = CIPHERS.map((cipher) => cipher.name);
+  const ciphers = offeredCiphers.map((cipher) => cipher.name);
   const cookie = crypto.getRandomValues(new Uint8Array(16));
   return new WireWriter()
     .byte(Msg.KEXINIT)
@@ -119,10 +142,11 @@ function choose(what: string, client: readonly string[], server: readonly string
 export function negotiate(
   client: KexInit,
   kexMethods: readonly KexMethod[],
+  offeredCiphers: readonly CipherAlgorithm[],
   hostKeyAlgorithms: readonly string[],
 ): Negotiated {
-  const cipherNames = CIPHERS.map((cipher) => cipher.name);
-  const cipherByName = (name: string) => CIPHERS.find((cipher) => cipher.name === name)!;
+  const cipherNames = offeredCiphers.map((cipher) => cipher.name);
+  const cipherByName = (name: string) => offeredCiphers.find((cipher) => cipher.name === name)!;
 
   const kexName = choose(
     "key exchange method",

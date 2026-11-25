@@ -11,7 +11,14 @@ import { SshError } from "../src/index";
 import { curve25519Sha256 } from "../src/kex/curve25519";
 import { deriveKey } from "../src/kex/method";
 import { mlkem768x25519Sha256 } from "../src/kex/mlkem768x25519";
-import { encodeServerKexInit, negotiate, parseKexInit } from "../src/kex/negotiate";
+import {
+  CIPHERS,
+  DEFAULT_CIPHERS,
+  encodeServerKexInit,
+  negotiate,
+  parseKexInit,
+  resolveCiphers,
+} from "../src/kex/negotiate";
 import { ByteReader } from "../src/transport/byte-reader";
 import {
   checkPacketLength,
@@ -189,8 +196,21 @@ describe("key exchange", () => {
 
   it("offers strict key exchange in the first KEXINIT only", () => {
     const methods = [mlkem768x25519Sha256, curve25519Sha256];
-    const first = parseKexInit(encodeServerKexInit(methods, ["ssh-ed25519"], true));
-    const later = parseKexInit(encodeServerKexInit([curve25519Sha256], ["ssh-ed25519"], false));
+    const first = parseKexInit(encodeServerKexInit(methods, CIPHERS, ["ssh-ed25519"], true));
+    const later = parseKexInit(
+      encodeServerKexInit(
+        [curve25519Sha256],
+        resolveCiphers(DEFAULT_CIPHERS),
+        ["ssh-ed25519"],
+        false,
+      ),
+    );
+    expect(later.cipherServerToClient).toEqual([
+      "aes256-gcm@openssh.com",
+      "aes128-gcm@openssh.com",
+    ]);
+    expect(() => resolveCiphers([])).toThrow("at least one cipher");
+    expect(() => resolveCiphers(["aes256-ctr"])).toThrow("unknown cipher aes256-ctr");
     expect(first.kex).toEqual([
       "mlkem768x25519-sha256",
       "curve25519-sha256",
@@ -221,40 +241,55 @@ describe("key exchange", () => {
       firstKexPacketFollows: false,
     };
     const methods = [mlkem768x25519Sha256, curve25519Sha256];
-    const chosen = negotiate(client, methods, ["ssh-ed25519"]);
+    const chosen = negotiate(client, methods, CIPHERS, ["ssh-ed25519"]);
     expect(chosen.kexName).toBe("curve25519-sha256@libssh.org");
     expect(chosen.kex).toBe(curve25519Sha256);
     expect(
-      negotiate({ ...client, kex: ["mlkem768x25519-sha256", "curve25519-sha256"] }, methods, [
-        "ssh-ed25519",
-      ]).kex,
+      negotiate(
+        { ...client, kex: ["mlkem768x25519-sha256", "curve25519-sha256"] },
+        methods,
+        CIPHERS,
+        ["ssh-ed25519"],
+      ).kex,
     ).toBe(mlkem768x25519Sha256);
     // Without ML-KEM in the runtime the hybrid is not offered, so the next one is taken.
     expect(
       negotiate(
         { ...client, kex: ["mlkem768x25519-sha256", "curve25519-sha256"] },
         [curve25519Sha256],
+        CIPHERS,
         ["ssh-ed25519"],
       ).kexName,
     ).toBe("curve25519-sha256");
     expect(chosen.cipherIn.name).toBe("chacha20-poly1305@openssh.com");
     expect(chosen.cipherOut.name).toBe("aes128-gcm@openssh.com");
+    // The same client against a server that offers AES-GCM only skips ChaCha20.
+    expect(
+      negotiate(client, methods, resolveCiphers(DEFAULT_CIPHERS), ["ssh-ed25519"]).cipherIn.name,
+    ).toBe("aes256-gcm@openssh.com");
     expect(chosen).toMatchObject({ clientWantsStrictKex: false, clientWantsExtInfo: false });
 
-    expect(() => negotiate({ ...client, hostKey: ["ssh-rsa"] }, methods, ["ssh-ed25519"])).toThrow(
-      "no matching host key type found",
-    );
     expect(() =>
-      negotiate({ ...client, kex: ["diffie-hellman-group14-sha1"] }, methods, ["ssh-ed25519"]),
+      negotiate({ ...client, hostKey: ["ssh-rsa"] }, methods, CIPHERS, ["ssh-ed25519"]),
+    ).toThrow("no matching host key type found");
+    expect(() =>
+      negotiate({ ...client, kex: ["diffie-hellman-group14-sha1"] }, methods, CIPHERS, [
+        "ssh-ed25519",
+      ]),
     ).toThrow("no matching key exchange method found");
     expect(() =>
-      negotiate({ ...client, compressionServerToClient: ["zlib"] }, methods, ["ssh-ed25519"]),
+      negotiate({ ...client, compressionServerToClient: ["zlib"] }, methods, CIPHERS, [
+        "ssh-ed25519",
+      ]),
     ).toThrow("no matching compression found");
     // The marker names are not key exchange methods.
     expect(() =>
-      negotiate({ ...client, kex: ["kex-strict-s-v00@openssh.com", "ext-info-c"] }, methods, [
-        "ssh-ed25519",
-      ]),
+      negotiate(
+        { ...client, kex: ["kex-strict-s-v00@openssh.com", "ext-info-c"] },
+        methods,
+        CIPHERS,
+        ["ssh-ed25519"],
+      ),
     ).toThrow("no matching key exchange method found");
   });
 });

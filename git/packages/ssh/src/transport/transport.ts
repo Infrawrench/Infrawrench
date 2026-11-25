@@ -10,7 +10,7 @@
  * its turn.
  */
 import { utf8 } from "../bytes";
-import type { PacketCipher } from "../cipher/cipher";
+import type { CipherAlgorithm, PacketCipher } from "../cipher/cipher";
 import { cleartext } from "../cipher/none";
 import { DisconnectReason, SshError, protocolError } from "../errors";
 import type { HostKey } from "../hostkey";
@@ -32,6 +32,8 @@ export interface TransportOptions {
   readonly hostKeys: readonly HostKey[];
   /** In the server's order of preference. */
   readonly kexMethods: readonly KexMethod[];
+  /** The ciphers offered, in the server's order of preference. */
+  readonly ciphers: readonly CipherAlgorithm[];
   /** The identification line, without its line ending. */
   readonly serverVersion: string;
   /** Start a new key exchange once this many bytes have crossed under one set of keys. */
@@ -340,6 +342,7 @@ export class Transport implements PacketSink {
     this.blocked = true;
     const kexInit = encodeServerKexInit(
       this.options.kexMethods,
+      this.options.ciphers,
       this.options.hostKeys.map((key) => key.algorithm),
       this.initial,
     );
@@ -359,6 +362,7 @@ export class Transport implements PacketSink {
     const negotiated = negotiate(
       parseKexInit(packet.payload),
       this.options.kexMethods,
+      this.options.ciphers,
       this.options.hostKeys.map((key) => key.algorithm),
     );
     if (this.initial) {

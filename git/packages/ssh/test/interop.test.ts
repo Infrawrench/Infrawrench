@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   collect,
   createWorkspace,
+  ALL_CIPHERS,
   generateKey,
   MISSING_TOOLS,
   sleep,
@@ -112,7 +113,13 @@ describe.skipIf(MISSING_TOOLS.length > 0)("OpenSSH client interop", () => {
     const users = new Map(
       Object.entries(keys).map(([name, key]) => [key.publicKey.fingerprint, name]),
     );
-    server = await startServer({ hostKey: hostKey.privateKey, users, exec });
+    // ChaCha20-Poly1305 is opt-in; this server opts in so each cipher can be forced in turn.
+    server = await startServer({
+      hostKey: hostKey.privateKey,
+      users,
+      exec,
+      overrides: { ciphers: ALL_CIPHERS },
+    });
   }, 60_000);
 
   afterAll(async () => {
@@ -248,6 +255,28 @@ describe.skipIf(MISSING_TOOLS.length > 0)("OpenSSH client interop", () => {
       expect((await summary).cipher).toBe(cipher);
     },
   );
+
+  it("offers only AES-GCM by default, so a client that prefers ChaCha20 still gets AES", async () => {
+    const plain = await startServer({ hostKey: hostKey.privateKey, users: new Map(), exec });
+    try {
+      // OpenSSH's own order: ChaCha20-Poly1305 first, then AES-GCM.
+      const summary = plain.nextSummary();
+      const result = await ssh(plain.port, key("ed25519").path, ["-v", "whoami"]);
+      expect(result.stderr).toMatch(/server->client cipher: aes128-gcm@openssh\.com/);
+      expect((await summary).cipher).toBe("aes128-gcm@openssh.com");
+
+      const only = await ssh(plain.port, key("ed25519").path, [
+        "-c",
+        "chacha20-poly1305@openssh.com",
+        "-v",
+        "whoami",
+      ]);
+      expect(only.code).toBe(255);
+      expect(only.stderr).toMatch(/no matching cipher found/);
+    } finally {
+      await plain.close();
+    }
+  });
 
   it("lets the client's order decide between ciphers both sides have", async () => {
     const summary = server.nextSummary();
