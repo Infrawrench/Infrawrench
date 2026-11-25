@@ -142,9 +142,29 @@ fn path_arg(prefix: &str, path: &Path) -> OsString {
 /// link-local addresses work (Node resolves `localhost` to `::1` first, and
 /// a test of scoped IPv6 addresses needs them); with no IPv6 address or
 /// route outside the machine, nothing leaves it that way.
+///
+/// Two settings the kernel applies itself before the agent starts
+/// (`sysctl.*`, Linux 5.8 and later), so they need no new image:
+///
+/// - `vm.watermark_scale_factor=500`: the kernel's background reclaim
+///   starts when free memory falls below 5% of the machine rather than
+///   0.1%, and frees that much ahead of demand. A job whose files and
+///   processes outgrow its memory lives on swap, and when a burst of
+///   allocations (eight test workers, a dev server compiling a page) finds
+///   no free pages, each allocating thread reclaims for itself; the kernel
+///   kills the largest process when that keeps failing, whether or not
+///   swap has room. On shadcn/ui's `pnpm test` (8 GiB, up to 16.1 GiB of
+///   swap in use), threads reclaimed for themselves 204 to 497 times a run
+///   with it against 1,756 to 5,118 without, in the same run time.
+/// - `kernel.printk=5`: warnings reach the console as well as errors, so
+///   what the kernel says when it runs out of memory (the allocation that
+///   found none, the swap left, the process killed) is there for the
+///   report ([`oom_report`]). Boot is still quiet: the setting applies
+///   after it.
 pub fn kernel_cmdline(network: bool, files: bool, user: Option<u32>) -> String {
     let mut line = String::from(
-        "console=hvc0 root=/dev/vda ro rootfstype=erofs init=/usr/local/sbin/iwci-guest reboot=t panic=-1 quiet",
+        "console=hvc0 root=/dev/vda ro rootfstype=erofs init=/usr/local/sbin/iwci-guest reboot=t panic=-1 quiet \
+         sysctl.vm.watermark_scale_factor=500 sysctl.kernel.printk=5",
     );
     if network {
         line.push_str(" ip=10.0.2.15::10.0.2.2:255.255.255.0:iwci:eth0:off");
@@ -156,6 +176,34 @@ pub fn kernel_cmdline(network: bool, files: bool, user: Option<u32>) -> String {
         line.push_str(&format!(" {}={uid}", iwci_vm_proto::USER_ARG));
     }
     line
+}
+
+/// What the machine's kernel said on its console when it ran out of
+/// memory: which allocation found none, how much swap was left, and which
+/// process it killed for it, without the timestamps. At most the first `MAX` of each, since a
+/// job that keeps running out says the same thing over and over.
+pub fn oom_report(console: &str) -> Vec<String> {
+    const MAX: usize = 3;
+    let (mut invoked, mut swap, mut killed) = (Vec::new(), Vec::new(), Vec::new());
+    for line in console.lines() {
+        // `[  312.123456] text`: the text after the timestamp.
+        let text = match line.trim_start().strip_prefix('[') {
+            Some(rest) => rest.split_once("] ").map_or(line, |(_, text)| text),
+            None => line,
+        }
+        .trim();
+        if text.contains(" invoked oom-killer: ") && invoked.len() < MAX {
+            invoked.push(text.to_string());
+        } else if (text.starts_with("Free swap ") || text.starts_with("Total swap "))
+            && invoked.len() > swap.len() / 2
+            && swap.len() < 2 * MAX
+        {
+            swap.push(text.to_string());
+        } else if text.starts_with("Out of memory: Killed process") && killed.len() < MAX {
+            killed.push(text.to_string());
+        }
+    }
+    invoked.into_iter().chain(swap).chain(killed).collect()
 }
 
 fn common(args: &mut Vec<OsString>, memory_mib: u64, cpus: u32) {
@@ -487,6 +535,42 @@ mod tests {
         assert!(!kernel_cmdline(false, false, None).contains("iwci.files"));
         assert!(!kernel_cmdline(false, true, None).contains("iwci.user"));
         assert!(kernel_cmdline(false, true, Some(1001)).ends_with(" iwci.user=1001"));
+    }
+
+    #[test]
+    fn the_kernel_reclaims_ahead_and_says_why_it_ran_out() {
+        let line = kernel_cmdline(false, false, None);
+        assert!(
+            line.contains(" quiet sysctl.vm.watermark_scale_factor=500 "),
+            "{line}"
+        );
+        assert!(line.contains(" sysctl.kernel.printk=5"), "{line}");
+        assert!(!line.contains("  "), "{line}");
+    }
+
+    #[test]
+    fn an_oom_report_is_the_kernels_own_lines() {
+        let console = "\
+[    0.222845] genirq: Flags mismatch irq 8. 00200000 (rtc0) vs. 00200080 (virtio4)
+[  312.004211] next-server invoked oom-killer: gfp_mask=0x140dca(GFP_HIGHUSER_MOVABLE|__GFP_COMP|__GFP_ZERO), order=0, oom_score_adj=0
+[  312.004300] CPU: 3 UID: 1001 PID: 4242 Comm: next-server Not tainted 6.18.63 #1
+[  312.010001] Free swap  = 0kB
+[  312.010002] Total swap = 20971516kB
+[  312.019000] Out of memory: Killed process 4242 (next-server) total-vm:23450000kB, anon-rss:1650000kB, file-rss:0kB, shmem-rss:0kB, UID:1001 pgtables:9000kB oom_score_adj:0
+iwci-guest: read ahead 7056 files, 51055 KiB, in 490 ms
+";
+        assert_eq!(
+            oom_report(console),
+            vec![
+                "next-server invoked oom-killer: gfp_mask=0x140dca(GFP_HIGHUSER_MOVABLE|__GFP_COMP|__GFP_ZERO), order=0, oom_score_adj=0",
+                "Free swap  = 0kB",
+                "Total swap = 20971516kB",
+                "Out of memory: Killed process 4242 (next-server) total-vm:23450000kB, anon-rss:1650000kB, file-rss:0kB, shmem-rss:0kB, UID:1001 pgtables:9000kB oom_score_adj:0",
+            ]
+        );
+        let many = "[1.0] Out of memory: Killed process 1 (a) x\n".repeat(5);
+        assert_eq!(oom_report(&many).len(), 3);
+        assert!(oom_report("").is_empty());
     }
 
     #[test]

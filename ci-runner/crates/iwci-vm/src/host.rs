@@ -978,7 +978,20 @@ impl Host {
                 outcome.transfer_ms = transfer_ms;
                 return Ok(outcome);
             }
-            Ran::Exited(exited) => outcome.exited = Some(exited),
+            Ran::Exited(exited) => {
+                // Which allocation found no memory and what the kernel
+                // killed for it, from its console, beside "ran out of
+                // memory": without it a report could not tell a full swap
+                // from reclaim that fell behind.
+                if exited.oom_killed {
+                    let console =
+                        std::fs::read_to_string(dir.join("console.log")).unwrap_or_default();
+                    for line in qemu::oom_report(&console) {
+                        outcome.notes.push(format!("the machine's kernel: {line}"));
+                    }
+                }
+                outcome.exited = Some(exited);
+            }
         }
 
         // What it left, for the scheduler to read as any job's files.
