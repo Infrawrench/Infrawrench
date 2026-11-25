@@ -1380,6 +1380,13 @@
       "when": 1795642746427,
       "tag": "0196_ci_git_source",
       "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1795644073167,
+      "tag": "0197_git_terraform",
+      "breakpoints": true
     }
   ]
 }
