@@ -23,7 +23,7 @@ import type { CiEvent } from "@infrawrench/client-core";
 
 import { orgAppUrl } from "../app-url.js";
 import { db } from "../db/client.js";
-import { ciRuns } from "../db/schema.js";
+import { ciRuns, gitCommitStatuses } from "../db/schema.js";
 import { checkName, type CheckUpdate } from "./checks.js";
 import {
   jobCheckFingerprint,
@@ -57,27 +57,26 @@ export interface GitCommitStatus {
 export type GitStatusWriter = (status: GitCommitStatus) => Promise<void>;
 
 /**
- * TODO(git-integration): the forge's `git_commit_statuses` table
- * (`db/git-schema.ts`) is not in this tree yet, so until it is this writer
- * drops what it is given. Integration replaces the body with the upsert:
- *
- *   await db
- *     .insert(gitCommitStatuses)
- *     .values({ id: crypto.randomUUID(), repositoryId, sha, context, state, description, targetUrl })
- *     .onConflictDoUpdate({
- *       target: [gitCommitStatuses.repositoryId, gitCommitStatuses.sha, gitCommitStatuses.context],
- *       set: { state, description, targetUrl, updatedAt: new Date() },
- *     });
- *
- * and nothing else here changes. `setGitStatusWriter` stays for tests.
+ * The writer: an upsert on `git_commit_statuses`' unique index (repository,
+ * commit, context). The row keeps its id and `createdAt`; `ciRunId` is not
+ * set here, since the status's link already names the run.
  */
-export const gitCommitStatusWriterNotWiredYet: GitStatusWriter = async () => {};
+export const writeGitCommitStatus: GitStatusWriter = async (status) => {
+  const { repositoryId, sha, context, state, description, targetUrl } = status;
+  await db
+    .insert(gitCommitStatuses)
+    .values({ id: crypto.randomUUID(), repositoryId, sha, context, state, description, targetUrl })
+    .onConflictDoUpdate({
+      target: [gitCommitStatuses.repositoryId, gitCommitStatuses.sha, gitCommitStatuses.context],
+      set: { state, description, targetUrl, updatedAt: new Date() },
+    });
+};
 
-let writer: GitStatusWriter = gitCommitStatusWriterNotWiredYet;
+let writer: GitStatusWriter = writeGitCommitStatus;
 
-/** Replaces the writer (integration's one-line wiring, and tests); `null` restores the default. */
+/** Replaces the writer, for tests; `null` restores the default. */
 export function setGitStatusWriter(next: GitStatusWriter | null): void {
-  writer = next ?? gitCommitStatusWriterNotWiredYet;
+  writer = next ?? writeGitCommitStatus;
 }
 
 /** The most a status description holds; a forge shows it on one line. */

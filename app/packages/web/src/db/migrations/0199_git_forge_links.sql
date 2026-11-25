@@ -1,0 +1,8 @@
+ALTER TABLE "git_terraform_workspaces" ADD COLUMN "branch" text;--> statement-breakpoint
+ALTER TABLE "git_terraform_workspaces" ADD COLUMN "plan_on_pull_request" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "git_terraform_workspaces" ADD COLUMN "apply_on_merge" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "ci_git_repositories" ADD CONSTRAINT "ci_git_repositories_git_repository_id_git_repositories_id_fk" FOREIGN KEY ("git_repository_id") REFERENCES "public"."git_repositories"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ci_runs" ADD CONSTRAINT "ci_runs_git_repository_id_git_repositories_id_fk" FOREIGN KEY ("git_repository_id") REFERENCES "public"."git_repositories"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "ci_schedules" ADD CONSTRAINT "ci_schedules_git_repository_id_git_repositories_id_fk" FOREIGN KEY ("git_repository_id") REFERENCES "public"."git_repositories"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "git_terraform_runs" ADD CONSTRAINT "git_terraform_runs_repository_id_git_repositories_id_fk" FOREIGN KEY ("repository_id") REFERENCES "public"."git_repositories"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "git_terraform_workspaces" ADD CONSTRAINT "git_terraform_workspaces_repository_id_git_repositories_id_fk" FOREIGN KEY ("repository_id") REFERENCES "public"."git_repositories"("id") ON DELETE cascade ON UPDATE no action;

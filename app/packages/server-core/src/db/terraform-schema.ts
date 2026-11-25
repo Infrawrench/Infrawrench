@@ -14,9 +14,9 @@
  * catalogue. A run's plan is kept as its summary, which names attributes and
  * never carries a value.
  *
- * `repositoryId` is a `git_repositories.id` without a foreign key for now:
- * that table lands with the forge's own schema, and the constraint is added
- * once both are in.
+ * `repositoryId` is a `git_repositories.id`, and a repository's workspaces
+ * (with their runs and catalogue) go when it does. Their state versions in R2
+ * are swept by key.
  *
  * Lives in its own module and is re-exported from `schema.ts`, the
  * satellite-schema convention.
@@ -36,6 +36,7 @@ import {
 import { sql } from "drizzle-orm";
 
 import { accounts, organizations, users } from "./core-schema.js";
+import { gitRepositories } from "./git-schema.js";
 
 /** Terraform's lock info, as the client sent it (`@infrawrench/git-terraform` `LockInfo`). */
 export interface TerraformLockInfoRow {
@@ -72,8 +73,10 @@ export const gitTerraformWorkspaces = pgTable(
   "git_terraform_workspaces",
   {
     id: text("id").primaryKey(),
-    /** `git_repositories.id`. No foreign key yet: see the file comment. */
-    repositoryId: text("repository_id").notNull(),
+    /** `git_repositories.id`. */
+    repositoryId: text("repository_id")
+      .notNull()
+      .references(() => gitRepositories.id, { onDelete: "cascade" }),
     /**
      * The organisation whose accounts and resources the workspace is tied to.
      * Null for a repository in a personal namespace, which has state and runs
@@ -86,6 +89,15 @@ export const gitTerraformWorkspaces = pgTable(
     name: text("name").notNull(),
     /** The root directory, relative to the repository; empty for its top. */
     rootPath: text("root_path").notNull().default(""),
+    /**
+     * The branch whose merges apply, and that pull requests are planned
+     * against. Null: the repository's default branch, whatever it is now.
+     */
+    branch: text("branch"),
+    /** Plan every pull request into `branch`. */
+    planOnPullRequest: boolean("plan_on_pull_request").notNull().default(true),
+    /** Queue an apply when `branch` moves. Whether it then waits for approval is `autoApply`. */
+    applyOnMerge: boolean("apply_on_merge").notNull().default(true),
     /** Apply on a push to the default branch without waiting for an approval. */
     autoApply: boolean("auto_apply").notNull().default(false),
     /** Which program runs it. */
@@ -180,7 +192,9 @@ export const gitTerraformRuns = pgTable(
       .notNull()
       .references(() => gitTerraformWorkspaces.id, { onDelete: "cascade" }),
     /** Denormalised from the workspace, for a repository's or a pull request's runs. */
-    repositoryId: text("repository_id").notNull(),
+    repositoryId: text("repository_id")
+      .notNull()
+      .references(() => gitRepositories.id, { onDelete: "cascade" }),
     kind: text("kind").$type<GitTerraformRunKind>().notNull(),
     /** What started it. */
     trigger: text("trigger").$type<"pull-request" | "push" | "manual">().notNull(),

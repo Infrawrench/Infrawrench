@@ -24,6 +24,7 @@ import {
 import type { CiEvent, CiInput } from "@infrawrench/client-core";
 
 import { accounts, organizations, users } from "./core-schema.js";
+import { gitRepositories } from "./git-schema.js";
 
 /**
  * A connected GitHub App installation (a GitHub organization or user) whose
@@ -137,10 +138,11 @@ export const ciRuns = pgTable(
     /**
      * The git.infrawrench.com repository the run is for (`git_repositories.id`),
      * which is what makes it a run of that source; null for a GitHub
-     * repository. No foreign key yet: the forge's tables land with it, and
-     * the key is added when the two are integrated.
+     * repository. The run goes with the repository.
      */
-    gitRepositoryId: text("git_repository_id"),
+    gitRepositoryId: text("git_repository_id").references(() => gitRepositories.id, {
+      onDelete: "cascade",
+    }),
     /** `owner/name`. */
     repoFullName: text("repo_full_name").notNull(),
     /**
@@ -259,8 +261,8 @@ export const ciRuns = pgTable(
  * the per-repository switch. It also names the namespace, which is the
  * owner the runners keep the repository's caches, secrets and usage under.
  *
- * `gitRepositoryId` is `git_repositories.id`, without a foreign key until
- * the forge's tables are integrated. The names are the last ones an event
+ * `gitRepositoryId` is `git_repositories.id`, and the row goes with the
+ * repository. The names are the last ones an event
  * carried: a rename or a transfer is followed by the next event.
  */
 export const ciGitRepositories = pgTable(
@@ -270,7 +272,9 @@ export const ciGitRepositories = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    gitRepositoryId: text("git_repository_id").notNull(),
+    gitRepositoryId: text("git_repository_id")
+      .notNull()
+      .references(() => gitRepositories.id, { onDelete: "cascade" }),
     /** The namespace's slug, as the forge spells it. */
     namespace: text("namespace").notNull(),
     name: text("name").notNull(),
@@ -322,7 +326,9 @@ export const ciSchedules = pgTable(
     /** `0` for a git.infrawrench.com repository, as on `ci_runs`. */
     installationId: integer("installation_id").notNull(),
     /** The git.infrawrench.com repository, as on `ci_runs`; null for a GitHub one. */
-    gitRepositoryId: text("git_repository_id"),
+    gitRepositoryId: text("git_repository_id").references(() => gitRepositories.id, {
+      onDelete: "cascade",
+    }),
     /** `owner/name`, as its forge spells it. */
     repoFullName: text("repo_full_name").notNull(),
     defaultBranch: text("default_branch").notNull(),

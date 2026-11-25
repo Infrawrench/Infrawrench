@@ -79,6 +79,7 @@ const orgId = `test-org-${randomUUID()}`;
 const userId = `test-user-${randomUUID()}`;
 const repositoryId = randomUUID();
 const namespace = `acme-${randomUUID().slice(0, 8)}`;
+const namespaceId = randomUUID();
 const repository = {
   id: repositoryId,
   namespace,
@@ -160,6 +161,20 @@ describe.skipIf(!configured)(
       const { db, schema } = await modules();
       await db.insert(schema.users).values({ id: userId, email: `${userId}@example.test` });
       await db.insert(schema.organizations).values({ id: orgId, displayName: "CI git test" });
+      // CI's rows name the repository by a foreign key: the forge's own rows first.
+      await db.insert(schema.gitNamespaces).values({
+        id: namespaceId,
+        slug: namespace,
+        slugLower: namespace,
+        kind: "org",
+        organizationId: orgId,
+      });
+      await db.insert(schema.gitRepositories).values({
+        id: repositoryId,
+        namespaceId,
+        name: repository.name,
+        nameLower: repository.name,
+      });
     });
 
     it("runs a push: forge clone URL, a job token for the repository, a commit status", async () => {
