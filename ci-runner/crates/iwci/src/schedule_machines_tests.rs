@@ -607,3 +607,60 @@ fn a_cache_that_restored_its_exact_key_is_not_sent_back() {
     assert!(paths.contains(&"/root/.store".to_string()), "{paths:?}");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn an_image_cache_of_a_directory_the_job_caches_is_left_to_the_job() {
+    let dir = std::env::temp_dir().join(format!("iwci-machine-both-caches-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store: Arc<dyn iwci_store::ObjectStore> =
+        Arc::new(iwci_store::LocalStore::new(&dir).unwrap());
+    let caches: Arc<dyn Caches> = Arc::new(crate::adapters::caches::StoreCaches::new(
+        store,
+        &iwci_store::RepoId::new("github.com-acme").unwrap(),
+        &iwci_store::RepoId::new("web").unwrap(),
+        "main",
+        "main",
+        iwci_spec::Event::Push,
+        None,
+    ));
+    let mut fake = FakeMachines::new();
+    fake.caches = vec![crate::env_cache::EnvCacheDecl {
+        name: "store".into(),
+        path: "/root/.store".into(),
+        max_bytes: 1 << 30,
+        environment: "machine:ubuntu-24.04".into(),
+    }];
+    let machines = Arc::new(fake);
+    let go = |paths: &str| {
+        let p = plan(&format!(
+            "name: t\njobs:\n  a:\n    platform: linux\n    run: store\n    cache: {{ key: store-1, paths: [{paths}] }}\n"
+        ));
+        let (report, _) = run_machines_full(&p, Some(machines.clone()), None, Some(caches.clone()));
+        let a = job(&report, "a").clone();
+        let collect = machines.seen.lock().unwrap().collect["a"].clone();
+        (a.status, a.caches, collect.paths)
+    };
+
+    // The job's own cache of the directory is the one restored and saved.
+    let left = "env cache `store`: left to the job's cache of `/root/.store`";
+    let (status, lines, _) = go("/root/.store");
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert_eq!(lines[0], "cache `store-1`: miss");
+    assert_eq!(lines[1], left);
+    assert!(lines[2].starts_with("cache `store-1`: saved"), "{lines:?}");
+    assert_eq!(lines.len(), 3, "{lines:?}");
+
+    // Its exact key restored, nothing asks for the directory back.
+    let (status, lines, paths) = go("/root/.store");
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert_eq!(lines, vec!["cache `store-1`: restored in 0.0 s", left]);
+    assert!(!paths.contains(&"/root/.store".to_string()), "{paths:?}");
+
+    // A job cache of a parent directory takes it too.
+    let (_, lines, _) = go("/root");
+    assert!(
+        lines.contains(&"env cache `store`: left to the job's cache of `/root`".to_string()),
+        "{lines:?}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}

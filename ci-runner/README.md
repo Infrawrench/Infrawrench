@@ -4303,8 +4303,19 @@ job cache that the environment wrote:
   the limit saves nothing. Go never trims its own cache here (the
   environment's entries are dated 2100), so this is the only bound.
 - **Counted against the owner's storage quota**, with the job caches.
+- **Left to the job's own `cache:`.** One whose directory a `cache:`
+  entry of the job keeps, or lies under one, or holds one, is neither
+  restored nor saved: the job's entry is, under its key. Both at once
+  wrote the environment's copy over the files the job's key chose, and
+  on a machine asked for the directory back after an exact hit, which
+  otherwise stays in the machine. guava's test jobs cache
+  `~/.m2/repository` (190 MB in 5,000 files) themselves, and the image's
+  `m2` restored it a second time, brought it back and saved it again
+  after every warm run, since Maven rewrites files in it as it resolves:
+  on ci-2 that save kept the warm run going 6.4 s after its last job.
 - Its lines are in the job's `caches`: ``env cache `go-build`: restored
-12345 KiB``, `miss`, `unchanged`, `saved ...`.
+12345 KiB``, `miss`, `unchanged`, `saved ...`, ``left to the job's cache
+of `/root/.m2/repository` ``.
 
 `env-cache: false` turns them all off for a job; `env-cache: { go-build:
 false }` turns off the ones it names.

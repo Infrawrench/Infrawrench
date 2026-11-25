@@ -44,6 +44,22 @@ pub fn key(cache: &EnvCacheDecl, job: &str) -> String {
     )
 }
 
+/// The path of the job's `cache:` entry that covers `path`, or that lies
+/// under it, if any. The environment's cache of that directory is then
+/// left to the job's: restored after it, it wrote its own copy over the
+/// files the job's key chose, and its directory, collected back from a
+/// machine to be compared, undid the exact hit that keeps a job cache in
+/// the machine (guava's `~/.m2/repository`, 190 MB in 5,000 files, came
+/// back and was saved again after every warm run, Maven having rewritten
+/// files in it).
+pub fn cached_by_job<'a>(path: &str, caches: &'a [iwci_spec::CacheSpec]) -> Option<&'a str> {
+    caches
+        .iter()
+        .flat_map(|c| c.paths.iter())
+        .find(|p| crate::machines::is_under(path, p) || crate::machines::is_under(p, path))
+        .map(String::as_str)
+}
+
 /// What one entry was when restored, to tell what a run changed.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum Kind {
@@ -287,4 +303,35 @@ fn queue(
         line,
     };
     saves.save(store, save, lines);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cached_by_job;
+
+    fn caches(paths: &[&str]) -> Vec<iwci_spec::CacheSpec> {
+        vec![iwci_spec::CacheSpec {
+            key: "k".into(),
+            restore_keys: Vec::new(),
+            paths: paths.iter().map(|p| p.to_string()).collect(),
+        }]
+    }
+
+    #[test]
+    fn a_job_cache_over_under_or_at_the_directory_takes_it() {
+        let m2 = "/root/.m2/repository";
+        assert_eq!(cached_by_job(m2, &caches(&[m2])), Some(m2));
+        assert_eq!(
+            cached_by_job(m2, &caches(&["/root/.m2"])),
+            Some("/root/.m2")
+        );
+        assert_eq!(
+            cached_by_job(m2, &caches(&["/root/.m2/repository/org"])),
+            Some("/root/.m2/repository/org")
+        );
+        // A sibling, or a name that only starts the same, is not it.
+        assert_eq!(cached_by_job(m2, &caches(&["/root/.m2/wrapper"])), None);
+        assert_eq!(cached_by_job(m2, &caches(&["/root/.m2/repository2"])), None);
+        assert_eq!(cached_by_job(m2, &[]), None);
+    }
 }
