@@ -240,56 +240,84 @@ Graviton a `.metal` instance), the image, or a tool. On EC2, the 7th and 8th
 generation Intel types (C7i, M7i, R7i, C8i, M8i, R8i and their flex
 variants) offer KVM without `.metal` when launched with nested
 virtualization on (`CpuOptions` `NestedVirtualization=enabled`, which the
-AWS CLI before about 2.32 does not know; boto3 1.44 does); ci-2 is an
-`m8i.16xlarge` spot instance launched that way. To check a host after applying: `journalctl -u iwci | grep
+AWS CLI before about 2.32 does not know; boto3 1.44 does). AMD's virtual
+sizes (C8a, M8a, R8a) have no nested virtualization; their `.metal` sizes
+give the host AMD-V directly (`kvm_amd`) and refuse the `CpuOptions`
+setting. ci-2 runs on either (below). To check a host after applying: `journalctl -u iwci | grep
 machines:` names anything missing, and `curl` of `/v1/capacity` on the
 listen address lists the platforms.
 
 ## ci-2: AWS spot in us-east-1
 
-ci-2 is an AWS spot instance in us-east-1, launched by an EC2 fleet from the
-launch template `ci-2` (Ubuntu 24.04, 400 GB gp3, security group `ci-2`
-with SSH from the operator only, key `pogair`). Two things decide where it
-can run:
+ci-2 is an AWS spot instance in us-east-1, launched by an EC2 fleet from two
+launch templates with the same image and settings (Ubuntu 24.04, 400 GB
+gp3, security group `ci-2` with SSH from the operator only, key `pogair`):
+`ci-2-metal` for the AMD bare-metal types and `ci-2` for the Intel ones.
+Three things decide where it can run:
 
-- **Nested virtualization.** Machines need `/dev/kvm`, which an 8th
-  generation Intel instance only has when it is launched with
-  `CpuOptions.NestedVirtualization = enabled` (launch template version 2;
-  AWS CLI 2.31 cannot set it, boto3 1.44 can). Without it the runner offers
-  no `linux` platform.
+- **KVM.** Machines need `/dev/kvm`. An 8th generation Intel instance only
+  has it when launched with `CpuOptions.NestedVirtualization = enabled`,
+  which the `ci-2` template sets (AWS CLI 2.31 cannot set it, boto3 1.44
+  can). An AMD `.metal` instance has it without that setting and refuses a
+  launch that asks for it ("does not support Nested Virtualization"), which
+  is why `ci-2-metal` is a template of its own without `CpuOptions`.
+  Without KVM the runner offers no `linux` platform.
+- **Per-core speed.** The remaining slow steps in CI are single-threaded
+  (bundlers, type checkers, emulated tests). AMD's 8th generation runs at
+  4.5 GHz against 3.9 GHz for the Intel types, and the same jobs in machines
+  ran 15 to 35% faster on an m8a.metal-24xl than on an m8i, with machines
+  booting in about 0.6 s instead of 1.2 s (no nested virtualization).
+  r8a.metal-24xl was also the cheapest and steadiest spot price of the
+  96-vCPU types in us-east-1 in November 2026.
 - **Spot capacity.** A single type in a single zone was reclaimed about five
   times a day in us-east-2 (AWS's spot placement score for one m8i.16xlarge
-  there is 1 of 10). The fleet takes m8i.16xlarge, r8i.16xlarge,
-  m8i.24xlarge or r8i.24xlarge in any us-east-1 zone, most capacity first
-  (`capacity-optimized-prioritized`), which scores 9 of 10. The account's
-  us-east-1 spot vCPU quota was raised from 32 for it.
+  there is 1 of 10). The fleet takes, in order of priority, r8a.metal-24xl
+  and m8a.metal-24xl (from `ci-2-metal`), then m8i.16xlarge, r8i.16xlarge,
+  m8i.24xlarge or r8i.24xlarge (from `ci-2`), in any of five us-east-1
+  zones. Its strategy, `capacity-optimized-prioritized`, honours the
+  priorities only as far as capacity allows, so a reclaim can still land
+  on Intel. The account's us-east-1 spot vCPU quota was raised from 32 for
+  it (a metal-24xl is 96 vCPUs).
 - **Sizing.** ci-2 is a `size = "auto"` host with `zram = "auto"` (above),
   so its image sizes itself at every boot and the runner uses all of
   whichever type the fleet launched: 64 vCPUs and 200 GiB on an
-  m8i.16xlarge, 96 vCPUs and more memory on a 24xlarge. With the fixed
+  m8i.16xlarge, 96 vCPUs and about 300 GiB on an m8a.metal-24xl. With the fixed
   `cpus = 64` and `memory = "200GiB"` it had before, every type ran as an
   m8i.16xlarge and a larger one left the rest idle. Only an image baked
   from a host provisioned with `size = "auto"` does this; one baked
   earlier boots with the fixed sizes it was baked with.
 
 The fleet is of type `maintain`: when AWS takes an instance back, the fleet
-launches another from the launch template's default version (4 since
-2026-11-25: an image of ci-2 on runner 0.3.67 with `KillMode=mixed`, and a
-400 GB disk), whose image is a snapshot of a provisioned ci-2 (runner,
-tunnel token, zram, machine image), so the replacement serves CI as soon as
-it boots, with no `terraform apply`. That image was baked before
-`size = "auto"` and keeps the fixed sizes; a host change made by hand (as
-`KillMode=mixed` was on the 2026-11-24 host) is lost on the next
-replacement unless it is baked in. The
-first us-east-1 host came from a one-off launch instead, was reclaimed 26
-minutes later, and CI was down for eight hours. Bake a new image (`aws ec2
-create-image --no-reboot` of a provisioned host, then a launch template
-version with its `ImageId`, made the default) whenever the install script,
-the tunnel or the machine image changes, or a replacement boots the old
-one. The runner updates itself from its release channel either way.
+launches another from the default version of the matching template, whose
+image is a snapshot of a provisioned ci-2 (runner, tunnel token, zram,
+machine image), so the replacement serves CI as soon as it boots, with no
+`terraform apply`. A host change made by hand (as `KillMode=mixed` was on
+the 2026-11-24 host) is lost on the next replacement unless it is baked
+in. The first us-east-1 host came from a one-off launch instead, was
+reclaimed 26 minutes later, and CI was down for eight hours. Bake a new
+image whenever the install script, the tunnel or the machine image
+changes, or a replacement boots the old one. The runner updates itself
+from its release channel either way. To bake:
+
+1. Run `sudo sync` on the host. `create-image --no-reboot` snapshots the
+   disk as it stands, and files written in the last minute or so are not
+   on it yet: an image baked straight after a `terraform apply` on
+   2026-11-25 had empty unit files for `iwci` and `iwci-size` (systemd
+   reads an empty unit as masked), and the host it booted never started
+   the runner.
+2. `aws ec2 create-image --no-reboot` of the host, and wait until the
+   image is `available` (about ten minutes for the 400 GB disk; the CLI's
+   waiter gives up first).
+3. A new version of **both** templates with the new `ImageId`, each made
+   the default. The image boots on either vendor: Ubuntu loads `kvm_intel`
+   or `kvm_amd` for the CPU it finds, and `size = "auto"` sizes it.
+4. Check it before relying on it: a replacement that boots without the
+   runner leaves CI down until someone looks. `systemctl is-enabled iwci`
+   on a host booted from it says `enabled`, never `masked`.
 
 A new instance has a new address: put it in the host's `ssh_host` before
-`terraform apply`. One that replaces a host this state already has is a new
+`terraform apply`, and check its SSH host key against the fingerprints
+cloud-init prints to the console (`aws ec2 get-console-output`). One that replaces a host this state already has is a new
 machine, not a reprovision: `terraform state rm 'terraform_data.host["ci-2"]'`
 first, or the destroy provisioner waits on the old address. Build the
 machine image on the new host (see above) before it takes `platform: linux`
