@@ -757,7 +757,16 @@ jobs:
   may go 20 GiB to disk (`--spill-disk`); at 10 GiB of swap shadcn/ui's
   `pnpm test` in 8 GiB swapped all of it and was killed out of memory.
   The file is deleted with the machine, and only what the job wrote takes
-  room on the runner's disk. An image without `memory-upper` keeps the
+  room on the runner's disk. The machine's kernel reclaims ahead of
+  demand (`vm.watermark_scale_factor=500`, on its command line, so any
+  image gets it): a job living on swap otherwise has each allocating
+  thread reclaim for itself in a burst, which is where the kernel gives
+  up and kills the largest process. shadcn/ui's `pnpm test` in 8 GiB,
+  which keeps up to 16.1 GiB of swap in use, reclaimed that way 204 to
+  497 times a run with it and 1,756 to 5,118 without. When a machine does
+  run out of memory, its job's output ends with what the kernel said:
+  the allocation that found none, the swap it had left and the process
+  it killed. An image without `memory-upper` keeps the
   whole writable layer on the ext4 disk. Afterwards
   the job sends back what the scheduler reads:
   `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, the paths of the `cache:`
