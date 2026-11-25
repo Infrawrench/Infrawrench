@@ -157,7 +157,7 @@ Indexing this repository's history (one 76 MiB pack, 92 742 objects, 4.35 GiB in
 
 ## Tests
 
-`pnpm --filter @infrawrench/git-core test` (about 80 s; needs `git` on the path, no network). Every interop test builds its repositories in temporary directories with a fixed identity and clock.
+`pnpm --filter @infrawrench/git-core test` (about 80 s, no network). Every interop test builds its repositories in temporary directories with a fixed identity and clock. Where there is no `git` on the path the interop tests skip with a warning (44 of 173) and the rest still run, so a green run in a sandbox without git says less than it looks.
 
 - `checksums`, `inflate`: against `node:crypto` and `node:zlib`, every block type, every chunking, fuzzed.
 - `objects`: commit, tree and tag round trips, against `git mktree`, `git hash-object`, `git fsck`.
