@@ -241,11 +241,15 @@ const STATE_FILE = "calls-to-action.json";
  * master key is written once; the database is created on first launch), so
  * a call to action added after someone installed still reaches them.
  */
-function firstLaunchMillis(dir: string, nowMs: number): number {
+export function firstLaunchMillis(
+  dir: string,
+  nowMs: number,
+  statFile: (file: string) => Pick<fs.Stats, "birthtimeMs" | "mtimeMs"> = fs.statSync,
+): number {
   let earliest = nowMs;
   for (const name of ["master.key.enc", "master.key", "infrawrench.db"]) {
     try {
-      const stat = fs.statSync(path.join(dir, name));
+      const stat = statFile(path.join(dir, name));
       for (const t of [stat.birthtimeMs, stat.mtimeMs]) {
         if (t > 0 && t < earliest) earliest = t;
       }

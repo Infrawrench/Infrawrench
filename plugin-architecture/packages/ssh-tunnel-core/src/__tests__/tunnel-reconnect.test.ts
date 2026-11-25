@@ -350,10 +350,12 @@ describe("tunnels whose SSH connection ends (#1276)", () => {
     await bastion.stop();
     await bastion.start(bastion.port);
     await until(() => sshConnections.size === 0);
+    // At most the baseline: on CI's runner the baseline can hold a timer of
+    // vitest's own that is gone by now, so equality would never come.
     await until(
-      () => handles() === baseline,
+      () => handles() <= baseline,
       4_000,
-      () => `${baseline} handles, still open: ${tracked().join(", ")}`,
+      () => `at most ${baseline} handles, still open: ${tracked().join(", ")}`,
     );
   });
 });

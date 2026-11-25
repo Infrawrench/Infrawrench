@@ -6,8 +6,13 @@ import { DateTime, Effect } from "effect";
 
 vi.mock("electron", () => ({ app: { getPath: () => "", getVersion: () => "0.0.0" } }));
 
-const { compareVersions, makeCallsToAction, resolveMarkdownUrl, selectCallsToAction } =
-  await import("../calls-to-action");
+const {
+  compareVersions,
+  firstLaunchMillis,
+  makeCallsToAction,
+  resolveMarkdownUrl,
+  selectCallsToAction,
+} = await import("../calls-to-action");
 
 const at = (iso: string) => DateTime.makeUnsafe(iso);
 
@@ -116,6 +121,21 @@ describe("helpers", () => {
     expect(compareVersions("1.4.0-beta.1", "1.4.0")).toBe(0);
   });
 
+  it("dates an install from the oldest time on the files a launch leaves", () => {
+    const times: Record<string, { birthtimeMs: number; mtimeMs: number }> = {
+      "/state/master.key.enc": { birthtimeMs: 5_000, mtimeMs: 9_000 },
+      // Some file systems report no birth time.
+      "/state/infrawrench.db": { birthtimeMs: 0, mtimeMs: 3_000 },
+    };
+    const stat = (file: string) => {
+      const t = times[file];
+      if (!t) throw new Error("ENOENT");
+      return t;
+    };
+    expect(firstLaunchMillis("/state", 10_000, stat)).toBe(3_000);
+    expect(firstLaunchMillis("/elsewhere", 10_000, stat)).toBe(10_000);
+  });
+
   it("keeps markdown files on the manifest's origin", () => {
     const manifest = "https://infrawrench.com/desktop/calls-to-action/index.json";
     expect(resolveMarkdownUrl(manifest, "sign-in.md")).toBe(
@@ -153,12 +173,13 @@ describe("makeCallsToAction", () => {
     return { ctas, fetch };
   }
 
-  it("dates an existing install from its files, fetches bodies, and remembers completions", async () => {
-    // An install from before this feature: its database is older than the entry.
-    const db = path.join(dir, "infrawrench.db");
-    fs.writeFileSync(db, "");
-    const old = new Date("2026-01-01T00:00:00Z");
-    fs.utimesSync(db, old, old);
+  it("fetches bodies, keeps the install time, and remembers completions", async () => {
+    // Installed before any of the entries. (Seeded rather than dated through
+    // file times: CI's in-memory file system ignores utimes.)
+    fs.writeFileSync(
+      path.join(dir, "calls-to-action.json"),
+      JSON.stringify({ installedAt: "2026-01-01T00:00:00.000Z", completed: {} }),
+    );
 
     const { ctas } = service({
       [manifestUrl]: JSON.stringify({
