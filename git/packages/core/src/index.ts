@@ -24,3 +24,5 @@ export * from "./pack/lru";
 export * from "./pack/indexer";
 export * from "./pack/idx";
 export * from "./pack/writer";
+export * from "./pktline";
+export * from "./sideband";
