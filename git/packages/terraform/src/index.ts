@@ -1,1 +1,113 @@
-export {};
+export type {
+  CommitResult,
+  HeadExpectation,
+  HeldLock,
+  LockInfo,
+  NewStateVersion,
+  PurgeResult,
+  StateHead,
+  StateStore,
+  StateVersion,
+  VersionPage,
+} from "./state/types.js";
+export {
+  DEFAULT_MAX_STATE_BYTES,
+  STATE_FORMAT_VERSION,
+  readStateHeader,
+  withSerial,
+  type StateHeader,
+  type StateHeaderResult,
+} from "./state/document.js";
+export { parseLockInfo, type LockInfoResult } from "./state/lock.js";
+export {
+  lockState,
+  purgeState,
+  readState,
+  restoreVersion,
+  unlockState,
+  writeState,
+  type LockContext,
+  type LockOutcome,
+  type PurgeOutcome,
+  type ReadOutcome,
+  type RestoreContext,
+  type RestoreOutcome,
+  type UnlockOutcome,
+  type UnlockRequest,
+  type WriteConflict,
+  type WriteContext,
+  type WriteOutcome,
+} from "./state/backend.js";
+export {
+  handleStateRequest,
+  type StateAuth,
+  type StateHandlerOptions,
+  type StateRoute,
+} from "./state/http.js";
+export { MemoryStateStore } from "./state/memory-store.js";
+
+export {
+  MAX_PLAN_ATTRIBUTES,
+  MAX_PLAN_OUTPUTS,
+  MAX_PLAN_RESOURCES,
+  PlanFormatError,
+  describeReason,
+  foldActions,
+  planLine,
+  summarizePlan,
+  type PlanAction,
+  type PlanAttributeChange,
+  type PlanCounts,
+  type PlanOutputChange,
+  type PlanResourceChange,
+  type PlanSummary,
+} from "./plan/summary.js";
+
+export { HclSyntaxError, hclItems, literalString, type HclItem } from "./roots/hcl.js";
+export {
+  MAX_WORKSPACE_NAME,
+  discoverTerraformDirectories,
+  discoverTerraformRoots,
+  isWorkspaceName,
+  resolveLocalSource,
+  suggestWorkspaceName,
+  type DiscoverLimits,
+  type DiscoveryResult,
+  type ModuleCall,
+  type RootReason,
+  type TerraformDirectory,
+  type TerraformVariable,
+  type TreeNode,
+  type TreeReader,
+} from "./roots/discover.js";
+
+export {
+  BACKEND_OVERRIDE,
+  BACKEND_OVERRIDE_FILE,
+  DEFAULT_TOKEN_SECRET,
+  JOB_TOKEN_USERNAME,
+  PipelineInputError,
+  backendConfiguration,
+  backendEnvironment,
+  workspacePipeline,
+  workspacePipelineYaml,
+  type TerraformProduct,
+  type TerraformRelease,
+  type WorkspacePipelineInput,
+} from "./pipeline/generate.js";
+export { Literal, renderYaml, type YamlValue } from "./pipeline/yaml.js";
+
+export {
+  MAX_STATE_INSTANCES,
+  providerSource,
+  stateResourceInstances,
+  type StateResourceInstance,
+  type StateResources,
+} from "./match/state-resources.js";
+export {
+  matchStateToInventory,
+  type InventoryCandidate,
+  type MatchBasis,
+  type MatchResult,
+  type ResourceLink,
+} from "./match/match.js";
