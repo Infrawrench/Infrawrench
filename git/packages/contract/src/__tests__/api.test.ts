@@ -1,0 +1,289 @@
+import { Context, Schema } from "effect";
+import { HttpApi, OpenApi } from "effect/http-api";
+import { describe, expect, it } from "vitest";
+import {
+  AllowedWhenArchived,
+  Authentication,
+  Diff,
+  GitApi,
+  HandlerGate,
+  RepositoryAccess,
+  RequiredAccess,
+  RequiredOrgPermission,
+  RequiresUser,
+  TimelineItem,
+  accessAtLeast,
+  archivePath,
+  httpCloneUrl,
+  isValidRefName,
+  namespaceSlugProblem,
+  rawPath,
+  repositoryNameProblem,
+  sshCloneUrl,
+  suggestSlug,
+} from "../index";
+
+interface Listed {
+  readonly group: string;
+  readonly name: string;
+  readonly method: string;
+  readonly path: string;
+  readonly annotations: Context.Context<never>;
+  readonly middleware: ReadonlySet<unknown>;
+}
+
+const endpoints: Listed[] = [];
+HttpApi.reflect(GitApi, {
+  onGroup: () => {},
+  onEndpoint: ({ group, endpoint, mergedAnnotations, middleware }) => {
+    endpoints.push({
+      group: group.identifier,
+      name: endpoint.identifier,
+      method: endpoint.method,
+      path: endpoint.path,
+      annotations: mergedAnnotations,
+      middleware,
+    });
+  },
+});
+
+const REPO_PREFIX = "/api/repos/:owner/:repo";
+
+/** Endpoints anyone may call with nothing: the session probe and the public reads. */
+const OPEN = new Set([
+  "session.me",
+  "session.signOut",
+  "namespaces.get",
+  "repositoryLists.listForNamespace",
+  "repositoryLists.listStarredBy",
+  "repositoryLists.explore",
+]);
+
+describe("GitApi", () => {
+  it("has every group's endpoints", () => {
+    expect(endpoints.length).toBeGreaterThan(100);
+  });
+
+  it("routes each method and path once", () => {
+    const seen = new Map<string, string>();
+    for (const e of endpoints) {
+      const key = `${e.method} ${e.path.replace(/:[A-Za-z]+/g, ":p")}`;
+      expect(seen.get(key), `${key} is both ${seen.get(key)} and ${e.group}.${e.name}`).toBe(
+        undefined,
+      );
+      seen.set(key, `${e.group}.${e.name}`);
+    }
+  });
+
+  it("puts everything under /api", () => {
+    for (const e of endpoints) expect(e.path.startsWith("/api/")).toBe(true);
+  });
+
+  it("authenticates every endpoint", () => {
+    for (const e of endpoints) {
+      expect(e.middleware.has(Authentication), `${e.group}.${e.name}`).toBe(true);
+    }
+  });
+
+  it("gates every repository endpoint on an access level", () => {
+    for (const e of endpoints) {
+      const id = `${e.group}.${e.name}`;
+      const inRepo = e.path.startsWith(REPO_PREFIX);
+      expect(e.middleware.has(RepositoryAccess), id).toBe(inRepo);
+      const access = Context.get(e.annotations, RequiredAccess);
+      if (inRepo) expect(access, id).not.toBe(undefined);
+      else expect(access, id).toBe(undefined);
+    }
+  });
+
+  it("states a gate on everything that is not an open read", () => {
+    for (const e of endpoints) {
+      const id = `${e.group}.${e.name}`;
+      if (e.path.startsWith(REPO_PREFIX)) continue;
+      const gated =
+        Context.get(e.annotations, RequiresUser) ||
+        Context.get(e.annotations, RequiredOrgPermission) !== undefined;
+      expect(gated, id).toBe(!OPEN.has(id));
+    }
+  });
+
+  it("needs a signed-in person for every write that only asks for read access", () => {
+    for (const e of endpoints) {
+      if (e.method === "GET" || !e.path.startsWith(REPO_PREFIX)) continue;
+      if (Context.get(e.annotations, RequiredAccess) !== "read") continue;
+      expect(Context.get(e.annotations, RequiresUser), `${e.group}.${e.name}`).toBe(true);
+    }
+  });
+
+  it("keeps an archived repository's settings readable and its way out open", () => {
+    const allowed = endpoints
+      .filter((e) => Context.get(e.annotations, AllowedWhenArchived))
+      .map((e) => `${e.group}.${e.name}`);
+    for (const e of endpoints) {
+      const id = `${e.group}.${e.name}`;
+      if (!Context.get(e.annotations, AllowedWhenArchived)) continue;
+      expect(Context.get(e.annotations, RequiredAccess), id).toBe("admin");
+    }
+    for (const e of endpoints) {
+      if (e.method !== "GET" || Context.get(e.annotations, RequiredAccess) !== "admin") continue;
+      expect(allowed).toContain(`${e.group}.${e.name}`);
+    }
+    expect(allowed).toContain("repositories.update");
+    expect(allowed).toContain("repositories.delete");
+  });
+
+  it("only documents a handler gate beside an enforced one", () => {
+    for (const e of endpoints) {
+      if (Context.get(e.annotations, HandlerGate) === undefined) continue;
+      expect(Context.get(e.annotations, RequiresUser), `${e.group}.${e.name}`).toBe(true);
+    }
+  });
+
+  it("builds an OpenAPI document", () => {
+    const spec = OpenApi.fromApi(GitApi);
+    expect(Object.keys(spec.paths).length).toBeGreaterThan(60);
+    expect(spec.paths["/api/repos/{owner}/{repo}/pulls/{number}/merge"]?.post).toBeDefined();
+  });
+});
+
+describe("schemas", () => {
+  it("decodes a diff as the UI renders it", () => {
+    const oid = "a".repeat(40);
+    const diff = Schema.decodeSync(Diff)({
+      baseOid: null,
+      headOid: oid,
+      stats: { filesChanged: 1, additions: 1, deletions: 1 },
+      nextCursor: null,
+      files: [
+        {
+          path: "a.txt",
+          oldPath: null,
+          status: "modified",
+          oldMode: "100644",
+          newMode: "100644",
+          oldOid: oid,
+          newOid: oid,
+          binary: false,
+          additions: 1,
+          deletions: 1,
+          similarity: null,
+          tooLarge: false,
+          hunks: [
+            {
+              oldStart: 1,
+              oldLines: 2,
+              newStart: 1,
+              newLines: 2,
+              section: "",
+              lines: [
+                { type: "context", content: "one", oldLine: 1, newLine: 1 },
+                { type: "delete", content: "two", oldLine: 2, newLine: null },
+                {
+                  type: "add",
+                  content: "2",
+                  oldLine: null,
+                  newLine: 2,
+                  noNewlineAtEnd: true,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(diff.files[0]?.hunks[0]?.lines).toHaveLength(3);
+  });
+
+  it("tells timeline entries apart by type", () => {
+    const decode = Schema.decodeUnknownSync(TimelineItem);
+    const entry = decode({
+      type: "renamed",
+      id: "1",
+      actor: null,
+      createdAt: "2026-11-25T00:00:00.000Z",
+      from: "a",
+      to: "b",
+    });
+    expect(entry.type).toBe("renamed");
+    expect(() => decode({ type: "renamed", id: "1" })).toThrow();
+  });
+});
+
+describe("names", () => {
+  it("accepts ordinary slugs", () => {
+    for (const ok of ["acme", "Acme-Corp", "a.b", "x_1", "9lives", "_private"]) {
+      expect(namespaceSlugProblem(ok), ok).toBe(null);
+    }
+  });
+
+  it("refuses what the README rules out", () => {
+    expect(namespaceSlugProblem("")).toBe("empty");
+    expect(namespaceSlugProblem(".hidden")).toBe("characters");
+    expect(namespaceSlugProblem("-dash")).toBe("characters");
+    expect(namespaceSlugProblem("has space")).toBe("characters");
+    expect(namespaceSlugProblem("repo.git")).toBe("git_suffix");
+    expect(namespaceSlugProblem("Repo.GIT")).toBe("git_suffix");
+    expect(namespaceSlugProblem("a..b")).toBe("dots");
+    expect(namespaceSlugProblem("API")).toBe("reserved");
+    expect(namespaceSlugProblem("explore")).toBe("reserved");
+    expect(namespaceSlugProblem("a".repeat(40))).toBe("too_long");
+    expect(repositoryNameProblem("settings")).toBe("reserved");
+    expect(repositoryNameProblem("infra")).toBe(null);
+  });
+
+  it("suggests a slug the rules accept", () => {
+    expect(suggestSlug("Astrid.Example+git@example.com")).toBe("Astrid.Example-git");
+    expect(suggestSlug("...@example.com")).toBe("");
+    const long = suggestSlug(`${"a".repeat(60)}@example.com`);
+    expect(namespaceSlugProblem(long)).toBe(null);
+  });
+
+  it("checks ref names", () => {
+    for (const ok of ["main", "feature/x", "release-1.2", "user/a_b"]) {
+      expect(isValidRefName(ok), ok).toBe(true);
+    }
+    for (const bad of [
+      "",
+      "-x",
+      "a..b",
+      "a b",
+      "a.lock",
+      "a/",
+      "/a",
+      "a//b",
+      "HEAD",
+      "a~1",
+      "a:b",
+      ".a",
+      "a/.b",
+      "a@{1}",
+    ]) {
+      expect(isValidRefName(bad), bad).toBe(false);
+    }
+  });
+});
+
+describe("urls", () => {
+  const ref = { owner: "acme", repo: "infra" };
+
+  it("builds clone URLs", () => {
+    expect(httpCloneUrl(ref)).toBe("https://git.infrawrench.com/acme/infra.git");
+    expect(sshCloneUrl(ref)).toBe("git@git.infrawrench.com:acme/infra.git");
+  });
+
+  it("keeps slashes in refs and paths, and escapes the rest", () => {
+    expect(rawPath(ref, "feature/x", "docs/a b.md")).toBe(
+      "/acme/infra/raw/feature/x/docs/a%20b.md",
+    );
+    expect(archivePath(ref, "v1.0", "tar.gz")).toBe("/acme/infra/archive/v1.0.tar.gz");
+    expect(archivePath(ref, "main", "zip", { path: "modules/vpc" })).toBe(
+      "/acme/infra/archive/main.zip?path=modules%2Fvpc",
+    );
+  });
+
+  it("orders access levels", () => {
+    expect(accessAtLeast("write", "triage")).toBe(true);
+    expect(accessAtLeast("read", "triage")).toBe(false);
+    expect(accessAtLeast("none", "read")).toBe(false);
+  });
+});
