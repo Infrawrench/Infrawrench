@@ -6,7 +6,9 @@
   "compatibility_date": "2026-11-20",
   // `nodejs_compat` also fills `process.env` from the bindings below, which
   // is how server-core reads `ENCRYPTION_MASTER_KEY`.
-  "compatibility_flags": ["nodejs_compat"],
+  // `webcrypto_modern_algorithms` gives the SSH server ML-KEM, so it can offer
+  // the post-quantum key exchange current OpenSSH clients ask for.
+  "compatibility_flags": ["nodejs_compat", "webcrypto_modern_algorithms"],
   "workers_dev": false,
   "routes": [{ "pattern": "git.infrawrench.com", "custom_domain": true }],
   "observability": { "enabled": true },
@@ -95,16 +97,13 @@
 
   // One Durable Object per repository (`idFromName(repoId)`) and one per
   // Terraform workspace. `src/env.ts` already types both. Wrangler refuses a
-  // binding whose class the entry does not export, so each block is switched
-  // on in the change that exports its class from `src/index.ts`:
-  //
-  // "durable_objects": {
-  //   "bindings": [
-  //     { "name": "REPO", "class_name": "RepoDO" },
-  //     { "name": "TERRAFORM_STATE", "class_name": "TerraformStateDO" },
-  //   ],
-  // },
-  // "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RepoDO", "TerraformStateDO"] }],
+  // binding whose class the entry does not export, so `TERRAFORM_STATE` joins
+  // the bindings (and a later migration tag) in the change that exports
+  // `TerraformStateDO` from `src/index.ts`.
+  "durable_objects": {
+    "bindings": [{ "name": "REPO", "class_name": "RepoDO" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RepoDO"] }],
 
   // The Durable Object sends a push here once the refs have moved
   // (git/README.md "After a push"). The consumer is this Worker's own `queue`

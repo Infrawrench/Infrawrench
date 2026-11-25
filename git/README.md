@@ -38,16 +38,18 @@ Access resolution is one function, `repoAccess(principal, repo) -> none | read |
 
 ## Storage
 
-- **R2 bucket `infrawrench-git`**: `repos/<repoId>/packs/pack-<sha>.pack` and `.idx`. Repositories are keyed by id, never by name, so renames and transfers move nothing.
-- **`RepoDO`, one per repository** (`idFromName(repoId)`), SQLite: `refs`, `head`, the pack catalogue, an object index (oid → pack, offset, type, size), push locks, and a small cache of resolved objects. It serialises every ref change, so a push, a merge from the UI and a branch deletion cannot race.
-- **Pushes stream.** `ingestPack` writes the incoming pack to R2 as it arrives (multipart) while indexing it, resolving deltas with bounded memory (bases read back by range), and publishes the pack only after it verifies. A Worker request body is capped by the zone's plan (100 MB on Free/Pro), so very large pushes go over SSH, which has no such cap.
-- **Repacking** runs from the DO's alarm once a repository has many small packs.
+- **R2 bucket `infrawrench-git`**: `repos/<repoId>/packs/pack-<id>.pack` and `.idx`. Repositories are keyed by id, never by name, so renames and transfers move nothing. A pack's id is time-ordered and random, not its checksum: the key has to exist before the first byte is uploaded.
+- **`RepoDO`, one per repository** (`idFromName(repoId)`), SQLite: `refs`, `HEAD` and the pack catalogue. There is no row per object: an object is found through each pack's `.idx`, loaded from R2 and held in memory, which costs no billed row writes per pushed object (the worker's notes have the numbers). Every ref change goes through one synchronous transaction that compares each ref with the value the caller saw, so a push, a merge from the UI and a branch deletion cannot race, and nothing needs a lock.
+- **Pushes stream.** `ingestPack` writes the incoming pack to R2 as it arrives (multipart) while indexing it, resolving deltas with bounded memory (bases read back by range), checks that every object's references resolve, and leaves the pack unpublished; `updateRefs` publishes it in the same transaction as the refs that reach it. A Worker request body is capped by the zone's plan (100 MB on Free/Pro), so very large pushes go over SSH, which has no such cap.
+- **Fetches reuse stored bytes.** A full clone is the stored pack (or every entry of every pack, copied); anything else walks history and copies the chosen entries, rewriting only delta headers.
+- **Repacking** runs from the DO's alarm once a repository has many small packs: a run of adjacent packs is merged into one, verified like a push, and the old files are deleted a day later.
+- **Forks copy** the parent's packs within R2, so the two repositories share nothing afterwards.
 - **Postgres** (server-core `db/git-schema.ts`, migrations through `drizzle-kit generate`): namespaces, repositories, collaborators, keys and tokens, issues, pull requests, reviews and comments, labels, milestones, stars, protected branches, commit statuses, Terraform workspaces and runs.
 
 ## Transports
 
-- **Smart HTTP**: `GET /<owner>/<repo>.git/info/refs?service=…`, `POST /<owner>/<repo>.git/git-upload-pack|git-receive-pack`, v2 via `Git-Protocol`. The front Worker resolves the principal and access, then hands the body stream to the repository's DO, which runs `protocol` against its backend and streams the answer back.
-- **SSH**: `git@git.infrawrench.com:<owner>/<repo>.git`. A Spectrum application on port 22 forwards TCP to the Worker's `connect(socket)` handler (inbound TCP, public beta; `startTls` is not available on inbound sockets, which SSH does not need). The Worker runs the `ssh` server; `exec` resolves the repository and access the same way HTTP does and opens a bidirectional stream to the DO (`statelessRpc: false`).
+- **Smart HTTP**: `GET /<owner>/<repo>.git/info/refs?service=…`, `POST /<owner>/<repo>.git/git-upload-pack|git-receive-pack`, v2 via `Git-Protocol`. The front Worker resolves the principal, the access and (for a push) the protected-branch rules, then hands the body stream to the repository's DO over one internal `fetch`; the DO runs `protocol` against its backend and streams the answer back. The DO never opens Postgres.
+- **SSH**: `git@git.infrawrench.com:<owner>/<repo>.git`. A Spectrum application on port 22 forwards TCP to the Worker's `connect(socket)` handler (inbound TCP, public beta; `startTls` is not available on inbound sockets, which SSH does not need). The Worker runs the `ssh` server; `exec` resolves the repository and access the same way HTTP does and opens the same internal `fetch` to the DO with both bodies streaming at once (`statelessRpc: false`).
 - **After a push** the DO sends an event (`{ repoId, actor, updates, at }`) to the `infrawrench-git-events` queue. The consumer updates the repository row, synchronises pull requests, closes issues a commit fixes, and starts CI and Terraform plans.
 
 ## The forge

@@ -7,7 +7,7 @@
  * API's layers and server-core's schema is not work a Worker's start-up
  * budget covers (KNOWLEDGE.md "Edge/gateway split").
  */
-import type { ExecutionContext, MessageBatch } from "@cloudflare/workers-types/index";
+import type { ExecutionContext, MessageBatch, Socket } from "@cloudflare/workers-types/index";
 import type { Env, GitEvent } from "./env";
 import { type Routes, serve } from "./http/router";
 
@@ -17,6 +17,12 @@ const lazy = <T>(load: () => Promise<T>): (() => Promise<T>) => {
 };
 
 const api = lazy(async () => (await import("./api/server")).makeGitApi());
+const transport = lazy(() => import("./transport/mount"));
+
+/** Smart HTTP and the raw and archive routes: `transport/http/routes.ts` matches them again itself. */
+const git = async (request: Request, env: Env, ctx: ExecutionContext): Promise<Response> =>
+  (await (await transport()).gitFetch(request, env, ctx)) ??
+  new Response("Not Found", { status: 404 });
 const database = lazy(() => import("./db/client"));
 
 const routes: Routes = {
@@ -38,13 +44,12 @@ const routes: Routes = {
     );
   },
 
-  // INSERTION POINTS: the storage's routes. `http/router.ts` documents each
-  // and answers 503 while it is absent.
-  //
-  //   smartHttp: (request, env, ctx, route) => ...,
-  //   raw: (request, env, ctx, route) => ...,
-  //   archive: (request, env, ctx, route) => ...,
-  //   terraformState: (request, env, ctx, route) => ...,
+  smartHttp: git,
+  raw: git,
+  archive: git,
+
+  // INSERTION POINT (Terraform): `terraformState: (request, env, ctx, route) => ...`.
+  // `http/router.ts` answers 503 while it is absent.
 };
 
 export default {
@@ -58,10 +63,14 @@ export default {
     await consumeGitEvents(batch, env, ctx);
   },
 
-  // INSERTION POINT (SSH): `connect(socket, env, ctx)`, the inbound TCP entry
-  // that runs `@infrawrench/git-ssh` (git/README.md "Transports").
+  /** Git over SSH: inbound TCP, through Spectrum in production (git/README.md "Transports"). */
+  async connect(socket: Socket, env: Env, ctx: ExecutionContext): Promise<void> {
+    await (await transport()).gitConnect(socket, env, ctx);
+  },
 };
 
-// INSERTION POINT (storage): `export { RepoDO } from "./repo/durable-object"`
-// and `export { TerraformStateDO } from ...`, with the `durable_objects` and
-// `migrations` blocks of wrangler.jsonc switched on in the same change.
+// One Durable Object per repository: refs, the pack catalogue, and the git protocol itself.
+export { RepoDO } from "./repo/do/repo-do";
+
+// INSERTION POINT (Terraform): `export { TerraformStateDO } from ...`, with its
+// binding and a `v2` migration tag in wrangler.jsonc.
