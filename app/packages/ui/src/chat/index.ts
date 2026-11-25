@@ -26,3 +26,4 @@ export type {
 } from "./types.js";
 export { ConversationView } from "./ConversationView.js";
 export { ChatListView } from "./ChatListView.js";
+export { LazyChatMarkdown } from "./LazyChatMarkdown.js";

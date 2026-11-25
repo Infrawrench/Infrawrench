@@ -1051,6 +1051,39 @@ Settings is a workspace tab kind (`{ kind: "settings"; section?: string }`) on w
 
 - **Sections are grouped by app.** Every `SETTINGS_SECTIONS` entry has a `group`: `"org"` or a product id. `groupSettingsSections(has, disabledProducts)` orders them (organization first, then the apps in their own order), drops what the caller cannot read and hides the group of an app the organization turned off; both navs render it through the shared `SettingsNavGroups`, each supplying only its own link or button. `firstSettingsSection(product, has)` is what an app's settings shortcut opens (the Settings button on the app's page and the Settings row at the end of its sidebar group, via each platform's `useAppSettingsShortcut`); an app with no section gets no shortcut. On web the sidebar can render without an organization, where `usePermissions` throws, so the shortcut reads `usePermissionsIfAny`.
 
+### Calls to action (desktop-only)
+
+Announcements the desktop shows once each, over the whole window: a feed on the website that is edited and deployed like any other page, not an app release. `CALLS_TO_ACTION_URL` (`env*.ts`; production `https://infrawrench.com/desktop/calls-to-action/index.json`, empty in `env.example.ts`, which turns the feature off) points at `app/packages/website/public/desktop/calls-to-action/index.json`; markdown bodies sit beside it.
+
+```json
+{
+  "callsToAction": [
+    {
+      "id": "2026-12-cloud-sync",
+      "addedAt": "2026-12-01T09:00:00Z",
+      "expiresAt": "2027-01-31T00:00:00Z",
+      "markdownFile": "2026-12-cloud-sync.md",
+      "action": { "type": "sign-in" },
+      "actionLabel": "Sign in and sync",
+      "dismissLabel": "Maybe later",
+      "layout": "stacked",
+      "when": { "os": ["mac", "windows"], "account": "local", "minAppVersion": "1.40.0" },
+      "translations": {
+        "fr": { "markdownFile": "2026-12-cloud-sync.fr.md", "actionLabel": "Se connecter" }
+      }
+    }
+  ]
+}
+```
+
+- **Who sees one** (`selectCallsToAction` in `electron/calls-to-action.ts`): `addedAt` is after this install's first launch and not in the future (a future `addedAt` schedules it), the `id` was never acted on or dismissed here, `expiresAt` (optional) has not passed, and every `when` condition holds: `os` (any of `mac`, `windows`, `linux`), `account` (`local` = not signed in to Infrawrench Cloud, `cloud` = signed in), `minAppVersion`/`maxAppVersion` (inclusive). A `sign-in` action also needs the user signed out and a build with `SHOW_SIGN_IN_BUTTON`. Several pending ones show one after another, oldest first.
+- **Ids are forever.** Completion is keyed by `id`, so editing an entry's text re-shows it to nobody, and reusing an id for a new announcement shows it to nobody who saw the old one. A new announcement is a new id.
+- **Unknown means skipped.** An entry that fails to decode (an action type, a `when` key or a layout this build does not know, a bad date, no body, a non-http(s) URL) is skipped on its own, never shown with part of its meaning missing; `when` is decoded with `onExcessProperty: "error"` for this. So a new condition or action is added to the app first and used in the feed once the versions that understand it are out (or gate it with `minAppVersion`, which old builds do understand). Unknown top-level keys are ignored.
+- **The body is markdown**, `markdown` inline or `markdownFile` relative to the JSON's URL (refused if it resolves off that origin; 64 KiB cap, the JSON 256 KiB). It renders through `LazyChatMarkdown`, so no raw HTML, images become links, and links open in the system browser. The first heading is the dialog's accessible name.
+- **Buttons.** `action` is `{ "type": "sign-in" }` (opens `Onboarding` straight at its browser step, `startWithSignIn`, which then offers the org picker) or `{ "type": "url", "url": "https://..." }`. `actionLabel`/`dismissLabel` set the wording (defaults: "Sign in to Infrawrench Cloud" or "Learn more", and "Not now", translated). `layout` is `stacked` (default: the big button over small dismiss text, like the welcome screen) or `side-by-side` (two equal buttons, dismiss on the left). Escape and the backdrop do nothing: only the two buttons record a completion. `translations` overrides any text field per locale (exact tag, then the language).
+- **First launch.** State is `userData/calls-to-action.json` (`installedAt`, `completed: { id: when }`). It is written on the first check; for an install older than the feature, `installedAt` is the oldest birth or modification time of `master.key.enc`, `master.key` and `infrawrench.db` (the master key is written once), so existing users get announcements added after they installed rather than only after they upgraded. A fresh install never sees the backlog.
+- **Plumbing.** `CallsToActionPending` / `CallsToActionComplete` (`shared/rpc/groups/calls-to-action.ts`, service `CallsToAction`) fetch in the main process, so the renderer's CSP and CORS do not apply and the state file stays in main. A fetch failure or malformed file shows nothing and logs a warning; one unreachable body skips only that entry. `CallToActionHost` (`src/components/`) checks once the tabs are restored, the first auth check has answered and onboarding is not up, then every 6 hours. Tests: `electron/__tests__/calls-to-action.test.ts`.
+
 ### Metric pings (desktop-only)
 
 Right-click any resource in the sidebar whose type sets `supportsMetrics` to open `MetricPingModal` and configure a single metric to alert on. The renderer's `metric-pinger` (`src/lib/metric-pinger.ts`) polls every 60s, calls `client.fetchMetricSeries`, and only fires a native OS notification (`AppShowNotification` RPC → `Notification` in main) when `last_alert_state` flips. While `activePingCount > 0` in main, `window.on("close")` hides the window instead of quitting and `window-all-closed` is a no-op so the polling loop stays alive in the background; `before-quit` sets a `quitting` flag that bypasses both. The renderer keeps main in sync via the `AppSetPingsActive` RPC.
