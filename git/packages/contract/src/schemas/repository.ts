@@ -21,6 +21,7 @@ export type MergeMethod = typeof MergeMethod.Type;
 export const RepoAccess = Schema.Literals(REPO_ACCESS_LEVELS).annotate({
   identifier: "RepoAccess",
 });
+export type RepoAccess = typeof RepoAccess.Type;
 
 /** A repository named beside something else (a fork's parent, a pull request's head). */
 export const RepositoryRef = Schema.Struct({
@@ -65,6 +66,7 @@ export const RepositoryFeatures = Schema.Struct({
   issues: Schema.Boolean,
   pullRequests: Schema.Boolean,
 }).annotate({ identifier: "RepositoryFeatures" });
+export type RepositoryFeatures = typeof RepositoryFeatures.Type;
 
 export const MergeSettings = Schema.Struct({
   allowMergeCommit: Schema.Boolean,
@@ -73,6 +75,7 @@ export const MergeSettings = Schema.Struct({
   defaultMethod: MergeMethod,
   deleteBranchOnMerge: Schema.Boolean,
 }).annotate({ identifier: "MergeSettings" });
+export type MergeSettings = typeof MergeSettings.Type;
 
 /** What the viewer may do, for the buttons the repository's pages show. */
 export const RepositoryViewer = Schema.Struct({
@@ -88,6 +91,7 @@ export const RepositoryViewer = Schema.Struct({
   canFork: Schema.Boolean,
   hasStarred: Schema.Boolean,
 }).annotate({ identifier: "RepositoryViewer" });
+export type RepositoryViewer = typeof RepositoryViewer.Type;
 
 /** The repository page's header and everything its tabs decide from. */
 export const Repository = Schema.Struct({
@@ -135,6 +139,7 @@ export const RepositoryCreate = Schema.Struct({
     }),
   ),
 }).annotate({ identifier: "RepositoryCreate" });
+export type RepositoryCreate = typeof RepositoryCreate.Type;
 
 export const RepositoryUpdate = Schema.Struct({
   description: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(350)))),
@@ -162,12 +167,15 @@ export const RepositoryUpdate = Schema.Struct({
     }),
   ),
 }).annotate({ identifier: "RepositoryUpdate" });
+export type RepositoryUpdate = typeof RepositoryUpdate.Type;
 
 export const REPOSITORY_SORTS = ["pushed", "name", "stars", "created"] as const;
 export const RepositorySort = Schema.Literals(REPOSITORY_SORTS);
+export type RepositorySort = typeof RepositorySort.Type;
 
 export const REPOSITORY_LIST_TYPES = ["all", "sources", "forks", "archived", "private"] as const;
 export const RepositoryListType = Schema.Literals(REPOSITORY_LIST_TYPES);
+export type RepositoryListType = typeof RepositoryListType.Type;
 
 export const COLLABORATOR_ROLES = ["read", "triage", "write", "admin"] as const;
 export const CollaboratorRole = Schema.Literals(COLLABORATOR_ROLES).annotate({

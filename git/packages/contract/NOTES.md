@@ -24,6 +24,7 @@ The JSON API of git.infrawrench.com as Effect `HttpApi` definitions. The worker 
 - **Middleware order.** Repository groups are `.middleware(RepositoryAccess).middleware(Authentication)`: the later one is the outer one, so `Authentication` runs first and provides `Caller`, which `RepositoryAccess` requires.
 - **Archived repositories.** `repoAccess` is at most `read` on one, for everybody. An endpoint annotated `AllowedWhenArchived` is judged against the level the caller would have without that cap: `repositories.update` (which unarchives), `repositories.delete` and every `admin` read (the settings pages). `RepositoryViewer.canAdminister` is the same un-capped answer for the UI.
 - **Names that shadow globals are avoided**: `FileBlob`, `GitTag`, `TreeListing`, `ThreadComment` rather than `Blob`, `Tag`, `Tree`, `Comment`.
+- **Every exported schema has a type of the same name** (`export type Branch = typeof Branch.Type`), so the worker and the UI name a shape without `typeof X.Type`.
 - **Numbers are `Schema.Finite`** (tsc-rs's `schemaNumber` diagnostic), integers `Schema.Int`.
 
 ## Decisions
@@ -37,7 +38,7 @@ The JSON API of git.infrawrench.com as Effect `HttpApi` definitions. The worker 
 - **Raw files and archives are not endpoints**: they stream bytes, so they are plain URLs (`rawPath`, `archivePath`). A ref in those paths is resolved greedily; the UI links by commit id where it has one.
 - **Sign-in is not an endpoint** either (`AUTH_PATHS`). `session.me` never answers 401; it answers `user: null`.
 - **CI is read-only here.** Retrying, cancelling and approving a run happen in the app (`CiRun.appUrl`), where `ci:approve` lives. The CI status lists repeat client-core's `ci.ts`; a status added there is added to `schemas/ci.ts`.
-- **Terraform shapes are defined ahead of their implementation.** State documents are never served by this API (they hold secrets), only their metadata. Costs are null for callers who may not see costs in the app.
+- **Terraform shapes follow the tables.** State documents are never served by this API (they hold secrets), only their metadata (`sha256`, not an MD5). Costs are null for callers who may not see costs in the app, and a run's cost change carries the monthly delta alone (`monthlyBefore` and `monthlyAfter` are null) until the totals are stored. A workspace's name is a URL segment and part of an R2 key: lowercase letters, digits, `-` and `_`. `forget` is an action beside `delete`: removed from state, not destroyed.
 - **Token scopes are `repo:read` and `repo:write` only.** A token never reaches settings or credentials: `AccountGroup` is session only.
 
 ## Not here yet

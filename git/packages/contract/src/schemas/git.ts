@@ -59,6 +59,7 @@ export const DIFF_FILE_STATUSES = [
 export const DiffFileStatus = Schema.Literals(DIFF_FILE_STATUSES).annotate({
   identifier: "DiffFileStatus",
 });
+export type DiffFileStatus = typeof DiffFileStatus.Type;
 
 export const TREE_ENTRY_MODES = ["040000", "100644", "100755", "120000", "160000"] as const;
 export const TreeEntryMode = Schema.Literals(TREE_ENTRY_MODES).annotate({
@@ -66,12 +67,14 @@ export const TreeEntryMode = Schema.Literals(TREE_ENTRY_MODES).annotate({
   description:
     "`040000` directory, `100644` file, `100755` executable, `120000` symlink, `160000` submodule.",
 });
+export type TreeEntryMode = typeof TreeEntryMode.Type;
 
 export const DiffStats = Schema.Struct({
   filesChanged: Schema.Int,
   additions: Schema.Int,
   deletions: Schema.Int,
 }).annotate({ identifier: "DiffStats" });
+export type DiffStats = typeof DiffStats.Type;
 
 /** One line of a hunk. */
 export const DiffLine = Schema.Struct({
@@ -215,6 +218,7 @@ export const CommitDetail = Schema.Struct({
     description: "Pull requests this commit is the merge of, or part of.",
   }),
 }).annotate({ identifier: "CommitDetail" });
+export type CommitDetail = typeof CommitDetail.Type;
 
 export const TREE_ENTRY_TYPES = ["tree", "blob", "symlink", "submodule"] as const;
 
@@ -267,6 +271,7 @@ export const TreeLastCommits = Schema.Struct({
   }),
   complete: Schema.Boolean,
 }).annotate({ identifier: "TreeLastCommits" });
+export type TreeLastCommits = typeof TreeLastCommits.Type;
 
 /** The most text a blob answers inline. Larger files are `truncated`; fetch them raw. */
 export const BLOB_TEXT_LIMIT_BYTES = 1024 * 1024;
@@ -329,6 +334,7 @@ export const Blame = Schema.Struct({
   }),
   blob: FileBlob,
 }).annotate({ identifier: "Blame" });
+export type Blame = typeof Blame.Type;
 
 export const PullRequestBadge = Schema.Struct({
   number: Schema.Int,
@@ -336,6 +342,7 @@ export const PullRequestBadge = Schema.Struct({
   state: Schema.Literals(["open", "closed", "merged"]),
   draft: Schema.Boolean,
 }).annotate({ identifier: "PullRequestBadge" });
+export type PullRequestBadge = typeof PullRequestBadge.Type;
 
 export const Branch = Schema.Struct({
   name: Schema.String,
@@ -375,6 +382,7 @@ export const Refs = Schema.Struct({
   branchesTruncated: Schema.Boolean,
   tagsTruncated: Schema.Boolean,
 }).annotate({ identifier: "Refs" });
+export type Refs = typeof Refs.Type;
 
 /** `base...head`: what `head` has that `base` does not, from their merge base. */
 export const Comparison = Schema.Struct({
@@ -398,6 +406,7 @@ export const Comparison = Schema.Struct({
     description: "The open pull request for exactly this base and head, when there is one.",
   }),
 }).annotate({ identifier: "Comparison" });
+export type Comparison = typeof Comparison.Type;
 
 export const CommitStatus = Schema.Struct({
   id: Schema.String,
@@ -422,6 +431,7 @@ export const CombinedStatus = Schema.Struct({
   state: Schema.NullOr(StatusState).annotate({ description: "Null when it has no statuses." }),
   statuses: Schema.Array(CommitStatus),
 }).annotate({ identifier: "CombinedStatus" });
+export type CombinedStatus = typeof CombinedStatus.Type;
 
 export const CommitStatusCreate = Schema.Struct({
   context: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255)),
@@ -429,3 +439,4 @@ export const CommitStatusCreate = Schema.Struct({
   description: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(1000)))),
   targetUrl: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(2000)))),
 }).annotate({ identifier: "CommitStatusCreate" });
+export type CommitStatusCreate = typeof CommitStatusCreate.Type;

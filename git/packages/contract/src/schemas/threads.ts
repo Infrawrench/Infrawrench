@@ -29,14 +29,17 @@ export const LabelCreate = Schema.Struct({
   color: LabelColor,
   description: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(200)))),
 }).annotate({ identifier: "LabelCreate" });
+export type LabelCreate = typeof LabelCreate.Type;
 
 export const LabelUpdate = Schema.Struct({
   name: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(50))),
   color: Schema.optionalKey(LabelColor),
   description: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(200)))),
 }).annotate({ identifier: "LabelUpdate" });
+export type LabelUpdate = typeof LabelUpdate.Type;
 
 export const MilestoneState = Schema.Literals(["open", "closed"]);
+export type MilestoneState = typeof MilestoneState.Type;
 
 export const Milestone = Schema.Struct({
   id: Schema.String,
@@ -57,12 +60,14 @@ export const MilestoneRef = Schema.Struct({
   number: Schema.Int,
   title: Schema.String,
 }).annotate({ identifier: "MilestoneRef" });
+export type MilestoneRef = typeof MilestoneRef.Type;
 
 export const MilestoneCreate = Schema.Struct({
   title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
   description: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(5000)))),
   dueOn: Schema.optionalKey(Schema.NullOr(Schema.String.annotate({ format: "date" }))),
 }).annotate({ identifier: "MilestoneCreate" });
+export type MilestoneCreate = typeof MilestoneCreate.Type;
 
 export const MilestoneUpdate = Schema.Struct({
   title: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200))),
@@ -70,6 +75,7 @@ export const MilestoneUpdate = Schema.Struct({
   dueOn: Schema.optionalKey(Schema.NullOr(Schema.String.annotate({ format: "date" }))),
   state: Schema.optionalKey(MilestoneState),
 }).annotate({ identifier: "MilestoneUpdate" });
+export type MilestoneUpdate = typeof MilestoneUpdate.Type;
 
 export const BODY_MAX_LENGTH = 262_144;
 export const TITLE_MAX_LENGTH = 256;
@@ -80,10 +86,12 @@ const Body = Schema.String.check(Schema.isMaxLength(BODY_MAX_LENGTH)).annotate({
 
 export const ISSUE_STATES = ["open", "closed"] as const;
 export const IssueState = Schema.Literals(ISSUE_STATES).annotate({ identifier: "IssueState" });
+export type IssueState = typeof IssueState.Type;
 
 export const IssueStateReason = Schema.Literals(["completed", "not_planned"]).annotate({
   identifier: "IssueStateReason",
 });
+export type IssueStateReason = typeof IssueStateReason.Type;
 
 /** The fields an issue and a pull request share. */
 const threadFields = {
@@ -149,6 +157,7 @@ export const IssueCreate = Schema.Struct({
     Schema.NullOr(Schema.Int).annotate({ description: "A milestone's number." }),
   ),
 }).annotate({ identifier: "IssueCreate" });
+export type IssueCreate = typeof IssueCreate.Type;
 
 export const IssueUpdate = Schema.Struct({
   title: Schema.optionalKey(Title),
@@ -163,6 +172,7 @@ export const IssueUpdate = Schema.Struct({
   ),
   milestone: Schema.optionalKey(Schema.NullOr(Schema.Int)),
 }).annotate({ identifier: "IssueUpdate" });
+export type IssueUpdate = typeof IssueUpdate.Type;
 
 export const ThreadCounts = Schema.Struct({
   open: Schema.Int,
@@ -171,6 +181,7 @@ export const ThreadCounts = Schema.Struct({
   identifier: "ThreadCounts",
   description: "Matching the list's filters other than `state`, for its Open and Closed tabs.",
 });
+export type ThreadCounts = typeof ThreadCounts.Type;
 
 export const ThreadComment = Schema.Struct({
   id: Schema.String,
@@ -193,6 +204,7 @@ export type ThreadComment = typeof ThreadComment.Type;
 export const CommentWrite = Schema.Struct({
   body: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(BODY_MAX_LENGTH)),
 }).annotate({ identifier: "CommentWrite" });
+export type CommentWrite = typeof CommentWrite.Type;
 
 // ---------------------------------------------------------------------------
 // Pull requests
@@ -202,6 +214,7 @@ export const PULL_REQUEST_STATES = ["open", "closed", "merged"] as const;
 export const PullRequestState = Schema.Literals(PULL_REQUEST_STATES).annotate({
   identifier: "PullRequestState",
 });
+export type PullRequestState = typeof PullRequestState.Type;
 
 export const ReviewDecision = Schema.Literals([
   "approved",
@@ -212,6 +225,7 @@ export const ReviewDecision = Schema.Literals([
   description:
     "`changes_requested` while any reviewer's newest review asks for changes; else `approved` once the required approvals are in; else `review_required` when the base branch requires approvals.",
 });
+export type ReviewDecision = typeof ReviewDecision.Type;
 
 export const PullRequestSummary = Schema.Struct({
   ...threadFields,
@@ -351,6 +365,7 @@ export const PullRequestCreate = Schema.Struct({
   assignees: Schema.optionalKey(Schema.Array(Schema.String)),
   milestone: Schema.optionalKey(Schema.NullOr(Schema.Int)),
 }).annotate({ identifier: "PullRequestCreate" });
+export type PullRequestCreate = typeof PullRequestCreate.Type;
 
 export const PullRequestUpdate = Schema.Struct({
   title: Schema.optionalKey(Title),
@@ -362,6 +377,7 @@ export const PullRequestUpdate = Schema.Struct({
   assignees: Schema.optionalKey(Schema.Array(Schema.String)),
   milestone: Schema.optionalKey(Schema.NullOr(Schema.Int)),
 }).annotate({ identifier: "PullRequestUpdate" });
+export type PullRequestUpdate = typeof PullRequestUpdate.Type;
 
 export const MergeRequest = Schema.Struct({
   method: MergeMethod,
@@ -388,6 +404,7 @@ export const MergeRequest = Schema.Struct({
     }),
   ),
 }).annotate({ identifier: "MergeRequest" });
+export type MergeRequest = typeof MergeRequest.Type;
 
 export const MergeResult = Schema.Struct({
   merged: Schema.Literal(true),
@@ -395,6 +412,7 @@ export const MergeResult = Schema.Struct({
   method: MergeMethod,
   branchDeleted: Schema.Boolean,
 }).annotate({ identifier: "MergeResult" });
+export type MergeResult = typeof MergeResult.Type;
 
 export const REVIEW_STATES = [
   "pending",
@@ -404,14 +422,17 @@ export const REVIEW_STATES = [
   "dismissed",
 ] as const;
 export const ReviewState = Schema.Literals(REVIEW_STATES).annotate({ identifier: "ReviewState" });
+export type ReviewState = typeof ReviewState.Type;
 
 export const REVIEW_EVENTS = ["comment", "approve", "request_changes"] as const;
 export const ReviewEvent = Schema.Literals(REVIEW_EVENTS).annotate({ identifier: "ReviewEvent" });
+export type ReviewEvent = typeof ReviewEvent.Type;
 
 export const DiffSide = Schema.Literals(["LEFT", "RIGHT"]).annotate({
   identifier: "DiffSide",
   description: "`LEFT`: the old file (a deleted line). `RIGHT`: the new file (added or context).",
 });
+export type DiffSide = typeof DiffSide.Type;
 
 export const ReviewComment = Schema.Struct({
   id: Schema.String,
@@ -499,6 +520,7 @@ export const ReviewCommentDraft = Schema.Struct({
   ...anchorFields,
   body: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(BODY_MAX_LENGTH)),
 }).annotate({ identifier: "ReviewCommentDraft" });
+export type ReviewCommentDraft = typeof ReviewCommentDraft.Type;
 
 export const ReviewCreate = Schema.Struct({
   event: Schema.optionalKey(
@@ -513,11 +535,13 @@ export const ReviewCreate = Schema.Struct({
   ),
   comments: Schema.optionalKey(Schema.Array(ReviewCommentDraft)),
 }).annotate({ identifier: "ReviewCreate" });
+export type ReviewCreate = typeof ReviewCreate.Type;
 
 export const ReviewSubmit = Schema.Struct({
   event: ReviewEvent,
   body: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(BODY_MAX_LENGTH))),
 }).annotate({ identifier: "ReviewSubmit" });
+export type ReviewSubmit = typeof ReviewSubmit.Type;
 
 /**
  * One review comment: a new thread (`path`, `line`, `side`) or a reply
@@ -539,6 +563,7 @@ export const ReviewCommentCreate = Schema.Struct({
   commitOid: Schema.optionalKey(Oid),
   pending: Schema.optionalKey(Schema.Boolean),
 }).annotate({ identifier: "ReviewCommentCreate" });
+export type ReviewCommentCreate = typeof ReviewCommentCreate.Type;
 
 // ---------------------------------------------------------------------------
 // Timeline

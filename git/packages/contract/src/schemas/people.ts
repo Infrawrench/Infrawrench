@@ -22,6 +22,7 @@ export type UserRef = typeof UserRef.Type;
 export const NamespaceKind = Schema.Literals(["user", "org"]).annotate({
   identifier: "NamespaceKind",
 });
+export type NamespaceKind = typeof NamespaceKind.Type;
 
 /** A namespace where one is named beside something else (a repository's owner). */
 export const NamespaceRef = Schema.Struct({
@@ -46,6 +47,7 @@ export const NamespaceViewer = Schema.Struct({
       "The viewer's `git:*` permissions in the organisation. Empty for a user namespace and for non-members.",
   }),
 }).annotate({ identifier: "NamespaceViewer" });
+export type NamespaceViewer = typeof NamespaceViewer.Type;
 
 /** A user's or an organisation's page. */
 export const Namespace = Schema.Struct({
@@ -81,6 +83,7 @@ export const NamespaceUpdate = Schema.Struct({
   websiteUrl: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(500)))),
   location: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(100)))),
 }).annotate({ identifier: "NamespaceUpdate" });
+export type NamespaceUpdate = typeof NamespaceUpdate.Type;
 
 /** An Infrawrench organisation the signed-in person belongs to. */
 export const SessionOrganization = Schema.Struct({
@@ -99,6 +102,7 @@ export const SessionOrganization = Schema.Struct({
     description: "The organisation's plan allows private repositories.",
   }),
 }).annotate({ identifier: "SessionOrganization" });
+export type SessionOrganization = typeof SessionOrganization.Type;
 
 export const SessionUser = Schema.Struct({
   id: Schema.String,
@@ -107,6 +111,7 @@ export const SessionUser = Schema.Struct({
   displayName: Schema.NullOr(Schema.String),
   avatarUrl: Schema.NullOr(Schema.String),
 }).annotate({ identifier: "SessionUser" });
+export type SessionUser = typeof SessionUser.Type;
 
 /**
  * Who is signed in. `user` is null for a signed-out browser, which every page
@@ -141,3 +146,4 @@ export const UsernameAvailability = Schema.Struct({
     description: "Why not, as a sentence. Null when available.",
   }),
 }).annotate({ identifier: "UsernameAvailability" });
+export type UsernameAvailability = typeof UsernameAvailability.Type;

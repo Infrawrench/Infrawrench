@@ -13,6 +13,7 @@ export const Collaborator = Schema.Struct({
   addedBy: Schema.NullOr(UserRef),
   createdAt: IsoDateTime,
 }).annotate({ identifier: "Collaborator" });
+export type Collaborator = typeof Collaborator.Type;
 
 /** Someone who reaches the repository through the organisation that owns it, not as a collaborator. */
 export const OrganizationAccess = Schema.Struct({
@@ -24,6 +25,7 @@ export const OrganizationAccess = Schema.Struct({
     description: "Their Infrawrench role in the organisation.",
   }),
 }).annotate({ identifier: "OrganizationAccess" });
+export type OrganizationAccess = typeof OrganizationAccess.Type;
 
 export const ProtectedBranch = Schema.Struct({
   id: Schema.String,
@@ -58,6 +60,7 @@ export const ProtectedBranch = Schema.Struct({
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 }).annotate({ identifier: "ProtectedBranch" });
+export type ProtectedBranch = typeof ProtectedBranch.Type;
 
 const protectionFields = {
   requirePullRequest: Schema.Boolean,
@@ -83,6 +86,7 @@ export const ProtectedBranchCreate = Schema.Struct({
   pushers: Schema.optionalKey(protectionFields.pushers),
   enforceAdmins: Schema.optionalKey(protectionFields.enforceAdmins),
 }).annotate({ identifier: "ProtectedBranchCreate" });
+export type ProtectedBranchCreate = typeof ProtectedBranchCreate.Type;
 
 export const ProtectedBranchUpdate = Schema.Struct({
   pattern: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255))),
@@ -96,6 +100,7 @@ export const ProtectedBranchUpdate = Schema.Struct({
   pushers: Schema.optionalKey(protectionFields.pushers),
   enforceAdmins: Schema.optionalKey(protectionFields.enforceAdmins),
 }).annotate({ identifier: "ProtectedBranchUpdate" });
+export type ProtectedBranchUpdate = typeof ProtectedBranchUpdate.Type;
 
 const sshKeyFields = {
   id: Schema.String,
@@ -112,6 +117,7 @@ const sshKeyFields = {
 
 /** One of a person's SSH keys for Git. Separate from the organisation's server keys in the app. */
 export const UserKey = Schema.Struct(sshKeyFields).annotate({ identifier: "UserKey" });
+export type UserKey = typeof UserKey.Type;
 
 const PublicKeyText = Schema.String.check(
   Schema.isMinLength(1),
@@ -125,6 +131,7 @@ export const UserKeyCreate = Schema.Struct({
   title: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(100))),
   key: PublicKeyText,
 }).annotate({ identifier: "UserKeyCreate" });
+export type UserKeyCreate = typeof UserKeyCreate.Type;
 
 /** An SSH key that reaches one repository, with no person behind it. */
 export const DeployKey = Schema.Struct({
@@ -132,6 +139,7 @@ export const DeployKey = Schema.Struct({
   readOnly: Schema.Boolean,
   addedBy: Schema.NullOr(UserRef),
 }).annotate({ identifier: "DeployKey" });
+export type DeployKey = typeof DeployKey.Type;
 
 export const DeployKeyCreate = Schema.Struct({
   title: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
@@ -140,6 +148,7 @@ export const DeployKeyCreate = Schema.Struct({
     Schema.Boolean.annotate({ description: "Default true: clone and fetch only." }),
   ),
 }).annotate({ identifier: "DeployKeyCreate" });
+export type DeployKeyCreate = typeof DeployKeyCreate.Type;
 
 export const TOKEN_SCOPES = ["repo:read", "repo:write"] as const;
 export const TokenScope = Schema.Literals(TOKEN_SCOPES).annotate({
@@ -160,6 +169,7 @@ export const AccessToken = Schema.Struct({
   expiresAt: Schema.NullOr(IsoDateTime),
   lastUsedAt: Schema.NullOr(IsoDateTime),
 }).annotate({ identifier: "AccessToken" });
+export type AccessToken = typeof AccessToken.Type;
 
 export const AccessTokenCreate = Schema.Struct({
   name: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
@@ -170,6 +180,7 @@ export const AccessTokenCreate = Schema.Struct({
     }),
   ),
 }).annotate({ identifier: "AccessTokenCreate" });
+export type AccessTokenCreate = typeof AccessTokenCreate.Type;
 
 export const AccessTokenCreated = Schema.Struct({
   token: AccessToken,
@@ -178,3 +189,4 @@ export const AccessTokenCreated = Schema.Struct({
       "The token itself (`iwg_...`). Shown this once: only its hash is stored, so it cannot be read again.",
   }),
 }).annotate({ identifier: "AccessTokenCreated" });
+export type AccessTokenCreated = typeof AccessTokenCreated.Type;

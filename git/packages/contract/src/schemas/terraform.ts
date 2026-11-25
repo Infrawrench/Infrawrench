@@ -14,6 +14,7 @@ export const Money = Schema.Struct({
   amount: Schema.Finite,
   currency: Schema.String.annotate({ description: "ISO 4217.", examples: ["USD"] }),
 }).annotate({ identifier: "Money" });
+export type Money = typeof Money.Type;
 
 export const TERRAFORM_RUN_STATUSES = [
   "queued",
@@ -32,6 +33,7 @@ export const TerraformRunStatus = Schema.Literals(TERRAFORM_RUN_STATUSES).annota
   description:
     "`planned`: a plan with changes, nothing applied (a pull request's plan ends here). `no_changes`: the plan was empty. `awaiting_approval`: an apply waiting for someone to approve it. `discarded`: a plan nobody applied before a newer one replaced it.",
 });
+export type TerraformRunStatus = typeof TerraformRunStatus.Type;
 
 export const TERRAFORM_RUN_OPERATIONS = ["plan", "apply", "destroy"] as const;
 export const TERRAFORM_RUN_TRIGGERS = ["pull_request", "merge", "manual", "drift"] as const;
@@ -42,11 +44,13 @@ export const TERRAFORM_ACTIONS = [
   "delete",
   "replace",
   "read",
+  "forget",
   "no-op",
 ] as const;
 export const TerraformAction = Schema.Literals(TERRAFORM_ACTIONS).annotate({
   identifier: "TerraformAction",
 });
+export type TerraformAction = typeof TerraformAction.Type;
 
 export const TerraformResourceChange = Schema.Struct({
   address: Schema.String.annotate({ examples: ["module.db.aws_db_instance.main"] }),
@@ -59,6 +63,7 @@ export const TerraformResourceChange = Schema.Struct({
     description: "Top-level attribute names that change. Values are never sent.",
   }),
 }).annotate({ identifier: "TerraformResourceChange" });
+export type TerraformResourceChange = typeof TerraformResourceChange.Type;
 
 /** What a plan would do, as `Plan: 2 to add, 1 to change, 0 to destroy.` */
 export const TerraformPlanSummary = Schema.Struct({
@@ -74,12 +79,15 @@ export const TerraformPlanSummary = Schema.Struct({
   resourceChangesTruncated: Schema.Boolean,
   outputChanges: Schema.Int,
 }).annotate({ identifier: "TerraformPlanSummary" });
+export type TerraformPlanSummary = typeof TerraformPlanSummary.Type;
 
 /** The monthly cost change a plan would cause, from the app's pull request cost analysis. */
 export const TerraformCostDelta = Schema.Struct({
   currency: Schema.String,
-  monthlyBefore: Schema.Finite,
-  monthlyAfter: Schema.Finite,
+  monthlyBefore: Schema.NullOr(Schema.Finite).annotate({
+    description: "Null when only the change was priced, not the totals.",
+  }),
+  monthlyAfter: Schema.NullOr(Schema.Finite),
   monthlyDelta: Schema.Finite,
   unpriced: Schema.Int.annotate({
     description: "Changed resources no price was found for; the delta leaves them out.",
@@ -95,6 +103,7 @@ export const TerraformCostDelta = Schema.Struct({
     }),
   ),
 }).annotate({ identifier: "TerraformCostDelta" });
+export type TerraformCostDelta = typeof TerraformCostDelta.Type;
 
 export const TerraformRun = Schema.Struct({
   id: Schema.String,
@@ -122,12 +131,13 @@ export const TerraformRun = Schema.Struct({
     description: "The state version an apply wrote.",
   }),
 }).annotate({ identifier: "TerraformRun" });
+export type TerraformRun = typeof TerraformRun.Type;
 
 export const TerraformStateVersion = Schema.Struct({
   id: Schema.String,
   serial: Schema.Int,
   lineage: Schema.String,
-  md5: Schema.String,
+  sha256: Schema.String.annotate({ description: "Lowercase hex, of the state document." }),
   sizeBytes: Schema.Finite,
   resourceCount: Schema.Int,
   terraformVersion: Schema.NullOr(Schema.String),
@@ -138,6 +148,7 @@ export const TerraformStateVersion = Schema.Struct({
   runId: Schema.NullOr(Schema.String),
   current: Schema.Boolean,
 }).annotate({ identifier: "TerraformStateVersion" });
+export type TerraformStateVersion = typeof TerraformStateVersion.Type;
 
 export const TerraformLock = Schema.Struct({
   id: Schema.String.annotate({ description: "Terraform's lock id." }),
@@ -147,6 +158,7 @@ export const TerraformLock = Schema.Struct({
   runId: Schema.NullOr(Schema.String),
   createdAt: IsoDateTime,
 }).annotate({ identifier: "TerraformLock" });
+export type TerraformLock = typeof TerraformLock.Type;
 
 /** An Infrawrench connected account whose credentials a workspace's runs get. */
 export const TerraformAccount = Schema.Struct({
@@ -155,6 +167,7 @@ export const TerraformAccount = Schema.Struct({
   pluginId: Schema.String,
   pluginName: Schema.String,
 }).annotate({ identifier: "TerraformAccount" });
+export type TerraformAccount = typeof TerraformAccount.Type;
 
 export const TerraformWorkspace = Schema.Struct({
   id: Schema.String,
@@ -189,9 +202,10 @@ export const TerraformWorkspace = Schema.Struct({
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 }).annotate({ identifier: "TerraformWorkspace" });
+export type TerraformWorkspace = typeof TerraformWorkspace.Type;
 
 export const TerraformWorkspaceCreate = Schema.Struct({
-  name: Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/)),
+  name: Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]{0,62}$/)),
   rootPath: Schema.String,
   branch: Schema.optionalKey(Schema.String),
   terraformVersion: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -200,11 +214,10 @@ export const TerraformWorkspaceCreate = Schema.Struct({
   applyRequiresApproval: Schema.optionalKey(Schema.Boolean),
   accountIds: Schema.optionalKey(Schema.Array(Schema.String)),
 }).annotate({ identifier: "TerraformWorkspaceCreate" });
+export type TerraformWorkspaceCreate = typeof TerraformWorkspaceCreate.Type;
 
 export const TerraformWorkspaceSettings = Schema.Struct({
-  name: Schema.optionalKey(
-    Schema.String.check(Schema.isPattern(/^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/)),
-  ),
+  name: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]{0,62}$/))),
   branch: Schema.optionalKey(Schema.String),
   terraformVersion: Schema.optionalKey(Schema.NullOr(Schema.String)),
   planOnPullRequest: Schema.optionalKey(Schema.Boolean),
@@ -217,6 +230,7 @@ export const TerraformWorkspaceSettings = Schema.Struct({
     }),
   ),
 }).annotate({ identifier: "TerraformWorkspaceSettings" });
+export type TerraformWorkspaceSettings = typeof TerraformWorkspaceSettings.Type;
 
 /** A directory that looks like a Terraform root, for the "add workspace" picker. */
 export const TerraformRoot = Schema.Struct({
@@ -229,6 +243,7 @@ export const TerraformRoot = Schema.Struct({
       "The backend type its configuration declares (`http`, `s3`), when it declares one.",
   }),
 }).annotate({ identifier: "TerraformRoot" });
+export type TerraformRoot = typeof TerraformRoot.Type;
 
 /** A resource in a workspace's current state. */
 export const TerraformManagedResource = Schema.Struct({
@@ -257,3 +272,4 @@ export const TerraformManagedResource = Schema.Struct({
     description: "From the app's IaC reconciliation. Null when not reconciled.",
   }),
 }).annotate({ identifier: "TerraformManagedResource" });
+export type TerraformManagedResource = typeof TerraformManagedResource.Type;

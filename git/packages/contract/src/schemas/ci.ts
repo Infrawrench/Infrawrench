@@ -31,9 +31,11 @@ export const CI_JOB_STATUSES = ["passed", "failed", "skipped", "error", "cancell
 export const CiJobStatus = Schema.Literals(CI_JOB_STATUSES).annotate({
   identifier: "CiJobStatus",
 });
+export type CiJobStatus = typeof CiJobStatus.Type;
 
 export const CI_EVENTS = ["push", "pull-request", "schedule", "manual"] as const;
 export const CiEvent = Schema.Literals(CI_EVENTS).annotate({ identifier: "CiEvent" });
+export type CiEvent = typeof CiEvent.Type;
 
 export const CiJob = Schema.Struct({
   pipeline: Schema.String.annotate({ description: "The pipeline's `name:`." }),
@@ -46,12 +48,14 @@ export const CiJob = Schema.Struct({
     Schema.Array(Schema.String).annotate({ description: "The job keys it waited for." }),
   ),
 }).annotate({ identifier: "CiJob" });
+export type CiJob = typeof CiJob.Type;
 
 export const CiJobOutput = Schema.Struct({
   ...CiJob.fields,
   stdout: Schema.String,
   stderr: Schema.String,
 }).annotate({ identifier: "CiJobOutput" });
+export type CiJobOutput = typeof CiJobOutput.Type;
 
 export const CiRun = Schema.Struct({
   id: Schema.String,
@@ -89,6 +93,7 @@ export const CiRunDetail = Schema.Struct({
   run: CiRun,
   jobs: Schema.NullOr(Schema.Array(CiJobOutput)),
 }).annotate({ identifier: "CiRunDetail" });
+export type CiRunDetail = typeof CiRunDetail.Type;
 
 /** Whether CI runs for the repository at all, for the CI tab's empty state. */
 export const CiRepositoryStatus = Schema.Struct({
@@ -102,3 +107,4 @@ export const CiRepositoryStatus = Schema.Struct({
     description: "Why not, when `enabled` is false.",
   }),
 }).annotate({ identifier: "CiRepositoryStatus" });
+export type CiRepositoryStatus = typeof CiRepositoryStatus.Type;

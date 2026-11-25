@@ -14,12 +14,15 @@ export const Uuid = Schema.String.annotate({
   format: "uuid",
   examples: ["00000000-0000-0000-0000-000000000000"],
 });
+export type Uuid = typeof Uuid.Type;
 
 /** An ISO-8601 timestamp. */
 export const IsoDateTime = Schema.String.annotate({ format: "date-time" });
+export type IsoDateTime = typeof IsoDateTime.Type;
 
 /** `{ ok: true }`, what every delete and fire-and-forget write answers. */
 export const Ok = Schema.Struct({ ok: Schema.Literal(true) }).annotate({ identifier: "Ok" });
+export type Ok = typeof Ok.Type;
 export const ok = { ok: true } as const;
 
 /** A full SHA-1 object id: 40 lowercase hex characters. */
@@ -28,6 +31,7 @@ export const Oid = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)).annot
   description: "A Git object id: 40 lowercase hex characters.",
   examples: ["3b18e512dba79e4c8300dd08aeb37f8e728b8dad"],
 });
+export type Oid = typeof Oid.Type;
 
 /**
  * A commit named the way a person names one: a full or abbreviated object id
@@ -37,17 +41,20 @@ export const Oid = Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)).annot
 export const CommitSha = Schema.String.check(Schema.isPattern(/^[0-9a-fA-F]{4,40}$/)).annotate({
   description: "A full or abbreviated commit id.",
 });
+export type CommitSha = typeof CommitSha.Type;
 
 /** A namespace slug: a username or an organisation's name. Rules in `names.ts`. */
 export const NamespaceSlug = Schema.String.annotate({
   description: "A username or an organisation's namespace. Case-insensitive.",
   examples: ["acme"],
 });
+export type NamespaceSlug = typeof NamespaceSlug.Type;
 
 export const RepositoryName = Schema.String.annotate({
   description: "A repository's name within its namespace. Case-insensitive.",
   examples: ["infra"],
 });
+export type RepositoryName = typeof RepositoryName.Type;
 
 /** `:owner/:repo`, the start of every repository path. */
 export const RepoParams = { owner: NamespaceSlug, repo: RepositoryName } as const;
@@ -57,6 +64,7 @@ export const ThreadNumber = Schema.NumberFromString.check(
   Schema.isInt(),
   Schema.isGreaterThanOrEqualTo(1),
 ).annotate({ description: "Issue or pull request number." });
+export type ThreadNumber = typeof ThreadNumber.Type;
 
 export const NumberParams = { ...RepoParams, number: ThreadNumber } as const;
 
@@ -88,9 +96,11 @@ export const Page = <S extends Schema.Top>(item: S) =>
 
 /** `"true"` or `"false"` in a query string. */
 export const QueryFlag = Schema.Literals(["true", "false"]);
+export type QueryFlag = typeof QueryFlag.Type;
 
 /** Ascending or descending, on lists that sort. */
 export const SortDirection = Schema.Literals(["asc", "desc"]);
+export type SortDirection = typeof SortDirection.Type;
 
 /**
  * A ref as a person or a link names it: a branch (`main`, `feature/x`), a tag
@@ -104,6 +114,7 @@ export const RefQuery = Schema.optionalKey(
     examples: ["main"],
   }),
 );
+export type RefQuery = typeof RefQuery.Type;
 
 /** A path inside the tree: no leading slash, `/` between segments, empty for the root. */
 export const PathQuery = Schema.optionalKey(
@@ -112,3 +123,4 @@ export const PathQuery = Schema.optionalKey(
     examples: ["src/index.ts"],
   }),
 );
+export type PathQuery = typeof PathQuery.Type;
