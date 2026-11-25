@@ -6,7 +6,7 @@ sidebar_order: 14
 
 When someone leaves, their access is spread across a dozen places: an IAM user here, a GitLab membership there, a Copilot seat, the API key a cron job uses, next week's on-call shift. Offboarding lines all of it up for one person, on one checklist you can work through over a few days and hand to an auditor at the end.
 
-<insert [The Offboarding tab on one person's checklist: the progress bar at 7 of 12, the aliases row with "jdoe-gh", and the Cloud access group showing a GitLab group member with a Remove button and an exact match, plus a possible match with "It's them" and "Not them" buttons] here>
+![The Offboarding tab on one person's checklist: the progress bar at 7 of 12, the aliases row with "jdoe-gh", and the Cloud access group showing a GitLab group member with a Remove button and an exact match, plus a possible Docker Hub match with "It's them" and "Not them" buttons](https://agent-assets.infrawrench.com/docs-screenshots/features/offboarding/checklist.png)
 
 ## Find it
 
