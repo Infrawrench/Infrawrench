@@ -18,6 +18,7 @@
     "@infrawrench/git-ssh": "workspace:*",
     "@infrawrench/git-terraform": "workspace:*",
     "@infrawrench/server-core": "workspace:*",
+    "drizzle-orm": "^0.45.2",
     "effect": "catalog:"
   },
   "devDependencies": {

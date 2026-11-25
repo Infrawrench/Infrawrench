@@ -1,16 +1,76 @@
-// git.infrawrench.com. See git/README.md.
+// git.infrawrench.com. See git/README.md; `src/env.ts` types every binding here.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "infrawrench-git",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-20",
+  // `nodejs_compat` also fills `process.env` from the bindings below, which
+  // is how server-core reads `ENCRYPTION_MASTER_KEY`.
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": false,
   "routes": [{ "pattern": "git.infrawrench.com", "custom_domain": true }],
   "observability": { "enabled": true },
   "limits": { "cpu_ms": 300000 },
+
+  "vars": {
+    "SITE_ORIGIN": "https://git.infrawrench.com",
+    "APP_ORIGIN": "https://app.infrawrench.com",
+    // WorkOS's custom Authentication API domain, as the app uses. The redirect
+    // URI `https://git.infrawrench.com/auth/callback` and the sign-out
+    // redirect `https://git.infrawrench.com/` are registered in WorkOS.
+    "WORKOS_API_HOSTNAME": "auth-api.infrawrench.com",
+  },
+
+  // Secrets, set with `wrangler secret put` (never in this file):
+  //   WORKOS_API_KEY, WORKOS_CLIENT_ID   the app's WorkOS client
+  //   WORKOS_COOKIE_PASSWORD             this host's own, 32+ characters
+  //   SSH_HOST_KEY                       OpenSSH private key (ed25519), PEM
+  //   JOB_TOKEN_KEY                      HMAC key for CI job tokens, 32+ characters
+  //   ENCRYPTION_MASTER_KEY              the app's, for `iwk_` API key hashes
+  "secrets": {
+    "required": [
+      "WORKOS_API_KEY",
+      "WORKOS_CLIENT_ID",
+      "WORKOS_COOKIE_PASSWORD",
+      "SSH_HOST_KEY",
+      "JOB_TOKEN_KEY",
+      "ENCRYPTION_MASTER_KEY",
+    ],
+  },
+
   "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "e95b5c1b39ce4188918003909487b125" }],
   "r2_buckets": [{ "binding": "OBJECTS", "bucket_name": "infrawrench-git" }],
+
+  // One Durable Object per repository (`idFromName(repoId)`) and one per
+  // Terraform workspace. `src/env.ts` already types both. Wrangler refuses a
+  // binding whose class the entry does not export, so each block is switched
+  // on in the change that exports its class from `src/index.ts`:
+  //
+  // "durable_objects": {
+  //   "bindings": [
+  //     { "name": "REPO", "class_name": "RepoDO" },
+  //     { "name": "TERRAFORM_STATE", "class_name": "TerraformStateDO" },
+  //   ],
+  // },
+  // "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RepoDO", "TerraformStateDO"] }],
+
+  // The Durable Object sends a push here once the refs have moved
+  // (git/README.md "After a push"). The consumer is this Worker's own `queue`
+  // handler, switched on with it:
+  //
+  // "consumers": [
+  //   {
+  //     "queue": "infrawrench-git-events",
+  //     "max_batch_size": 10,
+  //     "max_batch_timeout": 2,
+  //     "max_retries": 5,
+  //     "dead_letter_queue": "infrawrench-git-events-dlq",
+  //   },
+  // ],
+  "queues": {
+    "producers": [{ "binding": "EVENTS", "queue": "infrawrench-git-events" }],
+  },
+
   // Local development only; production TCP arrives through a Spectrum
   // application whose origin is this Worker (README "SSH").
   "connect": [{ "protocol": "tcp", "port": 8788 }],

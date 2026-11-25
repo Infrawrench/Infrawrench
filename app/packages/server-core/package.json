@@ -87,6 +87,7 @@
     "./savings/rightsizing": "./src/savings/rightsizing.ts",
     "./permissions": "./src/permissions/index.ts",
     "./permissions/catalog": "./src/permissions/catalog.ts",
+    "./permissions/system-roles": "./src/permissions/system-roles.ts",
     "./analytics/client": "./src/analytics/client.ts",
     "./analytics/readers": "./src/analytics/readers.ts",
     "./analytics/slo-readers": "./src/analytics/slo-readers.ts",
