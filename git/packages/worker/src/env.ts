@@ -9,6 +9,7 @@
  */
 import type {
   DurableObjectNamespace,
+  Fetcher,
   Hyperdrive,
   Queue,
   R2Bucket,
@@ -60,6 +61,11 @@ export interface Env {
   readonly TERRAFORM_STATE: DurableObjectNamespace;
   /** Producer for `infrawrench-git-events`. */
   readonly EVENTS: Queue<GitEvent>;
+  /**
+   * The built UI (`../web/dist`), served for everything the Worker does not
+   * route itself. Absent under tests and before the UI is built.
+   */
+  readonly ASSETS?: Fetcher;
 
   // Secrets (`wrangler secret put`, or the deploy's edge-env upload).
   /** WorkOS API key: the client secret of the code and refresh-token exchanges. */

@@ -125,7 +125,7 @@ Smart HTTP and the raw route verify without `commit`, as in section 2, which is 
 
 ## 4. Commit statuses
 
-The app publishes; the Worker only reads `git_commit_statuses` to draw them. `server-core/src/ci/status.ts` holds the one piece left to wire: `gitCommitStatusWriterNotWiredYet`, marked `TODO(git-integration)`, with the upsert it should become written out in its comment. Once `git-schema.ts` is in the tree, replace that function's body; nothing else changes.
+The app publishes; the Worker only reads `git_commit_statuses` to draw them and to gate a merge. `server-core/src/ci/status.ts` `writeGitCommitStatus` is the writer: an upsert on (repository, sha, context).
 
 What gets written, upserted on (repository, sha, context):
 
@@ -156,8 +156,9 @@ import { deleteCiValue, listCiValues, setCiValue } from "@infrawrench/server-cor
 
 ## 6. Left for integration
 
-- **The foreign keys.** `ci_runs.git_repository_id`, `ci_schedules.git_repository_id` and `ci_git_repositories.git_repository_id` are `text` without a foreign key, because `git_repositories` was not in the tree. Add them (`on delete cascade` for `ci_git_repositories` and `ci_schedules`; `set null` would orphan a run from its source, so runs should cascade too or keep the id) with `drizzle-kit generate`.
-- **The status writer**, above.
+- Done: the foreign keys (`ci_runs`, `ci_schedules` and `ci_git_repositories` name `git_repositories.id` with `on delete cascade`, migration `0199_git_forge_links`), the status writer, the queue consumer's calls (section 1) and the CI tab's reads.
+- **Smart HTTP and the two routes of section 3** are the storage's: `src/http/router.ts` has their insertion points.
+- **The settings of section 5** (the CI switch, secrets and variables) have no endpoints in the contract yet.
 - **Renames and transfers.** `ci_git_repositories` follows the repository's id and takes its names from each event, so it corrects itself on the next push. `ci_schedules` is keyed by name: after a rename the old row stops being readable and is dropped within a day, and the new name's row appears with the next push. Call `noteRepository` from `ci/schedules` on rename if that day matters.
 - **CI prices on the subscription.** Ticking **Run CI** for a GitHub account calls web's `ensureCiPrices`, which adds the metered CI prices to a subscription that predates them. Nothing does that for an organization whose only CI is here, so its usage is recorded but an old subscription has no item to bill it to. Move `ensureCiPrices` where the forge can reach it, or call it when the namespace is claimed.
 - **Lending to a repository by name.** A list of repositories something is lent to names ours as `git.infrawrench.com/<namespace>/<name>`; a plain `owner/name` means GitHub's. The app's pickers only offer GitHub repositories so far, so until they list ours a connection is lent to a repository here by "every repository".

@@ -626,3 +626,116 @@ export const reanchorThread = async (
     )
     .where(or(eq(gitReviewComments.id, threadId), eq(gitReviewComments.inReplyToId, threadId)));
 };
+
+// ---------------------------------------------------------------------------
+// Lookups the content pages make
+// ---------------------------------------------------------------------------
+
+/** The newest pull request from each of these branches of a repository, by branch name. */
+export const newestPullRequestsForBranches = async (
+  headRepositoryId: string,
+  branches: readonly string[],
+): Promise<Map<string, PullRequestWithThread>> => {
+  const newest = new Map<string, PullRequestWithThread>();
+  if (branches.length === 0) return newest;
+  const rows = await db
+    .select({ thread: gitIssues, pull: gitPullRequests })
+    .from(gitPullRequests)
+    .innerJoin(gitIssues, eq(gitIssues.id, gitPullRequests.issueId))
+    .where(
+      and(
+        eq(gitPullRequests.headRepositoryId, headRepositoryId),
+        inArray(gitPullRequests.headRef, [...branches]),
+      ),
+    )
+    .orderBy(asc(gitIssues.createdAt));
+  // Oldest first, so the newest wins.
+  for (const row of rows) newest.set(row.pull.headRef, row);
+  return newest;
+};
+
+/** Pull requests a commit is the head or the merge of, in a repository. */
+export const pullRequestsForCommit = (
+  repositoryId: string,
+  oid: string,
+): Promise<Array<{ number: number; title: string }>> =>
+  db
+    .select({ number: gitIssues.number, title: gitIssues.title })
+    .from(gitPullRequests)
+    .innerJoin(gitIssues, eq(gitIssues.id, gitPullRequests.issueId))
+    .where(
+      and(
+        eq(gitPullRequests.repositoryId, repositoryId),
+        or(eq(gitPullRequests.mergeCommitOid, oid), eq(gitPullRequests.headOid, oid)),
+      ),
+    )
+    .orderBy(asc(gitIssues.number))
+    .limit(10);
+
+/** Each reviewer's standing verdict, for a page of pull requests, by pull request id. */
+export const standingReviewsFor = async (
+  pullRequestIds: readonly string[],
+): Promise<
+  Map<string, Array<{ authorUserId: string; state: "approved" | "changes_requested" }>>
+> => {
+  const out = new Map<
+    string,
+    Array<{ authorUserId: string; state: "approved" | "changes_requested" }>
+  >();
+  if (pullRequestIds.length === 0) return out;
+  const rows = await db
+    .select({
+      pullRequestId: gitReviews.pullRequestId,
+      authorUserId: gitReviews.authorUserId,
+      state: gitReviews.state,
+    })
+    .from(gitReviews)
+    .where(
+      and(
+        inArray(gitReviews.pullRequestId, [...pullRequestIds]),
+        inArray(gitReviews.state, ["approved", "changes_requested"]),
+      ),
+    )
+    .orderBy(asc(gitReviews.submittedAt));
+  const latest = new Map<string, Map<string, "approved" | "changes_requested">>();
+  for (const row of rows) {
+    if (row.authorUserId === null) continue;
+    if (row.state !== "approved" && row.state !== "changes_requested") continue;
+    const byAuthor = latest.get(row.pullRequestId) ?? new Map();
+    byAuthor.set(row.authorUserId, row.state);
+    latest.set(row.pullRequestId, byAuthor);
+  }
+  for (const [pullRequestId, byAuthor] of latest) {
+    out.set(
+      pullRequestId,
+      [...byAuthor].map(([authorUserId, state]) => ({ authorUserId, state })),
+    );
+  }
+  return out;
+};
+
+/** A review by its id alone, within a repository. */
+export const getReviewInRepository = async (
+  repositoryId: string,
+  reviewId: string,
+): Promise<ReviewRow | null> => {
+  const [row] = await db
+    .select()
+    .from(gitReviews)
+    .where(and(eq(gitReviews.id, reviewId), eq(gitReviews.repositoryId, repositoryId)))
+    .limit(1);
+  return row ?? null;
+};
+
+/** The pull request a thread id belongs to. */
+export const getPullRequestByIssueId = async (
+  issueId: string,
+): Promise<PullRequestWithThread | null> => {
+  const [row] = await db
+    .select({ thread: gitIssues, pull: gitPullRequests })
+    .from(gitPullRequests)
+    .innerJoin(gitIssues, eq(gitIssues.id, gitPullRequests.issueId))
+    .where(eq(gitPullRequests.issueId, issueId))
+    .limit(1);
+  return row ?? null;
+};

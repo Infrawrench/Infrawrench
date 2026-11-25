@@ -16,6 +16,7 @@ import {
   type PageOf,
   type TimeCursor,
   afterCursor,
+  cursorTime,
   decodeCursor,
   pageSize,
   toPage,
@@ -224,11 +225,14 @@ export const recordPush = async (
     readonly primaryLanguage?: string | null;
   },
 ): Promise<void> => {
+  // Bound as text: a `Date` inside a raw fragment has no column to say how it is sent.
+  const at = sql`${push.at.toISOString()}::timestamptz at time zone 'UTC'`;
   await db
     .update(gitRepositories)
     .set({
-      pushedAt: push.at,
-      updatedAt: push.at,
+      // An event delivered late must not move the clock back.
+      pushedAt: sql`greatest(coalesce(${gitRepositories.pushedAt}, ${at}), ${at})`,
+      updatedAt: sql`greatest(${gitRepositories.updatedAt}, ${at})`,
       ...(push.sizeBytes !== undefined ? { sizeBytes: push.sizeBytes } : {}),
       ...(push.branchesCount !== undefined ? { branchesCount: push.branchesCount } : {}),
       ...(push.tagsCount !== undefined ? { tagsCount: push.tagsCount } : {}),
@@ -311,7 +315,7 @@ export const listRepositories = async (
     options.type === "archived" ? eq(gitRepositories.archived, true) : undefined,
     options.type === "private" ? eq(gitRepositories.visibility, "private") : undefined,
     cursor
-      ? sql`(${pushedOrCreated}, ${gitRepositories.id}) < (${new Date(cursor.at)}, ${cursor.id})`
+      ? sql`(${pushedOrCreated}, ${gitRepositories.id}) < (${new Date(cursor.at).toISOString()}::timestamptz at time zone 'UTC', ${cursor.id})`
       : undefined,
   ];
   const rows = await db
@@ -389,7 +393,7 @@ export const listStargazerIds = async (
         afterCursor(gitStars.createdAt, gitStars.userId, decodeCursor(options.cursor), "desc"),
       ),
     )
-    .orderBy(desc(gitStars.createdAt), desc(gitStars.userId))
+    .orderBy(desc(cursorTime(gitStars.createdAt)), desc(gitStars.userId))
     .limit(limit + 1);
   return toPage(rows, limit, (row) => ({ at: row.createdAt.getTime(), id: row.userId }));
 };

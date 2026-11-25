@@ -3,7 +3,7 @@
  * count) and then by id, and its cursor is the last row's pair, so the next
  * page starts strictly after it however many rows were inserted meanwhile.
  */
-import { type SQL, and, eq, gt, lt, or } from "drizzle-orm";
+import { type SQL, sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 export const DEFAULT_PAGE_SIZE = 30;
@@ -49,7 +49,17 @@ export const decodeCursor = (cursor: string | undefined): TimeCursor | null => {
   }
 };
 
-/** The `WHERE` that continues a list ordered by `(time, id)` after `cursor`. */
+/**
+ * A timestamp column as a cursor compares it: to the millisecond. Postgres
+ * keeps microseconds and a cursor made in JavaScript keeps milliseconds, so
+ * comparing the raw column would skip the rows that share the last row's
+ * millisecond. A list paged by {@link afterCursor} must be ordered by this
+ * and then by id, never by the raw column.
+ */
+export const cursorTime = (time: AnyPgColumn): SQL<Date> =>
+  sql<Date>`date_trunc('milliseconds', ${time})`;
+
+/** The `WHERE` that continues a list ordered by `(cursorTime(time), id)` after `cursor`. */
 export const afterCursor = (
   time: AnyPgColumn,
   id: AnyPgColumn,
@@ -57,10 +67,11 @@ export const afterCursor = (
   direction: "asc" | "desc",
 ): SQL | undefined => {
   if (!cursor) return undefined;
-  const at = new Date(cursor.at);
+  // Bound as text: a `Date` inside a raw fragment has no column to say how it is sent.
+  const at = sql`${new Date(cursor.at).toISOString()}::timestamptz at time zone 'UTC'`;
   return direction === "desc"
-    ? or(lt(time, at), and(eq(time, at), lt(id, cursor.id)))
-    : or(gt(time, at), and(eq(time, at), gt(id, cursor.id)));
+    ? sql`(${cursorTime(time)}, ${id}) < (${at}, ${cursor.id})`
+    : sql`(${cursorTime(time)}, ${id}) > (${at}, ${cursor.id})`;
 };
 
 export interface PageOf<T> {

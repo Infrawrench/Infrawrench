@@ -25,7 +25,7 @@ import {
   gitTimelineEvents,
 } from "@infrawrench/server-core/db/schema";
 import { type Db, db, isUniqueViolation, newId } from "./client";
-import { type PageOf, afterCursor, decodeCursor, pageSize, toPage } from "./cursor";
+import { type PageOf, afterCursor, cursorTime, decodeCursor, pageSize, toPage } from "./cursor";
 
 export type IssueRow = typeof gitIssues.$inferSelect;
 export type CommentRow = typeof gitComments.$inferSelect;
@@ -143,18 +143,25 @@ export interface ListThreadsOptions {
   readonly repositoryId: string;
   readonly isPullRequest: boolean;
   readonly state?: GitIssueState | "all";
-  readonly authorUserId?: string;
+  readonly authorUserId?: string | undefined;
   /** A user id, or `none` for unassigned. */
-  readonly assignee?: string | "none";
+  readonly assignee?: string | "none" | undefined;
   /** A milestone id, or `none`. */
-  readonly milestoneId?: string | "none";
+  readonly milestoneId?: string | "none" | undefined;
   /** Threads must carry every one of these labels. */
-  readonly labelIds?: readonly string[];
-  readonly sort?: "created" | "updated";
-  readonly direction?: "asc" | "desc";
-  readonly cursor?: string;
-  readonly limit?: number;
+  readonly labelIds?: readonly string[] | undefined;
+  /** Words to find in the title and body. */
+  readonly q?: string | undefined;
+  /** Conditions only the caller can write (a pull request's base, head, draft, reviewer). */
+  readonly extra?: readonly SQL[] | undefined;
+  readonly sort?: "created" | "updated" | "comments" | undefined;
+  readonly direction?: "asc" | "desc" | undefined;
+  readonly cursor?: string | undefined;
+  readonly limit?: number | undefined;
 }
+
+/** `%` and `_` are literal in what a person typed. */
+const likePattern = (text: string): string => `%${text.replace(/[\\%_]/g, "\\$&")}%`;
 
 const threadFilters = (options: ListThreadsOptions): (SQL | undefined)[] => [
   eq(gitIssues.repositoryId, options.repositoryId),
@@ -174,29 +181,52 @@ const threadFilters = (options: ListThreadsOptions): (SQL | undefined)[] => [
     (labelId) =>
       sql`exists (select 1 from ${gitIssueLabels} where ${gitIssueLabels.issueId} = ${gitIssues.id} and ${gitIssueLabels.labelId} = ${labelId})`,
   ),
+  ...(options.q ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8)
+    .map(
+      (word) =>
+        sql`(lower(${gitIssues.title}) like ${likePattern(word.toLowerCase())} or lower(${gitIssues.body}) like ${likePattern(word.toLowerCase())})`,
+    ),
+  ...(options.extra ?? []),
 ];
 
 /**
- * One page of a repository's issues or pull requests. Text search and the
- * `comments` sort are the handler's to add; this covers the filters the list
- * indexes serve.
+ * One page of a repository's issues or pull requests, by creation, last
+ * update or comment count.
  */
 export const listThreads = async (options: ListThreadsOptions): Promise<PageOf<IssueRow>> => {
   const limit = pageSize(options.limit);
   const direction = options.direction ?? "desc";
-  const time = options.sort === "updated" ? gitIssues.updatedAt : gitIssues.createdAt;
   const order = direction === "desc" ? desc : asc;
+  const cursor = decodeCursor(options.cursor);
+  const state =
+    options.state && options.state !== "all" ? eq(gitIssues.state, options.state) : undefined;
+  if (options.sort === "comments") {
+    // The cursor's number is the comment count here, not an instant.
+    const after = cursor
+      ? direction === "desc"
+        ? sql`(${gitIssues.commentsCount}, ${gitIssues.id}) < (${cursor.at}, ${cursor.id})`
+        : sql`(${gitIssues.commentsCount}, ${gitIssues.id}) > (${cursor.at}, ${cursor.id})`
+      : undefined;
+    const rows = await db
+      .select()
+      .from(gitIssues)
+      .where(and(...threadFilters(options), state, after))
+      .orderBy(order(gitIssues.commentsCount), order(gitIssues.id))
+      .limit(limit + 1);
+    return toPage(rows, limit, (row) => ({ at: row.commentsCount, id: row.id }));
+  }
+  const time = options.sort === "updated" ? gitIssues.updatedAt : gitIssues.createdAt;
   const rows = await db
     .select()
     .from(gitIssues)
     .where(
-      and(
-        ...threadFilters(options),
-        options.state && options.state !== "all" ? eq(gitIssues.state, options.state) : undefined,
-        afterCursor(time, gitIssues.id, decodeCursor(options.cursor), direction),
-      ),
+      and(...threadFilters(options), state, afterCursor(time, gitIssues.id, cursor, direction)),
     )
-    .orderBy(order(time), order(gitIssues.id))
+    .orderBy(order(cursorTime(time)), order(gitIssues.id))
     .limit(limit + 1);
   return toPage(rows, limit, (row) => ({
     at: (options.sort === "updated" ? row.updatedAt : row.createdAt).getTime(),
@@ -454,7 +484,7 @@ export const deleteComment = async (commentId: string): Promise<boolean> =>
 
 export const listComments = async (
   issueId: string,
-  options: { readonly cursor?: string; readonly limit?: number } = {},
+  options: { readonly cursor?: string | undefined; readonly limit?: number | undefined } = {},
 ): Promise<PageOf<CommentRow>> => {
   const limit = pageSize(options.limit);
   const rows = await db
@@ -466,7 +496,7 @@ export const listComments = async (
         afterCursor(gitComments.createdAt, gitComments.id, decodeCursor(options.cursor), "asc"),
       ),
     )
-    .orderBy(asc(gitComments.createdAt), asc(gitComments.id))
+    .orderBy(asc(cursorTime(gitComments.createdAt)), asc(gitComments.id))
     .limit(limit + 1);
   return toPage(rows, limit, (row) => ({ at: row.createdAt.getTime(), id: row.id }));
 };
@@ -509,7 +539,7 @@ export const addTimelineEvent = async (
  */
 export const listTimelineEvents = async (
   issueId: string,
-  options: { readonly cursor?: string; readonly limit?: number } = {},
+  options: { readonly cursor?: string | undefined; readonly limit?: number | undefined } = {},
 ): Promise<PageOf<TimelineEventRow>> => {
   const limit = pageSize(options.limit);
   const rows = await db
@@ -526,7 +556,7 @@ export const listTimelineEvents = async (
         ),
       ),
     )
-    .orderBy(asc(gitTimelineEvents.createdAt), asc(gitTimelineEvents.id))
+    .orderBy(asc(cursorTime(gitTimelineEvents.createdAt)), asc(gitTimelineEvents.id))
     .limit(limit + 1);
   return toPage(rows, limit, (row) => ({ at: row.createdAt.getTime(), id: row.id }));
 };
@@ -707,4 +737,22 @@ export const deleteMilestone = async (milestoneId: string): Promise<boolean> => 
     .where(eq(gitMilestones.id, milestoneId))
     .returning({ id: gitMilestones.id });
   return deleted.length > 0;
+};
+
+/** Milestones by id, for a page of threads. */
+export const milestonesById = async (
+  ids: readonly string[],
+): Promise<Map<string, MilestoneRow>> => {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Map();
+  const rows = await db.select().from(gitMilestones).where(inArray(gitMilestones.id, unique));
+  return new Map(rows.map((row) => [row.id, row]));
+};
+
+/** Threads by id. */
+export const threadsById = async (ids: readonly string[]): Promise<Map<string, IssueRow>> => {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Map();
+  const rows = await db.select().from(gitIssues).where(inArray(gitIssues.id, unique));
+  return new Map(rows.map((row) => [row.id, row]));
 };

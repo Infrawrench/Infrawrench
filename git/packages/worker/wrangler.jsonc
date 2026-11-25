@@ -12,6 +12,55 @@
   "observability": { "enabled": true },
   "limits": { "cpu_ms": 300000 },
 
+  // Bundle-time constants. `__INFRAWRENCH_EDGE_PLUGINS__` swaps the provider
+  // plugins for their metadata (server-core/src/plugin-loader.ts): the queue
+  // consumer and the CI tab call the app's CI (`server-core/src/ci/`), which
+  // reaches the plugin loader, and no plugin code belongs in this Worker.
+  "define": {
+    "process.env.NODE_ENV": "\"production\"",
+    "globalThis.__INFRAWRENCH_EDGE_PLUGINS__": "true",
+  },
+
+  // The same reach pulls in libraries that cannot run in a Worker. Each
+  // resolves to the stub, which throws the moment it is used, as on the app's
+  // own Workers. `src/__tests__/aliases.test.ts` keeps this map in step with
+  // server-core/edge/gateway-only-modules.json.
+  "alias": {
+    "cpu-features": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "node-pty": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "ssh2": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "dockerode": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@kubernetes/client-node": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "pg": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "mysql2": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "mysql2/promise": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "mssql": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "tedious": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "ioredis": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "memjs": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "mongodb": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "kafkajs": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@nats-io/transport-node": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@nats-io/jetstream": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@nats-io/kv": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@nats-io/obj": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@libsql/client": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "typescript": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@typescript/typescript6": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+    "@jitl/quickjs-ng-wasmfile-release-asyncify": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
+  },
+
+  // The built UI. The Worker runs first for every request, so `/api`, the
+  // sign-in routes and the Git paths never fall through to a file, and every
+  // answer gets the security headers (`src/http/router.ts`). A path with no
+  // file is the SPA's: `index.html`.
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true,
+  },
+
   "vars": {
     "SITE_ORIGIN": "https://git.infrawrench.com",
     "APP_ORIGIN": "https://app.infrawrench.com",
@@ -27,6 +76,9 @@
   //   SSH_HOST_KEY                       OpenSSH private key (ed25519), PEM
   //   GIT_JOB_TOKEN_KEY                      HMAC key for CI job tokens, 32+ characters
   //   ENCRYPTION_MASTER_KEY              the app's, for `iwk_` API key hashes
+  // Optional, and CI stays off for repositories here without them:
+  //   CI_PROXY_URL, CI_PROXY_KEY         the app's CI proxy (server-core `ci/proxy.ts`)
+  //   APP_URL                            the app's origin, for a status's link to its run
   "secrets": {
     "required": [
       "WORKOS_API_KEY",
@@ -56,19 +108,18 @@
 
   // The Durable Object sends a push here once the refs have moved
   // (git/README.md "After a push"). The consumer is this Worker's own `queue`
-  // handler, switched on with it:
-  //
-  // "consumers": [
-  //   {
-  //     "queue": "infrawrench-git-events",
-  //     "max_batch_size": 10,
-  //     "max_batch_timeout": 2,
-  //     "max_retries": 5,
-  //     "dead_letter_queue": "infrawrench-git-events-dlq",
-  //   },
-  // ],
+  // handler (`src/events/consumer.ts`).
   "queues": {
     "producers": [{ "binding": "EVENTS", "queue": "infrawrench-git-events" }],
+    "consumers": [
+      {
+        "queue": "infrawrench-git-events",
+        "max_batch_size": 10,
+        "max_batch_timeout": 2,
+        "max_retries": 5,
+        "dead_letter_queue": "infrawrench-git-events-dlq",
+      },
+    ],
   },
 
   // Local development only; production TCP arrives through a Spectrum
