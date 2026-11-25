@@ -265,7 +265,7 @@ export async function buildPack(
     ctx.stats.packSource = "objects";
     return {
       stream: backend.packObjects({
-        objects: objects.list,
+        objects,
         thinBases: request.thinPack ? selection.have : null,
         ofsDelta: request.ofsDelta,
       }),
@@ -304,9 +304,32 @@ export async function* sendPack(
   const before = progress();
   if (before.length > 0) yield concatBytes(before);
   let bytes = 0;
-  for await (const chunk of iterateBytes(pack.stream)) {
-    bytes += chunk.length;
-    yield sideBand === 0 ? chunk : concatBytes(encodeSideBand(SIDE_BAND_DATA, chunk, sideBand));
+  if (sideBand === 0) {
+    for await (const chunk of iterateBytes(pack.stream)) {
+      bytes += chunk.length;
+      yield chunk;
+    }
+  } else {
+    // Whole packets wherever possible: storage hands the pack over in pieces
+    // of its own size, and a packet per small piece is five bytes of framing
+    // and a write each.
+    const room = sideBand - 5;
+    let held: Uint8Array[] = [];
+    let heldBytes = 0;
+    for await (const chunk of iterateBytes(pack.stream)) {
+      bytes += chunk.length;
+      held.push(chunk);
+      heldBytes += chunk.length;
+      if (heldBytes < room) continue;
+      const all = concatBytes(held);
+      const whole = all.length - (all.length % room);
+      yield concatBytes(encodeSideBand(SIDE_BAND_DATA, all.subarray(0, whole), sideBand));
+      held = whole < all.length ? [all.subarray(whole)] : [];
+      heldBytes = all.length - whole;
+    }
+    if (heldBytes > 0) {
+      yield concatBytes(encodeSideBand(SIDE_BAND_DATA, concatBytes(held), sideBand));
+    }
   }
   ctx.stats.objectsSent += pack.objectCount;
   ctx.stats.packBytesSent += bytes;

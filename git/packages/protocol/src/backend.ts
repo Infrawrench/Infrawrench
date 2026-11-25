@@ -6,7 +6,7 @@
  * The worker's implementation changes with this file in the same commit.
  */
 import type { ObjectId, ObjectReader, Ref, RefUpdate } from "@infrawrench/git-core";
-import type { OidList, OidSet } from "./oid-set";
+import type { OidSet } from "./oid-set";
 
 export interface RefUpdateResult {
   readonly name: string;
@@ -29,8 +29,8 @@ export interface IngestedPack {
 }
 
 export interface PackRequest {
-  /** The objects to send, each once. */
-  readonly objects: OidList;
+  /** The objects to send. */
+  readonly objects: OidSet;
   /**
    * Objects the client is known to have. A stored delta whose base is one
    * of these may be sent as it is (a thin pack). Null when the client did
