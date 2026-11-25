@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { handle, tick, type Deps } from "../app";
+import type { ArtifactBody, ArtifactBucket } from "../artifacts";
 import { Pool } from "../pool";
 import { MemoryRunnerList } from "../runners";
 import { MemoryStore } from "../store";
@@ -32,6 +33,8 @@ class FakeRunner {
   };
   scheduleReads: Array<Record<string, unknown>> = [];
   down = false;
+  /** Answers everything as Cloudflare does for a tunnel with no connector. */
+  tunnelDown = false;
   draining = false;
   cleared: string[] = [];
   /** A run's state by id; finished unless set. */
@@ -63,6 +66,12 @@ class FakeRunner {
 
   async handle(path: string, init: RequestInit): Promise<Response> {
     if (this.down) throw new Error("connection refused");
+    if (this.tunnelDown) {
+      return new Response("<html>error code: 1033</html>", {
+        status: 530,
+        headers: { "Content-Type": "text/html" },
+      });
+    }
     const auth = new Headers(init.headers).get("Authorization");
     if (auth !== `Bearer ${RUNNER_KEY}`) return new Response("{}", { status: 401 });
     const json = (status: number, body: unknown) =>
@@ -223,6 +232,68 @@ describe("proxy", () => {
     expect(logs.headers.get("Content-Type")).toBe("text/event-stream");
     expect(await logs.text()).toContain("run-finished");
     expect((await call("GET", "/v1/runs/9.00000000000000000000000000000001")).status).toBe(404);
+  });
+
+  it("reads a finished run's report from the store when its runner is gone", async () => {
+    const a = new FakeRunner("http://a.test", 4, 4);
+    const { deps, call } = await setup([a]);
+    const runId = "ab".repeat(16);
+    const report = { id: runId, owner: "github.com-acme", state: "finished", result: { ok: 1 } };
+    const reads: string[] = [];
+    const bucket: ArtifactBucket = {
+      async get(key) {
+        reads.push(key);
+        if (key !== `runs/github.com-acme/${runId}.json`) return null;
+        const text = JSON.stringify(report);
+        return {
+          key,
+          size: text.length,
+          httpEtag: '"1"',
+          body: new Response(text).body,
+        } as ArtifactBody;
+      },
+      async head() {
+        return null;
+      },
+      async list() {
+        return { objects: [], truncated: false };
+      },
+      async delete() {},
+    };
+    deps.downloads = {
+      bucket,
+      key: null,
+      sweep: { read: async () => ({ cursor: null, finishedAt: null }), write: async () => {} },
+    };
+    const path = `/v1/runs/0.${runId}?owner=github.com-acme`;
+
+    // Up: the runner answers, and the store is not read.
+    expect(((await (await call("GET", path)).json()) as { runner: string }).runner).toBe(
+      "http://a.test",
+    );
+    expect(reads).toEqual([]);
+
+    // A spot host reclaimed: the connection fails, or its tunnel has no connector.
+    for (const gone of ["down", "tunnelDown"] as const) {
+      a[gone] = true;
+      const res = await call("GET", path);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ...report, id: `0.${runId}` });
+      a[gone] = false;
+    }
+
+    // A runner taken out of the list.
+    const gone = await call("GET", `/v1/runs/old-runner.${runId}?owner=github.com-acme`);
+    expect(((await gone.json()) as { id: string }).id).toBe(`old-runner.${runId}`);
+
+    // No report (still running, or never finished), no owner, a bad owner, or logs: as before.
+    a.down = true;
+    const other = "cd".repeat(16);
+    expect((await call("GET", `/v1/runs/0.${other}?owner=github.com-acme`)).status).toBe(502);
+    expect((await call("GET", `/v1/runs/0.${runId}`)).status).toBe(502);
+    expect((await call("GET", `/v1/runs/0.${runId}?owner=..`)).status).toBe(502);
+    expect((await call("GET", `/v1/runs/0.${runId}/logs?owner=github.com-acme`)).status).toBe(502);
+    expect((await call("GET", `/v1/runs/old-runner.${runId}`)).status).toBe(404);
   });
 
   it("passes over full and down runners, and says 429 only when all are", async () => {
