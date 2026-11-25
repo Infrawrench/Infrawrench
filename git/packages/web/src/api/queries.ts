@@ -86,11 +86,11 @@ export interface Pages<T> {
  * `cursor` is undefined for the first page. Render `<LoadMore pages={commits} />`
  * under the list.
  */
-export function usePages<T, P extends PageOf<T> = PageOf<T>>(
+export function usePages<P extends PageOf<unknown>>(
   key: ReadonlyArray<unknown>,
   fetchPage: (cursor: string | undefined) => Promise<P>,
   options: { readonly enabled?: boolean } = {},
-): Pages<T> & { readonly pages: ReadonlyArray<P> } {
+): Pages<P["items"][number]> & { readonly pages: ReadonlyArray<P> } {
   const result = useInfiniteQuery({
     queryKey: [...key, "pages"],
     queryFn: ({ pageParam }) => fetchPage(pageParam),

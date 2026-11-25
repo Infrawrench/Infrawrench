@@ -4,10 +4,12 @@ import {
   NAME_MAX_LENGTH,
 } from "@infrawrench/git-contract";
 import { badRequest, conflict, defineMockHandlers } from "../define";
-import { claimUsername, namespaces, requireUser, session, setScenario } from "../db";
+import { claimUsername, currentUser, namespaces, requireUser, session, setScenario } from "../db";
 
 const taken = (username: string): boolean =>
-  namespaces.some((n) => n.slug.toLowerCase() === username.toLowerCase());
+  namespaces.some(
+    (n) => n.slug.toLowerCase() === username.toLowerCase() && n.userId !== currentUser()?.id,
+  );
 
 function claim(username: string) {
   requireUser();

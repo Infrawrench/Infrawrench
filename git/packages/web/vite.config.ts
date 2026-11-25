@@ -16,6 +16,7 @@ export default defineConfig({
     port: 5174,
     proxy: { "/api": "http://127.0.0.1:8787", "/auth": "http://127.0.0.1:8787" },
   },
-  build: { outDir: "dist", sourcemap: true },
+  // Each Shiki grammar is its own lazy chunk, and the largest (C++) is about 800 kB.
+  build: { outDir: "dist", sourcemap: true, chunkSizeWarningLimit: 900 },
   test: { environment: "jsdom", include: ["src/**/*.test.{ts,tsx}"] },
 });

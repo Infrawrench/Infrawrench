@@ -216,7 +216,7 @@ function DiffFileView({
             {file.oldMode} → {file.newMode}
           </Badge>
         ) : null}
-        <DiffStat additions={file.additions} deletions={file.deletions} />
+        {file.binary ? null : <DiffStat additions={file.additions} deletions={file.deletions} />}
         {file.status !== "deleted" ? (
           <AppLink
             href={paths.blob(repo, headOid, file.path)}

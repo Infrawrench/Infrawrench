@@ -8,7 +8,10 @@
  */
 import { ApiError, setTransport } from "../api/client";
 import type { WireRequest } from "../api/types";
+import { setRawResolver } from "../lib/raw";
+import { findRepository, gitOf } from "./db";
 import type { MockHandlers } from "./define";
+import { blobAt, rawDataUrl, resolveRef } from "./git";
 
 type AnyHandler = (request: WireRequest) => unknown;
 
@@ -32,6 +35,14 @@ const delay = Number(import.meta.env.VITE_GIT_MOCK_DELAY ?? 40);
 
 export function installMock(): void {
   const handlers = collect();
+  setRawResolver((repo, at, path) => {
+    try {
+      const fixture = gitOf(findRepository(repo.owner, repo.repo));
+      return rawDataUrl(blobAt(fixture, resolveRef(fixture, at).commitOid, path).blob, path);
+    } catch {
+      return null;
+    }
+  });
   setTransport(async ({ group, endpoint, request }) => {
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
     const handler = handlers.get(`${group}.${endpoint}`);

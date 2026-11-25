@@ -1,4 +1,4 @@
-import type { AnchorHTMLAttributes, MouseEvent } from "react";
+import { useCallback, type AnchorHTMLAttributes, type MouseEvent } from "react";
 import { useRouter } from "@tanstack/react-router";
 
 export interface AppLinkProps extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> {
@@ -44,9 +44,12 @@ export function AppLink({ href, replace = false, onClick, target, ...rest }: App
 /** Navigate from code (after a form saves): `const go = useGo(); go(paths.repo(r))`. */
 export function useGo(): (href: string, options?: { replace?: boolean }) => void {
   const router = useRouter();
-  return (href, options) => {
-    if (!isInternal(href)) window.location.assign(href);
-    else if (options?.replace === true) router.history.replace(href);
-    else router.history.push(href);
-  };
+  return useCallback(
+    (href, options) => {
+      if (!isInternal(href)) window.location.assign(href);
+      else if (options?.replace === true) router.history.replace(href);
+      else router.history.push(href);
+    },
+    [router],
+  );
 }

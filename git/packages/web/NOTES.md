@@ -125,7 +125,9 @@ const list = usePages(["issues", "list", request], (cursor) =>
 | `RepoList.tsx`  | `RepoList`, `RepoRow`.                                                                                                                   |
 | `icons.tsx`     | `Icon` (`name`), `Spinner`.                                                                                                              |
 
-`lib/format.ts` has `relativeTime`, `formatDate`, `formatBytes`, `shortOid`, `plural`, `compactCount`, `dayKey`, `groupConsecutive`. `lib/session.ts` has `useSession()`, `signInHref()` (a plain `<a href>`: sign-in is a page load) and `signOut()`. `lib/highlight.ts` has `useHighlight(text, language)` and `languageOfPath`; Shiki and its grammars load on demand, so add a language to `GRAMMARS` and `EXTENSIONS` there rather than importing Shiki anywhere else.
+`lib/format.ts` has `relativeTime`, `formatDate`, `formatBytes`, `shortOid`, `plural`, `compactCount`, `dayKey`, `groupConsecutive`. `lib/session.ts` has `useSession()`, `signInHref()` (a plain `<a href>`: sign-in is a page load) and `signOut()`. `lib/highlight.ts` has `useHighlight(text, language)` and `languageOfPath`; Shiki and its grammars load on demand, so add a language to `GRAMMARS` and `EXTENSIONS` there rather than importing Shiki anywhere else. `lib/raw.ts` has `rawUrl(repo, at, path)` for file bytes (an image in a rendered Markdown file); use it rather than the contract's `rawPath` so the mock can answer.
+
+From the code pages, reusable by a pull request's pages: `features/code/DiffSection.tsx` (`DiffSection`: stats, file list, unified/split switch and a paged `DiffView`; `useDiffLayout`), `features/code/CommitsPage.tsx` (`CommitRow`, `CommitsByDay`), `features/code/ReadmePanel.tsx` (`RenderedMarkdown`, which resolves a file's relative links and images) and `features/code/shared.tsx` (`RefRoute` for a route whose splat is `ref/path`, `CommitStrip`, `CloneUrl`).
 
 ## Decisions
 
