@@ -8,7 +8,7 @@
 // | `GET`, `PUT /v1/runners` | the runners runs go to (`{ "runners": [{ "name", "url" }] }`, replaced whole) |
 // | `GET /v1/capacity` | every runner's slots, job memory and platforms, and the pool's total slots |
 // | `POST /v1/runs[?wait=true]` | runs a request on the runner where it is expected to finish soonest, among those with every platform its `platforms` names when any is up (`takePlatforms`, never sent on), and offers it to the others as helpers (`placeRun`); its `notify` goes to the runner that has it when that runner takes the field (`takeNotify`), never to a helper; a manual run (`"event": "manual"`, `pipeline-file`, `inputs`) passes through like a push |
-// | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through |
+// | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through. With `?owner=`, a finished run's status comes from the report in the store when that runner does not answer or is no longer in the list (`storedRun`) |
 // | `POST /v1/runs/{id}/cancel` | cancels the run, or some of its pipelines, on the runner that has it |
 // | `GET /v1/runs/{id}/jobs[/{job}]` | a run's cloud jobs and their state, from the runner that has it |
 // | `POST /v1/runs/{id}/jobs/{job}/claim`, `/log`, `/finish` | the executor's side of a cloud job, on the runner that has it |
@@ -322,6 +322,38 @@ async function relay(runner: string, response: Response): Promise<Response> {
   return json(response.status, body, headers);
 }
 
+/**
+ * A status that says the runner could not be reached rather than what it
+ * said about the run: a gateway's (502 to 504) or Cloudflare's for an
+ * origin or tunnel that is down (520 to 530).
+ */
+function unreachable(status: number): boolean {
+  return (status >= 502 && status <= 504) || (status >= 520 && status <= 530);
+}
+
+/**
+ * `GET /v1/runs/{runner}.{id}?owner=` answered from the report the runner
+ * stored when the run finished (`runs/{owner}/{id}.json`), as any runner
+ * answers it for a run it no longer has; null when there is no store, no
+ * `owner`, or no report (the run is still going, or never finished).
+ */
+async function storedRun(deps: Deps, id: string, url: URL): Promise<Response | null> {
+  const bucket = deps.downloads?.bucket;
+  const owner = url.searchParams.get("owner");
+  const match = /^([a-z0-9][a-z0-9-]{0,39})\.([0-9a-f]{32})$/.exec(id);
+  if (!bucket || !owner || !isId(owner) || !match) return null;
+  const [, runner = "", runId = ""] = match;
+  try {
+    const object = await bucket.get(`runs/${owner}/${runId}.json`);
+    if (!object) return null;
+    const body = JSON.parse(await new Response(object.body).text()) as unknown;
+    if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
+    return relay(runner, json(200, body));
+  } catch {
+    return null;
+  }
+}
+
 function summary(row: ScheduleRow): Record<string, unknown> {
   return {
     owner: row.owner,
@@ -617,14 +649,24 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
   ) {
     if (parts.length === 4 && parts[3] !== "logs") return error(404, "no such route");
     const run = parseRunId(third, deps.pool);
-    if (!run) return error(404, "no such run");
+    // A finished run's report is in the store the runners share, so its
+    // status does not depend on the runner that ran it still being there
+    // (a spot host reclaimed straight after a run, or one taken out of the
+    // list).
+    const stored = parts.length === 3 ? () => storedRun(deps, third, url) : null;
+    if (!run) return (await stored?.()) ?? error(404, "no such run");
     const tail = parts.length === 4 ? "/logs" : "";
+    let response: Response;
     try {
-      const response = await deps.pool.call(run.runner, `/v1/runs/${run.id}${tail}${url.search}`);
-      return relay(run.runner, response);
+      response = await deps.pool.call(run.runner, `/v1/runs/${run.id}${tail}${url.search}`);
     } catch {
-      return error(502, "the runner with that run did not answer");
+      return (await stored?.()) ?? error(502, "the runner with that run did not answer");
     }
+    if (stored && unreachable(response.status)) {
+      const report = await stored();
+      if (report) return report;
+    }
+    return relay(run.runner, response);
   }
 
   if (
