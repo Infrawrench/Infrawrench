@@ -21,6 +21,7 @@
  * Calls only GitHub, so unlike `lend.ts` it runs on the edge too.
  */
 import { db } from "../db/client.js";
+import { isGitSource } from "./source.js";
 import { auditLogs, type CiJobAccess } from "../db/schema.js";
 
 /** A lent entry as the run request carries it (`lend.ts`'s `LentEntry`, with an expiry). */
@@ -93,6 +94,8 @@ export interface TokenRun {
   id: string;
   organizationId: string;
   installationId: number;
+  /** Set for a repository on git.infrawrench.com, which has no GitHub token to lend. */
+  gitRepositoryId?: string | null | undefined;
   repoFullName: string;
   headRef: string;
   fromFork: boolean;
@@ -197,6 +200,20 @@ export async function lendGithubTokens(
   if (run.fromFork) return null;
   const requests = githubTokenRequests(access);
   if (requests.size === 0) return null;
+  if (isGitSource(run)) {
+    // Refused by name, so the job fails saying why rather than running
+    // with an empty `GITHUB_TOKEN`.
+    return Object.fromEntries(
+      [...requests.keys()]
+        .slice(0, MAX_ENTRIES)
+        .map((key) => [
+          key,
+          refused(
+            `${run.repoFullName} is on git.infrawrench.com, so there is no GitHub token to lend it; \`github-token:\` is for repositories on GitHub`,
+          ),
+        ]),
+    );
+  }
   const [accountLogin, repository] = run.repoFullName.split("/");
   const out: Record<string, GithubTokenEntry> = {};
   let granted: Record<string, string> | null | undefined;

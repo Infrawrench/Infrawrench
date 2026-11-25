@@ -75,6 +75,7 @@ export type LentEnvFile =
 
 /** What a run is, as lending a file checks it. */
 export interface EnvFileRun extends LendingRun {
+  /** `GIT_SOURCE_INSTALLATION_ID` for a repository on git.infrawrench.com (`gitRepositoryId`). */
   installationId: number;
   /** The commit the runner checks out, which the file is read at. */
   sha: string;
@@ -127,7 +128,14 @@ type GrantRow = typeof ciResourceGrants.$inferSelect;
 /** Seam for tests: how the file, the resources and the grants are read. */
 export interface EnvFileDeps {
   /** The file's text at `sha`, or null when the commit has no such file. */
-  readFile(installationId: number, repo: string, path: string, sha: string): Promise<string | null>;
+  readFile(
+    installationId: number,
+    repo: string,
+    path: string,
+    sha: string,
+    /** Set for a repository on git.infrawrench.com, which is read from the forge. */
+    gitRepositoryId?: string | null,
+  ): Promise<string | null>;
   resourcesById(organizationId: string, ids: readonly string[]): Promise<EnvFileResource[]>;
   /** At most `NAMED_LIMIT` resources matching a by-name reference. */
   resourcesNamed(organizationId: string, match: InfraenvResourceMatch): Promise<EnvFileResource[]>;
@@ -147,7 +155,11 @@ const RESOURCE_COLUMNS = {
 };
 
 const defaultDeps: EnvFileDeps = {
-  readFile: async (installationId, repo, path, sha) => {
+  readFile: async (installationId, repo, path, sha, gitRepositoryId) => {
+    if (gitRepositoryId) {
+      const { gitReadFile } = await import("./git-forge.js");
+      return gitReadFile({ gitRepositoryId, repoFullName: repo }, path, sha);
+    }
     const { getFile } = await import("../github/issues-api.js");
     return (await getFile(installationId, repo, path, sha))?.content ?? null;
   },
@@ -268,7 +280,13 @@ async function lendFile(
   const at = run.sha.slice(0, 7);
   let source: string | null;
   try {
-    source = await deps.readFile(run.installationId, run.repoFullName, use.path, run.sha);
+    source = await deps.readFile(
+      run.installationId,
+      run.repoFullName,
+      use.path,
+      run.sha,
+      run.gitRepositoryId,
+    );
   } catch (err) {
     return refused(`${use.path} could not be read at ${at}: ${message(err)}`);
   }
@@ -515,7 +533,13 @@ export async function checkEnvFileForCi(
     variables: [],
   });
   const where = `${use.path}${environment ? ` (environment ${environment})` : ""}`;
-  const source = await deps.readFile(run.installationId, run.repoFullName, use.path, run.sha);
+  const source = await deps.readFile(
+    run.installationId,
+    run.repoFullName,
+    use.path,
+    run.sha,
+    run.gitRepositoryId,
+  );
   if (source === null) return whole(`${use.path} is not in ${run.repoFullName} at ${run.sha}`);
   if (source.length > INFRAENV_LIMITS.maxSourceLength) {
     return whole(`${use.path} is larger than ${INFRAENV_LIMITS.maxSourceLength} characters`);

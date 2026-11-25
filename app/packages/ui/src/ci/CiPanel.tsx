@@ -4,6 +4,7 @@ import {
   CI_CANCELLABLE_STATUSES,
   CI_RETRYABLE_STATUSES,
   CI_RUN_STATUSES,
+  ciRunSource,
   type CiAccount,
   type CiJobOutput,
   type CiRun,
@@ -21,6 +22,15 @@ import { CiAccessCard } from "./CiAccessCard.js";
 import { CiRunView, useCiLiveRun } from "./CiRunView.js";
 import { formatDuration } from "./format.js";
 import { useLiveRefresh } from "../live/index.js";
+
+/** The forge a run's link opens, as its host: `git.infrawrench.com`. */
+function sourceHost(run: CiRun): string {
+  try {
+    return new URL(run.sourceUrl ?? run.githubUrl).host;
+  } catch {
+    return "git.infrawrench.com";
+  }
+}
 
 export interface CiPanelProps {
   client: CiClient;
@@ -721,8 +731,10 @@ function RunDetailView({
             <h3 className="text-sm font-semibold text-on-surface">{run.repoFullName}</h3>
             <StatusBadge status={run.status} />
             <span className="font-mono text-xs text-on-surface-muted">{run.sha.slice(0, 12)}</span>
-            <ExternalLink href={run.githubUrl} onOpenUrl={onOpenUrl}>
-              {gt("Open on GitHub")}
+            <ExternalLink href={run.sourceUrl ?? run.githubUrl} onOpenUrl={onOpenUrl}>
+              {ciRunSource(run) === "git"
+                ? gt("Open on {host}", { host: sourceHost(run) })
+                : gt("Open on GitHub")}
             </ExternalLink>
             {canApprove && CI_RETRYABLE_STATUSES.includes(run.status) ? (
               <div className="ml-auto">

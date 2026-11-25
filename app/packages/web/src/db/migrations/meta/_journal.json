@@ -1373,6 +1373,13 @@
       "when": 1795592925274,
       "tag": "0195_offboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1795642746427,
+      "tag": "0196_ci_git_source",
+      "breakpoints": true
     }
   ]
 }

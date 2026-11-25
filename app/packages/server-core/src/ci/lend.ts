@@ -43,6 +43,7 @@ import {
   ciRepoAllowed,
 } from "@infrawrench/client-core";
 
+import { grantRepoName } from "./source.js";
 import { db } from "../db/client.js";
 import {
   accounts,
@@ -98,6 +99,8 @@ export interface LendingRun {
   id: string;
   organizationId: string;
   repoFullName: string;
+  /** Set for a repository on git.infrawrench.com (`source.ts`, `grantRepoName`). */
+  gitRepositoryId?: string | null | undefined;
   event: CiEvent;
   /**
    * The pushed branch, or the pull request's head branch. A scheduled run's
@@ -186,7 +189,7 @@ export function scopeRefusal(
   scope: { repos: string[] | null; branchPattern: string | null },
 ): string | null {
   if (
-    !ciRepoAllowed(scope.repos, run.repoFullName) ||
+    !ciRepoAllowed(scope.repos, grantRepoName(run)) ||
     !ciBranchMatches(scope.branchPattern, run.headRef)
   ) {
     return `${what} is not lent to CI for ${run.repoFullName} on ${run.headRef}`;

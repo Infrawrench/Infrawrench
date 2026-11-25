@@ -24,8 +24,15 @@ import type { CiUsage } from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
 import { organizations } from "../db/core-schema.js";
-import { ciAccounts, ciRuns, ciStorageSamples, subscriptions } from "../db/schema.js";
+import {
+  ciAccounts,
+  ciGitRepositories,
+  ciRuns,
+  ciStorageSamples,
+  subscriptions,
+} from "../db/schema.js";
 import { accountOwnerKey } from "./events.js";
+import { gitOwnerKey } from "./source.js";
 import { proxyJson } from "./proxy.js";
 
 const GIB = 1024 ** 3;
@@ -162,19 +169,39 @@ function hourStart(at: Date): Date {
   return d;
 }
 
-/** Records this hour's storage (caches and downloads) for every GitHub account that runs CI. */
+/**
+ * Records this hour's storage (caches and downloads) for every owner that
+ * runs CI: each GitHub account, and each namespace of git.infrawrench.com
+ * an organization has a repository in.
+ */
 export async function sampleStorage(): Promise<number> {
   if (!meter("STORAGE")) return 0;
   const hour = hourStart(new Date());
-  const owners = await db
+  const githubOwners = await db
     .selectDistinct({
       organizationId: ciAccounts.organizationId,
       accountLogin: ciAccounts.accountLogin,
     })
     .from(ciAccounts);
+  const gitOwners = await db
+    .selectDistinct({
+      organizationId: ciGitRepositories.organizationId,
+      namespace: ciGitRepositories.namespace,
+    })
+    .from(ciGitRepositories);
+  const owners = [
+    ...githubOwners.map((o) => ({
+      organizationId: o.organizationId,
+      ownerKey: accountOwnerKey(o.accountLogin),
+    })),
+    ...gitOwners.map((o) => ({
+      organizationId: o.organizationId,
+      ownerKey: gitOwnerKey(o.namespace),
+    })),
+  ];
   let sampled = 0;
   for (const owner of owners) {
-    const ownerKey = accountOwnerKey(owner.accountLogin);
+    const { ownerKey } = owner;
     const [existing] = await db
       .select({ id: ciStorageSamples.id })
       .from(ciStorageSamples)

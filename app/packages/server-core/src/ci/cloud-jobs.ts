@@ -56,6 +56,8 @@ import {
 } from "../db/schema.js";
 import { buildAad, decrypt, encrypt } from "../encryption.js";
 import { getInstallationToken } from "../github/app.js";
+import { gitArchiveLink } from "./git-forge.js";
+import { grantRepoName, isGitSource } from "./source.js";
 import { getOrgAccountClient } from "../org-accounts.js";
 import { bootstrapScript, jobScript, parseFinishBody } from "./bootstrap.js";
 import { ciPeerClient, type PeerUse } from "./peers.js";
@@ -206,7 +208,7 @@ interface Candidate {
 
 /** Why no opted-in connection can run a job, or the connections that can. */
 export function matchConnections(
-  run: Pick<RunRow, "repoFullName" | "headRef">,
+  run: Pick<RunRow, "repoFullName" | "headRef"> & Partial<Pick<RunRow, "gitRepositoryId">>,
   spec: Pick<CloudJobSpec, "cloud" | "timeout_secs">,
   rows: Array<{
     accountId: string;
@@ -257,7 +259,7 @@ export function matchConnections(
   }
   const scoped = enabled.filter(
     (r) =>
-      ciRepoAllowed(r.jobRepos, run.repoFullName) &&
+      ciRepoAllowed(r.jobRepos, grantRepoName(run)) &&
       ciBranchMatches(r.jobBranchPattern, run.headRef),
   );
   if (scoped.length === 0) {
@@ -878,18 +880,25 @@ export async function cloudJobScript(token: string): Promise<string> {
 /**
  * Where the machine downloads the commit: GitHub's short-lived source
  * archive link for it, made with the App's installation token, which itself
- * never reaches the machine.
+ * never reaches the machine. For a repository on git.infrawrench.com, the
+ * forge's own archive of the commit, with a read-only job token for that
+ * repository in the link, good for ten minutes (`git-forge.ts`).
  */
 export async function cloudJobSource(token: string): Promise<string> {
   const row = await byToken(token);
   const sealed = await unseal(row);
   if (!sealed) throw new CloudJobCallbackError("The job has ended.", 409);
   const [run] = await db
-    .select({ installationId: ciRuns.installationId })
+    .select({
+      installationId: ciRuns.installationId,
+      gitRepositoryId: ciRuns.gitRepositoryId,
+      repoFullName: ciRuns.repoFullName,
+    })
     .from(ciRuns)
     .where(eq(ciRuns.id, row.runId))
     .limit(1);
   if (!run) throw new CloudJobCallbackError("No such job.", 404);
+  if (isGitSource(run)) return gitArchiveLink(run, sealed.sha, row.runId);
   const installationToken = await getInstallationToken(run.installationId);
   const res = await fetch(
     `https://api.github.com/repos/${sealed.repoFullName}/tarball/${encodeURIComponent(sealed.sha)}`,

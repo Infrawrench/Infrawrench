@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.126.0",
+    "version": "1.127.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -68147,7 +68147,20 @@
             ]
           },
           "githubUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The commit or pull request on the repository's forge: the same link as `sourceUrl`, under the name it had when GitHub was the only one."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "github",
+              "git"
+            ],
+            "description": "Where the repository lives: `github` (reached through the GitHub App) or `git` (git.infrawrench.com)."
+          },
+          "sourceUrl": {
+            "type": "string",
+            "description": "The commit or pull request on the repository's forge."
           },
           "retryOfRunId": {
             "anyOf": [
@@ -68507,7 +68520,7 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991,
-            "description": "The GitHub App installation of the account that runs CI for the repository."
+            "description": "The GitHub App installation of the account that runs CI for the repository, or `0` for a repository on git.infrawrench.com, as `GET /ci/manual` lists it."
           },
           "repoFullName": {
             "type": "string",

@@ -1,6 +1,9 @@
 /**
- * CI runs: recorded from GitHub App webhooks, dispatched to the CI proxy,
- * followed until they finish, and reported back to GitHub as a check run.
+ * CI runs: recorded from GitHub App webhooks and from git.infrawrench.com's
+ * events (`git-events.ts`), dispatched to the CI proxy, followed until they
+ * finish, and reported back to the commit: a check run on GitHub, a commit
+ * status on git.infrawrench.com (`status.ts`). Where a run's repository
+ * lives is asked of `source.ts`, and of nothing else here.
  *
  * Who gets what:
  * - A push, or a pull request from a branch of the repository itself, runs
@@ -56,7 +59,7 @@ import {
   githubInstallations,
 } from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
-import { getBranchHeadSha, getInstallationToken } from "../github/app.js";
+import { getBranchHeadSha } from "../github/app.js";
 import { type CheckUpdate, upsertCheck } from "./checks.js";
 import {
   admitRun,
@@ -77,9 +80,19 @@ import { DownloadLinkError, downloadLink, toDownload } from "./downloads.js";
 import { CiProxyError, proxyFetch, proxyJson, runUsage, type ProxyRun } from "./proxy.js";
 import { pluginCodeAvailable } from "../plugin-loader.js";
 import type { CiConcurrencyEntry, CiJobAccess } from "../db/schema.js";
-import { noteRepository } from "./schedules.js";
+import { noteRepository, runningCi, stillRunsCi } from "./schedules.js";
 import { lendGithubTokens } from "./github-token.js";
 import { noticeTokenValid, withNotify } from "./notify.js";
+import {
+  cloneToken,
+  cloneUrl,
+  commitUrl,
+  isGitSource,
+  pullUrl,
+  sourceKind,
+  sourceOwnerKey,
+  tokenRefusal,
+} from "./source.js";
 
 export type CiRunRow = typeof ciRuns.$inferSelect;
 
@@ -189,38 +202,105 @@ export async function acceptCiEvent(
     refreshNow: !isPull && ev.branch === ev.defaultBranch,
   }).catch((err) => console.warn(`[ci] noting ${ev.repoFullName} for schedules failed:`, err));
   const sha = isPull ? ev.headSha : ev.sha;
-  const status: CiRunStatus = isPull && ev.fromFork ? "awaiting_approval" : "queued";
-  const dedupeKey = isPull
-    ? `pr:${ev.installationId}:${ev.repoFullName.toLowerCase()}:${ev.number}:${sha}`
-    : `push:${ev.installationId}:${ev.repoFullName.toLowerCase()}:${ev.branch}:${sha}`;
+  return recordEventRun({
+    organizationId,
+    installationId: ev.installationId,
+    gitRepositoryId: null,
+    repoFullName: ev.repoFullName,
+    ownerKey: ownerKey(ev.repoFullName),
+    repoKey: repoKey(ev.repoFullName),
+    defaultBranch: ev.defaultBranch,
+    sha,
+    baseSha: ev.baseSha,
+    actorLogin: ev.actorLogin,
+    ...(isPull
+      ? {
+          pull: {
+            number: ev.number,
+            headRef: ev.headRef,
+            headRepoFullName: ev.headRepoFullName,
+            fromFork: ev.fromFork,
+          },
+          dedupeKey: `pr:${ev.installationId}:${ev.repoFullName.toLowerCase()}:${ev.number}:${sha}`,
+        }
+      : {
+          branch: ev.branch,
+          dedupeKey: `push:${ev.installationId}:${ev.repoFullName.toLowerCase()}:${ev.branch}:${sha}`,
+        }),
+  });
+}
+
+/** A push or a pull request to record as a run, from either forge. */
+export type EventRun = {
+  organizationId: string;
+  /** `GIT_SOURCE_INSTALLATION_ID` for a repository on git.infrawrench.com. */
+  installationId: number;
+  gitRepositoryId: string | null;
+  repoFullName: string;
+  ownerKey: string;
+  repoKey: string;
+  defaultBranch: string;
+  sha: string;
+  /** What `paths:` and `changed()` diff against; null when there is nothing to compare with. */
+  baseSha: string | null;
+  actorLogin: string | null;
+  /** Unique per delivery target, so a redelivered event makes no second run. */
+  dedupeKey: string;
+} & (
+  | { branch: string; pull?: undefined }
+  | {
+      branch?: undefined;
+      pull: {
+        number: number;
+        headRef: string;
+        headRepoFullName: string | null;
+        /** From another repository: waits for approval, and is never trusted. */
+        fromFork: boolean;
+      };
+    }
+);
+
+/**
+ * Records the run of a push or a pull request, whichever forge it came
+ * from: the one place the rules for both live. A pull request from a fork
+ * waits for a maintainer; anything else is queued. Returns `null` for a
+ * redelivery.
+ */
+export async function recordEventRun(
+  run: EventRun,
+): Promise<{ id: string; status: CiRunStatus } | null> {
+  const { organizationId, pull } = run;
+  const isPull = pull !== undefined;
+  const status: CiRunStatus = pull?.fromFork ? "awaiting_approval" : "queued";
   const id = crypto.randomUUID();
   const [row] = await db
     .insert(ciRuns)
     .values({
       id,
       organizationId,
-      installationId: ev.installationId,
-      repoFullName: ev.repoFullName,
-      ownerKey: ownerKey(ev.repoFullName),
-      repoKey: repoKey(ev.repoFullName),
+      installationId: run.installationId,
+      gitRepositoryId: run.gitRepositoryId,
+      repoFullName: run.repoFullName,
+      ownerKey: run.ownerKey,
+      repoKey: run.repoKey,
       event: isPull ? "pull-request" : "push",
-      branch: isPull ? `pull/${ev.number}` : ev.branch,
-      headRef: isPull ? ev.headRef : ev.branch,
-      defaultBranch: ev.defaultBranch,
-      sha,
-      baseSha: ev.baseSha,
-      pullNumber: isPull ? ev.number : null,
-      headRepoFullName: isPull ? ev.headRepoFullName : null,
-      fromFork: isPull && ev.fromFork,
-      actorLogin: ev.actorLogin,
+      branch: pull ? `pull/${pull.number}` : run.branch,
+      headRef: pull ? pull.headRef : run.branch,
+      defaultBranch: run.defaultBranch,
+      sha: run.sha,
+      baseSha: run.baseSha,
+      pullNumber: pull ? pull.number : null,
+      headRepoFullName: pull ? pull.headRepoFullName : null,
+      fromFork: pull?.fromFork === true,
+      actorLogin: run.actorLogin,
       status,
-      dedupeKey,
+      dedupeKey: run.dedupeKey,
     })
     .onConflictDoNothing()
     .returning({ id: ciRuns.id });
   if (!row) return null;
 
-  if (isPull) {
+  if (pull) {
     // An older commit of the same pull request no longer needs approving.
     await db
       .update(ciRuns)
@@ -232,9 +312,9 @@ export async function acceptCiEvent(
       .where(
         and(
           eq(ciRuns.organizationId, organizationId),
-          eq(ciRuns.installationId, ev.installationId),
-          eq(ciRuns.repoFullName, ev.repoFullName),
-          eq(ciRuns.pullNumber, ev.number),
+          eq(ciRuns.installationId, run.installationId),
+          eq(ciRuns.repoFullName, run.repoFullName),
+          eq(ciRuns.pullNumber, pull.number),
           eq(ciRuns.status, "awaiting_approval"),
           ne(ciRuns.id, row.id),
         ),
@@ -287,7 +367,7 @@ async function finish(
   return true;
 }
 
-/** Shows a fork's run on GitHub as waiting for a maintainer. */
+/** Shows a fork's run on its commit as waiting for a maintainer. */
 export async function announceAwaitingApproval(id: string): Promise<void> {
   const row = await load(id);
   if (!row || row.status !== "awaiting_approval") return;
@@ -329,12 +409,14 @@ export function dispatchBody(
     | "pipelineText"
     | "pipelineFile"
     | "inputs"
-  >,
+  > &
+    // Set for a repository on git.infrawrench.com: what it is cloned from.
+    Partial<Pick<CiRunRow, "gitRepositoryId">>,
   token: string,
 ): Record<string, unknown> {
   const isPull = row.event === "pull-request";
   const body: Record<string, unknown> = {
-    repo: `https://github.com/${row.repoFullName}.git`,
+    repo: cloneUrl(row),
     sha: row.sha,
     branch: row.branch,
     event: row.event,
@@ -421,9 +503,9 @@ export async function dispatchRun(id: string): Promise<void> {
 
   let token: string;
   try {
-    token = await getInstallationToken(row.installationId);
+    token = await cloneToken(row, row.id);
   } catch (err) {
-    await retryLater(row, `GitHub refused an installation token: ${String(err)}`);
+    await retryLater(row, tokenRefusal(row, err));
     return;
   }
   const body = dispatchBody(row, token);
@@ -1238,6 +1320,7 @@ export async function insertRetry(
       id: crypto.randomUUID(),
       organizationId: original.organizationId,
       installationId: original.installationId,
+      gitRepositoryId: original.gitRepositoryId,
       repoFullName: original.repoFullName,
       ownerKey: original.ownerKey,
       repoKey: original.repoKey,
@@ -1322,18 +1405,10 @@ export async function startManualRun(
   actor: string | null,
   request: CiStartRun,
 ): Promise<CiRun> {
-  const [found] = await db
-    .select({ schedule: ciSchedules })
-    .from(ciSchedules)
-    .innerJoin(
-      ciAccounts,
-      and(
-        eq(ciAccounts.installationId, ciSchedules.installationId),
-        eq(ciAccounts.organizationId, ciSchedules.organizationId),
-      ),
-    )
+  const [found] = await runningCi(db.select({ schedule: ciSchedules }).from(ciSchedules).$dynamic())
     .where(
       and(
+        stillRunsCi(),
         eq(ciSchedules.organizationId, organizationId),
         eq(ciSchedules.installationId, request.installationId),
         eq(ciSchedules.repoFullName, request.repoFullName),
@@ -1364,7 +1439,16 @@ export async function startManualRun(
     );
   }
   const [owner, name] = repo.repoFullName.split("/");
-  const sha = await getBranchHeadSha(repo.installationId, owner ?? "", name ?? "", branch);
+  let sha: string | null;
+  if (isGitSource(repo)) {
+    const { gitBranchHead } = await import("./git-forge.js");
+    sha = await gitBranchHead(repo, branch).catch((err: unknown) => {
+      console.warn(`[ci] could not read ${repo.repoFullName}'s branches:`, err);
+      throw new CiInputError(`${repo.repoFullName} could not be read; try again.`, 409);
+    });
+  } else {
+    sha = await getBranchHeadSha(repo.installationId, owner ?? "", name ?? "", branch);
+  }
   if (!sha) throw new CiInputError(`${repo.repoFullName} has no branch ${branch}.`, 404);
 
   const id = crypto.randomUUID();
@@ -1374,8 +1458,9 @@ export async function startManualRun(
       id,
       organizationId,
       installationId: repo.installationId,
+      gitRepositoryId: repo.gitRepositoryId,
       repoFullName: repo.repoFullName,
-      ownerKey: ownerKey(repo.repoFullName),
+      ownerKey: sourceOwnerKey(repo),
       repoKey: repoKey(repo.repoFullName),
       event: "manual",
       pipelineFile: pipeline.file,
@@ -1424,10 +1509,9 @@ async function newestRetries(organizationId: string, ids: string[]): Promise<Map
 }
 
 export function toWire(row: CiRunRow, retriedAsRunId: string | null = null): CiRun {
-  const githubUrl =
-    row.pullNumber !== null
-      ? `https://github.com/${row.repoFullName}/pull/${row.pullNumber}`
-      : `https://github.com/${row.repoFullName}/commit/${row.sha}`;
+  // The pull request, or the commit, on the forge the repository is on.
+  const sourceUrl =
+    row.pullNumber !== null ? pullUrl(row, row.pullNumber) : commitUrl(row, row.sha);
   return {
     id: row.id,
     repoFullName: row.repoFullName,
@@ -1446,7 +1530,10 @@ export function toWire(row: CiRunRow, retriedAsRunId: string | null = null): CiR
     jobs: (row.jobs as CiJobSummary[] | null) ?? null,
     vcpuSeconds: row.vcpuSeconds,
     memoryGibSeconds: row.memoryGibSeconds,
-    githubUrl,
+    // Clients from before `sourceUrl` open this one, whatever the forge.
+    githubUrl: sourceUrl,
+    source: sourceKind(row),
+    sourceUrl,
     retryOfRunId: row.retryOfRunId,
     retriedAsRunId,
     noTaskCache: row.noTaskCache,

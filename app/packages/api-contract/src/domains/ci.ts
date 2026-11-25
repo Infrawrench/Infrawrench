@@ -10,6 +10,7 @@ import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
 import {
   CI_EVENTS,
+  CI_SOURCES,
   CI_EXECUTOR_KIND_IDS,
   CI_INPUT_TYPES,
   CI_JOB_STATUSES,
@@ -126,7 +127,21 @@ export const CiRunSchema = Schema.Struct({
   jobs: Schema.NullOr(Schema.Array(CiJobSummarySchema)),
   vcpuSeconds: Schema.NullOr(Schema.Number),
   memoryGibSeconds: Schema.NullOr(Schema.Number),
-  githubUrl: Schema.String,
+  githubUrl: Schema.String.annotate({
+    description:
+      "The commit or pull request on the repository's forge: the same link as `sourceUrl`, under the name it had when GitHub was the only one.",
+  }),
+  source: Schema.optionalKey(
+    Schema.Literals(CI_SOURCES).annotate({
+      description:
+        "Where the repository lives: `github` (reached through the GitHub App) or `git` (git.infrawrench.com).",
+    }),
+  ),
+  sourceUrl: Schema.optionalKey(
+    Schema.String.annotate({
+      description: "The commit or pull request on the repository's forge.",
+    }),
+  ),
   retryOfRunId: Schema.optionalKey(
     Schema.NullOr(Schema.String).annotate({
       description: "The run this one retries: the same repository, commit, branch and event.",
@@ -560,7 +575,8 @@ export const CiManualPipelinesSchema = Schema.Struct({
 
 export const CiStartRunSchema = Schema.Struct({
   installationId: Schema.Int.annotate({
-    description: "The GitHub App installation of the account that runs CI for the repository.",
+    description:
+      "The GitHub App installation of the account that runs CI for the repository, or `0` for a repository on git.infrawrench.com, as `GET /ci/manual` lists it.",
   }),
   repoFullName: Schema.String.annotate({ description: "`owner/name`." }),
   pipelineFile: Schema.String.annotate({

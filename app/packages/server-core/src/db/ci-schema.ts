@@ -1,7 +1,8 @@
 /**
  * CI (`ci-runner/`, reached through `app/packages/ci-proxy`): which GitHub
- * accounts an organization runs CI for, every run and its approval, and the
- * usage each run and each hour of cache storage is billed for.
+ * accounts and git.infrawrench.com repositories an organization runs CI
+ * for, every run and its approval, and the usage each run and each hour of
+ * cache storage is billed for.
  *
  * Lives in its own module and is re-exported from `schema.ts`, the
  * satellite-schema convention.
@@ -125,10 +126,27 @@ export const ciRuns = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    /**
+     * The GitHub App installation the repository is reached through, or `0`
+     * (`GIT_SOURCE_INSTALLATION_ID`, `ci/source.ts`) for a git.infrawrench.com
+     * repository, which has none. GitHub's ids start at 1, so everything
+     * keyed by installation and repository name (concurrency groups, the
+     * retry lookups, schedules) keeps the two sources apart as it is.
+     */
     installationId: integer("installation_id").notNull(),
+    /**
+     * The git.infrawrench.com repository the run is for (`git_repositories.id`),
+     * which is what makes it a run of that source; null for a GitHub
+     * repository. No foreign key yet: the forge's tables land with it, and
+     * the key is added when the two are integrated.
+     */
+    gitRepositoryId: text("git_repository_id"),
     /** `owner/name`. */
     repoFullName: text("repo_full_name").notNull(),
-    /** The runner's owner key for storage, caches and usage: `github.com-<login>`. */
+    /**
+     * The runner's owner key for storage, caches and usage:
+     * `github.com-<login>`, or `git.infrawrench.com-<namespace>`.
+     */
     ownerKey: text("owner_key").notNull(),
     /** The runner's repository id: the repository's name. */
     repoKey: text("repo_key").notNull(),
@@ -197,10 +215,12 @@ export const ciRuns = pgTable(
     /**
      * One GitHub check per job key, beside the run's own: by
      * `${pipeline}\u0000${key}`, its check run id and the state last sent,
-     * so a poll only calls GitHub for a job whose state changed.
+     * so a poll only calls GitHub for a job whose state changed. A
+     * git.infrawrench.com run keeps its jobs' commit statuses here the same
+     * way: no id (`0`), and the status's `context` instead.
      */
     jobChecks: jsonb("job_checks")
-      .$type<Record<string, { id: number; sent: string }>>()
+      .$type<Record<string, { id: number; sent: string; context?: string }>>()
       .notNull()
       .default({}),
     decidedByUserId: text("decided_by_user_id").references(() => users.id, {
@@ -227,6 +247,45 @@ export const ciRuns = pgTable(
     statusIdx: index("ci_runs_status_idx").on(t.status, t.nextAttemptAt),
     retryOfIdx: index("ci_runs_retry_of_idx").on(t.retryOfRunId),
     repoStatusIdx: index("ci_runs_repo_status_idx").on(t.installationId, t.repoFullName, t.status),
+    gitRepoIdx: index("ci_runs_git_repo_idx").on(t.gitRepositoryId, t.status),
+  }),
+);
+
+/**
+ * A git.infrawrench.com repository whose pushes and pull requests the
+ * organization runs CI for. Every repository of an organization's namespace
+ * runs CI (on a paid plan) unless it is switched off here: the row appears
+ * with the first event the app is told of, switched on, and `ciEnabled` is
+ * the per-repository switch. It also names the namespace, which is the
+ * owner the runners keep the repository's caches, secrets and usage under.
+ *
+ * `gitRepositoryId` is `git_repositories.id`, without a foreign key until
+ * the forge's tables are integrated. The names are the last ones an event
+ * carried: a rename or a transfer is followed by the next event.
+ */
+export const ciGitRepositories = pgTable(
+  "ci_git_repositories",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    gitRepositoryId: text("git_repository_id").notNull(),
+    /** The namespace's slug, as the forge spells it. */
+    namespace: text("namespace").notNull(),
+    name: text("name").notNull(),
+    defaultBranch: text("default_branch").notNull(),
+    ciEnabled: boolean("ci_enabled").notNull().default(true),
+    /** Who last switched it, when someone has. */
+    changedByUserId: text("changed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    repoIdx: uniqueIndex("ci_git_repositories_repo_idx").on(t.gitRepositoryId),
+    orgIdx: index("ci_git_repositories_org_idx").on(t.organizationId),
   }),
 );
 
@@ -260,8 +319,11 @@ export const ciSchedules = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    /** `0` for a git.infrawrench.com repository, as on `ci_runs`. */
     installationId: integer("installation_id").notNull(),
-    /** `owner/name`, as GitHub spells it. */
+    /** The git.infrawrench.com repository, as on `ci_runs`; null for a GitHub one. */
+    gitRepositoryId: text("git_repository_id"),
+    /** `owner/name`, as its forge spells it. */
     repoFullName: text("repo_full_name").notNull(),
     defaultBranch: text("default_branch").notNull(),
     /** The default branch's head the pipelines were read from; null before the first read. */

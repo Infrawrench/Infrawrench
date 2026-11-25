@@ -251,6 +251,20 @@ app_env = {
   # ARTIFACT_SIGNING_KEY Worker secret (`openssl rand -base64 32`). Without it
   # runs list their downloads but cannot hand out a link to one.
   CI_ARTIFACT_SIGNING_KEY = "<the proxy's ARTIFACT_SIGNING_KEY>"
+  # Optional: CI for repositories on git.infrawrench.com (the forge in git/).
+  # GIT_JOB_TOKEN_KEY signs the short-lived, read-only job tokens runners
+  # clone those repositories with, and the app reads a branch's head, an
+  # `env-file:` and a cloud job's source archive with. At least 32 characters
+  # (`openssl rand -base64 48`), and the same value as the forge Worker's
+  # JOB_TOKEN_KEY secret, which checks them. Without it runs of those
+  # repositories stay queued, saying the key is missing; GitHub repositories
+  # run as before. Rotating it (both sides together) fails the runs being
+  # cloned at that moment; retry them.
+  GIT_JOB_TOKEN_KEY = "<the forge Worker's JOB_TOKEN_KEY>"
+  # Optional: where the forge is served, which runners clone from and a run's
+  # commit and pull request links open. Without it,
+  # https://git.infrawrench.com.
+  GIT_BASE_URL = "https://git.infrawrench.com"
   # Optional: billing CI. Each meter reports its unit (decimals allowed) and
   # its price carries the unit price; an unset pair goes unbilled. Checkout
   # attaches the prices to new subscriptions, and ticking Run CI for a GitHub

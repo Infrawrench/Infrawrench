@@ -1,6 +1,7 @@
 /**
  * CI's wire types: what the API answers for an organization's CI (connected
- * GitHub accounts, runs, their jobs and usage). The server maps its rows to
+ * GitHub accounts, runs of GitHub and git.infrawrench.com repositories,
+ * their jobs and usage). The server maps its rows to
  * these and both apps render them.
  */
 
@@ -102,6 +103,19 @@ export const CI_EVENTS = ["push", "pull-request", "schedule", "manual"] as const
 
 export type CiEvent = (typeof CI_EVENTS)[number];
 
+/**
+ * Where a run's repository lives: on GitHub, reached through the App, or on
+ * git.infrawrench.com.
+ */
+export const CI_SOURCES = ["github", "git"] as const;
+
+export type CiSource = (typeof CI_SOURCES)[number];
+
+/** A run's source as a client reads it: one from before `source` was sent is GitHub's. */
+export function ciRunSource(run: { source?: string | undefined }): CiSource {
+  return run.source === "git" ? "git" : "github";
+}
+
 export interface CiRun {
   id: string;
   repoFullName: string;
@@ -117,7 +131,7 @@ export interface CiRun {
   headRepoFullName: string | null;
   /** A pull request from a fork: runs only once approved, and without secrets. */
   fromFork: boolean;
-  /** Who pushed or opened the pull request (a GitHub login), or who started a manual run. */
+  /** Who pushed or opened the pull request (their login on the forge), or who started a manual run. */
   actorLogin: string | null;
   status: CiRunStatus;
   statusReason: string | null;
@@ -127,8 +141,15 @@ export interface CiRun {
   jobs: CiJobSummary[] | null;
   vcpuSeconds: number | null;
   memoryGibSeconds: number | null;
-  /** The commit or pull request on GitHub. */
+  /**
+   * The commit or pull request on the repository's forge. Named for GitHub,
+   * which was the only one: it is the same link as `sourceUrl`.
+   */
   githubUrl: string;
+  /** Where the repository lives. Absent from servers before API 1.127.0, which only ran GitHub's. */
+  source?: CiSource;
+  /** The commit or pull request on the repository's forge. Absent as `source` is. */
+  sourceUrl?: string;
   /** The run this one retries, when it is a retry. */
   retryOfRunId?: string | null;
   /** The newest retry of this run, when it has been retried. */

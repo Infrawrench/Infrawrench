@@ -588,4 +588,9 @@
 // start, preview, members, get, edit, rescan, export, confirm or mark a row,
 // and act on a row, with their `Offboarding*` schemas; `offboarding` joins the
 // TabTarget kind enum. Additive.
-export const API_VERSION = "1.126.0";
+// 1.127.0: a CI run says where its repository lives. `CiRun` gains `source`
+// (`github` or `git`, for git.infrawrench.com) and `sourceUrl`, the commit or
+// pull request on that forge; `githubUrl` stays and carries the same link.
+// Schedules, manual pipelines and `startRun` name a git.infrawrench.com
+// repository with `installationId` 0. Additive.
+export const API_VERSION = "1.127.0";

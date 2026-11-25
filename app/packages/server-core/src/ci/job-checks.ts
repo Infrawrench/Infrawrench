@@ -25,6 +25,7 @@ import { db } from "../db/client.js";
 import { ciRuns } from "../db/schema.js";
 import { githubInstallationFetch } from "../github/app.js";
 import { eventLabel, fitCheckText, githubError } from "./checks.js";
+import { isGitSource } from "./source.js";
 
 /** What the runner reports of a running run (`GET /v1/runs/{id}`'s `progress`). */
 export interface ProxyProgress {
@@ -226,7 +227,7 @@ export function jobCheckName(group: JobGroup, event: CiEvent): string {
 }
 
 /** A short fingerprint of what a check says, to tell whether it changed. */
-function fingerprint(state: JobCheckState): string {
+export function jobCheckFingerprint(state: JobCheckState): string {
   const text = `${state.status}|${state.conclusion ?? ""}|${state.title}|${state.summary}`;
   // FNV-1a: small, and the same everywhere this runs.
   let hash = 0x811c9dc5;
@@ -241,10 +242,12 @@ export interface JobCheckTarget {
   id: string;
   organizationId: string;
   installationId: number;
+  /** Set for a repository on git.infrawrench.com, whose jobs get commit statuses. */
+  gitRepositoryId?: string | null | undefined;
   repoFullName: string;
   sha: string;
   event: CiEvent;
-  jobChecks: Record<string, { id: number; sent: string }>;
+  jobChecks: Record<string, { id: number; sent: string; context?: string }>;
 }
 
 /**
@@ -252,6 +255,11 @@ export interface JobCheckTarget {
  * with `reason`: nothing will report on those jobs again.
  */
 export async function abandonJobChecks(run: JobCheckTarget, reason: string): Promise<void> {
+  if (isGitSource(run)) {
+    const { gitStatusPublisher } = await import("./status.js");
+    await gitStatusPublisher.abandonJobs(run, reason);
+    return;
+  }
   const repo = run.repoFullName.split("/").map(encodeURIComponent).join("/");
   for (const [key, check] of Object.entries(run.jobChecks)) {
     if (check.sent.startsWith("completed")) continue;
@@ -281,6 +289,12 @@ export async function syncJobChecks(
   run: JobCheckTarget,
   groups: readonly JobGroup[],
 ): Promise<void> {
+  if (isGitSource(run)) {
+    // Loaded here: `status.ts` reads this module's names.
+    const { gitStatusPublisher } = await import("./status.js");
+    await gitStatusPublisher.jobs(run, groups);
+    return;
+  }
   const repo = run.repoFullName.split("/").map(encodeURIComponent).join("/");
   const detailsUrl = orgAppUrl(run.organizationId, `ci/${run.id}`);
   const next = { ...run.jobChecks };
@@ -288,7 +302,7 @@ export async function syncJobChecks(
   for (const group of groups.slice(0, MAX_JOB_CHECKS)) {
     const key = jobCheckKey(group.pipeline, group.key);
     const state = jobCheckState(group);
-    const sent = fingerprint(state);
+    const sent = jobCheckFingerprint(state);
     const known = next[key];
     if (known?.sent === sent) continue;
     const now = new Date().toISOString();

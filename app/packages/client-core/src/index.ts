@@ -54,6 +54,9 @@ export * from "./products";
 export * from "./ci";
 export * from "./ci-access";
 export * from "./ci-live";
+// The job token CI reads a git.infrawrench.com repository with: signed by
+// the app, checked by the forge's Worker.
+export * from "./git-job-token";
 // The instance pricing warehouse's tables, as data: documented by the API
 // contract, created and read by server-core.
 export * as PricingWarehouse from "./pricing-warehouse";
