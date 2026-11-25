@@ -1,6 +1,7 @@
 packages:
   - "plugin-architecture/packages/*"
   - "app/packages/*"
+  - "git/packages/*"
   - "plugingen"
 
 # TypeScript 7 packages depend on this (`"typescript": "catalog:"`). It is

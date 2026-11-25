@@ -2180,6 +2180,137 @@ importers:
         specifier: ^4.1.10
         version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
 
+  git/packages/contract:
+    dependencies:
+      effect:
+        specifier: 'catalog:'
+        version: 4.1.2
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: 'catalog:'
+        version: '@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)'
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  git/packages/core:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: 'catalog:'
+        version: '@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)'
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  git/packages/ops:
+    dependencies:
+      '@infrawrench/git-core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: 'catalog:'
+        version: '@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)'
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  git/packages/protocol:
+    dependencies:
+      '@infrawrench/git-core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: 'catalog:'
+        version: '@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)'
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  git/packages/ssh:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: 'catalog:'
+        version: '@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)'
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  git/packages/terraform:
+    dependencies:
+      '@infrawrench/git-core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: 'catalog:'
+        version: '@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)'
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+
+  git/packages/worker:
+    dependencies:
+      '@infrawrench/git-contract':
+        specifier: workspace:*
+        version: link:../contract
+      '@infrawrench/git-core':
+        specifier: workspace:*
+        version: link:../core
+      '@infrawrench/git-ops':
+        specifier: workspace:*
+        version: link:../ops
+      '@infrawrench/git-protocol':
+        specifier: workspace:*
+        version: link:../protocol
+      '@infrawrench/git-ssh':
+        specifier: workspace:*
+        version: link:../ssh
+      '@infrawrench/git-terraform':
+        specifier: workspace:*
+        version: link:../terraform
+      '@infrawrench/server-core':
+        specifier: workspace:*
+        version: link:../../../app/packages/server-core
+      effect:
+        specifier: 'catalog:'
+        version: 4.1.2
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20260808.1
+        version: 5.20260808.1
+      '@types/node':
+        specifier: ^22.20.1
+        version: 22.20.1
+      typescript:
+        specifier: 'catalog:'
+        version: '@tsc-rs/typescript@0.8.0(patch_hash=9cc9538baa11d2f109137f7adaf757cc7023c5f87f7414fa612203a3b6eaea8b)'
+      vitest:
+        specifier: ^4.1.10
+        version: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+      wrangler:
+        specifier: ^4.120.0
+        version: 4.162.0(@cloudflare/workers-types@5.20260808.1)(@types/node@22.20.1)
+
   plugin-architecture/packages/aiven:
     dependencies:
       '@infrawrench/plugin-base':
@@ -23096,7 +23227,7 @@ snapshots:
       obug: 2.1.4
       std-env: 4.2.0
       tinyrainbow: 3.1.1
-      vitest: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@22.20.1)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@22.20.1)(esbuild@0.25.12)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
+      vitest: 4.1.12(@opentelemetry/api@1.9.1)(@types/node@26.2.0)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1(@noble/hashes@2.3.0))(vite@8.3.8(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.11)(yaml@2.9.0))
 
   '@vitest/expect@4.1.12':
     dependencies:
@@ -27766,6 +27897,19 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
+  miniflare@5.20261113.0-beta(@types/node@22.20.1):
+    dependencies:
+      '@cspotcode/source-map-support': 0.8.1
+      sharp: 0.35.5(@types/node@22.20.1)
+      undici: 7.30.2
+      workerd: 1.20261113.1
+      ws: 8.21.0
+      youch: 4.1.0-beta.10
+    transitivePeerDependencies:
+      - '@types/node'
+      - bufferutil
+      - utf-8-validate
+
   miniflare@5.20261113.0-beta(@types/node@26.2.0):
     dependencies:
       '@cspotcode/source-map-support': 0.8.1
@@ -31129,6 +31273,26 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
       - bufferutil
+      - utf-8-validate
+
+  wrangler@4.162.0(@cloudflare/workers-types@5.20260808.1)(@types/node@22.20.1):
+    dependencies:
+      '@cloudflare/kv-asset-handler': 0.5.0
+      '@cloudflare/unenv-preset': 2.16.2(unenv@2.0.0-rc.24)(workerd@1.20261113.1)
+      '@cspotcode/source-map-support': 0.8.1
+      blake3-wasm: 2.1.5
+      esbuild: 0.28.2
+      miniflare: 5.20261113.0-beta(@types/node@22.20.1)
+      path-to-regexp: 6.3.0
+      unenv: 2.0.0-rc.24
+      workerd: 1.20261113.1
+    optionalDependencies:
+      '@cloudflare/workers-types': 5.20260808.1
+      fsevents: 2.3.3
+    transitivePeerDependencies:
+      - '@types/node'
+      - bufferutil
+      - kerberos
       - utf-8-validate
 
   wrangler@4.162.0(@cloudflare/workers-types@5.20260808.1)(@types/node@26.2.0):

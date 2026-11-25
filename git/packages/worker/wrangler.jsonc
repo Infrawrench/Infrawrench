@@ -1,0 +1,17 @@
+// git.infrawrench.com. See git/README.md.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "infrawrench-git",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-20",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "routes": [{ "pattern": "git.infrawrench.com", "custom_domain": true }],
+  "observability": { "enabled": true },
+  "limits": { "cpu_ms": 300000 },
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "e95b5c1b39ce4188918003909487b125" }],
+  "r2_buckets": [{ "binding": "OBJECTS", "bucket_name": "infrawrench-git" }],
+  // Local development only; production TCP arrives through a Spectrum
+  // application whose origin is this Worker (README "SSH").
+  "connect": [{ "protocol": "tcp", "port": 8788 }],
+}
