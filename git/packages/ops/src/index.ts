@@ -13,3 +13,8 @@ export * from "./history/range";
 export * from "./history/log";
 export * from "./tree/path";
 export * from "./tree/last-commits";
+export * from "./merge/text";
+export * from "./merge/sink";
+export * from "./merge/commit";
+export * from "./merge/tree";
+export * from "./merge/strategies";
