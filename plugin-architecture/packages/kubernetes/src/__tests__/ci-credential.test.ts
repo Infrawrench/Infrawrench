@@ -69,6 +69,11 @@ describe("lendKubeconfig", () => {
     const file = lent.files[0]!;
     expect(file.path).toBe("/root/.kube/production-cluster.yaml");
     expect(lent.env["KUBECONFIG"]).toEqual([{ text: "/root/.kube/production-cluster.yaml" }]);
+    // Terraform's kubernetes and helm providers read this one, not KUBECONFIG.
+    expect(lent.env["KUBE_CONFIG_PATH"]).toEqual(lent.env["KUBECONFIG"]);
+    // Both are a path, shown in a log; the secrets are in the file.
+    expect(Object.keys(lent.env).sort()).toEqual(["KUBECONFIG", "KUBE_CONFIG_PATH"]);
+    expect(Object.values(lent.env).flatMap(secrets)).toEqual([]);
     expect(secrets(file.content)).toEqual(["static"]);
     const doc = yaml.load(text(file.content)) as Record<string, any>;
     expect(doc["clusters"]).toHaveLength(1);

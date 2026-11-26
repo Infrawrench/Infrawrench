@@ -282,7 +282,11 @@ describe.skipIf(!configured)("a GKE cluster lent to a job as Kubernetes", () => 
       >;
     };
     const entry = lent.connections["gke-prod"]!;
-    expect(entry.env).toEqual({ KUBECONFIG: [{ text: "/root/.kube/gke-prod.yaml" }] });
+    // `KUBE_CONFIG_PATH` is the same file for Terraform's providers, which do not read `KUBECONFIG`.
+    expect(entry.env).toEqual({
+      KUBECONFIG: [{ text: "/root/.kube/gke-prod.yaml" }],
+      KUBE_CONFIG_PATH: [{ text: "/root/.kube/gke-prod.yaml" }],
+    });
     const [file] = entry.files;
     expect(file).toMatchObject({ path: "/root/.kube/gke-prod.yaml", mode: "600" });
     const parts = file!.content as Array<{ text: string } | { secret: string }>;

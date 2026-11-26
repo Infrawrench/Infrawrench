@@ -10,9 +10,17 @@
  *   the default, and `mysql --defaults-group-suffix=_<alias>` picks another.
  * - A CA certificate the connection holds is written beside it as `ssl-ca`.
  * - The password is also `MYSQL_PASSWORD`, raw, so it is masked bare as well.
+ * - `MYSQL_ENDPOINT` (`host:port`) and `MYSQL_USERNAME` are, with
+ *   `MYSQL_PASSWORD`, what Terraform's `petoju/mysql` provider reads for
+ *   `endpoint`, `username` and `password`. A CA certificate is also named by
+ *   `MYSQL_TLS_CA_CERT`, the default of the provider's `custom_tls.ca_cert`,
+ *   so an empty `custom_tls {}` block trusts it. The provider's `tls` stays
+ *   its own default (`false`) otherwise: the connection string does not say
+ *   whether the server wants TLS, so a configuration sets `tls` itself.
  *
  * Verified 2026-11 against the MySQL 8.4 manual (environment variables,
- * option files and `--defaults-group-suffix`).
+ * option files and `--defaults-group-suffix`) and the provider's
+ * documentation and `mysql/provider.go`.
  */
 import type {
   CiCredentialDeclaration,
@@ -74,9 +82,15 @@ export function lendMysql(
       if (quoted) parts.push({ text: `${key}=${quoted}\n` });
     };
     user = decode(url.username);
-    line("host", decode(url.hostname).replace(/^\[|\]$/g, ""));
-    line("port", url.port || "3306");
+    const host = decode(url.hostname).replace(/^\[|\]$/g, "");
+    const port = url.port || "3306";
+    line("host", host);
+    line("port", port);
     line("user", user);
+    // Go's `host:port`, which wants an IPv6 address in brackets.
+    if (host)
+      env["MYSQL_ENDPOINT"] = [{ text: `${host.includes(":") ? `[${host}]` : host}:${port}` }];
+    if (user) env["MYSQL_USERNAME"] = [{ text: user }];
     const password = decode(url.password);
     const quoted = password ? optionValue(password) : null;
     if (password) {
@@ -99,6 +113,7 @@ export function lendMysql(
       const caPath = `/root/.mysql/${request.alias}-ca.pem`;
       files.push({ path: caPath, mode: "644", content: [{ text: `${ca}\n` }] });
       line("ssl-ca", caPath);
+      env["MYSQL_TLS_CA_CERT"] = [{ text: caPath }];
     }
     files.push({ path: "/root/.my.cnf", mode: "600", content: parts });
     env["MYSQL_GROUP_SUFFIX"] = [{ text: suffix }];
