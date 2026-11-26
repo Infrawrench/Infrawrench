@@ -59,6 +59,9 @@ describe.skipIf(!process.env.GIT_CORE_BENCH)("throughput", () => {
     const text = sourceText(size);
 
     rate("sha1 (this package)", size, () => new Sha1().update(random).digest());
+    rate("sha1, collision detection off (for scale)", size, () =>
+      new Sha1({ detectCollisions: false }).update(random).digest(),
+    );
     rate("sha1 (node:crypto, for scale)", size, () => createHash("sha1").update(random).digest());
     const started = performance.now();
     await sha1(random);

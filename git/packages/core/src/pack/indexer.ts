@@ -133,18 +133,29 @@ export interface PackIndexerOptions {
    * entry's header can claim any size before a byte of it has arrived.
    */
   readonly maxObjectBytes?: number;
+  /**
+   * Refuse a pack once its entries add up to more than this many bytes
+   * inflated, counting each entry's declared size, each delta's result, and
+   * every object `finish` has to rebuild because the cache had let it go.
+   * It bounds the work one pack can ask for: a few megabytes of deltas that
+   * each copy a large base can otherwise describe terabytes to rebuild and
+   * hash. Checked before the bytes are produced. Default: no limit.
+   */
+  readonly maxInflatedBytes?: number;
   /** Block size for the read-ahead in front of `readRange`; 0 to call it directly. Default 512 KiB. */
   readonly readAheadBytes?: number;
   /**
-   * Objects of at least this size that are in memory anyway are hashed by
-   * WebCrypto rather than here, which is several times faster. Default
-   * 32 KiB; `Infinity` keeps all hashing synchronous.
+   * Objects of at least this size that are in memory anyway have their id
+   * computed in a later turn (`hashObjectBytes`) instead of in line. Default
+   * `Infinity`: every id comes from `Sha1` with collision detection, which
+   * WebCrypto's SHA-1 does not have, so there is no faster hash to hand an
+   * object to and deferring gains nothing. A finite value still works.
    */
   readonly nativeHashBytes?: number;
   /**
-   * How many bytes of objects may be waiting on WebCrypto at once. Past it
-   * an object is hashed synchronously instead, so a caller that never
-   * yields between writes still stays in bounds. Default 8 MiB.
+   * How many bytes of objects may be waiting for a deferred id at once. Past
+   * it an object is hashed in line instead, so a caller that never yields
+   * between writes still stays in bounds. Default 8 MiB.
    */
   readonly hashQueueBytes?: number;
   /**
@@ -184,6 +195,8 @@ export class PackIndexer {
   private readonly cacheEntryLimit: number;
   private readonly heldLimit: number;
   private readonly maxObjectBytes: number;
+  /** Inflated bytes the entries so far have declared or produced, for `maxInflatedBytes`. */
+  private inflatedBytes = 0;
   private readonly hasher = new Sha1();
   private readonly nativeHashMin: number;
   private readonly hashQueueLimit: number;
@@ -231,7 +244,7 @@ export class PackIndexer {
     // One object may take a quarter of the cache, so a few large ones cannot empty it.
     this.cacheEntryLimit = Math.floor(cacheBytes / 4);
     this.heldLimit = options.heldDeltaBytes ?? 8 * 1024 * 1024;
-    this.nativeHashMin = options.nativeHashBytes ?? 32 * 1024;
+    this.nativeHashMin = options.nativeHashBytes ?? Number.POSITIVE_INFINITY;
     this.hashQueueLimit = options.hashQueueBytes ?? 8 * 1024 * 1024;
     this.maxObjectBytes = options.maxObjectBytes ?? 32 * 1024 * 1024;
     this.cache = new ByteLru<number>(cacheBytes, (key) => {
@@ -338,6 +351,15 @@ export class PackIndexer {
     }
   }
 
+  /** Counts `size` inflated bytes against `maxInflatedBytes`, before they are produced. */
+  private countInflated(size: number, offset: number): void {
+    this.inflatedBytes += size;
+    const limit = this.options.maxInflatedBytes;
+    if (limit !== undefined && this.inflatedBytes > limit) {
+      throw new GitError("limit", `pack inflates past ${limit} bytes at ${offset}`);
+    }
+  }
+
   /** The entry that starts exactly at `offset`, among those seen so far. */
   private indexOfOffset(offset: number): number {
     let low = 0;
@@ -361,6 +383,7 @@ export class PackIndexer {
         throw new GitError("bad-pack", `delta at ${entry.offset} has no entry at its base offset`);
       }
     }
+    this.countInflated(entry.size, entry.offset);
     this.grow(index + 1);
     this.count = index + 1;
     this.current = index;
@@ -374,6 +397,8 @@ export class PackIndexer {
     this.deltaStartLength = 0;
     if (isDeltaType(entry.type)) {
       if (entry.type === "ref-delta") writeHex(entry.baseOid!, this.oids, index * 20);
+      // The instructions are held whole to be applied, here or in `finish`.
+      this.checkSize(entry.size, entry.offset);
       // A delta too big to keep is only measured now and read back in `finish`.
       this.collecting = entry.size <= this.cacheEntryLimit ? new Uint8Array(entry.size) : null;
       return;
@@ -422,6 +447,7 @@ export class PackIndexer {
     const start = data ?? this.deltaStart.subarray(0, this.deltaStartLength);
     const { resultSize } = readDeltaHeader(start);
     this.checkSize(resultSize, entry.offset);
+    this.countInflated(resultSize, entry.offset);
     this.sizes[index] = resultSize;
     if (!data) return;
     let baseIndex = this.baseIndex[index]!;
@@ -454,7 +480,7 @@ export class PackIndexer {
   }
 
   /**
-   * Leaves an object's id to WebCrypto. The object already counts as
+   * Leaves an object's id to a later turn. The object already counts as
    * resolved and deltas can build on it; only its id, and so the `onObject`
    * call, arrive later. `finish` waits for all of these.
    */
@@ -559,7 +585,7 @@ export class PackIndexer {
       const { data, consumed } = inflateSync(bytes, {
         offset: headerLength,
         // For a delta the table now holds the object's size, not the delta's.
-        ...(whole ? { size: this.sizes[index]! } : {}),
+        ...(whole ? { size: this.sizes[index]! } : { maxSize: this.maxObjectBytes }),
       });
       if (consumed !== length - headerLength) {
         throw new GitError("bad-pack", `entry at ${offset} changed since it was streamed`);
@@ -588,6 +614,9 @@ export class PackIndexer {
         }
         if (this.packedTypes[at]! < OFS_DELTA) {
           this.checkSize(this.sizes[at]!, this.offsets[at]!);
+          // Rebuilding what the cache let go is work too, and a long chain
+          // of large objects would otherwise be rebuilt once per link.
+          this.countInflated(this.sizes[at]!, this.offsets[at]!);
           data = await readEntry(at);
           this.cache.set(at, data);
           break;
@@ -597,6 +626,7 @@ export class PackIndexer {
       }
       for (let i = chain.length - 1; i >= 0; i--) {
         const index = chain[i]!;
+        this.countInflated(this.sizes[index]!, this.offsets[index]!);
         data = applyDelta(data, await deltaData(index));
         this.cache.set(index, data);
       }

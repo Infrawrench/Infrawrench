@@ -13,6 +13,7 @@ export * from "./object/hash";
 export * from "./object/loose";
 export * from "./object/commit";
 export * from "./object/tree";
+export * from "./object/fsck";
 export * from "./object/tag";
 export * from "./object/read";
 export * from "./memory-store";

@@ -11,7 +11,9 @@ export type GitErrorCode =
   | "bad-pkt-line"
   | "bad-ref"
   | "missing-object"
-  | "limit";
+  | "limit"
+  /** The content is one half of a SHA-1 collision (`sha1.ts`). */
+  | "sha1-collision";
 
 export class GitError extends Error {
   readonly code: GitErrorCode;

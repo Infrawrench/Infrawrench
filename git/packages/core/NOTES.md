@@ -11,7 +11,8 @@ One job per file, no dependencies, nothing from `node:*` outside `test/`.
 | `types.ts`                            | The shared vocabulary (`ObjectId`, `GitObject`, `ObjectReader`, `Commit`, `Ref`, ...).  |
 | `errors.ts`                           | `GitError` with a `code`, thrown for every kind of malformed input.                     |
 | `bytes.ts`, `hex.ts`, `stream.ts`     | Byte, text, hex and Web Streams helpers.                                                |
-| `sha1.ts`, `crc32.ts`, `adler32.ts`   | Incremental SHA-1, CRC-32 (slicing-by-8), Adler-32.                                     |
+| `sha1.ts`, `crc32.ts`, `adler32.ts`   | Incremental SHA-1 with collision detection, CRC-32 (slicing-by-8), Adler-32.            |
+| `sha1dc-ubc.gen.ts`                   | The collision detection's tables and bit-condition check, generated (see "SHA-1").      |
 | `zlib.ts`                             | `deflate` / `inflate` over `CompressionStream` / `DecompressionStream`.                 |
 | `inflate.ts`                          | A streaming zlib decoder that reports how much input it used.                           |
 | `signature.ts`                        | Person lines.                                                                           |
@@ -98,9 +99,29 @@ Sampling needs care: V8 frees array buffers on a background sweeper, so `process
 
 **Limits and hostile input.** `maxObjectBytes` (default 32 MiB) bounds anything held whole, since applying a delta needs base and result together and an entry header can claim any size before a byte arrives; a whole blob is streamed and not subject to it. `maxObjects` bounds the table, which otherwise grows towards the header's count rather than trusting it. An entry that inflates past its declared size is refused before it is buffered. Offsets and sizes are doubles, exact to 2^53.
 
-**Hashing.** SHA-1 written in TypeScript runs at about 400 MiB/s; WebCrypto runs at 1.5 to 3 GiB/s but is one-shot and asynchronous. So an object of 32 KiB or more that is in memory anyway is handed to `crypto.subtle` and its id arrives a little later (`nativeHashBytes`, `hashQueueBytes`); everything else, and everything streamed, uses `Sha1`. The object counts as resolved at once, so deltas build on it without waiting. `settle()` is the back-pressure: without it a caller that never yields fills the queue and hashing falls back to the synchronous path, which is slower but still correct. This halved the time to index this repository's pack.
+**Hashing.** Every object id is computed by `Sha1` (about 300 MiB/s with its collision detection, "SHA-1" below), as the bytes inflate or once the object is whole. WebCrypto runs at 1.5 to 3 GiB/s and used to take every object of 32 KiB or more that was in memory anyway; it has no collision detection, so it no longer names anything. The machinery for a deferred id is still there (`nativeHashBytes`, `hashQueueBytes`, `settle()`): it computes the same detecting hash in a later turn, the default (`Infinity`) never uses it, and it can go once nothing passes the option. The cost: an object's bytes are hashed at a fifth to a tenth of the old speed for large objects, which matters for packs of large blobs and little for source history, where inflating (250 MiB/s) was already the slower half.
 
-There is no SHA-1 collision detection (git uses sha1dc). An attacker who can produce a collision could push an object whose id matches a different object the repository does not have yet. Worth revisiting before repositories accept pushes from people who do not trust each other.
+## SHA-1: collision detection
+
+An id is the SHA-1 of an object, and the store trusts it to name one object and no other. Two different files with one SHA-1 can be built on purpose (SHAttered in 2017, a chosen-prefix collision in 2020, for some tens of thousands of dollars of computing). Whoever has such a pair can push the harmless half, have it reviewed, and later get the other half served under the same id from somewhere that does not have the first (a fork, a mirror, a cache). Git refuses such objects with `sha1dc`; so does this package.
+
+`Sha1` (`sha1.ts`) is the detection of Marc Stevens and Dan Shumow ("Speeding up detection of SHA-1 collision attacks using unavoidable attack conditions", USENIX Security 2017), ported from the reference C implementation git vendors (https://github.com/cr-marcstevens/sha1collisiondetection, MIT; the licence is `LICENSE-sha1collisiondetection.txt`). The file's header says how it works. What to know when using it:
+
+- **It is on by default and in every hasher.** `new Sha1()`, `sha1Sync`, `hashObject`, `hashObjectBytes`, `hashObjectSync`, the pack indexer (streamed blobs and whole objects), the pack parser's and writer's trailers, `MemoryObjectStore`. So every way an object gets an id is covered: a pushed pack, a loose object, and objects the server writes (merges, web edits, the first commit), which hash content a person chose. `{ detectCollisions: false }` exists for measuring and for the tests.
+- **A collision is a `GitError` with code `sha1-collision`**, thrown from `update` at the block that completes it and from `digest`. The protocol sends a `GitError`'s message to the client, so a push is refused with "SHA-1 collision detected: ..." and nothing of the pack is kept. There is no "safe hash" mode (the reference can instead return a different digest for a colliding file); git does not use it either.
+- **`sha1()` is the one function without it**: WebCrypto, one shot, for checksums. Never for an id; its comment says so. `test/sha1dc.test.ts` fails if WebCrypto's SHA-1 is called while ids are computed or a pack is indexed.
+- **`sha1dc-ubc.gen.ts` is generated** by `node scripts/gen-sha1dc-ubc.mjs <path to the reference's lib/ubc_check.c>`: the 32 disturbance vectors and the bit-condition check, which the reference itself generates. The script translates rather than retypes (it refuses input it does not fully recognise), and the file is not formatted (`*.gen.ts`). The two things it adds for speed, locals for the words and a return once the mask is zero, change no answer.
+
+How it was checked:
+
+- The public collisions are refused: both SHAttered PDFs and both Shambles messages (`test/fixtures/sha1-collisions.ts` holds the colliding prefixes as hex), whole, in any chunking, with anything after them; and no longer once one bit of a colliding block changes.
+- Ordinary input is never refused and hashes to what `node:crypto` says (every existing checksum test now runs with detection on, the monorepo suite hashes 93 000 real objects through it).
+- The generated check was compared with the reference's compiled `ubc_check` on a million blocks (random, and near-constant words with a few bits flipped so that many conditions hold): 12 844 non-zero masks, every one of the 32 bits seen, no difference. That comparison needs a C compiler and the reference source, so it is not a test here; rerun it when regenerating.
+- No git object that collides is public (the `blob <size>\0` header in front of the content changes every block, which is why the SHAttered PDFs have different ids in git), so the path from the hasher to a refused push is tested by making the hasher refuse one object's bytes.
+
+Cost, same machine and run as the table under "Measured": 388 MiB/s with detection off, **304 MiB/s with it on, 22% less**. Of that, the bit-condition check is about 40 ns a block (a 64-byte block compresses in about 160 ns). About one random block in twenty passes the check for some vector and is recompressed once (about 220 ns), which is the rest. That one-in-twenty is the reference's own rate: the conditions are necessary, not sufficient.
+
+Indexing this repository's pack (76.8 MiB, 94 120 objects, 4.42 GiB of objects, mostly megabyte-sized generated files) now takes **24.5 s where `git index-pack --threads=1` took 16.2 s** in the same run, on a machine busy enough that git's own figure was a third above the one below. Before, with large objects going to WebCrypto, the two were level. So a push of large objects indexes at about half the old speed, 180 MiB/s of object bytes. The figures under "Measured" are from before this change.
 
 ## Writing a pack
 
@@ -140,7 +161,8 @@ Apple M4, Node 24, single thread, the machine also running other work (figures m
 
 | Operation                                      | This package | For scale                 |
 | ---------------------------------------------- | ------------ | ------------------------- |
-| SHA-1                                          | 400 MiB/s    | `crypto.subtle` 1.5 GiB/s |
+| SHA-1, with collision detection                | 300 MiB/s    | `crypto.subtle` 1.5 GiB/s |
+| SHA-1, detection off                           | 390 MiB/s    |                           |
 | CRC-32                                         | 1.2 GiB/s    |                           |
 | Adler-32                                       | 1.4 GiB/s    |                           |
 | Inflate, source text (output)                  | 250 MiB/s    | `node:zlib` 800 MiB/s     |
@@ -160,6 +182,7 @@ Indexing this repository's history (one 76 MiB pack, 92 742 objects, 4.35 GiB in
 `pnpm --filter @infrawrench/git-core test` (about 80 s, no network). Every interop test builds its repositories in temporary directories with a fixed identity and clock. Where there is no `git` on the path the interop tests skip with a warning (44 of 173) and the rest still run, so a green run in a sandbox without git says less than it looks.
 
 - `checksums`, `inflate`: against `node:crypto` and `node:zlib`, every block type, every chunking, fuzzed.
+- `sha1dc`: the published SHA-1 collisions refused, ordinary input not, the vector table, and no id from a hash without detection.
 - `objects`: commit, tree and tag round trips, against `git mktree`, `git hash-object`, `git fsck`.
 - `pack`: packs from `git repack -adf`, `git gc --aggressive`, `git pack-objects` (REF_DELTA), `--thin`; each indexed under several chunkings, cache sizes and hashing modes and compared with `git verify-pack` and git's `.idx` byte for byte; random access; damage; a 58 MiB pack under a memory bound.
 - `writer`: packs and deltas made here go through `git index-pack --strict`, `git fsck --strict` and `git unpack-objects`.
@@ -173,7 +196,16 @@ Indexing this repository's history (one 76 MiB pack, 92 742 objects, 4.35 GiB in
 - No delta selection (which object to delta against which): `createDelta` makes one delta; choosing pairs belongs with repacking.
 - No pack index v1, no multi-pack index, no reverse index, no bitmaps.
 - No SHA-256 object format.
-- No SHA-1 collision detection (above).
 - The inflater builds a full lookup table per dynamic block. A two-level table would roughly double the speed on packs of many small objects.
 - `PackIndexer` keeps its table in memory; past about a million objects it needs a spill to storage.
 - A thin pack is indexed but not completed: `externalBases` names what it leans on, and the stored pack still has `ref-delta`s to objects outside it. Reading them back needs `resolveBase`; serving them to a client that lacks the base needs the base sent too.
+
+## Hostile input, after the security review
+
+`git/SECURITY-REVIEW.md` has the findings; what changed here:
+
+- **`maxObjectBytes` also bounds a delta's own instructions**, before they are inflated and when they are read back. A delta whose instructions were gigabytes of zeros and whose result was tiny used to be held whole.
+- **`maxInflatedBytes`** (`PackIndexer`): every entry's declared size, every delta result and every rebuild counts against it, before the bytes are produced. Without it a few megabytes of small deltas on a 32 MiB base are terabytes of work. Default none; the worker passes 8 GiB.
+- **`object/fsck.ts`**: what git's `fsck` refuses on receive and a forge has to refuse for the people who clone from it. Trees: `.`, `..`, `.git` in any case and in the HFS+ and NTFS spellings git treats as `.git`, a `/` in a name, two entries with one name, entries out of order, a `.gitmodules` that is a link or not a file. `.gitmodules` content read by git's config rules (names with `..`, urls and paths that start with `-`, an `update` that starts with `!`). Commits and tags: the required headers in order, no NUL. Zero-padded modes and odd author lines are left alone, as git only warns about them and old history has them. `ObjectFsck` is the wrapper for a pack: `note(oid, type, data)` from `onObject`, then `finish(read)`.
+- **`inflate(data, { maxSize })`**, and `decodeLooseObject` stops at 64 MiB by default.
+- `test/hostile.test.ts` holds these, with a fuzz of the object parsers (every failure is a `GitError`).

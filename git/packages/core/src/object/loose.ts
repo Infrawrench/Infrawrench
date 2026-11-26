@@ -13,8 +13,20 @@ export async function encodeLooseObject(object: GitObject): Promise<Uint8Array> 
   return deflate(whole);
 }
 
-export async function decodeLooseObject(compressed: Uint8Array): Promise<GitObject> {
-  return parseLooseObject(await inflate(compressed));
+/** The largest loose object `decodeLooseObject` inflates unless told otherwise. */
+export const MAX_LOOSE_OBJECT_BYTES = 64 * 1024 * 1024;
+
+/** Inflates and splits a loose object, refusing one that inflates past `maxSize` bytes. */
+export async function decodeLooseObject(
+  compressed: Uint8Array,
+  maxSize: number = MAX_LOOSE_OBJECT_BYTES,
+): Promise<GitObject> {
+  // The header is a few bytes more than the content.
+  const object = parseLooseObject(await inflate(compressed, { maxSize: maxSize + 64 }));
+  if (object.data.length > maxSize) {
+    throw new GitError("limit", `loose object of ${object.data.length} bytes is over the limit`);
+  }
+  return object;
 }
 
 /** Splits an already inflated loose object into its type and content. */

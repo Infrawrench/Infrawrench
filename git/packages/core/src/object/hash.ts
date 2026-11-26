@@ -14,26 +14,25 @@ export function objectHeader(type: ObjectType, size: number): Uint8Array {
   return encodeText(`${type} ${size}\0`);
 }
 
-/** An object's id as its 20 raw bytes, through WebCrypto. */
+/**
+ * An object's id as its 20 raw bytes.
+ *
+ * Every id is computed by `Sha1`, which refuses content built to collide
+ * (`sha1.ts`). WebCrypto's SHA-1 is several times faster and cannot be used
+ * here: it has no collision detection, and an id is what the whole store
+ * trusts to name one object and no other. The functions stay asynchronous
+ * for their callers.
+ */
 export async function hashObjectBytes(type: ObjectType, data: Uint8Array): Promise<Uint8Array> {
-  const header = objectHeader(type, data.length);
-  // One copy: `digest` takes a single buffer, and copying is far cheaper than hashing.
-  const whole = new Uint8Array(header.length + data.length);
-  whole.set(header, 0);
-  whole.set(data, header.length);
-  return new Uint8Array(await crypto.subtle.digest("SHA-1", whole));
+  return new Sha1().update(objectHeader(type, data.length)).update(data).digest();
 }
 
-/** An object's id: the SHA-1 of its header and content, through WebCrypto. */
+/** An object's id: the SHA-1 of its header and content. */
 export async function hashObject(type: ObjectType, data: Uint8Array): Promise<ObjectId> {
   return toHex(await hashObjectBytes(type, data));
 }
 
-/**
- * The same id without a copy or an await. This is the one to use in a loop
- * over many small objects, where a WebCrypto round trip per object costs
- * more than the hashing does.
- */
+/** The same id without an await. */
 export function hashObjectSync(type: ObjectType, data: Uint8Array): ObjectId {
   return new Sha1().update(objectHeader(type, data.length)).update(data).digestHex();
 }

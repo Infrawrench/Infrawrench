@@ -14,10 +14,29 @@ export async function deflate(data: Uint8Array): Promise<Uint8Array> {
   return collectBytes(deflateStream(streamOf(data)));
 }
 
+export interface InflateLimits {
+  /**
+   * Refuse to produce more than this many bytes. A few kilobytes of zlib can
+   * describe gigabytes, so anything inflating input it did not write passes one.
+   */
+  readonly maxSize?: number;
+}
+
 /** Inflates a complete zlib stream. Rejects when it is damaged, truncated or followed by more. */
-export async function inflate(data: Uint8Array): Promise<Uint8Array> {
+export async function inflate(data: Uint8Array, limits: InflateLimits = {}): Promise<Uint8Array> {
+  const limit = limits.maxSize ?? Number.POSITIVE_INFINITY;
+  let total = 0;
+  // Counted chunk by chunk as the stream produces them, so the cap holds
+  // before the output is gathered rather than after.
+  const capped = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      total += chunk.length;
+      if (total > limit) throw new GitError("limit", "zlib stream inflates past the limit");
+      controller.enqueue(chunk);
+    },
+  });
   try {
-    return await collectBytes(inflateStream(streamOf(data)));
+    return await collectBytes(inflateStream(streamOf(data)).pipeThrough(capped));
   } catch (error) {
     if (error instanceof GitError) throw error;
     throw new GitError("bad-zlib", `zlib: ${error instanceof Error ? error.message : "failed"}`);
