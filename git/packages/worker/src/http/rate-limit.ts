@@ -92,6 +92,7 @@ export interface RateDecision {
 /** Reads under `/api/repos/:owner/:repo` that walk history or diff files. */
 const HEAVY_REPO_READS = [
   /^\/tree\/last-commits$/,
+  /^\/latest-commit$/,
   /^\/commits\/[^/]+$/,
   /^\/commits\/[^/]+\/diff$/,
   /^\/compare(\/diff)?$/,

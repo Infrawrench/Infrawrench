@@ -2,6 +2,7 @@
 import type {
   CommitSummary,
   FileBlob,
+  LatestCommit,
   ResolvedRef,
   TreeLastCommits,
   TreeListing,
@@ -417,12 +418,32 @@ export const blobIn = (session: Session, ref: ResolvedRef, path: string): Promis
 
 export async function blob(
   cx: ReaderContext,
-  input: { readonly ref: RefInput; readonly path: string },
+  input: { readonly ref: RefInput; readonly path: string; readonly lastCommit?: boolean },
 ): Promise<FileBlob> {
   const session = await openSession(cx);
   const path = cleanPath(input.path);
   if (path === "") throw new RepoReaderError("not_a_file", "The root is a directory");
-  return fileAt(session, await resolve(session, input.ref), path, { lastCommit: true });
+  return fileAt(session, await resolve(session, input.ref), path, {
+    lastCommit: input.lastCommit !== false,
+  });
+}
+
+/**
+ * A path's newest commit, and the commit count at the root: what a folder's
+ * or a file's header shows. Apart from `tree` and `blob`, so those answer
+ * without walking history and the page shows at once.
+ */
+export async function latestCommit(
+  cx: ReaderContext,
+  input: { readonly ref: RefInput; readonly path: string },
+): Promise<LatestCommit> {
+  const session = await openSession(cx);
+  const ref = await resolve(session, input.ref);
+  const path = cleanPath(input.path);
+  return {
+    commit: await lastChange(session, ref.commitOid, path),
+    count: path === "" ? await countCommits(session, ref.commitOid) : null,
+  };
 }
 
 export async function readme(

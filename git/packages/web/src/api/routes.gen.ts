@@ -46,6 +46,7 @@ export const API_ROUTES = {
     listTags: ["GET", "/api/repos/:owner/:repo/tags"],
     tree: ["GET", "/api/repos/:owner/:repo/tree"],
     treeLastCommits: ["GET", "/api/repos/:owner/:repo/tree/last-commits"],
+    latestCommit: ["GET", "/api/repos/:owner/:repo/latest-commit"],
     blob: ["GET", "/api/repos/:owner/:repo/blob"],
     readme: ["GET", "/api/repos/:owner/:repo/readme"],
     listCommits: ["GET", "/api/repos/:owner/:repo/commits"],

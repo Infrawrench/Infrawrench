@@ -292,6 +292,7 @@ describe("fsck: trees", () => {
 
   const refused: ReadonlyArray<readonly [string, Uint8Array]> = [
     [".", tree(entry("."))],
+    // ci-reads-ignore: tree entry names under test, not a path read from disk
     ["..", tree(entry("..", "040000"))],
     [".git", tree(entry(".git", "040000"))],
     [".GIT", tree(entry(".GIT", "040000"))],

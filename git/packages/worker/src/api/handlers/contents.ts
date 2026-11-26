@@ -249,7 +249,24 @@ export const ContentsHandlers = HttpApiBuilder.group(GitApi, "contents", (handle
     )
     .handle(
       "blob",
-      repoOp((cx, { query }) => cx.git.blob({ ref: query.ref, path: query.path })),
+      repoOp((cx, { query }) =>
+        cx.git.blob({
+          ref: query.ref,
+          path: query.path,
+          lastCommit: query.lastCommit !== "false",
+        }),
+      ),
+    )
+    .handle(
+      "latestCommit",
+      repoOp(async (cx, { query }) => {
+        const found = await cx.git.latestCommit({ ref: query.ref, path: query.path ?? "" });
+        if (found.commit === null) return found;
+        const decorate = await commitDecorator(cx.repo.repository.id, [found.commit], {
+          statuses: false,
+        });
+        return { ...found, commit: decorate(found.commit) };
+      }),
     )
     .handle(
       "readme",

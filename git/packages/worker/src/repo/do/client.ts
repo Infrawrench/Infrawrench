@@ -62,8 +62,18 @@ type Rpc = {
   [K in keyof RepoDO]: RepoDO[K];
 };
 
+/**
+ * Where a new repository's Durable Object is created: beside the R2 bucket
+ * (`enam`, `infra/git/setup.mjs`), whose every read it waits on, and the
+ * Worker (`placement` in wrangler.jsonc). Without it an object is created
+ * near whoever first asked, and from London each R2 read crossed the
+ * Atlantic. A hint only counts when an object is created; one that exists
+ * stays where it is.
+ */
+export const REPO_LOCATION = { locationHint: "enam" } as const;
+
 export function repoClient(env: Pick<Env, "REPO">, repoId: string): RepoClient {
-  const stub = env.REPO.get(env.REPO.idFromName(repoId));
+  const stub = env.REPO.get(env.REPO.idFromName(repoId), REPO_LOCATION);
   const rpc = stub as unknown as Rpc;
   const send = (url: string, call: unknown, init: RequestInit = {}): Promise<Response> =>
     (stub.fetch as unknown as (url: string, init: RequestInit) => Promise<Response>)(url, {

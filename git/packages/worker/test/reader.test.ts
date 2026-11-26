@@ -357,6 +357,21 @@ describeGit("the reader, with git as the judge", () => {
     expect(await reader.readme({ ref: undefined, path: "src" })).toBeNull();
   });
 
+  it("answers a file without walking history when asked, and the walk on its own", async () => {
+    const bare = await reader.blob({ ref: undefined, path: "README.md", lastCommit: false });
+    expect(bare.lastCommit).toBeNull();
+    expect(bare.text).toBe("# Fixture\n\nhello again\n");
+    const full = await reader.blob({ ref: undefined, path: "README.md" });
+    const changed = await gitOut(["log", "-1", "--format=%H", "--", "README.md"], { cwd: work });
+    expect(full.lastCommit?.oid).toBe(changed);
+
+    const latest = await reader.latestCommit({ ref: undefined, path: "README.md" });
+    expect(latest).toMatchObject({ commit: { oid: changed }, count: null });
+    const root = await reader.latestCommit({ ref: undefined, path: "" });
+    expect(root.commit?.oid).toBe(fixture.at.main);
+    expect(root.count).toBe(Number(await gitOut(["rev-list", "--count", "main"], { cwd: work })));
+  });
+
   it("restates the contract's raw URL for names that need encoding", async () => {
     const odd = await hub.open("repo-odd");
     const dir = await initRepo("odd");

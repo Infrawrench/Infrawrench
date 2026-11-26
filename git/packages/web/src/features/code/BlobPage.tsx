@@ -19,6 +19,7 @@ import { paths, type RepoRef } from "../../lib/paths";
 import { downloadUrl } from "../../lib/raw";
 import { resolveRelative } from "../../lib/refs";
 import { useRepoRef } from "../../layout/RepoLayout";
+import { blobQuery, latestCommitQuery } from "./requests";
 import { RenderedMarkdown, isMarkdownPath } from "./ReadmePanel";
 import { CodeRefPicker, CommitStrip, PathBreadcrumbs } from "./shared";
 
@@ -61,7 +62,7 @@ export function useLineSelection(ready: boolean) {
 export function BlobPage({ refName, path }: { refName: string; path: string }) {
   const repo = useRepoRef();
   const go = useGo();
-  const blob = useQuery(queries.contents.blob({ params: repo, query: { ref: refName, path } }));
+  const blob = useQuery(blobQuery(repo, refName, path));
 
   const isDirectory = blob.error instanceof ApiError && blob.error.code === "not_a_file";
   useEffect(() => {
@@ -84,6 +85,9 @@ export function BlobPage({ refName, path }: { refName: string; path: string }) {
 
 function BlobView({ repo, blob }: { repo: RepoRef; blob: FileBlob }) {
   const refName = blob.ref.name;
+  // The file shows first; the commit that last changed it follows.
+  const latest = useQuery(latestCommitQuery(repo, blob.ref.commitOid, blob.path));
+  const lastCommit = blob.lastCommit ?? latest.data?.commit ?? null;
   const markdown = isMarkdownPath(blob.path) && blob.text !== null;
   const [mode, setMode] = useState<"preview" | "code">(() =>
     markdown && parseLineHash(window.location.hash) === null ? "preview" : "code",
@@ -104,10 +108,10 @@ function BlobView({ repo, blob }: { repo: RepoRef; blob: FileBlob }) {
         <CopyButton text={blob.path} label="Copy path" />
       </div>
 
-      {blob.lastCommit !== null ? (
+      {lastCommit !== null ? (
         <Panel className="mb-3">
           <div className="flex items-center px-3 py-2">
-            <CommitStrip repo={repo} commit={blob.lastCommit}>
+            <CommitStrip repo={repo} commit={lastCommit}>
               <AppLink
                 href={paths.commits(repo, refName, blob.path)}
                 className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-on-surface hover:underline"

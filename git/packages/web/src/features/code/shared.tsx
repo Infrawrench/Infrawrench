@@ -12,6 +12,7 @@ import { AppLink, useGo } from "../../components/AppLink";
 import { CommitStatusIcon } from "../../components/Badge";
 import { buttonClass } from "../../components/Button";
 import { Breadcrumbs, CopyButton, Segmented, type Crumb } from "../../components/controls";
+import { prefetchEntry } from "./requests";
 import { Icon } from "../../components/icons";
 import { Popover } from "../../components/Menu";
 import { CommitAuthor, RelativeTime } from "../../components/people";
@@ -75,14 +76,23 @@ export function PathBreadcrumbs({
   refName: string;
   path: string;
 }) {
-  const crumbs: Crumb[] = [{ label: repo.repo, href: paths.tree(repo, refName) }];
+  // Each folder starts loading when the pointer rests on it (`requests.ts`).
+  const folder = (folderPath: string) => () =>
+    prefetchEntry(repo, refName, { type: "tree", path: folderPath });
+  const crumbs: Crumb[] = [
+    { label: repo.repo, href: paths.tree(repo, refName), onIntent: folder("") },
+  ];
   const parts = pathCrumbs(path);
   parts.forEach((part, index) => {
     const last = index === parts.length - 1;
     crumbs.push(
       last
         ? { label: part.name }
-        : { label: part.name, href: paths.tree(repo, refName, part.path) },
+        : {
+            label: part.name,
+            href: paths.tree(repo, refName, part.path),
+            onIntent: folder(part.path),
+          },
     );
   });
   if (parts.length === 0) crumbs[0] = { label: repo.repo };

@@ -60,6 +60,7 @@ import type {
   DiffHunk,
   FileBlob,
   GitTag,
+  LatestCommit,
   MergeMethod,
   ResolvedRef,
   TreeLastCommits,
@@ -458,7 +459,15 @@ export interface RepoReader {
    * binary files as metadata. `rawUrl` is `rawPath(locator, commitOid,
    * path)` from the contract. `not_a_file` when the path is a directory.
    */
-  blob(input: { readonly ref: RefInput; readonly path: string }): Promise<FileBlob>;
+  blob(input: {
+    readonly ref: RefInput;
+    readonly path: string;
+    /** `false`: no history walk, `lastCommit` null (ask `latestCommit`). Default true. */
+    readonly lastCommit?: boolean;
+  }): Promise<FileBlob>;
+
+  /** A path's newest commit, and at the root how many commits the ref has. */
+  latestCommit(input: { readonly ref: RefInput; readonly path: string }): Promise<LatestCommit>;
 
   /**
    * A directory's README, or null: `README.md` first, then `README`,
@@ -583,6 +592,7 @@ export const unavailableRepoReader: RepoReader = {
   tree: refuse,
   treeLastCommits: refuse,
   blob: refuse,
+  latestCommit: refuse,
   readme: refuse,
   listCommits: refuse,
   commits: refuse,

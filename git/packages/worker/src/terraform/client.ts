@@ -37,7 +37,10 @@ const VERSION_URL = "https://terraform-state.internal/version";
 type Rpc = { [K in keyof TerraformStateDO]: TerraformStateDO[K] };
 
 export const stateClient: StateClientFactory = (env, workspaceId) => {
-  const stub = env.TERRAFORM_STATE.get(env.TERRAFORM_STATE.idFromName(workspaceId));
+  // Beside the Worker and R2, as a repository's is (`REPO_LOCATION`).
+  const stub = env.TERRAFORM_STATE.get(env.TERRAFORM_STATE.idFromName(workspaceId), {
+    locationHint: "enam",
+  });
   const rpc = stub as unknown as Rpc;
   const send = stub.fetch.bind(stub) as unknown as (
     url: string,

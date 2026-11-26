@@ -42,6 +42,7 @@ import { describeError } from "../../http/log";
 import { tarArchive } from "./archive";
 import { ARCHIVE_URL, type ArchiveCall, CALL_HEADER, type GitCall, SERVE_URL } from "./call";
 import { type ReaderReply, ReaderState, callReader, localRepoReader } from "../queries";
+import { REPO_LOCATION } from "./client";
 import type { Bucket, RepoStorage } from "./platform";
 import {
   type ForkManifest,
@@ -91,7 +92,10 @@ export class RepoDO extends DurableObject<Env> {
 
   /** Another repository's object, with its id bound the way `repoClient` binds it. */
   private peer(repoId: string): PeerRepository {
-    const stub = this.env.REPO.get(this.env.REPO.idFromName(repoId)) as unknown as PeerStub;
+    const stub = this.env.REPO.get(
+      this.env.REPO.idFromName(repoId),
+      REPO_LOCATION,
+    ) as unknown as PeerStub;
     return {
       listRefs: () => stub.listRefs(repoId),
       forkManifest: () => stub.forkManifest(repoId),

@@ -222,8 +222,23 @@ export default defineMockHandlers({
         complete: true,
       };
     },
-    blob: ({ params, query }) =>
-      fileBlob(gitOf(findRepository(params.owner, params.repo)), query.ref, query.path),
+    blob: ({ params, query }) => {
+      const file = fileBlob(
+        gitOf(findRepository(params.owner, params.repo)),
+        query.ref,
+        query.path,
+      );
+      return query.lastCommit === "false" ? { ...file, lastCommit: null } : file;
+    },
+    latestCommit: ({ params, query }) => {
+      const fx = gitOf(findRepository(params.owner, params.repo));
+      const ref = resolveRef(fx, query?.ref);
+      const path = query?.path ?? "";
+      return {
+        commit: summarize(fx, lastCommitFor(fx, ref.commitOid, path)),
+        count: path === "" ? log(fx, ref.commitOid).length : null,
+      };
+    },
     readme: ({ params, query }) => {
       const fx = gitOf(findRepository(params.owner, params.repo));
       const ref = resolveRef(fx, query?.ref);

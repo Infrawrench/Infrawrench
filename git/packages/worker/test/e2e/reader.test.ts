@@ -375,6 +375,7 @@ describe.skipIf(!enabled)("the reader against the worker in workerd", () => {
       );
       const [, warmReadme] = await timed("readme / (again)", "readme", { path: "" });
       await timed("tree app/packages/web/src (first ever)", "tree", {
+        // ci-reads-ignore: a path inside the test repository, not a file this test reads
         path: "app/packages/web/src",
         lastCommits: true,
       });

@@ -14,7 +14,7 @@ import {
   type RepositoryStats,
 } from "../reader";
 import type { Repository } from "../do/repository";
-import { blob, readme, tree, treeLastCommits } from "./content";
+import { blob, latestCommit, readme, tree, treeLastCommits } from "./content";
 import { commit, commitDiff, compare, compareDiff, diffAnchor } from "./diffs";
 import { blame, commitRange, commits, commitsBetween, listCommits } from "./history";
 import { merge, mergeability, updateBranch } from "./merges";
@@ -133,6 +133,7 @@ export function localRepoReader(
     tree: (input) => tree(cx, input),
     treeLastCommits: (input) => treeLastCommits(cx, input),
     blob: (input) => blob(cx, input),
+    latestCommit: (input) => latestCommit(cx, input),
     readme: (input) => readme(cx, input),
     listCommits: (input) => listCommits(cx, input),
     commits: (oids) => commits(cx, oids),
@@ -168,6 +169,7 @@ export const READER_METHODS = [
   "tree",
   "treeLastCommits",
   "blob",
+  "latestCommit",
   "readme",
   "listCommits",
   "commits",

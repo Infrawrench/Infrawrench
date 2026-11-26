@@ -273,6 +273,23 @@ export const TreeLastCommits = Schema.Struct({
 }).annotate({ identifier: "TreeLastCommits" });
 export type TreeLastCommits = typeof TreeLastCommits.Type;
 
+/**
+ * A path's history line: its newest commit, and at the root how many
+ * commits the ref has. Asked apart from the listing and the file, so a
+ * folder or a file shows before its history is walked.
+ */
+export const LatestCommit = Schema.Struct({
+  commit: Schema.NullOr(CommitSummary).annotate({
+    description:
+      "The newest commit that changed the path. Null when the bounded walk did not find it.",
+  }),
+  count: Schema.NullOr(Schema.Int).annotate({
+    description:
+      "Commits reachable from the ref, for the root. Null elsewhere or when not counted.",
+  }),
+}).annotate({ identifier: "LatestCommit" });
+export type LatestCommit = typeof LatestCommit.Type;
+
 /** The most text a blob answers inline. Larger files are `truncated`; fetch them raw. */
 export const BLOB_TEXT_LIMIT_BYTES = 1024 * 1024;
 

@@ -21,6 +21,7 @@ import { webUrl } from "../../lib/safe-url";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { EmptyRepository } from "./EmptyRepository";
 import { ReadmePanel } from "./ReadmePanel";
+import { latestCommitQuery, prefetchEntry, treeQuery } from "./requests";
 import { CloneMenu, CodeRefPicker, CommitStrip, PathBreadcrumbs } from "./shared";
 import { showBidi } from "../../lib/bidi";
 
@@ -42,8 +43,7 @@ export function TreePage({ refName, path }: { refName: string; path: string }) {
   const repository = useRepository();
   const repo = useRepoRef();
   const go = useGo();
-  const request = { params: repo, query: { ref: refName, path } };
-  const tree = useQuery({ ...queries.contents.tree(request), enabled: !repository.isEmpty });
+  const tree = useQuery({ ...treeQuery(repo, refName, path), enabled: !repository.isEmpty });
 
   // A file's path under /tree is a link someone edited by hand: show the file.
   const isFile = tree.error instanceof ApiError && tree.error.code === "not_a_directory";
@@ -139,17 +139,21 @@ function FileTable({
     }),
     enabled: !listing.lastCommitsComplete,
   });
+  // The header's commit and the root's count arrive after the listing.
+  const latest = useQuery(latestCommitQuery(repo, listing.ref.commitOid, listing.path));
+  const headCommit = listing.lastCommit ?? latest.data?.commit ?? null;
+  const commitCount = listing.commitCount ?? latest.data?.count ?? null;
   return (
     <Panel>
-      {listing.lastCommit !== null ? (
+      {headCommit !== null ? (
         <PanelHeader>
-          <CommitStrip repo={repo} commit={listing.lastCommit}>
+          <CommitStrip repo={repo} commit={headCommit}>
             <AppLink
               href={paths.commits(repo, refName, listing.path)}
               className="inline-flex items-center gap-1 whitespace-nowrap font-medium text-on-surface hover:underline"
             >
               <Icon name="history" size={12} />
-              {listing.commitCount !== null ? plural(listing.commitCount, "commit") : "History"}
+              {commitCount !== null ? plural(commitCount, "commit") : "History"}
             </AppLink>
           </CommitStrip>
         </PanelHeader>
@@ -168,6 +172,9 @@ function FileTable({
               <Td colSpan={3}>
                 <AppLink
                   href={paths.tree(repo, refName, parentPath(listing.path))}
+                  onPointerEnter={() =>
+                    prefetchEntry(repo, refName, { type: "tree", path: parentPath(listing.path) })
+                  }
                   aria-label="Parent directory"
                   className="inline-flex items-center gap-2 font-mono text-on-surface-secondary hover:underline"
                 >
@@ -193,7 +200,12 @@ function FileTable({
                       <Icon name={ENTRY_ICON[entry.type]} className="text-on-surface-muted" />
                     </span>
                     {href !== null ? (
-                      <AppLink href={href} className="truncate text-on-surface hover:underline">
+                      <AppLink
+                        href={href}
+                        className="truncate text-on-surface hover:underline"
+                        onPointerEnter={() => prefetchEntry(repo, refName, entry)}
+                        onFocus={() => prefetchEntry(repo, refName, entry)}
+                      >
                         {showBidi(entry.name)}
                       </AppLink>
                     ) : (

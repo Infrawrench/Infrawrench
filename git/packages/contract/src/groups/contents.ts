@@ -37,6 +37,7 @@ import {
   DiffQuery,
   Refs,
   GitTag,
+  LatestCommit,
   TreeListing,
   TreeLastCommits,
 } from "../schemas/git";
@@ -175,9 +176,31 @@ export class ContentsGroup extends HttpApiGroup.make("contents")
         "What `tree` left out when its history walk ran out of budget. Pass the commit id `tree` resolved as `ref`.",
       )
       .annotate(SuccessDescription, "Commits by entry name"),
+    HttpApiEndpoint.get("latestCommit", "/latest-commit", {
+      params: RepoParams,
+      query: { ref: RefQuery, path: PathQuery },
+      success: LatestCommit,
+      error: UnprocessableEntity,
+    })
+      .annotate(RequiredAccess, "read")
+      .annotate(OpenApi.Summary, "The newest commit that changed a path")
+      .annotate(
+        OpenApi.Description,
+        "With the commit count at the root. What a folder's or a file's header shows, asked apart so the listing and the file need no history walk.",
+      )
+      .annotate(SuccessDescription, "The commit, and the count at the root"),
     HttpApiEndpoint.get("blob", "/blob", {
       params: RepoParams,
-      query: { ref: RefQuery, path: Schema.String },
+      query: {
+        ref: RefQuery,
+        path: Schema.String,
+        lastCommit: Schema.optionalKey(
+          QueryFlag.annotate({
+            description:
+              "`false` leaves `lastCommit` null and walks no history; ask `latestCommit` for it. Default `true`.",
+          }),
+        ),
+      },
       success: FileBlob,
       error: UnprocessableEntity,
     })

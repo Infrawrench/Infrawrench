@@ -121,6 +121,7 @@ describe.skipIf(!enabled)("the reader on this repository's history", () => {
     );
     reader = wake();
     await timed("cold: tree app/packages/web/src (first ever)", () =>
+      // ci-reads-ignore: a path inside the test repository, not a file this test reads
       reader.tree({ ref: undefined, path: "app/packages/web/src", lastCommits: true }),
     );
     reader = wake();

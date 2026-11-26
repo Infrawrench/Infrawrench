@@ -137,6 +137,8 @@ export interface Crumb {
   readonly label: string;
   /** Omitted for the current page, the last crumb. */
   readonly href?: string;
+  /** The pointer rests on the link or the keyboard reaches it: a page may start loading it. */
+  readonly onIntent?: () => void;
 }
 
 export function Breadcrumbs({
@@ -160,6 +162,8 @@ export function Breadcrumbs({
               <AppLink
                 href={crumb.href}
                 className="truncate text-on-surface-secondary hover:underline"
+                onPointerEnter={crumb.onIntent}
+                onFocus={crumb.onIntent}
               >
                 {showBidi(crumb.label)}
               </AppLink>

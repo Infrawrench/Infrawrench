@@ -20,6 +20,13 @@
   // and traces.
   "observability": { "enabled": true, "redact_query_string": true },
   "limits": { "cpu_ms": 300000 },
+  // Next to the app's Postgres (Neon, us-east-2), as the app's own Workers
+  // are: a page of the site makes several queries, and from a data centre
+  // across the Atlantic each one was a round trip of its own (650 ms to
+  // 1.5 s for a list of issues from London). The visitor now pays one round
+  // trip a request instead. The built UI's files are not affected: they
+  // never reach the Worker (`assets` below).
+  "placement": { "region": "aws:us-east-2" },
 
   // Bundle-time constants. `__INFRAWRENCH_EDGE_PLUGINS__` says this bundle
   // carries no plugin code: server-core's CI dispatcher, which the queue
@@ -35,15 +42,20 @@
     "globalThis.__INFRAWRENCH_EDGE_PLUGINS__": "true",
   },
 
-  // The built UI. The Worker runs first for every request, so `/api`, the
-  // sign-in routes and the Git paths never fall through to a file, and every
-  // answer gets the security headers (`src/http/router.ts`). A path with no
-  // file is the SPA's: `index.html`.
+  // The built UI. The Worker runs first for every request but the UI's own
+  // files, so `/api`, the sign-in routes and the Git paths never fall
+  // through to a file, and every page gets the security headers
+  // (`src/http/router.ts`). The hashed scripts and styles and the favicons
+  // are served by the asset layer in the visitor's own data centre and never
+  // reach the Worker, which `placement` above puts in us-east-2: through it,
+  // each script went there and back. Their headers come from the `_headers`
+  // file the UI's build copies in (`git/packages/web/public/_headers`). A
+  // path with no file is the SPA's: `index.html`.
   "assets": {
     "directory": "../web/dist",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": true,
+    "run_worker_first": ["/*", "!/assets/*", "!/favicon.svg", "!/favicon.png"],
   },
 
   "vars": {
