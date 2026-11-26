@@ -2,6 +2,9 @@
  * The list both Issues and Pull requests show: a search box whose text is the
  * list's whole state, Open and Closed counts, filter menus that edit the
  * text, and the rows.
+ *
+ * In the sidebar shell the same list is drawn as the lists of work are (one
+ * line a row, `WorkRow`), and a repository's pull requests are its branches.
  */
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -12,7 +15,7 @@ import { AppLink, useGo } from "../../components/AppLink";
 import { Badge, CommitStatusIcon } from "../../components/Badge";
 import { ButtonLink } from "../../components/Button";
 import { SearchInput } from "../../components/forms";
-import { Icon } from "../../components/icons";
+import { Icon, type IconName } from "../../components/icons";
 import { LabelChip, LabelDot } from "../../components/LabelChip";
 import { Page, Panel } from "../../components/Panel";
 import { Avatar, RelativeTime, UserLink } from "../../components/people";
@@ -23,6 +26,8 @@ import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { formatCount } from "../../lib/format";
 import { paths, type RepoRef } from "../../lib/paths";
 import { signInHref, useSession } from "../../lib/session";
+import { useSidebarShell } from "../../lib/shell";
+import { ChangeStateIcon, Chip, WorkRow, personOf, type RowPerson } from "../workspace/rows";
 import {
   DEFAULT_SEARCH_TEXT,
   EMPTY_SEARCH,
@@ -130,7 +135,17 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
           },
         ],
   );
+  const sidebar = useSidebarShell();
+  // In the sidebar shell a pull request is read as its branch.
+  const branches = sidebar && kind === "pulls";
   const noun = kind === "issues" ? "issue" : "pull request";
+  const [thing, things] =
+    kind === "issues"
+      ? ["issue", "issues"]
+      : branches
+        ? ["branch", "branches"]
+        : ["pull request", "pull requests"];
+  const heading = kind === "issues" ? "Issues" : branches ? "Branches" : "Pull requests";
   const canOpen = kind === "issues" || repository.branchCount > 1;
 
   const stateTab = (state: "open" | "closed", count: number | undefined, icon: ReactNode) => (
@@ -151,11 +166,11 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
 
   return (
     <Page>
-      <h1 className="sr-only">{kind === "issues" ? "Issues" : "Pull requests"}</h1>
+      <h1 className="sr-only">{heading}</h1>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <form role="search" onSubmit={submit} className="min-w-56 flex-1">
           <SearchInput
-            label={`Search ${noun}s`}
+            label={`Search ${things}`}
             placeholder="is:open label:bug author:@me"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
@@ -172,7 +187,7 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
           Milestones
         </ButtonLink>
         {kind === "pulls" && signedIn && repository.viewer.canPush && !repository.archived ? (
-          <ButtonLink href={paths.startWork(repo)}>
+          <ButtonLink href={paths.startWork(repo)} variant={branches ? "primary" : "secondary"}>
             <Icon name="bot" size={12} />
             Start work
           </ButtonLink>
@@ -180,7 +195,7 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
         {repository.archived ? null : signedIn ? (
           canOpen ? (
             <ButtonLink
-              variant="primary"
+              variant={branches ? "secondary" : "primary"}
               href={kind === "issues" ? paths.newIssue(repo) : paths.newPull(repo)}
             >
               New {noun}
@@ -193,13 +208,22 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
         )}
       </div>
 
-      <Panel className="overflow-visible">
-        <div className="flex min-h-10 flex-wrap items-center gap-x-1 gap-y-1 rounded-t-md border-b border-border bg-surface-inset px-2 py-1">
+      <Panel className={`overflow-visible ${sidebar ? "!rounded-lg" : ""}`}>
+        <div
+          className={`flex flex-wrap items-center gap-x-1 gap-y-1 border-b border-border ${
+            sidebar
+              ? "min-h-12 rounded-t-lg py-1.5 pr-3 pl-3.5"
+              : "min-h-10 rounded-t-md bg-surface-inset px-2 py-1"
+          }`}
+        >
           <div className="flex flex-1 items-center gap-2">
             {stateTab(
               "open",
               counts?.open,
-              <Icon name={kind === "issues" ? "circleDot" : "gitPullRequest"} size={13} />,
+              <Icon
+                name={kind === "issues" ? "circleDot" : branches ? "gitBranch" : "gitPullRequest"}
+                size={13}
+              />,
             )}
             {stateTab("closed", counts?.closed, <Icon name="check" size={13} />)}
             {isFiltered(search) ? (
@@ -316,7 +340,7 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
                 ) : undefined
               }
             >
-              No {noun}s yet
+              No {things} yet
             </EmptyState>
           ) : (
             <EmptyState
@@ -326,18 +350,26 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
                 ) : undefined
               }
             >
-              No {noun}s match
+              No {things} match
             </EmptyState>
           )
         ) : (
-          <ul aria-label={kind === "issues" ? "Issues" : "Pull requests"}>
-            {list.items.map((row) => (
-              <ThreadRow
-                key={row.id}
-                row={row}
-                labelHref={(name) => href(editSearch(text, { labels: [name] }))}
-              />
-            ))}
+          <ul aria-label={heading} className={sidebar ? "divide-y divide-border" : ""}>
+            {list.items.map((row) =>
+              sidebar ? (
+                <ThreadWorkRow
+                  key={row.id}
+                  row={row}
+                  labelHref={(name) => href(editSearch(text, { labels: [name] }))}
+                />
+              ) : (
+                <ThreadRow
+                  key={row.id}
+                  row={row}
+                  labelHref={(name) => href(editSearch(text, { labels: [name] }))}
+                />
+              ),
+            )}
           </ul>
         )}
       </Panel>
@@ -449,6 +481,104 @@ function ThreadRow({ row, labelHref }: { row: Row; labelHref: (name: string) => 
         ) : null}
       </div>
     </li>
+  );
+}
+
+const ISSUE_GLYPH: Record<string, { icon: IconName; tone: string; label: string }> = {
+  "issue-open": { icon: "circleDot", tone: "text-on-surface-secondary", label: "Open issue" },
+  "issue-closed": { icon: "checkCircle", tone: "text-notice", label: "Closed issue" },
+  "issue-not-planned": {
+    icon: "circleSlash",
+    tone: "text-on-surface-muted",
+    label: "Closed as not planned",
+  },
+};
+
+/** A thread's state as the lists of work draw one: a branch's by where its review stands. */
+function WorkStateIcon({ row }: { row: Row }) {
+  if (isPull(row)) {
+    return (
+      <ChangeStateIcon
+        draft={row.draft}
+        state={
+          row.state === "merged"
+            ? "merged"
+            : row.state === "closed"
+              ? "closed"
+              : row.reviewDecision === "approved"
+                ? "approved"
+                : row.reviewDecision === "changes_requested"
+                  ? "changes_requested"
+                  : "needs_review"
+        }
+      />
+    );
+  }
+  const { icon, tone, label } = ISSUE_GLYPH[issueKind(row.state, row.stateReason)]!;
+  return (
+    <span role="img" aria-label={label} title={label} className={`inline-flex shrink-0 ${tone}`}>
+      <Icon name={icon} size={16} />
+    </span>
+  );
+}
+
+/** The same thread as `ThreadRow` shows, on one line: the row of the sidebar shell's lists. */
+function ThreadWorkRow({ row, labelHref }: { row: Row; labelHref: (name: string) => string }) {
+  const repo = useRepoRef();
+  const pull = isPull(row);
+  // The author first, then whoever it is assigned to, each once.
+  const people: RowPerson[] = [];
+  for (const user of [row.author, ...row.assignees]) {
+    const person = personOf(user);
+    if (person !== null && !people.some((known) => known.name === person.name)) people.push(person);
+  }
+  return (
+    <WorkRow
+      href={pull ? paths.pull(repo, row.number) : paths.issue(repo, row.number)}
+      icon={<WorkStateIcon row={row} />}
+      title={row.title}
+      summary={
+        <span className="inline-flex items-center gap-2.5">
+          <span className="tabular-nums">#{row.number}</span>
+          {pull ? <span className="truncate font-mono text-xs">{row.headRef}</span> : null}
+        </span>
+      }
+      chips={
+        // Above the row's own link, so a label and a milestone can be followed.
+        <span className="relative z-10 flex items-center gap-2 text-xs text-on-surface-muted">
+          {pull ? <CommitStatusIcon state={row.status} /> : null}
+          {pull && row.reviewDecision === "review_required" && row.state === "open" ? (
+            <Chip icon="eye">{REVIEW_LABEL.review_required}</Chip>
+          ) : null}
+          {row.labels.map((label) => (
+            <LabelChip key={label.id} label={label} href={labelHref(label.name)} />
+          ))}
+          {row.milestone !== null ? (
+            <AppLink
+              href={paths.milestone(repo, row.milestone.number)}
+              className="inline-flex items-center gap-1 hover:text-on-surface"
+            >
+              <Icon name="milestone" size={12} />
+              {row.milestone.title}
+            </AppLink>
+          ) : null}
+          {row.locked ? (
+            <span role="img" aria-label="Locked" title="Locked" className="inline-flex">
+              <Icon name="lock" size={12} />
+            </span>
+          ) : null}
+          {row.commentCount > 0 ? (
+            <span className="inline-flex items-center gap-1 tabular-nums">
+              <Icon name="messageCircle" size={12} />
+              <span className="sr-only">Comments:</span>
+              {row.commentCount}
+            </span>
+          ) : null}
+        </span>
+      }
+      people={people}
+      at={row.updatedAt}
+    />
   );
 }
 

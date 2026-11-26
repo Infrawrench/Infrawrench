@@ -175,13 +175,55 @@ describe("the sidebar", () => {
 
   it("frames a repository's pages, with the repository marked and named in the bar", async () => {
     open("/acme/infra");
-    expect(await screen.findByRole("link", { name: /Pull requests/ }, wait)).toBeTruthy();
+    // The repository's sections are in the bar, its pull requests as its branches.
+    const sections = within(await screen.findByRole("navigation", { name: "Repository" }, wait));
+    expect(sections.getByRole("link", { name: /Branches/ }).getAttribute("href")).toBe(
+      "/acme/infra/pulls",
+    );
+    expect(sections.getByRole("link", { name: "Code" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("link", { name: /Pull requests/ })).toBeNull();
     expect(sidebar().getByRole("link", { name: "infra" }).getAttribute("aria-current")).toBe(
       "page",
     );
+    // Named once, in the bar, with its lock: the page has no header of its own.
     const bar = within(screen.getByRole("navigation", { name: "Breadcrumb" }));
     expect(bar.getByRole("link", { name: "infra" }).getAttribute("href")).toBe("/acme/infra");
+    expect(bar.getByRole("img", { name: "Private" })).toBeTruthy();
+    expect(screen.getAllByRole("link", { name: "infra" })).toHaveLength(2);
+    const header = within(screen.getByRole("banner"));
+    expect(header.getByRole("button", { name: /Star/ })).toBeTruthy();
+    expect(header.getByRole("button", { name: /Fork/ })).toBeTruthy();
     expect(screen.queryByRole("navigation", { name: "Site" })).toBeNull();
+  });
+
+  it("lists a repository's pull requests as its branches, one line each", async () => {
+    open("/acme/infra/pulls");
+    const list = within(await screen.findByRole("list", { name: "Branches" }, wait));
+    const row = list.getByRole("link", { name: "Peer with the shared services VPC" });
+    expect(row.getAttribute("href")).toBe("/acme/infra/pulls/12");
+    expect(row.closest("li")!.textContent).toContain("feature/vpc-peering");
+    expect(list.getByRole("img", { name: "Approved" })).toBeTruthy();
+    expect(screen.getByRole("searchbox", { name: "Search branches" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "New pull request" })).toBeTruthy();
+  });
+
+  it("names a branch page in the bar, with the mode switch beside the sections", async () => {
+    open("/acme/infra/pulls/12");
+    const title = await screen.findByRole(
+      "heading",
+      { name: "Peer with the shared services VPC" },
+      wait,
+    );
+    // The number is a quiet part of the line above the title, not of the title.
+    expect(title.textContent).not.toContain("#12");
+    const bar = within(screen.getByRole("navigation", { name: "Breadcrumb" }));
+    expect(bar.getByText("Peer with the shared services VPC")).toBeTruthy();
+    const header = within(screen.getByRole("banner"));
+    expect(header.getByRole("group", { name: "Open pull requests as" })).toBeTruthy();
+    expect(
+      within(screen.getByRole("main")).queryByRole("group", { name: "Open pull requests as" }),
+    ).toBeNull();
+    expect(screen.queryByText(/wants to merge/)).toBeNull();
   });
 
   it("switches to classic from the account menu, and back from the top bar's", async () => {
