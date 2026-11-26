@@ -5,6 +5,7 @@
  */
 import type { CiRunStatus, StatusState } from "@infrawrench/git-contract";
 import { Icon, type IconName } from "./icons";
+import { useSidebarShell } from "../lib/shell";
 
 export type CiGlyphStatus =
   CiRunStatus | "passed" | "failed" | "skipped" | "error" | "cancelled" | "running" | "waiting";
@@ -189,8 +190,28 @@ const BADGE_TEXT: Record<ThreadKind, string> = {
   "pull-closed": "Closed",
 };
 
+/** In the sidebar shell the pill is quiet: the state's colour is on its glyph alone. */
+const QUIET_TONE: Record<ThreadKind, string> = {
+  "issue-open": "text-on-surface-secondary",
+  "issue-closed": "text-notice",
+  "issue-not-planned": "text-on-surface-muted",
+  "pull-open": "text-on-surface-secondary",
+  "pull-draft": "text-on-surface-muted",
+  "pull-merged": "text-notice",
+  "pull-closed": "text-on-surface-muted",
+};
+
 /** The state pill beside a thread's title. */
 export function ThreadStateBadge({ kind }: { kind: ThreadKind }) {
+  const sidebar = useSidebarShell();
+  if (sidebar) {
+    return (
+      <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-border px-2 text-xs font-medium whitespace-nowrap text-on-surface">
+        <Icon name={THREAD[kind].icon} size={13} className={QUIET_TONE[kind]} />
+        {BADGE_TEXT[kind]}
+      </span>
+    );
+  }
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${BADGE_TONE[kind]}`}

@@ -23,7 +23,10 @@ export function ThreadHeader({
   /** The line beside the state badge: who opened it, the branches. */
   children: ReactNode;
   actions?: ReactNode;
-  /** The title as a page's headline, with the state line above it: the branch page. */
+  /**
+   * The title as a page's headline, with the line above it: the branch page.
+   * The line is then the caller's whole, state and number included.
+   */
   large?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
@@ -54,7 +57,7 @@ export function ThreadHeader({
   );
   return (
     <div className={large ? "space-y-3" : "mb-4 space-y-2 border-b border-border pb-3"}>
-      {large ? stateLine : null}
+      {large ? children : null}
       {editing ? (
         <form onSubmit={save} className="flex flex-wrap items-center gap-2">
           <Input
@@ -78,7 +81,13 @@ export function ThreadHeader({
               large ? "text-3xl leading-tight tracking-tight" : "text-xl leading-7"
             }`}
           >
-            {title} <span className="font-normal text-on-surface-muted">#{number}</span>
+            {title}
+            {large ? null : (
+              <>
+                {" "}
+                <span className="font-normal text-on-surface-muted">#{number}</span>
+              </>
+            )}
           </h1>
           <div className="flex items-center gap-2">
             {canEdit ? (

@@ -13,6 +13,12 @@ const glyphs = {
       <path d="M12 16h.01" />
     </>
   ),
+  arrowRight: (
+    <>
+      <path d="M5 12h14" />
+      <path d="m12 5 7 7-7 7" />
+    </>
+  ),
   archive: (
     <>
       <rect width="20" height="5" x="2" y="3" rx="1" />
