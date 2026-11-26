@@ -287,7 +287,8 @@ describe("the branch page", () => {
   it("has its commits and checks as tabs in the query", async () => {
     serve();
     open(`${PEERING}?tab=commits`);
-    expect(await screen.findByText(/^Commits on /, {}, wait)).toBeTruthy();
+    // Commits group by day, and the mock's dates are relative to now: late in the day there are two.
+    expect((await screen.findAllByText(/^Commits on /, {}, wait)).length).toBeGreaterThan(0);
     expect(
       within(screen.getByRole("navigation", { name: "Branch" }))
         .getByRole("link", { name: /^Commits/ })
@@ -621,12 +622,12 @@ describe("a version's notes and its files", () => {
     const notes = await screen.findByRole("region", { name: "Review notes" }, wait);
     // A card's lines open its file there.
     fireEvent.click(within(notes).getByRole("link", { name: `${MAIN}:181` }));
-    const file = within(screen.getByRole("region", { name: MAIN }));
+    const file = within(await screen.findByRole("region", { name: MAIN }, wait));
     expect(file.getByRole("button", { name: `Hide ${MAIN}` })).toBeTruthy();
     expect(await file.findByText("Showing 37 of 77 changed lines", {}, wait)).toBeTruthy();
-    // What hangs on its lines is there, and the doubt that does not need the code is not.
+    // Every note hangs on its lines, the doubt that does not need the code on its card included.
     expect(await file.findByText("A security group per peer", { exact: false }, wait)).toBeTruthy();
-    expect(file.queryByText("Nothing here accepts the connection", { exact: false })).toBeNull();
+    expect(file.getByText("Nothing here accepts the connection", { exact: false })).toBeTruthy();
     const gap = file.getByRole("button", { name: "Show 40 more changed lines" });
 
     // The whole diff, and back to the lines in focus.

@@ -406,7 +406,7 @@ const TRACE_ENTRY = object(
     needs_code: {
       type: "boolean",
       description:
-        "Set true only when a reader has to see the code at the anchor to understand this entry (it then shows those lines beside the text). Leave false for reasoning that stands on its own: most decisions and doubts. Defaults to true when a line is given, false otherwise.",
+        "Set true only when a reader has to see the code at the anchor to understand this entry (its summary card then shows those lines beside the text; it hangs in the file's diff either way). Leave false for reasoning that stands on its own: most decisions and doubts. Defaults to true when a line is given, false otherwise.",
     },
     evidence: object({
       command: { type: "string", maxLength: 8192, description: "What you ran, as you ran it." },
@@ -757,7 +757,7 @@ const reportFinding: ToolDefinition = {
             needs_code: {
               type: "boolean",
               description:
-                "Set true only when a reader has to see the code at `path` and its lines to understand this finding (it then shows those lines beside the text). Leave false for a finding that stands on its own. Defaults to true when a line is given, false otherwise.",
+                "Set true only when a reader has to see the code at `path` and its lines to understand this finding (its summary card then shows those lines beside the text; it hangs in the file's diff either way). Leave false for a finding that stands on its own. Defaults to true when a line is given, false otherwise.",
             },
             evidence: {
               type: "array",

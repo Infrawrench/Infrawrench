@@ -73,7 +73,7 @@ A file with notes opens on the lines they are about, with three lines around eac
 
 - The bar under the file's name says how much you are looking at, such as **Showing 37 of 77 changed lines**, and **Show full diff** shows all of it. **Show less** goes back.
 - Between two parts, a row such as **40 more changed lines** stands for the changed lines left out there. Click it to show them.
-- A note that needs its code hangs on its lines here too: an agent's entry above the lines it explains, a finding or a comment under its line.
+- Every note about a file hangs in it too, whether or not its card shows code: an agent's entry above the lines it explains, a finding or a comment under its line, and a note on the whole file at the file's top.
 
 A file with no notes opens whole. Commenting on a line never closes what you had open around it.
 

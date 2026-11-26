@@ -280,12 +280,9 @@ export function VersionDiff({
         side: file.status === "deleted" ? "deletions" : "additions",
         lineNumber: 0,
       };
-      const fileTraces = (placed.traceOfFile.get(file.path) ?? []).filter(
-        (entry) => entry.needsCode,
-      );
-      const fileFindings = (placed.findingOfFile.get(file.path) ?? []).filter(
-        (finding) => finding.needsCode,
-      );
+      // Every note hangs in its file; `needsCode` only decides whether its card above shows code.
+      const fileTraces = placed.traceOfFile.get(file.path) ?? [];
+      const fileFindings = placed.findingOfFile.get(file.path) ?? [];
       if (fileTraces.length > 0) at(top).fileTraces.push(...fileTraces);
       if (fileFindings.length > 0) at(top).fileFindings.push(...fileFindings);
       for (const hunk of file.hunks) {
@@ -302,7 +299,6 @@ export function VersionDiff({
               end: anchor.line,
             };
             placedAt.set(finding.id, { path: file.path, range });
-            if (!finding.needsCode) continue;
             at(mark).findings.push(finding);
             inFocus(file.path, range);
           }
@@ -330,7 +326,7 @@ export function VersionDiff({
                 end: Math.max(anchored?.endLine ?? from, from),
               };
               placedAt.set(entry.id, { path: file.path, range });
-              if (!entry.needsCode || above === null) continue;
+              if (above === null) continue;
               at(above).traces.push(entry);
               inFocus(file.path, range);
             }

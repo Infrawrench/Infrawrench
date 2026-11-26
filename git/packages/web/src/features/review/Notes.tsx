@@ -173,7 +173,7 @@ export function ReviewNotes({
               path={anchor.path}
               start={anchor.startLine}
               end={anchor.endLine}
-              noteId={entry.needsCode && place?.path === anchor.path ? entry.id : null}
+              noteId={place?.path === anchor.path ? entry.id : null}
               inDiff={files.has(anchor.path)}
               headOid={headOid}
               onJump={onJump}
@@ -209,7 +209,7 @@ export function ReviewNotes({
                         start={finding.startLine}
                         end={finding.endLine}
                         side={finding.side === "LEFT" ? "deletions" : "additions"}
-                        noteId={finding.needsCode && place !== undefined ? finding.id : null}
+                        noteId={place !== undefined ? finding.id : null}
                         inDiff={files.has(finding.path)}
                         headOid={headOid}
                         onJump={onJump}
