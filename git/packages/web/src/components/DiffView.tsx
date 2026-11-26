@@ -10,6 +10,7 @@ import type { DiffFile, DiffHunk, DiffLine } from "@infrawrench/git-contract";
 import { api } from "../api/client";
 import { queryClient } from "../api/queries";
 import { expandGap, gapAt, hunkHeader, sideText, splitRows } from "../lib/diff-rows";
+import { plural } from "../lib/format";
 import { languageOfPath, useHighlight, type Token } from "../lib/highlight";
 import { paths, type RepoRef } from "../lib/paths";
 import { AppLink } from "./AppLink";
@@ -27,11 +28,11 @@ export function DiffStat({ additions, deletions }: { additions: number; deletion
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-[11px]">
       <span className="text-success">
-        <span className="sr-only">{additions} additions</span>
+        <span className="sr-only">{plural(additions, "addition")}</span>
         <span aria-hidden="true">+{additions}</span>
       </span>
       <span className="text-danger">
-        <span className="sr-only">{deletions} deletions</span>
+        <span className="sr-only">{plural(deletions, "deletion")}</span>
         <span aria-hidden="true">-{deletions}</span>
       </span>
     </span>

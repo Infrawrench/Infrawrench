@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { TerraformAccount } from "@infrawrench/git-contract";
 import { offeredAccounts } from "../AccountsPicker";
 import { terraformEventSentence } from "../PlanSummary";
+import { emptyResourcesLine } from "../ResourcesTab";
 import { stateFilename } from "../state-actions";
 import { canRunPlan } from "../WorkspaceLayout";
 
@@ -11,6 +12,16 @@ const account = (accountId: string, name: string): TerraformAccount => ({
   name,
   pluginId: "aws",
   pluginName: "AWS",
+});
+
+describe("emptyResourcesLine", () => {
+  it("does not say a state with resources has none while they are still to be listed", () => {
+    expect(emptyResourcesLine(false, 0)).toBe("The state has no resources");
+    expect(emptyResourcesLine(false, 3)).toBe(
+      "The resources of the current state are not listed yet",
+    );
+    expect(emptyResourcesLine(true, 3)).toBe("No resources match");
+  });
 });
 
 describe("offeredAccounts", () => {

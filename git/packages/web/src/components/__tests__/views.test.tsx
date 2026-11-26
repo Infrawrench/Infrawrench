@@ -87,7 +87,7 @@ describe("DiffView", () => {
       ["", "4", "Added line+d"],
     ]);
     expect(screen.getByText("2 additions")).toBeTruthy();
-    expect(screen.getByText("1 deletions")).toBeTruthy();
+    expect(screen.getByText("1 deletion")).toBeTruthy();
   });
 
   test("split: a changed line sits beside what replaced it", () => {

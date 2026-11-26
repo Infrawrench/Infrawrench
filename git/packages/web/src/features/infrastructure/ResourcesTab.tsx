@@ -21,6 +21,18 @@ const DRIFT = {
   missing: { tone: "danger", label: "Missing" },
 } as const;
 
+/**
+ * The line an empty list shows. The list is written after a state is saved
+ * (the app matches its resources to the organisation's), so for a while a
+ * state that has resources lists none, and saying it has none would be wrong.
+ */
+export function emptyResourcesLine(filtered: boolean, resourceCount: number): string {
+  if (filtered) return "No resources match";
+  return resourceCount > 0
+    ? "The resources of the current state are not listed yet"
+    : "The state has no resources";
+}
+
 export function ResourcesTab() {
   const repo = useRepoRef();
   const workspace = useWorkspace();
@@ -66,9 +78,7 @@ export function ResourcesTab() {
           <Loading />
         ) : resources.items.length === 0 ? (
           <EmptyState>
-            {words.trim() !== "" || matched !== "all"
-              ? "No resources match"
-              : "The state has no resources"}
+            {emptyResourcesLine(words.trim() !== "" || matched !== "all", workspace.resourceCount)}
           </EmptyState>
         ) : (
           <div className="overflow-x-auto">
