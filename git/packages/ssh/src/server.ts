@@ -33,7 +33,11 @@ export interface SshServerLimits {
   readonly authTimeoutMs?: number;
   /** With no packet in either direction for this long, the connection is closed. Default 5 min. */
   readonly idleTimeoutMs?: number;
-  /** Failed authentication requests before the connection is closed. Default 10. */
+  /**
+   * Failed authentication requests before the connection is closed. Default
+   * 6, OpenSSH's `MaxAuthTries`: a client offers every key it has, so a
+   * higher figure only buys more guesses per connection.
+   */
   readonly maxAuthAttempts?: number;
   /** Session channels open at once on one connection. Default 8. */
   readonly maxChannels?: number;
@@ -143,7 +147,7 @@ function resolveLimits(limits: SshServerLimits = {}): Required<SshServerLimits> 
   return {
     authTimeoutMs: clamp(limits.authTimeoutMs, 30_000, 1, 10 * 60_000),
     idleTimeoutMs: clamp(limits.idleTimeoutMs, 5 * 60_000, 1, 24 * 60 * 60_000),
-    maxAuthAttempts: clamp(limits.maxAuthAttempts, 10, 1, 100),
+    maxAuthAttempts: clamp(limits.maxAuthAttempts, 6, 1, 100),
     maxChannels: clamp(limits.maxChannels, 8, 1, 64),
     channelWindow: clamp(limits.channelWindow, 2 * MIB, 64 * KIB, 16 * MIB),
     // The upper bound keeps AES-GCM and ChaCha20-Poly1305 far inside their limits for one key.

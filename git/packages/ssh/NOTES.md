@@ -54,7 +54,7 @@ ML-KEM-768 encapsulation comes from WebCrypto's Modern Algorithms API, which Nod
 - **Strict key exchange** (Terrapin, CVE-2023-48795) whenever the client offers it: sequence numbers reset at every NEWKEYS, the client's KEXINIT must be the very first packet, and any packet that is not part of the first exchange ends the connection. A client that does not offer it is still served. Refusing would lock out older OpenSSH and several libraries, and what the attack buys against this server is small: there is no CBC or EtM, so only ChaCha20-Poly1305 is affected, and the one thing a truncation can remove is `EXT_INFO`, which cannot downgrade anything because SHA-1 signatures are refused outright. `summary.strictKex` says which it was.
 - **A key is looked up for real only after its signature verifies.** `authenticate(user, key, "query")` runs when a client asks whether a key would be accepted (it has proved nothing, and the answer only decides whether the server says "go on"). `authenticate(user, key, "verified")` runs after the signature over the session id has been checked, and only that principal is used. Side effects (last-used time, audit) belong in `"verified"`. A lookup that throws refuses the key and goes to `onError`.
 - **`ssh-rsa` with SHA-1 is refused before the key is decoded**, and the algorithm named inside a signature must be the one the request named, so a client cannot ask for `rsa-sha2-512` and sign with something else.
-- **Attempts are capped** (`maxAuthAttempts`, default 10 failures), and so are requests of any kind (four times that), since a "yes" to a query is not a failure and would otherwise be free for ever.
+- **Attempts are capped** (`maxAuthAttempts`, default 6 failures), and so are requests of any kind (four times that), since a "yes" to a query is not a failure and would otherwise be free for ever.
 - **Constant-time comparison** for the Poly1305 tag, which is checked before a byte is decrypted. AES-GCM tags are checked inside WebCrypto. The ChaCha20 and Poly1305 code has no secret-dependent branches or table lookups; a JIT gives no stronger guarantee than that.
 - **A low-order X25519 point is refused** (all-zero shared secret), for both key exchange methods.
 - **Messages sent to a client only describe what the client did.** An internal failure is "internal error"; the detail goes to `onError`.
@@ -73,7 +73,7 @@ ML-KEM-768 encapsulation comes from WebCrypto's Modern Algorithms API, which Nod
 | Time to authenticate           | 30 s from the first byte            | `limits.authTimeoutMs`   |
 | A later key exchange           | the same 30 s                       | `limits.authTimeoutMs`   |
 | Idle (no packet either way)    | 5 min                               | `limits.idleTimeoutMs`   |
-| Failed auth attempts           | 10                                  | `limits.maxAuthAttempts` |
+| Failed auth attempts           | 6                                   | `limits.maxAuthAttempts` |
 | Sessions open at once          | 8 per connection                    | `limits.maxChannels`     |
 | Channel window (ours)          | 2 MiB, clamped to 64 KiB..16 MiB    | `limits.channelWindow`   |
 | Channel data per message       | 32 KiB each way                     |                          |
@@ -155,3 +155,7 @@ Tests that need `ssh`, `ssh-keygen` or `git` are skipped with a warning where on
 - FIDO keys (`sk-ssh-ed25519@openssh.com`, `sk-ecdsa-sha2-nistp256@openssh.com`) and certificates. `parseAuthorizedKey` refuses them, so the UI can say so when a user pastes one. The `sk-` types would be a small addition (the signature covers a different structure) and are the likeliest next request.
 - `sntrup761x25519-sha512`: not in WebCrypto. `mlkem768x25519-sha256` covers the same clients.
 - `ping@openssh.com`, host key rotation (`hostkeys-00@openssh.com`), compression, a pre-auth banner.
+
+## After the security review
+
+`maxAuthAttempts` defaults to 6 (OpenSSH's `MaxAuthTries`; it was 10), and requests of any kind in the authentication phase stay capped at four times that. Nothing else in the package changed: `git/SECURITY-REVIEW.md` lists what was checked (packet bounds before authentication, the login grace time, strict key exchange, signature and AEAD handling).

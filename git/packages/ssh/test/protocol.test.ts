@@ -428,6 +428,19 @@ describe.skipIf(MISSING_TOOLS.length > 0)("protocol", () => {
       });
     });
 
+    it("allows six failed attempts by default, as OpenSSH does", async () => {
+      const client = await dial();
+      await client.requestService();
+      for (let i = 0; i < 5; i++) {
+        expect(await client.publicKeyAuth(stranger, { query: i % 2 === 0 })).toBe(
+          Msg.USERAUTH_FAILURE,
+        );
+      }
+      await expect(client.publicKeyAuth(stranger)).rejects.toMatchObject({
+        message: "Too many authentication failures",
+      });
+    });
+
     it("disconnects a client that only ever asks", async () => {
       const strict = await start({ maxAuthAttempts: 2 });
       const client = await dial(undefined, strict);
