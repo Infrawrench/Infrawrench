@@ -46,7 +46,7 @@ It imports nothing: no `node:*`, no `cloudflare:*`, no Effect, not even `git-cor
 | Plans and applies                         | Infrawrench CI, `platform: linux` jobs.                                                                                                         |
 | Dispatch, approval, run status            | server-core `ci/` (it owns runs, lending and billing).                                                                                          |
 | Linking and pricing                       | server-core on the gateway: the `git-terraform` poller pass (`git-terraform/pass.ts`). It needs plugin code.                                    |
-| Workspaces, runs, version metadata, links | Postgres (`server-core/src/db/terraform-schema.ts`, migrations `0196` and `0200_git_terraform_runtime`).                                        |
+| Workspaces, runs, version metadata, links | Postgres (`server-core/src/db/terraform-schema.ts`, migrations `0197_git_terraform` and `0201_git_terraform_runtime`).                          |
 
 ## The HTTP backend, as Terraform speaks it
 
