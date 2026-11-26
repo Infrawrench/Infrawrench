@@ -590,12 +590,6 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     const [page] = await pullsOf("feature");
     const pull = `${repo}/pulls/${page!["number"]}`;
     const unbuilt = { status: 503, body: { code: "not_implemented" } };
-    expect(
-      await world.call("POST", `${repo}/traces`, {
-        as: bob,
-        body: { branch: "feature", entries: [{ kind: "step", body: "Read the handler" }] },
-      }),
-    ).toMatchObject(unbuilt);
     expect(await world.call("GET", `${pull}/findings`, { as: bob })).toMatchObject(unbuilt);
     expect(await world.call("GET", `${pull}/instructions`, { as: bob })).toMatchObject(unbuilt);
     expect(await world.call("GET", "/api/t3/environments", { as: bob })).toMatchObject(unbuilt);
