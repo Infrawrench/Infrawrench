@@ -36,6 +36,14 @@ function tree(files: Record<string, string>): TreeReader & { reads: string[] } {
   };
 }
 
+/**
+ * A module source as a configuration writes it, relative to the calling
+ * directory. Fixture text: it is resolved inside the in-memory tree a test
+ * builds and never read from this checkout.
+ */
+// ci-reads-ignore: a Terraform module source in a fixture, not a path this test reads
+const NETWORK_MODULE = "../../modules/network";
+
 describe("hclItems", () => {
   it("reads blocks, labels and attributes", () => {
     const items = hclItems(`
@@ -114,8 +122,10 @@ describe("hclItems", () => {
 
 describe("resolveLocalSource", () => {
   it("resolves against the calling directory and stays inside the repository", () => {
+    // ci-reads-ignore: a module source resolved inside a repository's tree, never a path here
     expect(resolveLocalSource("envs/prod", "../../modules/vpc")).toBe("modules/vpc");
     expect(resolveLocalSource("", "./modules/vpc/")).toBe("modules/vpc");
+    // ci-reads-ignore: the same, a source that climbs out of the repository it is in
     expect(resolveLocalSource("envs", "../..")).toBeNull();
     expect(resolveLocalSource("envs", "hashicorp/consul/aws")).toBeNull();
     expect(resolveLocalSource("envs", "git::https://example.com/vpc.git")).toBeNull();
@@ -143,7 +153,7 @@ describe("discovering roots", () => {
         region = var.region
       }
       module "network" {
-        source = "../../modules/network"
+        source = "${NETWORK_MODULE}"
         cidr   = "10.0.0.0/16"
       }
       module "registry" {
@@ -163,7 +173,7 @@ describe("discovering roots", () => {
     `,
     "envs/staging/main.tf": `
       provider "aws" {}
-      module "network" { source = "../../modules/network" }
+      module "network" { source = "${NETWORK_MODULE}" }
       resource "aws_s3_bucket" "assets" {}
       data "aws_caller_identity" "me" {}
     `,
@@ -227,7 +237,7 @@ describe("discovering roots", () => {
       calledBy: [],
     });
     expect(prod.moduleCalls).toEqual([
-      { name: "network", source: "../../modules/network", localPath: "modules/network" },
+      { name: "network", source: NETWORK_MODULE, localPath: "modules/network" },
       { name: "registry", source: "terraform-aws-modules/ecr/aws", localPath: null },
     ]);
     expect(prod.variables).toEqual([

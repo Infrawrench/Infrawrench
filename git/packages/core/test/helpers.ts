@@ -98,6 +98,9 @@ export function gitStream(
     stdio: ["pipe", "pipe", "inherit"],
     ...(options.cwd !== undefined ? { cwd: options.cwd } : {}),
   });
+  // A git that exits before reading its input closes the pipe under the
+  // write (EPIPE on Linux); what it printed is still the answer.
+  child.stdin.on("error", () => {});
   child.stdin.end(options.input ?? "");
   return child.stdout;
 }

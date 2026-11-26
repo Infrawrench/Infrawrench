@@ -104,6 +104,10 @@ export function git(args: readonly string[], options: GitOptions = {}): Promise<
         resolve(result);
       }
     });
+    // A git that refuses and exits before it has read its input closes the
+    // pipe under the write: EPIPE on Linux. The exit status is the answer,
+    // and `close` reports it; without a listener the error is uncaught.
+    child.stdin.on("error", () => {});
     child.stdin.end(options.input ?? "");
   });
 }
