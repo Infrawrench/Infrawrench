@@ -184,6 +184,10 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
     expect((await world.call("GET", `/api/repos/${alice.username}/pub`)).body.forkCount).toBe(1);
 
     // A private repository's fork stays private, inside the same owner's reach.
+    await world.call("PUT", `/api/repos/${acme.slug}/secret/collaborators/${carol.username}`, {
+      as: erin,
+      body: { role: "read" },
+    });
     const away = await world.call("POST", `/api/repos/${acme.slug}/secret/forks`, {
       as: dave,
       body: { owner: dave.username },
@@ -194,6 +198,19 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
       body: { owner: acme.slug, name: "secret-fork" },
     });
     expect(within.body).toMatchObject({ visibility: "private", isFork: true });
+    // It starts with its parent's collaborators, as a fork within one GitHub organisation does,
+    // and from then on each list is its own.
+    const forkPath = `/api/repos/${acme.slug}/secret-fork`;
+    expect((await world.call("GET", forkPath, { as: carol })).body.viewer).toMatchObject({
+      access: "read",
+    });
+    await world.call("DELETE", `/api/repos/${acme.slug}/secret/collaborators/${carol.username}`, {
+      as: erin,
+    });
+    expect((await world.call("GET", forkPath, { as: carol })).status).toBe(200);
+    expect((await world.call("GET", `/api/repos/${acme.slug}/secret`, { as: carol })).status).toBe(
+      404,
+    );
     const published = await world.call("PUT", `/api/repos/${acme.slug}/secret-fork/visibility`, {
       as: erin,
       body: { visibility: "public" },

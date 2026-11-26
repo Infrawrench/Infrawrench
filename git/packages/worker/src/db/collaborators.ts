@@ -46,6 +46,34 @@ export const setCollaborator = async (
   return row!;
 };
 
+/**
+ * Give a new fork its parent's collaborators, with their roles, as GitHub
+ * does for a fork within the same organisation. A copy at the moment of
+ * forking: later changes to either repository's list stay with it.
+ */
+export const copyCollaborators = async (
+  fromRepositoryId: string,
+  toRepositoryId: string,
+  addedByUserId: string | null,
+): Promise<number> => {
+  const rows = await listCollaborators(fromRepositoryId);
+  if (rows.length === 0) return 0;
+  const inserted = await db
+    .insert(gitCollaborators)
+    .values(
+      rows.map((row) => ({
+        id: newId(),
+        repositoryId: toRepositoryId,
+        userId: row.userId,
+        role: row.role,
+        addedByUserId,
+      })),
+    )
+    .onConflictDoNothing()
+    .returning({ id: gitCollaborators.id });
+  return inserted.length;
+};
+
 export const removeCollaborator = async (
   repositoryId: string,
   userId: string,

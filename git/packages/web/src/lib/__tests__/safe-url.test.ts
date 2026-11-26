@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { safeImageUrl, safeLinkUrl, sitePath, webUrl } from "../safe-url";
+import { imageSrc, safeImageUrl, safeLinkUrl, sitePath, webUrl } from "../safe-url";
 
 /** Values from data that must never become a link or an image source. */
 const REFUSED = [
@@ -50,17 +50,33 @@ describe("safeLinkUrl", () => {
 });
 
 describe("safeImageUrl", () => {
-  test.each([...REFUSED, "http://example.com/a.png", "mailto:a@example.com"])(
-    "refuses %j",
-    (value) => {
-      expect(safeImageUrl(value)).toBeNull();
-    },
-  );
+  test.each([...REFUSED, "mailto:a@example.com"])("refuses %j", (value) => {
+    expect(safeImageUrl(value)).toBeNull();
+  });
 
-  test("keeps https and this site", () => {
+  test("keeps web addresses and this site", () => {
     expect(safeImageUrl("https://example.com/a.png")).toBe("https://example.com/a.png");
+    expect(safeImageUrl("http://example.com/a.png")).toBe("http://example.com/a.png");
     expect(safeImageUrl("/acme/infra/raw/main/a.png")).toBe("/acme/infra/raw/main/a.png");
     expect(safeImageUrl("images/a.png")).toBe("images/a.png");
+  });
+});
+
+describe("imageSrc", () => {
+  test("sends another site's image through the proxy", () => {
+    expect(imageSrc("https://example.com/a.png?x=1&y=2")).toBe(
+      "/-/image?url=https%3A%2F%2Fexample.com%2Fa.png%3Fx%3D1%26y%3D2",
+    );
+    expect(imageSrc("http://example.com/a.png")).toBe(
+      "/-/image?url=http%3A%2F%2Fexample.com%2Fa.png",
+    );
+  });
+
+  test("leaves this site's images alone and refuses the rest", () => {
+    expect(imageSrc("/acme/infra/raw/main/a.png")).toBe("/acme/infra/raw/main/a.png");
+    expect(imageSrc("javascript:alert(1)")).toBeNull();
+    expect(imageSrc("data:image/svg+xml,<svg/>")).toBeNull();
+    expect(imageSrc(null)).toBeNull();
   });
 });
 

@@ -7,7 +7,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { languageOfFence, useHighlight } from "../lib/highlight";
 import { limitTables } from "../lib/markdown-limits";
-import { safeImageUrl, safeLinkUrl } from "../lib/safe-url";
+import { imageSrc, safeImageUrl, safeLinkUrl } from "../lib/safe-url";
 import { AppLink } from "./AppLink";
 import { CodeLine, linesOf } from "./CodeView";
 
@@ -28,8 +28,8 @@ const isRelative = (url: string): boolean =>
 
 /**
  * Every URL in the source, before anything renders it: a link may go to this
- * site, a web address or `mailto:`, an image may load from this site or over
- * `https:` (`lib/safe-url.ts`). Anything else becomes empty, and the
+ * site, a web address or `mailto:`, an image may load from this site or a
+ * web address (`lib/safe-url.ts`). Anything else becomes empty, and the
  * components below draw it as text.
  */
 export const markdownUrl = (url: string, key: string): string =>
@@ -87,9 +87,10 @@ export default function MarkdownBody({
       const url = typeof src === "string" ? src : "";
       // A refused source shows its alt text, as a broken image would.
       if (url === "") return alt ? <span>{alt}</span> : null;
-      const target = isRelative(url) ? (resolveImage?.(url) ?? url) : url;
-      // Another site learns the reader's address from an image, but not
-      // which page of which repository it was on.
+      // An image from another site comes through the Worker, so its host
+      // never learns who is reading (`imageSrc`).
+      const target = isRelative(url) ? (resolveImage?.(url) ?? url) : imageSrc(url);
+      if (target === null) return alt ? <span>{alt}</span> : null;
       return (
         <img
           {...rest}

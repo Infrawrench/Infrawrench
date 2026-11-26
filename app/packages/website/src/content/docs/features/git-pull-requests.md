@@ -8,7 +8,7 @@ Every repository on [git.infrawrench.com](./git-getting-started.md) has **Issues
 
 ## Issues
 
-Click **New issue**, give it a title and describe it in Markdown (**Preview** shows how it renders). Anyone signed in can open an issue on a repository they can read, and comment on it.
+Click **New issue**, give it a title and describe it in Markdown (**Preview** shows how it renders). Images from other sites in Markdown are loaded through git.infrawrench.com, so the site hosting an image never sees who is reading. Anyone signed in can open an issue on a repository they can read, and comment on it.
 
 The sidebar of an issue sets its **Assignees**, **Labels** and **Milestone**. Labels and milestones are created under the **Labels** and **Milestones** links at the top of the list. The list filters by author, label, milestone and assignee, and its search box takes the same filters as text, such as `is:closed`.
 
@@ -103,7 +103,7 @@ To propose a change from a fork:
 
 The pull request lives in the original repository, where it is reviewed and merged like any other.
 
-A fork of a private repository stays private and within the reach of the same owner. A pull request from a fork never gets the base repository's CI secrets, and its Terraform changes are [never planned](./git-terraform.md#plans-on-pull-requests).
+A fork of a private repository stays private and within the reach of the same owner. A fork made under the same owner starts with the original's collaborators and their roles; after that, each repository's list changes on its own. A pull request from a fork never gets the base repository's CI secrets, and its Terraform changes are [never planned](./git-terraform.md#plans-on-pull-requests).
 
 <insert [The Compare page of a repository with the head repository switched to a fork: base main, head "second/hello" and branch "divide", "Merges cleanly", one commit and its diff, and the Create pull request button] here>
 

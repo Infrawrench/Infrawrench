@@ -12,13 +12,14 @@
  * | `/:owner/:repo/archive/...`                  | `archive`         |
  * | `/:owner/:repo/terraform/:workspace/state..` | `terraform-state` |
  * | `/:owner/:repo/terraform/:workspace/runs/:id/plan` | `terraform-plan` |
+ * | `/-/image`                                   | `image-proxy`     |
  * | everything else                              | `assets` (the UI) |
  *
  * The Git and Terraform routes are the storage's to serve. Until they exist
  * {@link serve} answers them 503 rather than the UI's shell, so `git clone`
  * and `terraform init` fail saying why.
  */
-import { AUTH_PATHS } from "@infrawrench/git-contract";
+import { AUTH_PATHS, IMAGE_PROXY_PATH } from "@infrawrench/git-contract";
 import type { Env } from "../env";
 import { requestIdOf, withSecurityHeaders } from "./security-headers";
 import { admissionFor } from "./admission";
@@ -44,6 +45,7 @@ export type Route =
       readonly workspace: string;
       readonly runId: string;
     } & RepoPath)
+  | { readonly kind: "image-proxy" }
   | { readonly kind: "assets" }
   | { readonly kind: "not-found" };
 
@@ -59,6 +61,9 @@ export const routeOf = (pathname: string): Route => {
   const segments = pathname.split("/").filter((segment) => segment !== "");
   const [first, second, third] = segments;
   if (first === "api") return { kind: "api" };
+  // A namespace cannot be called `-` (client-core `git-names.ts`).
+  if (first === "-")
+    return pathname === IMAGE_PROXY_PATH ? { kind: "image-proxy" } : { kind: "not-found" };
   if (first === "auth") {
     if (pathname === AUTH_PATHS.signIn) return { kind: "auth", action: "sign-in" };
     if (pathname === AUTH_PATHS.callback) return { kind: "auth", action: "callback" };
@@ -136,6 +141,8 @@ export interface Routes {
   readonly terraformState?: Handler<Extract<Route, { kind: "terraform-state" }>>;
   /** `/<owner>/<repo>/terraform/<workspace>/runs/<run id>/plan`: a run's plan, posted by its job. */
   readonly terraformPlan?: Handler<Extract<Route, { kind: "terraform-plan" }>>;
+  /** `/-/image?url=`: an image from another site (`images/proxy.ts`). */
+  readonly imageProxy?: Handler<Extract<Route, { kind: "image-proxy" }>>;
 }
 
 const text = (body: string, status: number, headers: Record<string, string> = {}): Response =>
@@ -186,6 +193,10 @@ const dispatch = (request: Request, env: Env, ctx: Ctx, routes: Routes): Promise
       return routes.terraformPlan
         ? routes.terraformPlan(request, env, ctx, route)
         : Promise.resolve(notReady("Terraform runs"));
+    case "image-proxy":
+      return routes.imageProxy
+        ? routes.imageProxy(request, env, ctx, route)
+        : Promise.resolve(text("Not Found\n", 404));
     case "assets":
       return assets(request, env);
     case "not-found":

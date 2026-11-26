@@ -42,6 +42,12 @@ describe("routeOf", () => {
     });
   });
 
+  it("routes the image proxy, and nothing else under /-/", () => {
+    expect(routeOf("/-/image")).toEqual({ kind: "image-proxy" });
+    expect(routeOf("/-/image/x")).toEqual({ kind: "not-found" });
+    expect(routeOf("/-/anything")).toEqual({ kind: "not-found" });
+  });
+
   it("leaves the UI's own pages to the UI", () => {
     for (const path of [
       "/",

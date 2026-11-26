@@ -27,6 +27,7 @@
  * else in the isolate. Each is best effort in its own way; none fails a
  * request when it cannot count.
  */
+import { IMAGE_PROXY_PATH } from "@infrawrench/git-contract";
 import type { Principal } from "../auth/principal";
 import type { Env } from "../env";
 import {
@@ -84,13 +85,21 @@ export const presentsCredential = (request: Request): boolean =>
   new URL(request.url).searchParams.has("token") ||
   SESSION_COOKIE.test(request.headers.get("cookie") ?? "");
 
+/**
+ * Routes that never authenticate, so their caller is counted by address
+ * even when a session cookie rides along: the image proxy, which a page
+ * with many images asks often.
+ */
+const countedByAddress = (request: Request): boolean =>
+  new URL(request.url).pathname === IMAGE_PROXY_PATH;
+
 /** The counter of refused credentials is kept apart from SSH's, which has its own limit. */
 const failureKey = (address: string): string => `http:${rateLimitKey(address)}`;
 
 export const makeAdmission = (limiter: RateLimiter, failures: FailureLimiter): Admission => ({
   async refuse(request) {
     const address = request.headers.get("cf-connecting-ip");
-    if (presentsCredential(request)) {
+    if (presentsCredential(request) && !countedByAddress(request)) {
       if (address && (await failures.blocked(failureKey(address)).catch(() => false))) {
         return tooManyRequests({
           allowed: false,

@@ -25,6 +25,7 @@ import { gitPrivateRepositoryRefusal } from "@infrawrench/server-core/git/quota"
 import type { RepoAccess } from "../../auth/access";
 import { repoAccess } from "../../auth/repo-access";
 import { moveWorkspacesToOrganization } from "../../db/automation";
+import { copyCollaborators } from "../../db/collaborators";
 import { type NamespaceRow, getNamespaceBySlug } from "../../db/namespaces";
 import {
   type RepositoryPatch,
@@ -491,6 +492,13 @@ export const RepositoriesHandlers = HttpApiBuilder.group(GitApi, "repositories",
             isEmpty: stats.isEmpty,
             primaryLanguage: parent.repository.primaryLanguage,
           });
+          // As on GitHub, a fork within the same owner starts with its
+          // parent's collaborators. So a private fork shows its commits to the
+          // people its parent did, and a pull request between the two shows
+          // them nobody new until either list changes (git/SECURITY-REVIEW.md 2.1).
+          if (namespace.id === parent.repository.namespaceId) {
+            await copyCollaborators(parent.repository.id, row.id, cx.userId);
+          }
         } catch (error) {
           await deleteRepository(row.id);
           throw error;

@@ -195,6 +195,7 @@ Three unrelated features have "Terraform" in the name; **eject to Terraform** (`
   - Tokens are never logged. Nothing passes an error object to `console`; log through `describeError` (`worker/src/http/log.ts`), and log a failed request by its path only, since a query string can carry a token.
   - Every object id is computed with the collision-detecting SHA-1 (`core/src/sha1.ts`). WebCrypto's SHA-1 never names an object.
   - Stored packs are only sent whole while every stored object is known to be reachable from a branch or a tag. Anything that can leave an unreachable object behind (a forced update, a deletion, server-written objects, an import, a fork's copy) clears that, and a commit is read by id only when a ref reaches it.
+  - An image from another site reaches the page only through the image proxy (`/-/image`, `worker/src/images/proxy.ts`; the UI's `imageSrc`), so its host never sees a reader. The page's policy is `img-src 'self' data: blob:`; never widen it back. The proxy serves only image requests from this site's pages, never forwards anything of the reader's, and fetches only public addresses.
   - A push writes `refs/heads/*` and `refs/tags/*` only and passes `ObjectFsck`; a fork's pull request never gets secrets, a Terraform plan or `trusted`; and nothing a repository holds runs on the site's origin (raw files are sandboxed downloads or plain text, the UI has no HTML sink).
 
 ## Edge/gateway split

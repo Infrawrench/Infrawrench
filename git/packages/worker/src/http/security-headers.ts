@@ -17,16 +17,17 @@ const workosOrigin = (env: Pick<Env, "WORKOS_API_HOSTNAME">): string =>
 /**
  * The page's policy: scripts, styles, fonts and requests from this origin
  * only. The UI is a built bundle with no inline script; styles allow inline
- * because the component library sets `style` attributes. Images also load
- * over HTTPS from elsewhere, since a README shows the images it links to.
- * Nothing may frame the site.
+ * because the component library sets `style` attributes. Images load from
+ * this origin only: one from another site comes through the image proxy
+ * (`images/proxy.ts`), so its host never sees the reader, and one the UI
+ * forgot to route there does not load. Nothing may frame the site.
  */
 export const pageContentSecurityPolicy = (env: Pick<Env, "WORKOS_API_HOSTNAME">): string =>
   [
     "default-src 'self'",
     "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https:",
+    "img-src 'self' data: blob:",
     "font-src 'self' data:",
     "connect-src 'self'",
     "worker-src 'self' blob:",

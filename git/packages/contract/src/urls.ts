@@ -13,6 +13,7 @@
  * | `/:owner/:repo/raw/:ref/*path`               | A file's bytes.                                  |
  * | `/:owner/:repo/archive/:ref.tar.gz` / `.zip` | The tree at a ref as an archive.                 |
  * | `/:owner/:repo/terraform/:workspace/state`   | Terraform's HTTP state backend (`/lock`, `/unlock`). |
+ * | `/-/image?url=`                              | An image from another site, fetched by the Worker. |
  *
  * **Refs in a path.** A ref name contains slashes, so `raw/feature/x/src/a.ts`
  * is ambiguous on its face. The server resolves it the way every forge does:
@@ -107,6 +108,17 @@ export const archivePath = (
 /** Terraform's `backend "http"` address for a workspace; `lock_address` and `unlock_address` add `/lock` and `/unlock`. */
 export const terraformStatePath = (ref: RepoRef, workspace: string): string =>
   `${repositoryPath(ref)}/terraform/${segment(workspace)}/state`;
+
+/**
+ * Where the page loads an image from another site: `/-/image?url=<address>`.
+ * The Worker fetches it, so the site that serves it sees Cloudflare rather
+ * than the reader. A namespace cannot be called `-`, so the path is never a
+ * repository's.
+ */
+export const IMAGE_PROXY_PATH = "/-/image";
+
+export const imageProxyPath = (url: string): string =>
+  `${IMAGE_PROXY_PATH}?url=${encodeURIComponent(url)}`;
 
 /** The personal access token prefix (`iwg_`), for forms that recognise a pasted one. */
 export const ACCESS_TOKEN_PREFIX = "iwg_";

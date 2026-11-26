@@ -144,14 +144,18 @@ describe("Markdown link targets", () => {
 });
 
 describe("Markdown images", () => {
-  test("load lazily over https only, with no referrer", () => {
-    const root = html("![a](https://example.com/a.png) ![b](http://example.com/b.png)");
+  test("from another site load lazily through the image proxy, with no referrer", () => {
+    const root = html(
+      "![a](https://example.com/a.png) ![b](http://example.com/b.png) ![c](data:image/png;base64,AAAA)",
+    );
     const images = [...root.querySelectorAll("img")];
-    expect(images).toHaveLength(1);
-    expect(images[0]!.getAttribute("src")).toBe("https://example.com/a.png");
+    expect(images.map((image) => image.getAttribute("src"))).toEqual([
+      "/-/image?url=https%3A%2F%2Fexample.com%2Fa.png",
+      "/-/image?url=http%3A%2F%2Fexample.com%2Fb.png",
+    ]);
     expect(images[0]!.getAttribute("referrerpolicy")).toBe("no-referrer");
     expect(images[0]!.getAttribute("loading")).toBe("lazy");
-    expect(root.textContent).toContain("b");
+    expect(root.textContent).toContain("c");
   });
 
   test("a relative image goes through the resolver", () => {

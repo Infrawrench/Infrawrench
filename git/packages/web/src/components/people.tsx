@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { Signature, UserRef } from "@infrawrench/git-contract";
 import { formatDateTime, relativeTime } from "../lib/format";
 import { paths } from "../lib/paths";
-import { safeImageUrl } from "../lib/safe-url";
+import { imageSrc } from "../lib/safe-url";
 import { AppLink } from "./AppLink";
 
 /** Re-renders once a minute so "2 minutes ago" keeps up without a reload. */
@@ -47,7 +47,7 @@ export interface AvatarProps {
 /** A picture when there is one, otherwise initials on a neutral tile. Decorative: name the person beside it. */
 export function Avatar({ name, src, size = 20, square = false }: AvatarProps) {
   const shape = square ? "rounded" : "rounded-full";
-  const picture = safeImageUrl(src);
+  const picture = imageSrc(src);
   if (picture !== null) {
     return (
       <img

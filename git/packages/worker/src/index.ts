@@ -8,7 +8,7 @@
  * budget covers (KNOWLEDGE.md "Edge/gateway split").
  */
 import type { ExecutionContext, MessageBatch, Socket } from "@cloudflare/workers-types/index";
-import type { Env, GitEvent } from "./env";
+import { type Env, type GitEvent, siteOrigin } from "./env";
 import { type Ctx, type Routes, serve } from "./http/router";
 
 const lazy = <T>(load: () => Promise<T>): (() => Promise<T>) => {
@@ -54,6 +54,15 @@ const routes: Routes = {
     (await terraform()).stateFetch(request, env, ctx, route),
   terraformPlan: async (request, env, ctx, route) =>
     (await terraform()).planFetch(request, env, ctx, route),
+
+  // An image from another site, fetched so its host never sees the reader (`images/proxy.ts`).
+  imageProxy: async (request, env) => {
+    const { proxyImage } = await import("./images/proxy");
+    return proxyImage(request, {
+      fetch: (input, init) => fetch(input, init),
+      siteHosts: [new URL(request.url).hostname, new URL(siteOrigin(env)).hostname],
+    });
+  },
 };
 
 export default {

@@ -5,10 +5,13 @@
  *
  * A link may go to a path on this site or to an `http:` or `https:` address
  * (and to `mailto:` where the caller allows it); an image may come from this
- * site or over `https:`. Everything else (`javascript:`, `data:`, `vbscript:`,
+ * site or from an `http:` or `https:` address, which {@link imageSrc} sends
+ * through the image proxy. Everything else (`javascript:`, `data:`, `vbscript:`,
  * `file:`, a scheme spelt with tabs or entities) is refused, and the caller
  * shows the text without a link or the alt text without an image.
  */
+
+import { imageProxyPath } from "@infrawrench/git-contract";
 
 /** Characters a browser strips from a URL or reads in surprising ways. */
 const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
@@ -83,13 +86,28 @@ export function safeLinkUrl(
 }
 
 /**
- * Where an image may load from: this site, or another one over `https:`
- * only. No `data:` (an SVG document in a data URL is still a document) and no
- * plain `http:` (the page policy refuses it anyway).
+ * Where an image may load from: this site, or an `http:` or `https:`
+ * address. No `data:` (an SVG document in a data URL is still a document).
+ * Put an address through {@link imageSrc} before it becomes a `src`.
  */
 export function safeImageUrl(value: string | null | undefined): string | null {
   const relative = relativeUrl(value);
   if (relative !== null) return relative;
-  const web = webUrl(value);
-  return web !== null && web.startsWith("https:") ? web : null;
+  return webUrl(value);
+}
+
+/** The mock API answers in the browser, with no Worker behind it to fetch images. */
+const PROXIED = import.meta.env.VITE_GIT_MOCK !== "1";
+
+/**
+ * The `src` for an image: a reference on this site as it is, an image from
+ * another site through the Worker (`/-/image?url=`), so its host sees
+ * Cloudflare and never the reader. The page's policy refuses images from
+ * anywhere else, so every `<img>` with a `src` from data goes through here.
+ * Null for what {@link safeImageUrl} refuses.
+ */
+export function imageSrc(value: string | null | undefined): string | null {
+  const safe = safeImageUrl(value);
+  if (safe === null) return null;
+  return PROXIED && webUrl(safe) !== null ? imageProxyPath(safe) : safe;
 }

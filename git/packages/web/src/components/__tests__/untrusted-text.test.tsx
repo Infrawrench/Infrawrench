@@ -113,17 +113,17 @@ describe("pictures and colours from data", () => {
   test.each([
     "javascript:alert(1)",
     "data:image/svg+xml,<svg/onload=alert(1)>",
-    "http://example.com/a.png",
+    "ftp://example.com/a.png",
   ])("an avatar from %j falls back to initials", (src) => {
     const { container } = render(<Avatar name="Mara Lind" src={src} />);
     expect(container.querySelector("img")).toBeNull();
     expect(container.textContent).toBe("ML");
   });
 
-  test("an https avatar loads with no referrer", () => {
+  test("an avatar from another site loads through the image proxy, with no referrer", () => {
     const { container } = render(<Avatar name="Mara" src="https://avatars.example/m.png" />);
     const image = container.querySelector("img")!;
-    expect(image.getAttribute("src")).toBe("https://avatars.example/m.png");
+    expect(image.getAttribute("src")).toBe("/-/image?url=https%3A%2F%2Favatars.example%2Fm.png");
     expect(image.getAttribute("referrerpolicy")).toBe("no-referrer");
   });
 

@@ -49,6 +49,22 @@ describe("admission", () => {
     ).toBeNull();
   });
 
+  it("counts the image proxy by address even when a session rides along", async () => {
+    const gate = admission();
+    const image = () =>
+      request("/-/image?url=https%3A%2F%2Fexample.com%2Fa.png", {
+        cookie: "__Host-iwg-session=abc",
+      });
+    for (let i = 0; i < DEFAULT_RATE_BUDGETS.read.anonymous.limit; i++) {
+      expect(await gate.refuse(image())).toBeNull();
+    }
+    expect((await gate.refuse(image()))?.status).toBe(429);
+    // A page read with the same cookie is the signed-in person's, counted once they are known.
+    expect(
+      await gate.refuse(request("/api/user", { cookie: "__Host-iwg-session=abc" })),
+    ).toBeNull();
+  });
+
   it("counts an IPv6 caller by its /64", async () => {
     const gate = admission();
     const clone = (host: string) =>

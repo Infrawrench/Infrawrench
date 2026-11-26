@@ -15,11 +15,11 @@ Tests under `git/packages/worker/src/__tests__/db/` need a Postgres and were wri
 | Area                              | Critical | High | Medium | Low | Still open                                      |
 | --------------------------------- | -------- | ---- | ------ | --- | ----------------------------------------------- |
 | 1. Object ids (SHA-1)             |          | 1    |        |     |                                                 |
-| 2. Access and visibility          |          | 3    | 5      | 4   | 1 accepted (a decision)                         |
+| 2. Access and visibility          |          | 3    | 5      | 4   |                                                 |
 | 3. Tokens, sessions, headers, log |          |      | 2      | 6   | 1 low                                           |
-| 4. Transports and storage         | 1        | 3    | 5      | 5   | raw files on their own origin; large raw blobs  |
+| 4. Transports and storage         | 1        | 3    | 5      | 5   | large raw blobs                                 |
 | 5. SSH and hostile bytes          |          | 2    | 3      | 3   | the address behind Spectrum; per-principal caps |
-| 6. Web UI                         |          |      | 1      | 6   | image proxy (a decision)                        |
+| 6. Web UI                         |          |      | 1      | 6   |                                                 |
 | 7. Denial of service and cost     |          | 2    | 7      | 1   | 7.11 (low); Git over SSH is not counted         |
 | 8. Terraform                      |          | 3    | 5      | 8   |                                                 |
 | 9. Deploy configuration           |          |      | 1      | 2   |                                                 |
@@ -28,10 +28,10 @@ Sections 8 and 9 were open when the review ended and are closed now; the Terrafo
 
 ## Decisions wanted
 
-1. **Raw files on their own origin.** Raw content is served from the site's origin behind `sandbox`, `nosniff` and a download disposition for anything that can script (4.5). That holds in current browsers, and it is the only thing that does. Forges serve raw content from a separate registrable domain so that a mistake there cannot reach the session. It needs a domain and a route; nothing else.
+1. **Raw files on their own origin.** Raw content is served from the site's origin behind `sandbox`, `nosniff` and a download disposition for anything that can script (4.5). That holds in current browsers, and it is the only thing that does. Forges serve raw content from a separate registrable domain so that a mistake there cannot reach the session. **Decided:** the same origin, sandboxed as it is. Moving it later needs a domain and a route; nothing else.
 2. **Who may read and write Terraform state** (8.2). The design said repository `write`. Every member of an organisation has `git:write` on every repository, so that was every member reading every state and able to rewrite it. **Decided:** repository `admin` for people, a workspace-bound claim for job tokens (8.2, 8.4).
-3. **Private pull requests between private repositories of one namespace** (2.1): allowed today, although their collaborators can differ.
-4. **An image proxy** (6.2): without one, the author of a comment or README learns the address of everyone who reads it.
+3. **Private pull requests between private repositories of one namespace** (2.1): allowed, although their collaborators can differ. **Decided:** as GitHub does it. The pull request stays allowed, and a fork within the same owner starts with its parent's collaborators, so the two lists differ only once someone changes one of them.
+4. **An image proxy** (6.2): without one, the author of a comment or README learns the address of everyone who reads it. **Decided:** built (6.2).
 5. **Rate Limiting bindings** (7.10). **Decided:** bound in `wrangler.jsonc` (9.4). The counts are per Cloudflare location and approximate, which is what the binding offers.
 
 ## 1. Object ids
@@ -52,7 +52,7 @@ Sections 8 and 9 were open when the review ended and are closed now; the Terrafo
 - **Scenario.** Someone who can read the private `acme/secret` opens a pull request into any public repository with `headRepository: "acme/secret"` (or just asks for the comparison). The base copies the head's commits into its own storage and `refs/pull/<n>/head` serves them to everyone. The pull request then kept following the private branch on every push, also after the person lost access.
 - **Fix.** `api/repos.ts` `headRepository`: the head must be readable by the caller, in the base's fork network, and `mayProposeTo` must hold (the head is public, or both are private in one namespace). `pulls.create`, `pulls.reopen` and the comparison use it; `pulls.updateBranch` checks the reverse direction; the queue consumer stops following a fork that no longer passes.
 - **Test.** `worker/src/api/__tests__/repos.test.ts`; `src/__tests__/db/boundaries.test.ts` (database).
-- **Accepted, open.** Two private repositories of one namespace can have different collaborators, and a pull request between them shows the head's commits to the base's readers. That is the rule the README sets ("inside the same owner's reach"); tightening it to "every reader of the base can read the head" is a product decision.
+- **Decided (decision 3).** Two private repositories of one namespace can have different collaborators, and a pull request between them shows the head's commits to the base's readers. That stays, as on GitHub, where a fork within one organisation copies its parent's collaborators and team settings: `repositories.fork` copies the parent's collaborators, with their roles, when the fork stays with the same owner (`db/collaborators.ts` `copyCollaborators`). The lists then drift only when someone changes one of them, as GitHub's do. `src/__tests__/db/visibility.test.ts` "shows stars and forks only where the repository shows".
 
 ### 2.2 A fork's pull request queued Terraform plans in its base (high, fixed)
 
@@ -161,12 +161,12 @@ Search, explore, namespace pages, `/user/repos`, stars, stargazers, fork lists a
 - **Fix.** `exportPack` answers only for wants its own branches and tags reach.
 - **Test.** The fork test in `repository.test.ts`.
 
-### 4.5 Raw files: types, disposition, isolation (medium, fixed; a decision is open)
+### 4.5 Raw files: types, disposition, isolation (medium, fixed)
 
 - **Scenario.** A repository holds `page.html` or an SVG with script. Served from the site's origin, it must never run there.
 - **Fix.** `transport/http/raw-headers.ts`: raster images inline; SVG and PDF as downloads; UTF-8 text as `text/plain`; the rest as `application/octet-stream` downloads; always `default-src 'none'; sandbox`, `nosniff`, `Cross-Origin-Resource-Policy: same-origin`, `private, no-store`; file names encoded so they cannot end or add a header.
 - **Test.** `worker/src/transport/__tests__/transport.test.ts` "serves a repository's files so that none can run on this origin".
-- **Open.** A separate origin (decision 1). Raw blobs are buffered and cannot exceed 32 MiB through the internal call; there are no range requests.
+- **Decided.** The same origin (decision 1). **Open.** Raw blobs are buffered and cannot exceed 32 MiB through the internal call; there are no range requests.
 
 ### 4.6 Medium and lower
 
@@ -219,7 +219,7 @@ Before authentication: packet length is bounded before the body is read, the ver
 No way to run script was found: no HTML sink exists in `src/`, raw HTML in Markdown is never rendered (`react-markdown` without `rehype-raw`), and highlighter and ANSI output are React text. The page's policy (`script-src 'self'`, no inline script, `base-uri 'none'`, `frame-ancestors 'none'`) fits the built assets.
 
 - **6.1 One comment could end the page for everyone who opened it** (medium, fixed): twenty thousand `>` overflowed the renderer's stack, a thousand-column table took half a minute. Limits on size, depth and table cells, and a fallback to plain text. `web/src/components/__tests__/markdown.test.tsx`.
-- **6.2 Markdown images** (low, fixed; decision 4): `https:` and same-origin only, `no-referrer`, lazy.
+- **6.2 Images from other sites told their host who was reading** (low, fixed; decision 4): a README, comment or avatar loaded straight from the address it named, so its author learned every reader's address. They now load through `/-/image?url=` (`worker/src/images/proxy.ts`): served only to an image on one of this site's pages (`Sec-Fetch-Site: same-origin`, `Sec-Fetch-Dest: image`), fetched with no cookie, referrer or browser string, only `http(s)` on a public address (each redirect checked again), only an image type, at most 10 MiB, and sent back with `sandbox` and `nosniff`. The page's policy is now `img-src 'self' data: blob:`, so an image the UI forgot to route there does not load rather than leak. Counted by address against the anonymous read budget. `worker/src/images/__tests__/proxy.test.ts`, `web/src/lib/__tests__/safe-url.test.ts`, `web/src/components/__tests__/markdown.test.tsx`.
 - **6.3 Links** went to `href` through the library's defaults only (low, fixed): one helper, `lib/safe-url.ts`, for every URL from data, in Markdown and outside it (profile websites, homepages, status links, avatars, `returnTo`). `lib/__tests__/safe-url.test.ts`, `components/__tests__/untrusted-text.test.tsx`.
 - **6.4 Direction overrides were shown raw** (low, fixed): a file named to read as another, code that reads in another order. Written out as `<U+202E>`. `untrusted-text.test.tsx`.
 - **6.5 The ANSI parser left escape payloads in the output** (low, fixed): `lib/__tests__/ansi.test.ts`.
