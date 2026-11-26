@@ -9,12 +9,15 @@
  *
  * A token is `iwj_<payload>.<signature>`: the payload is base64url of
  * compact JSON, the signature base64url of HMAC-SHA256 over a label and the
- * payload's text under the shared key (`GIT_JOB_TOKEN_KEY` on the app,
- * `JOB_TOKEN_KEY` on the Worker). Nothing is stored per token: it names one
+ * payload's text under the shared key (`GIT_JOB_TOKEN_KEY`, on the app and
+ * on the Worker alike). Nothing is stored per token: it names one
  * repository by id (so a rename or a transfer changes nothing), says `read`
  * or `write`, names what it was minted for and expires soon after. One
  * minted for a source archive link also names the commit, and is good for
- * that archive alone.
+ * that archive alone. One minted for a Terraform run or for the app's own
+ * read of a state names the workspace, and is good for that workspace's
+ * state and plans alone: it clones nothing and writes nothing to the
+ * repository.
  *
  * Git sends it as the password of Basic auth, with any user name (the
  * runner sends `x-access-token`); every other route takes it as a Bearer
@@ -48,7 +51,24 @@ export interface GitJobTokenClaims {
    * such a token, so it clones nothing and reads no other file.
    */
   commit?: string;
+  /**
+   * Set on a token that is only good for one Terraform workspace (its id,
+   * `git_terraform_workspaces.id`): the state backend and the plan route of
+   * that workspace, and nothing of the repository itself. `access` then says
+   * what it may do to the state: `read` reads and locks (a plan), `write`
+   * also writes (an apply). A verifier that does not serve workspaces
+   * refuses such a token, so a job that holds one can neither clone nor
+   * push with it.
+   */
+  workspace?: string;
 }
+
+/**
+ * For `expect.workspace`: the verifier serves Terraform workspaces and
+ * compares the token's claim with the workspace it resolved itself (it knows
+ * the workspace's name from the path before it knows its id).
+ */
+export const ANY_GIT_JOB_TOKEN_WORKSPACE = Symbol.for("infrawrench.git-job-token.any-workspace");
 
 /** Why a token was refused. `expired` is the only one a caller may want to say out loud. */
 export type GitJobTokenRefusal = "malformed" | "signature" | "expired" | "repository" | "access";
@@ -125,6 +145,12 @@ export async function signGitJobToken(
   if (claims.commit !== undefined && !COMMIT.test(claims.commit)) {
     throw new Error("A git job token's commit is a full commit id.");
   }
+  if (claims.workspace !== undefined && !validField(claims.workspace)) {
+    throw new Error("A git job token's workspace is a workspace id.");
+  }
+  if (claims.workspace !== undefined && claims.commit !== undefined) {
+    throw new Error("A git job token is for a commit's archive or for a workspace, not both.");
+  }
   const nowSeconds = Math.floor(now / 1000);
   if (
     !Number.isSafeInteger(claims.expiresAt) ||
@@ -142,6 +168,7 @@ export async function signGitJobToken(
         run: claims.runId,
         exp: claims.expiresAt,
         ...(claims.commit !== undefined ? { sha: claims.commit } : {}),
+        ...(claims.workspace !== undefined ? { ws: claims.workspace } : {}),
       }),
     ),
   );
@@ -160,14 +187,23 @@ export function isGitJobToken(text: string): boolean {
  * expiry, then, when `expect` says, that it is for that repository and
  * grants at least that access. A token bound to a commit passes only for
  * `expect.commit` equal to it: every caller that is not serving that
- * commit's archive leaves `commit` out and so refuses it. The claims of a
- * refused token are never returned, so nothing is decided from an unsigned
- * payload.
+ * commit's archive leaves `commit` out and so refuses it. A token bound to a
+ * workspace passes only for `expect.workspace` equal to it (or
+ * {@link ANY_GIT_JOB_TOKEN_WORKSPACE}, for a verifier that compares the
+ * claim itself): every caller that is not serving a workspace's state or
+ * plans leaves `workspace` out and so refuses it. A verifier that names a
+ * workspace refuses a token without the claim. The claims of a refused token
+ * are never returned, so nothing is decided from an unsigned payload.
  */
 export async function verifyGitJobToken(
   secret: string,
   token: string,
-  expect: { repositoryId?: string; access?: GitJobTokenAccess; commit?: string } = {},
+  expect: {
+    repositoryId?: string;
+    access?: GitJobTokenAccess;
+    commit?: string;
+    workspace?: string | typeof ANY_GIT_JOB_TOKEN_WORKSPACE;
+  } = {},
   now: number = Date.now(),
 ): Promise<GitJobTokenResult> {
   const refused = (reason: GitJobTokenRefusal): GitJobTokenResult => ({ ok: false, reason });
@@ -199,7 +235,7 @@ export async function verifyGitJobToken(
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     return refused("malformed");
   }
-  const { v, repo, access, run, exp, sha } = parsed as Record<string, unknown>;
+  const { v, repo, access, run, exp, sha, ws } = parsed as Record<string, unknown>;
   if (
     v !== 1 ||
     !validField(repo) ||
@@ -207,7 +243,8 @@ export async function verifyGitJobToken(
     (access !== "read" && access !== "write") ||
     typeof exp !== "number" ||
     !Number.isSafeInteger(exp) ||
-    (sha !== undefined && (typeof sha !== "string" || !COMMIT.test(sha)))
+    (sha !== undefined && (typeof sha !== "string" || !COMMIT.test(sha))) ||
+    (ws !== undefined && (!validField(ws) || sha !== undefined))
   ) {
     return refused("malformed");
   }
@@ -218,6 +255,16 @@ export async function verifyGitJobToken(
   if (expect.access === "write" && access !== "write") return refused("access");
   // An archive token reads its commit's archive and nothing else.
   if (sha !== undefined && (access !== "read" || expect.commit !== sha)) return refused("access");
+  // A workspace token reaches its workspace's state and plans and nothing else,
+  // and a workspace is reached with no other kind of token.
+  if (ws !== undefined) {
+    if (expect.workspace === undefined) return refused("access");
+    if (expect.workspace !== ANY_GIT_JOB_TOKEN_WORKSPACE && expect.workspace !== ws) {
+      return refused("access");
+    }
+  } else if (expect.workspace !== undefined) {
+    return refused("access");
+  }
   return {
     ok: true,
     claims: {
@@ -226,6 +273,7 @@ export async function verifyGitJobToken(
       runId: run,
       expiresAt: exp,
       ...(sha !== undefined ? { commit: sha } : {}),
+      ...(ws !== undefined ? { workspace: ws } : {}),
     },
   };
 }

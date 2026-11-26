@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ANY_GIT_JOB_TOKEN_WORKSPACE,
   GIT_JOB_TOKEN_MAX_TTL_SECONDS,
   GIT_JOB_TOKEN_PREFIX,
   isGitJobToken,
@@ -127,6 +128,69 @@ describe("git job tokens", () => {
       ok: false,
       reason: "access",
     });
+  });
+
+  it("keeps a token bound to a workspace to that workspace", async () => {
+    const workspace = "0d0f7c1e-6f43-4a3e-8f37-5f8f3c1f1a10";
+    const token = await signGitJobToken(KEY, claims({ workspace }), NOW);
+    expect(await verifyGitJobToken(KEY, token, { workspace }, NOW)).toEqual({
+      ok: true,
+      claims: claims({ workspace }),
+    });
+    // A verifier that compares the claim itself gets it back, signed.
+    expect(
+      await verifyGitJobToken(KEY, token, { workspace: ANY_GIT_JOB_TOKEN_WORKSPACE }, NOW),
+    ).toEqual({ ok: true, claims: claims({ workspace }) });
+    // Smart HTTP, the raw route and the archive never name a workspace, so they refuse it.
+    for (const expected of [
+      {},
+      { access: "read" as const },
+      { repositoryId: claims().repositoryId },
+      { commit: "c".repeat(40) },
+      { workspace: "another-workspace" },
+    ]) {
+      expect(await verifyGitJobToken(KEY, token, expected, NOW)).toEqual({
+        ok: false,
+        reason: "access",
+      });
+    }
+    // Writing its state is not writing the repository: nothing that pushes takes it.
+    const applying = await signGitJobToken(KEY, claims({ workspace, access: "write" }), NOW);
+    expect(await verifyGitJobToken(KEY, applying, { access: "write" }, NOW)).toEqual({
+      ok: false,
+      reason: "access",
+    });
+    expect((await verifyGitJobToken(KEY, applying, { workspace, access: "write" }, NOW)).ok).toBe(
+      true,
+    );
+    // A workspace's state is reached with no other kind of token.
+    const plain = await signGitJobToken(KEY, claims({ access: "write" }), NOW);
+    for (const named of [workspace, ANY_GIT_JOB_TOKEN_WORKSPACE] as const) {
+      expect(await verifyGitJobToken(KEY, plain, { workspace: named }, NOW)).toEqual({
+        ok: false,
+        reason: "access",
+      });
+    }
+    // The claim is under the signature like the rest.
+    const [payload, signature] = token.slice(GIT_JOB_TOKEN_PREFIX.length).split(".");
+    const moved = btoa(
+      atob(payload!.replace(/-/g, "+").replace(/_/g, "/")).replace(workspace, "another-workspace"),
+    )
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    expect(
+      await verifyGitJobToken(
+        KEY,
+        `${GIT_JOB_TOKEN_PREFIX}${moved}.${signature}`,
+        { workspace: ANY_GIT_JOB_TOKEN_WORKSPACE },
+        NOW,
+      ),
+    ).toEqual({ ok: false, reason: "signature" });
+    await expect(signGitJobToken(KEY, claims({ workspace: "" }), NOW)).rejects.toThrow();
+    await expect(
+      signGitJobToken(KEY, claims({ workspace, commit: "c".repeat(40) }), NOW),
+    ).rejects.toThrow();
   });
 
   it("does not sign what no verifier would take", async () => {
