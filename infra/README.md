@@ -199,6 +199,128 @@ it) and every request goes straight to the session gateway again. Unset
   path on the edge. The Worker logs `[edge] <method> <path> reached a
 gateway-only path`; add the route to `src/edge/gateway-routes.ts`.
 
+## git.infrawrench.com
+
+The forge (`git/`) is one Worker, `infrawrench-git` (`git/packages/worker`),
+on the Infrawrench Production account: the UI as static assets, the API, Git
+over HTTPS, and Git over SSH through a Spectrum application. It reads the
+app's Postgres through the app's Hyperdrive and keeps repositories in R2 and
+one Durable Object each. `git/packages/worker/README.md` lists every binding,
+variable and secret and what breaks without each; this section is how they
+come to exist.
+
+`infra/git/setup.mjs` does the Cloudflare part through the API. It reads the
+names from the Worker's `wrangler.jsonc`, looks before it changes anything, so
+it can be run again at any point, and prints no secret. `--dry-run` prints
+every request it would send and sends none:
+
+```sh
+node infra/git/setup.mjs --dry-run
+```
+
+It needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the
+environment. The token: Workers Scripts, Workers R2 Storage and Queues (edit)
+and Hyperdrive (read) on the account; Zone (read) and Zone Settings (edit) on
+`infrawrench.com`, which is what Spectrum's API asks for.
+
+### Provisioning (once)
+
+1. **WorkOS** (dashboard, production environment, **Redirects**): add the
+   redirect URI `https://git.infrawrench.com/auth/callback` and the sign-out
+   redirect `https://git.infrawrench.com/`. The forge uses the app's client,
+   so there is no new key; without the redirect URI WorkOS refuses the
+   sign-in before it shows a page.
+2. **The app's side of CI**: `GIT_JOB_TOKEN_KEY` in `app_env`
+   (`terraform.tfvars.example` says how to make one), `terraform apply`. The
+   Worker gets the same value from there at each deploy. Skip it and the
+   deploy stops, naming the key.
+3. **Bucket, queues and the Worker's own secrets**:
+
+   ```sh
+   node infra/git/setup.mjs
+   ```
+
+   - R2 bucket `infrawrench-git` (`--location` picks the hint; `enam` by
+     default, next to the database).
+   - Queues `infrawrench-git-events` and `infrawrench-git-events-dlq`. The
+     consumer's settings are the Worker's `wrangler.jsonc` and arrive with
+     the deploy.
+   - It checks that the Hyperdrive in `wrangler.jsonc` exists. It is the
+     app's (`infrawrench-db`, "Cloudflare edge" above) and nothing is
+     created: the forge's tables are in the app's database.
+   - `WORKOS_COOKIE_PASSWORD` (48 random bytes) and `SSH_HOST_KEY`: an
+     ed25519 key from `ssh-keygen -t ed25519`, stored with `wrangler secret
+put` and deleted from disk. Both are made only when absent and never
+     replaced. The script prints the host key's public half and fingerprint:
+     keep them, they are what people check a first connection against. The
+     Worker does not exist yet at this point, and `wrangler secret put` makes
+     it, empty, to hold them.
+
+4. **Deploy**: set the repo variable `GIT_DEPLOY_ENABLED=true` and run
+   `git-deploy` (Actions, **Run workflow**), or push to `main`. It needs the
+   Lambda gateway's repository variables to read the edge-env secret, as
+   `deploy-edge` does, and the `CLOUDFLARE_API_TOKEN` secret must cover this
+   Worker (the workflow's header lists the permissions). The deploy attaches
+   the custom domain `git.infrawrench.com`, creates the Durable Object class
+   and attaches the queue consumer.
+5. **Check HTTPS** before opening SSH: sign in at `https://git.infrawrench.com`,
+   create a repository, push to it with a personal access token.
+6. **Spectrum**, which needs the deployed Worker's tag:
+
+   ```sh
+   node infra/git/setup.mjs --only spectrum
+   ```
+
+   It creates one application: `dns` `{ "type": "CNAME", "name": <SSH_HOST> }`,
+   `protocol` `tcp/22`, `traffic_type` `worker`, `origin_worker_id` the
+   Worker's 32-character tag (from `GET /accounts/$ACCOUNT_ID/workers/scripts`).
+   Worker origins are a public beta: a Pro or Business zone gets one such
+   application, on one TCP port, beside its plan's own SSH application, and
+   Proxy Protocol is not supported.
+
+   **Whether `git.infrawrench.com` can carry both the Worker's custom domain
+   and this application is not documented.** The script tries the name in
+   `SSH_HOST` (`wrangler.jsonc`, `git.infrawrench.com`). If Cloudflare refuses
+   it, change that value to `ssh.git.infrawrench.com`, deploy, and run the
+   step again; clone URLs follow the same value, so nothing else changes. To
+   try a name without editing first, `--ssh-host ssh.git.infrawrench.com`
+   (the script then says the variable has to follow).
+
+7. **Check SSH**: `ssh -T git@<SSH_HOST>` should print the host key's
+   fingerprint from step 3 to accept, then the forge's greeting. Then clone
+   and push over SSH, including a push of a few hundred megabytes: the
+   Durable Object's full-duplex `fetch` is the one thing the local tests
+   cannot confirm for production (`git/packages/worker/NOTES.md`, "Where
+   things run"). Also confirm, with `wrangler tail`, that the address the
+   Worker sees for a connection (`socket.opened.remoteAddress`) is the
+   client's: the limit on failed sign-ins is per address
+   (`transport/ssh/rate-limit.ts`), and without Proxy Protocol nothing else
+   carries it.
+
+### Day-2
+
+- **Deploys** follow pushes to `main` that touch `git/**` or what the Worker
+  and the UI are built from. A deploy waits up to twenty minutes for the
+  commit's newest migration to be in the database (`web-deploy`'s `migrate`
+  job applies it) and fails rather than run ahead of the schema.
+- **Secrets shared with the app** rotate through `app_env`: `terraform apply`,
+  then re-run `git-deploy`. `GIT_JOB_TOKEN_KEY` changes on both sides in that
+  order, and runs being cloned in between fail; retry them.
+- **The SSH host key is not rotated.** A new one makes every client that has
+  connected before refuse to. If it must change (it leaked), delete the
+  secret, run `node infra/git/setup.mjs --only secrets`, deploy, and publish
+  the new fingerprint.
+- **A push event that failed five deliveries** is in
+  `infrawrench-git-events-dlq`. Nothing consumes it: read it with
+  `wrangler queues` to see what the consumer could not process. The
+  repository itself is unaffected (the refs moved before the event was sent).
+- **Rollback**: `wrangler rollback` in `git/packages/worker` returns to the
+  previous version; Durable Object storage and R2 are not rolled back, and
+  neither needs to be for a code change. Setting `GIT_DEPLOY_ENABLED` to
+  anything else stops further deploys.
+- **Turning SSH off**: delete the Spectrum application (dashboard, or
+  `DELETE /zones/$ZONE_ID/spectrum/apps/$APP_ID`). HTTPS is untouched.
+
 ## Lambda gateway
 
 The Node half of the edge split is two tiers. The **Lambda gateway** runs on
