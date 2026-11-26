@@ -38,7 +38,7 @@ One job per file. Nothing from `node:*` outside `test/`, no dependencies beyond 
 - **Nothing here writes.** A merge, squash or rebase returns `objects` and the id the target ref should move to. Write the objects, then move the ref, inside whatever serialises ref changes. `objects` is in dependency order: blobs, then trees with children before parents, then commits oldest first. Writing them in that order (or as one pack, `writePack` takes them as they are) never leaves an object pointing at something not yet stored.
 - **`objects` can name something the repository already has**: a merged blob that happens to equal an existing one is not known to exist without asking. Objects equal to the three inputs of each merge are left out; filtering the rest through `has()` before writing is optional.
 - **Ref updates are the caller's.** `mergeWithCommit` returning `merged` means "write these, then move `target` from the id you gave me to `commit`"; if the target moved in between, redo the call. `fast-forward` and `up-to-date` carry a commit that already exists and write nothing.
-- **A fork's pull request needs one reader over both repositories.** Merge bases and merges read both sides through the same `ObjectReader`.
+- **A branch proposed from a fork needs one reader over both repositories.** Merge bases and merges read both sides through the same `ObjectReader`.
 
 ## Bounds
 

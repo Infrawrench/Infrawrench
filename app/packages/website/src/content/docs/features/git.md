@@ -4,9 +4,9 @@ description: Claim your organization's namespace on git.infrawrench.com, set wha
 sidebar_order: 6
 ---
 
-[git.infrawrench.com](https://git.infrawrench.com) is Infrawrench's Git forge: repositories, pull requests, issues, [CI](./ci.md) and Terraform state. It is its own site with its own pages. The app does not embed it. It links to it, and keeps the few settings that belong to your organization in **Settings > Git**.
+[git.infrawrench.com](https://git.infrawrench.com) is Infrawrench's Git forge: repositories, branches and their review, issues, [CI](./ci.md) and Terraform state. It is its own site with its own pages. The app does not embed it. It links to it, and keeps the few settings that belong to your organization in **Settings > Git**.
 
-Using the forge itself is covered in [Get started on git.infrawrench.com](./git-getting-started.md) (signing in, SSH keys, access tokens, cloning) [Issues and pull requests](./git-pull-requests.md) (reviews, merging, protected branches, forks) and [Agents and MCP](./git-agents-and-mcp.md) (connecting Claude Code, Codex, Cursor or another agent).
+Using the forge itself is covered in [Get started on git.infrawrench.com](./git-getting-started.md) (signing in, SSH keys, access tokens, cloning), [Issues and branches](./git-branches.md) (branch pages, reviews, merging, protected branches, forks) and [Agents and MCP](./git-agents-and-mcp.md) (connecting Claude Code, Codex, Cursor or another agent).
 
 > **Cloud only.** A namespace belongs to a cloud organization. The desktop app shows Git when it is signed in to one.
 
@@ -35,7 +35,7 @@ You need the `git:admin` permission. Admins and owners have it by default.
 
 ### Rename it
 
-Type a new name in the same field and click **Rename**. Repositories keep their history, issues and pull requests, and nothing is copied. Every repository address changes, and the old addresses stop working, so update your remotes afterwards:
+Type a new name in the same field and click **Rename**. Repositories keep their history, issues and branch pages, and nothing is copied. Every repository address changes, and the old addresses stop working, so update your remotes afterwards:
 
 ```
 git remote set-url origin https://git.infrawrench.com/<new-namespace>/<repository>.git
@@ -72,11 +72,11 @@ A personal namespace (your own username on git.infrawrench.com) is not part of a
 
 ## Repositories
 
-The table lists your organization's repositories, most recently pushed first: visibility, the latest [CI](./ci.md) run on the default branch, open pull requests, last push and size. Click a name to open the repository on git.infrawrench.com. **Open <namespace>** at the top opens your organization's page there.
+The table lists your organization's repositories, most recently pushed first: visibility, the latest [CI](./ci.md) run on the default branch, open branches, last push and size. Click a name to open the repository on git.infrawrench.com. **Open <namespace>** at the top opens your organization's page there.
 
 Creating, renaming, transferring and deleting repositories, collaborators, protected branches and deploy keys are all on the forge, in each repository's settings.
 
-<insert [Settings > Git on a paid plan: the Namespace, New repositories and Usage cards, and the Repositories table with CI status, open pull requests, last push and size columns] here>
+<insert [Settings > Git on a paid plan: the Namespace, New repositories and Usage cards, and the Repositories table with CI status, open branches, last push and size columns] here>
 
 ## Other places
 

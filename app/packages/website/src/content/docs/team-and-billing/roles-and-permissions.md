@@ -137,7 +137,7 @@ Some older custom roles and API keys that granted `dashboards:read` / `dashboard
 The organization's repositories on git.infrawrench.com use three permissions:
 
 - `git:read`: see and clone the organization's repositories, private ones included. Members hold it.
-- `git:write`: push, merge pull requests, and create repositories in the organization's namespace. Members hold it. Protected branches and required reviews decide what a push may change in a given repository.
+- `git:write`: push, merge branches, and create repositories in the organization's namespace. Members hold it. Protected branches and required reviews decide what a push may change in a given repository.
 - `git:admin`: claim and rename the organization's namespace, and administer every repository in it: settings, collaborators, protected branches, deploy keys, transfer and deletion. Admins and owners hold it.
 
 A collaborator added to one repository gets the access that repository gives them, whatever their role. A person's own repositories are theirs and use none of these.
