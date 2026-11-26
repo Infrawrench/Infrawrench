@@ -162,7 +162,9 @@
   // Local development only; production TCP arrives through a Spectrum
   // application whose origin is this Worker (README "SSH").
   // Hourly: versions of branches merged or deleted thirty days ago are pruned (`src/review/prune.ts`).
-  "triggers": { "crons": ["17 * * * *"] },
+  // Every two minutes: instructions still waiting for an agent the forge tells itself
+  // (`src/review/instructions.ts` `sweepInstructions`; `src/index.ts` tells the two apart by expression).
+  "triggers": { "crons": ["17 * * * *", "*/2 * * * *"] },
 
   "connect": [{ "protocol": "tcp", "port": 8788 }],
 }

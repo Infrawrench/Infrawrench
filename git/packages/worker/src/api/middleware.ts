@@ -67,10 +67,12 @@ const SESSION_ONLY = new Set(["account", "t3"]);
 /**
  * The only groups a CI job token reaches: it reports statuses on its
  * repository's commits, and an agent running in a job records its trace
- * (`handlers/traces.ts`). Everything else a job reads it reads over Git; it
- * never merges, comments or changes settings through the API.
+ * (`handlers/traces.ts`) and reads and answers its instructions
+ * (`handlers/instructions.ts`, which keeps sending and withdrawing one to
+ * people). Everything else a job reads it reads over Git; it never merges,
+ * comments or changes settings through the API.
  */
-const JOB_GROUPS = new Set(["statuses", "traces"]);
+const JOB_GROUPS = new Set(["statuses", "traces", "instructions"]);
 
 export const AuthenticationLive = Layer.succeed(Authentication)((httpEffect, { endpoint, group }) =>
   Effect.gen(function* () {
