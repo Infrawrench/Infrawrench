@@ -93,6 +93,12 @@ export interface Env {
   readonly WORKOS_API_HOSTNAME?: string;
   /** This site's origin, `https://git.infrawrench.com`. The redirect URI is built from it. */
   readonly SITE_ORIGIN?: string;
+  /**
+   * Where Git over SSH answers, as a repository's SSH clone URL names it:
+   * a host, or `host:port` when the port is not 22 (local development).
+   * Unset, the site's own host.
+   */
+  readonly SSH_HOST?: string;
   /** The Infrawrench app's origin, for links back. */
   readonly APP_ORIGIN?: string;
 }
@@ -102,6 +108,12 @@ export const DEFAULT_APP_ORIGIN = "https://app.infrawrench.com";
 
 export const siteOrigin = (env: Pick<Env, "SITE_ORIGIN">): string =>
   env.SITE_ORIGIN ?? DEFAULT_SITE_ORIGIN;
+
+/** The host (and port, when not 22) of SSH clone URLs: `SSH_HOST`, or the site's host. */
+export const sshHost = (env: Pick<Env, "SSH_HOST" | "SITE_ORIGIN">): string =>
+  env.SSH_HOST !== undefined && env.SSH_HOST !== ""
+    ? env.SSH_HOST
+    : new URL(siteOrigin(env)).hostname;
 
 export const appOrigin = (env: Pick<Env, "APP_ORIGIN">): string =>
   env.APP_ORIGIN ?? DEFAULT_APP_ORIGIN;

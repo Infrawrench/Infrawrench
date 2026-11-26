@@ -55,9 +55,16 @@ export const repositoryPath = ({ owner, repo }: RepoRef): string =>
 export const httpCloneUrl = (ref: RepoRef, origin: string = SITE_ORIGIN): string =>
   `${origin}${repositoryPath(ref)}.git`;
 
-/** `git@git.infrawrench.com:owner/repo.git` */
+/**
+ * `git@git.infrawrench.com:owner/repo.git`. `host` is the worker's `SSH_HOST`
+ * variable, the one place the SSH endpoint is named. With a port
+ * (`127.0.0.1:8788`, local development) the scp-like form has nowhere to put
+ * it, so the URL is `ssh://git@127.0.0.1:8788/owner/repo.git`.
+ */
 export const sshCloneUrl = ({ owner, repo }: RepoRef, host: string = SSH_HOST): string =>
-  `${SSH_USER}@${host}:${owner}/${repo}.git`;
+  /:\d+$/.test(host)
+    ? `ssh://${SSH_USER}@${host}/${owner}/${repo}.git`
+    : `${SSH_USER}@${host}:${owner}/${repo}.git`;
 
 /**
  * A file's bytes: `/owner/repo/raw/<ref>/<path>`. Served with the file's

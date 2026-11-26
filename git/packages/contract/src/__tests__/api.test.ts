@@ -271,6 +271,13 @@ describe("urls", () => {
     expect(sshCloneUrl(ref)).toBe("git@git.infrawrench.com:acme/infra.git");
   });
 
+  it("names the configured SSH host, with its port when it has one", () => {
+    expect(sshCloneUrl(ref, "ssh.git.infrawrench.com")).toBe(
+      "git@ssh.git.infrawrench.com:acme/infra.git",
+    );
+    expect(sshCloneUrl(ref, "127.0.0.1:8788")).toBe("ssh://git@127.0.0.1:8788/acme/infra.git");
+  });
+
   it("keeps slashes in refs and paths, and escapes the rest", () => {
     expect(rawPath(ref, "feature/x", "docs/a b.md")).toBe(
       "/acme/infra/raw/feature/x/docs/a%20b.md",
