@@ -12,8 +12,10 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as ExploreRouteImport } from './routes/explore'
+import { Route as IssuesRouteImport } from './routes/issues'
 import { Route as MentionsRouteImport } from './routes/mentions'
 import { Route as NewRouteImport } from './routes/new'
+import { Route as PullsRouteImport } from './routes/pulls'
 import { Route as ReviewsRouteImport } from './routes/reviews'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as OwnerIndexRouteImport } from './routes/$owner/index'
@@ -83,6 +85,11 @@ const ExploreRoute = ExploreRouteImport.update({
   path: '/explore',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IssuesRoute = IssuesRouteImport.update({
+  id: '/issues',
+  path: '/issues',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MentionsRoute = MentionsRouteImport.update({
   id: '/mentions',
   path: '/mentions',
@@ -91,6 +98,11 @@ const MentionsRoute = MentionsRouteImport.update({
 const NewRoute = NewRouteImport.update({
   id: '/new',
   path: '/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PullsRoute = PullsRouteImport.update({
+  id: '/pulls',
+  path: '/pulls',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReviewsRoute = ReviewsRouteImport.update({
@@ -379,8 +391,10 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
   '/explore': typeof ExploreRoute
+  '/issues': typeof IssuesRoute
   '/mentions': typeof MentionsRoute
   '/new': typeof NewRoute
+  '/pulls': typeof PullsRoute
   '/reviews': typeof ReviewsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/$owner/$repo': typeof OwnerRepoRouteRouteWithChildren
@@ -439,8 +453,10 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
   '/explore': typeof ExploreRoute
+  '/issues': typeof IssuesRoute
   '/mentions': typeof MentionsRoute
   '/new': typeof NewRoute
+  '/pulls': typeof PullsRoute
   '/reviews': typeof ReviewsRoute
   '/onboarding/username': typeof OnboardingUsernameRoute
   '/settings/keys': typeof SettingsKeysRoute
@@ -495,8 +511,10 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
   '/explore': typeof ExploreRoute
+  '/issues': typeof IssuesRoute
   '/mentions': typeof MentionsRoute
   '/new': typeof NewRoute
+  '/pulls': typeof PullsRoute
   '/reviews': typeof ReviewsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/$owner/$repo': typeof OwnerRepoRouteRouteWithChildren
@@ -557,8 +575,10 @@ export interface FileRouteTypes {
     | '/'
     | '/changes'
     | '/explore'
+    | '/issues'
     | '/mentions'
     | '/new'
+    | '/pulls'
     | '/reviews'
     | '/settings'
     | '/$owner/$repo'
@@ -617,8 +637,10 @@ export interface FileRouteTypes {
     | '/'
     | '/changes'
     | '/explore'
+    | '/issues'
     | '/mentions'
     | '/new'
+    | '/pulls'
     | '/reviews'
     | '/onboarding/username'
     | '/settings/keys'
@@ -672,8 +694,10 @@ export interface FileRouteTypes {
     | '/'
     | '/changes'
     | '/explore'
+    | '/issues'
     | '/mentions'
     | '/new'
+    | '/pulls'
     | '/reviews'
     | '/settings'
     | '/$owner/$repo'
@@ -733,8 +757,10 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChangesRoute: typeof ChangesRoute
   ExploreRoute: typeof ExploreRoute
+  IssuesRoute: typeof IssuesRoute
   MentionsRoute: typeof MentionsRoute
   NewRoute: typeof NewRoute
+  PullsRoute: typeof PullsRoute
   ReviewsRoute: typeof ReviewsRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   OwnerRepoRouteRoute: typeof OwnerRepoRouteRouteWithChildren
@@ -765,6 +791,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExploreRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/issues': {
+      id: '/issues'
+      path: '/issues'
+      fullPath: '/issues'
+      preLoaderRoute: typeof IssuesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/mentions': {
       id: '/mentions'
       path: '/mentions'
@@ -777,6 +810,13 @@ declare module '@tanstack/react-router' {
       path: '/new'
       fullPath: '/new'
       preLoaderRoute: typeof NewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pulls': {
+      id: '/pulls'
+      path: '/pulls'
+      fullPath: '/pulls'
+      preLoaderRoute: typeof PullsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reviews': {
@@ -1309,8 +1349,10 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChangesRoute: ChangesRoute,
   ExploreRoute: ExploreRoute,
+  IssuesRoute: IssuesRoute,
   MentionsRoute: MentionsRoute,
   NewRoute: NewRoute,
+  PullsRoute: PullsRoute,
   ReviewsRoute: ReviewsRoute,
   SettingsRoute: SettingsRouteWithChildren,
   OwnerRepoRouteRoute: OwnerRepoRouteRouteWithChildren,

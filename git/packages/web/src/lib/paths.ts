@@ -24,6 +24,11 @@ const search = (values: Record<string, string | number | undefined>): string => 
   return text === "" ? "" : `?${text}`;
 };
 
+/** Which of the reader's pull requests: `review` is the ones waiting on their review. */
+export type PullsView = "created" | "review" | "assigned";
+export type IssuesView = "assigned" | "created" | "mentioned";
+export type ThreadsState = "open" | "closed" | "all";
+
 export const paths = {
   home: () => "/",
   /** Branches across the reader's repositories, and the two lists beside it. */
@@ -31,6 +36,17 @@ export const paths = {
     `/changes${search(query)}`,
   reviews: () => "/reviews",
   mentions: () => "/mentions",
+  /** The reader's pull requests and issues across repositories. The first view and `open` are the address without a query. */
+  myPulls: (query: { view?: PullsView; state?: ThreadsState } = {}) =>
+    `/pulls${search({
+      view: query.view === "created" ? undefined : query.view,
+      state: query.state === "open" ? undefined : query.state,
+    })}`,
+  myIssues: (query: { view?: IssuesView; state?: ThreadsState } = {}) =>
+    `/issues${search({
+      view: query.view === "assigned" ? undefined : query.view,
+      state: query.state === "open" ? undefined : query.state,
+    })}`,
   explore: (query: { q?: string; language?: string } = {}) => `/explore${search(query)}`,
   newRepository: (owner?: string) => `/new${search({ owner })}`,
   onboardingUsername: (returnTo?: string) => `/onboarding/username${search({ returnTo })}`,

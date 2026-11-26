@@ -50,6 +50,8 @@ export function titleForPath(pathname: string): string {
   if (second === undefined && first === "changes") return join("Changes");
   if (second === undefined && first === "reviews") return join("Reviews");
   if (second === undefined && first === "mentions") return join("Mentions");
+  if (second === undefined && first === "pulls") return join("Pull requests");
+  if (second === undefined && first === "issues") return join("Issues");
   if (first === "new") return join("New repository");
   if (first === "onboarding") return join("Choose a username");
   if (first === "settings") {
