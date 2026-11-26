@@ -364,17 +364,42 @@ export const fakeStorage = (): FakeStorage => {
         }
         return { dropped };
       },
-      versionDiff: async ({ from, to }) => ({
-        diff: {
-          baseOid: from ? from.tipOid : to.baseOid,
-          headOid: to.tipOid,
+      // A commit a branch points at has a diff; anything else is not there to read.
+      commitDiff: async (sha) => {
+        if (![...repo().branches.values()].includes(sha))
+          throw new RepoReaderError("ref_not_found");
+        return {
+          baseOid: null,
+          headOid: sha,
           stats: { filesChanged: 0, additions: 0, deletions: 0 },
           files: [],
           nextCursor: null,
-        },
-        rebased: from !== null && from.baseOid !== to.baseOid,
-        exact: true,
-      }),
+        };
+      },
+      versionDiff: async ({ from, to, reachableOnly }) => {
+        if (reachableOnly === true) {
+          // A commit is reachable here when a branch, a pull ref or a kept version points at it.
+          const kept = new Set([
+            ...repo().branches.values(),
+            ...repo().pullRefs.values(),
+            ...repo().versions.map((version) => version.tipOid),
+          ]);
+          for (const oid of from === null ? [to.tipOid] : [from.tipOid, to.tipOid]) {
+            if (!kept.has(oid)) throw new RepoReaderError("ref_not_found");
+          }
+        }
+        return {
+          diff: {
+            baseOid: from ? from.tipOid : to.baseOid,
+            headOid: to.tipOid,
+            stats: { filesChanged: 0, additions: 0, deletions: 0 },
+            files: [],
+            nextCursor: null,
+          },
+          rebased: from !== null && from.baseOid !== to.baseOid,
+          exact: true,
+        };
+      },
       mapLines: async ({ anchors }) =>
         anchors.map((anchor) =>
           changedLines.has(anchor.key)

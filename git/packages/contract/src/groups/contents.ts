@@ -41,6 +41,7 @@ import {
   TreeListing,
   TreeLastCommits,
 } from "../schemas/git";
+import { CommitReview, PathReviewHistory } from "../schemas/review";
 
 const CommitParams = { ...RepoParams, sha: CommitSha } as const;
 
@@ -273,6 +274,37 @@ export class ContentsGroup extends HttpApiGroup.make("contents")
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "A commit's diff, with hunks")
       .annotate(SuccessDescription, "The diff against its first parent"),
+    HttpApiEndpoint.get("commitReview", "/commits/:sha/review", {
+      params: CommitParams,
+      success: CommitReview,
+    })
+      .annotate(RequiredAccess, "read")
+      .annotate(OpenApi.Summary, "The review record of the branch page a commit merged")
+      .annotate(
+        OpenApi.Description,
+        "For the commit a branch page was merged as (the merge commit, the squash, or the last rebased commit): the page, how many versions it went through, the ask its trace recorded and every finding with how it was settled. `review` is null for any other commit.",
+      )
+      .annotate(SuccessDescription, "The review record, or null"),
+    HttpApiEndpoint.get("pathReview", "/review-history", {
+      params: RepoParams,
+      query: {
+        path: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(4096)),
+        limit: Schema.optionalKey(
+          Schema.NumberFromString.check(
+            Schema.isInt(),
+            Schema.isBetween({ minimum: 1, maximum: 50 }),
+          ).annotate({ description: "How many branch pages. Default 5." }),
+        ),
+      },
+      success: PathReviewHistory,
+    })
+      .annotate(RequiredAccess, "read")
+      .annotate(OpenApi.Summary, "A file's review history")
+      .annotate(
+        OpenApi.Description,
+        "The findings merged branch pages left on a path, by page, the newest merge first. The path is matched as the findings named it: a file renamed since has the history of its new name only.",
+      )
+      .annotate(SuccessDescription, "The pages and their findings on the path"),
     HttpApiEndpoint.get("compare", "/compare", {
       params: RepoParams,
       query: compareQuery,

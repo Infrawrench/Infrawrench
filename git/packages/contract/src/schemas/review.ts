@@ -13,7 +13,7 @@ import { Schema } from "effect";
 import { BranchKey, IsoDateTime, Oid, Page } from "./common";
 import { Diff, DiffStats, StatusState } from "./git";
 import { UserRef } from "./people";
-import { RepositoryRef } from "./repository";
+import { MergeMethod, RepositoryRef } from "./repository";
 
 const BODY_LIMIT = 262_144;
 const Markdown = Schema.String.check(Schema.isMaxLength(BODY_LIMIT)).annotate({
@@ -177,6 +177,10 @@ export const BranchVersion = Schema.Struct({
     description: "The newest review run on this version. Null when none ran.",
   }),
   createdAt: IsoDateTime,
+  prunedAt: Schema.NullOr(IsoDateTime).annotate({
+    description:
+      "When its commit stopped being kept: thirty days after the branch was merged or deleted. The version, its trace, its findings and its comments stay; a diff of it is served only while a branch or a tag still reaches its commit.",
+  }),
 }).annotate({ identifier: "BranchVersion" });
 export type BranchVersion = typeof BranchVersion.Type;
 
@@ -211,6 +215,10 @@ export const VersionDiff = Schema.Struct({
   exact: Schema.Boolean.annotate({
     description:
       "False when the older version did not apply cleanly to the newer base: the diff is then tip to tip and includes what the rebase brought.",
+  }),
+  source: Schema.Literals(["versions", "merge"]).annotate({
+    description:
+      "`merge` when the version is pruned and its commit is gone: the whole change is then read from the commit the branch was merged as, against that commit's first parent.",
   }),
 }).annotate({ identifier: "VersionDiff" });
 export type VersionDiff = typeof VersionDiff.Type;
@@ -393,6 +401,67 @@ export const FindingReport = Schema.Struct({
   ),
 }).annotate({ identifier: "FindingReport" });
 export type FindingReport = typeof FindingReport.Type;
+
+/** A finding as a merged branch page left it: what it said, where, and how it was settled. */
+export const MergedFinding = Schema.Struct({
+  id: Schema.String,
+  reviewerKind: Schema.String,
+  severity: FindingSeverity,
+  title: Schema.String,
+  path: Schema.NullOr(Schema.String),
+  side: FindingSide,
+  startLine: Schema.NullOr(Schema.Int),
+  endLine: Schema.NullOr(Schema.Int),
+  linesAtHead: Schema.Boolean.annotate({
+    description:
+      "Its lines are numbered in the branch's last commit, the one that was merged. False for a finding last seen on an older version.",
+  }),
+  status: FindingStatus,
+  version: Schema.Int.annotate({ description: "The version it was first raised on." }),
+  fixedInVersion: Schema.NullOr(Schema.Int),
+  dismissedBy: Schema.NullOr(UserRef),
+  dismissalReason: Schema.NullOr(Schema.String),
+  override: Schema.NullOr(
+    Schema.Struct({ by: Schema.NullOr(UserRef), reason: Schema.String }),
+  ).annotate({
+    description: "The administrator's override that let the merge past it while it was open.",
+  }),
+}).annotate({ identifier: "MergedFinding" });
+export type MergedFinding = typeof MergedFinding.Type;
+
+/** The review record of a merged branch page, as the default branch shows it. */
+export const MergedReview = Schema.Struct({
+  page: Schema.Struct({ key: BranchKey, title: Schema.String, branch: Schema.String }),
+  mergeCommitOid: Oid,
+  mergeMethod: Schema.NullOr(MergeMethod),
+  mergedAt: IsoDateTime,
+  mergedBy: Schema.NullOr(UserRef),
+  versions: Schema.Int.annotate({ description: "How many versions the branch went through." }),
+  ask: Schema.NullOr(Schema.String).annotate({
+    description:
+      "What the agent recorded as the ask, as Markdown. Null when no trace has one, and in a file's history.",
+  }),
+  findings: Schema.Array(MergedFinding).annotate({
+    description: "The gravest first. In a file's history, only those on that path.",
+  }),
+}).annotate({ identifier: "MergedReview" });
+export type MergedReview = typeof MergedReview.Type;
+
+export const CommitReview = Schema.Struct({
+  review: Schema.NullOr(MergedReview).annotate({
+    description: "Null when the commit is not what a branch page was merged as.",
+  }),
+}).annotate({ identifier: "CommitReview" });
+export type CommitReview = typeof CommitReview.Type;
+
+export const PathReviewHistory = Schema.Struct({
+  path: Schema.String,
+  pages: Schema.Array(MergedReview).annotate({
+    description: "Merged branch pages with a finding on the path, the newest merge first.",
+  }),
+  more: Schema.Boolean.annotate({ description: "Older pages were left out." }),
+}).annotate({ identifier: "PathReviewHistory" });
+export type PathReviewHistory = typeof PathReviewHistory.Type;
 
 export const MergeOverride = Schema.Struct({
   id: Schema.String,

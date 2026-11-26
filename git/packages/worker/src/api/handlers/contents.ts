@@ -23,6 +23,7 @@ import {
   currentPagesForBranches,
   pagesForCommit,
 } from "../../db/pulls";
+import { askOfPage, mergedPageOfCommit, mergedPagesWithFindingsOn } from "../../db/review-history";
 import { getUser, userByUsername } from "../../db/users";
 import { type ReaderBranch, RepoReaderError } from "../../repo/reader";
 import { pageSize } from "../../db/cursor";
@@ -30,6 +31,7 @@ import { type RepoCx, repoOp } from "../context";
 import { mayDelete, mayPush } from "../protection";
 import { headRepository } from "../repos";
 import { commitDecorator } from "../views/commits";
+import { mergedReviewViews } from "../views/review-history";
 
 export const badgeOf = ({ thread, pull }: PullRequestWithThread, key: string): BranchPageBadge => ({
   key,
@@ -305,6 +307,35 @@ export const ContentsHandlers = HttpApiBuilder.group(GitApi, "contents", (handle
           ...detail,
           commit: decorate(detail.commit),
           branchPages: pages.map((page) => ({ key: keys.get(page.issueId)!, title: page.title })),
+        };
+      }),
+    )
+    .handle(
+      "commitReview",
+      repoOp(async (cx, { params }) => {
+        // The page names the whole id it was merged as; a prefix names no page.
+        const oid = params.sha.toLowerCase();
+        const page =
+          oid.length === 40 ? await mergedPageOfCommit(cx.repo.repository.id, oid) : null;
+        if (page === null) return { review: null };
+        const [review] = await mergedReviewViews([page], {
+          asks: new Map([[page.issueId, await askOfPage(page.issueId)]]),
+        });
+        return { review: review ?? null };
+      }),
+    )
+    .handle(
+      "pathReview",
+      repoOp(async (cx, { query }) => {
+        const { pages, more } = await mergedPagesWithFindingsOn(
+          cx.repo.repository.id,
+          query.path,
+          query.limit ?? 5,
+        );
+        return {
+          path: query.path,
+          pages: await mergedReviewViews(pages, { path: query.path }),
+          more,
         };
       }),
     )
