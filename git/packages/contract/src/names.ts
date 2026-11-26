@@ -19,3 +19,12 @@ export {
   suggestGitSlug as suggestSlug,
   type GitNameProblem as NameProblem,
 } from "@infrawrench/client-core";
+
+/** What names a branch's page in a link and an API path (client-core `git-branch-key.ts`). */
+export {
+  formatGitBranchKey as formatBranchKey,
+  gitBranchPagePath as branchPagePath,
+  parseGitBranchKey as parseBranchKey,
+  type GitBranchKey as ParsedBranchKey,
+  type GitBranchKeyFork as BranchKeyFork,
+} from "@infrawrench/client-core";
