@@ -5,8 +5,30 @@
  * of the numbers, for blame.
  */
 import { memo, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { bidiName, hasBidiControls, splitBidi } from "../lib/bidi";
 import { useHighlight, type Token } from "../lib/highlight";
 import { inRange, type LineRange } from "../lib/lines";
+
+/**
+ * Text of a line, with any bidirectional control written out as a marked
+ * `<U+202E>` instead of silently reordering what follows it (`lib/bidi.ts`).
+ */
+function Visible({ text }: { text: string }): ReactNode {
+  if (!hasBidiControls(text)) return text;
+  return splitBidi(text).map((part, index) =>
+    part.control ? (
+      <span
+        key={index}
+        title="Bidirectional control character"
+        className="rounded-sm bg-warning/15 text-warning"
+      >
+        {bidiName(part.text)}
+      </span>
+    ) : (
+      part.text
+    ),
+  );
+}
 
 /** One line's content: its tokens when highlighted, its text otherwise. */
 export const CodeLine = memo(function CodeLine({
@@ -16,19 +38,21 @@ export const CodeLine = memo(function CodeLine({
   text: string;
   tokens?: ReadonlyArray<Token> | undefined;
 }) {
-  if (tokens === undefined || tokens.length === 0) return <>{text === "" ? "\n" : text}</>;
+  if (tokens === undefined || tokens.length === 0) {
+    return <>{text === "" ? "\n" : <Visible text={text} />}</>;
+  }
   return (
     <>
       {tokens.map((token, index) =>
         token.light === undefined && token.dark === undefined ? (
-          token.content
+          <Visible key={index} text={token.content} />
         ) : (
           <span
             key={index}
             className={token.italic ? "tok italic" : "tok"}
             style={{ "--tl": token.light, "--td": token.dark } as CSSProperties}
           >
-            {token.content}
+            <Visible text={token.content} />
           </span>
         ),
       )}

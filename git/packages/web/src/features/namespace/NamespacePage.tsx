@@ -14,6 +14,7 @@ import { RepoList } from "../../components/RepoList";
 import { EmptyState, ErrorState, Loading, LoadMore, QueryView } from "../../components/states";
 import { formatDate, plural } from "../../lib/format";
 import { paths } from "../../lib/paths";
+import { webUrl } from "../../lib/safe-url";
 import { SORT_LABEL, type RepositorySortName } from "../explore/ExplorePage";
 
 type ListType = (typeof REPOSITORY_LIST_TYPES)[number];
@@ -71,6 +72,8 @@ export function NamespacePage({ slug, tab }: { slug: string; tab: "repositories"
 
 function Profile({ namespace }: { namespace: Namespace }) {
   const name = namespace.displayName ?? namespace.slug;
+  // The address is the person's own text: a link only when it is a web address.
+  const website = webUrl(namespace.websiteUrl);
   return (
     <aside aria-label="Profile" className="space-y-3 text-xs">
       <div className="flex items-center gap-3 lg:flex-col lg:items-start">
@@ -101,13 +104,13 @@ function Profile({ namespace }: { namespace: Namespace }) {
             <Icon name="link" size={12} />
             <dt className="sr-only">Website</dt>
             <dd className="min-w-0 truncate">
-              <a
-                href={namespace.websiteUrl}
-                rel="noopener noreferrer nofollow"
-                className="text-accent"
-              >
-                {namespace.websiteUrl.replace(/^https?:\/\//, "")}
-              </a>
+              {website !== null ? (
+                <a href={website} rel="noopener noreferrer nofollow" className="text-accent">
+                  {namespace.websiteUrl.replace(/^https?:\/\//, "")}
+                </a>
+              ) : (
+                namespace.websiteUrl
+              )}
             </dd>
           </div>
         ) : null}

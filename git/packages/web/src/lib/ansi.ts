@@ -2,7 +2,11 @@
  * Terminal output with SGR escape sequences (`ESC[31m`) as styled spans. Only
  * what CI logs use is kept: the eight colours and their bright forms as
  * foreground, bold, dim, italic and underline. Every other escape sequence
- * (cursor movement, erase, OSC titles and links) is dropped.
+ * (cursor movement, erase, OSC titles and links, device control strings) is
+ * dropped with its payload, and so are the other control characters, so a
+ * log can neither carry a link nor hide text behind a terminal command.
+ * Styles only ever come from the fixed set above; nothing in a log becomes a
+ * CSS value or a URL.
  */
 
 export type AnsiColor =
@@ -39,9 +43,13 @@ const COLORS: ReadonlyArray<AnsiColor> = [
   "white",
 ];
 
-// CSI sequences (ESC [ ... final byte), OSC sequences (ESC ] ... BEL or ESC \), and lone two-byte escapes.
+// In order: CSI sequences (ESC [ or its one-byte form, parameters, final
+// byte); OSC, DCS, SOS, PM and APC strings with their payload, up to BEL, ST,
+// the next ESC or the end of the line when unterminated; any other escape;
+// and the remaining C0 and C1 control characters but tab and carriage return.
+// Each alternative is linear: no nested repetition.
 const ESCAPE =
-  /\u001b\[([0-9;:?]*)([ -/]*[@-~])|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b[@-Z\\^_]/g;
+  /(?:\u001b\[|\u009b)([0-9;:?<=>]*)([ -/]*[@-~])|(?:\u001b[\]PX^_]|[\u0090\u0098\u009d-\u009f])[^\u0007\u001b\u009c]*(?:\u0007|\u009c|\u001b\\)?|\u001b[ -~]?|[\u0000-\u0008\u000b\u000c\u000e-\u001a\u001c-\u001f\u007f-\u009f]/g;
 
 function applyCodes(style: AnsiStyle, parameters: string): AnsiStyle {
   const codes = parameters === "" ? [0] : parameters.split(";").map((part) => Number(part) || 0);

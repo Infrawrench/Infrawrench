@@ -21,6 +21,7 @@ import { shortOid } from "../../lib/format";
 import { paths, type RepoRef } from "../../lib/paths";
 import { pathCrumbs, splitRefPath, type RefAndPath } from "../../lib/refs";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
+import { showBidi } from "../../lib/bidi";
 
 /**
  * Splits a route's splat (`feature/x/src/a.ts`) into its ref and path against
@@ -127,9 +128,9 @@ export function CommitStrip({
       <AppLink
         href={paths.commit(repo, commit.oid)}
         className="min-w-0 flex-1 truncate text-on-surface-secondary hover:underline"
-        title={commit.summary}
+        title={showBidi(commit.summary)}
       >
-        {commit.summary}
+        {showBidi(commit.summary)}
       </AppLink>
       <CommitStatusIcon state={commit.status} />
       <AppLink

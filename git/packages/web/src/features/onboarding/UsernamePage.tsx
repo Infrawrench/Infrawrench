@@ -17,13 +17,11 @@ import { Page, PageHeader } from "../../components/Panel";
 import { EmptyState, InlineError, Loading } from "../../components/states";
 import { useDebounced } from "../../lib/name-availability";
 import { paths } from "../../lib/paths";
+import { sitePath } from "../../lib/safe-url";
 import { signInHref, useSession } from "../../lib/session";
 
 /** Only a path on this site: `returnTo` comes from the URL. */
-const safeReturn = (returnTo: string | undefined): string =>
-  returnTo !== undefined && returnTo.startsWith("/") && !returnTo.startsWith("//")
-    ? returnTo
-    : paths.home();
+const safeReturn = (returnTo: string | undefined): string => sitePath(returnTo) ?? paths.home();
 
 export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
   const session = useSession();

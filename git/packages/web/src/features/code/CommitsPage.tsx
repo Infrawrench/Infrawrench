@@ -14,6 +14,7 @@ import { dayKey, formatDate, groupConsecutive, shortOid } from "../../lib/format
 import { paths, type RepoRef } from "../../lib/paths";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { CodeRefPicker, PathBreadcrumbs } from "./shared";
+import { showBidi } from "../../lib/bidi";
 
 /** One commit in a list: summary, author and time on the left; status, id and browse on the right. */
 export function CommitRow({
@@ -34,7 +35,7 @@ export function CommitRow({
             href={paths.commit(repo, commit.oid)}
             className="truncate text-sm font-medium text-on-surface hover:underline"
           >
-            {commit.summary}
+            {showBidi(commit.summary)}
           </AppLink>
           {commit.parents.length > 1 ? (
             <span className="rounded border border-border px-1 text-[10px] text-on-surface-muted">

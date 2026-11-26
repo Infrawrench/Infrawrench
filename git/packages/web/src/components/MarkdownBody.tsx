@@ -6,6 +6,8 @@ import type { ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { languageOfFence, useHighlight } from "../lib/highlight";
+import { limitTables } from "../lib/markdown-limits";
+import { safeImageUrl, safeLinkUrl } from "../lib/safe-url";
 import { AppLink } from "./AppLink";
 import { CodeLine, linesOf } from "./CodeView";
 
@@ -23,6 +25,15 @@ export interface MarkdownProps {
 
 const isRelative = (url: string): boolean =>
   !/^[a-z][a-z0-9+.-]*:/i.test(url) && !url.startsWith("//") && !url.startsWith("#");
+
+/**
+ * Every URL in the source, before anything renders it: a link may go to this
+ * site, a web address or `mailto:`, an image may load from this site or over
+ * `https:` (`lib/safe-url.ts`). Anything else becomes empty, and the
+ * components below draw it as text.
+ */
+export const markdownUrl = (url: string, key: string): string =>
+  (key === "src" ? safeImageUrl(url) : safeLinkUrl(url, { mailto: true })) ?? "";
 
 function Fence({ code, info }: { code: string; info: string }) {
   const text = code.replace(/\n$/, "");
@@ -59,9 +70,9 @@ export default function MarkdownBody({
 }: MarkdownProps) {
   const components: Components = {
     a: ({ href, children, node: _node, ...rest }) => {
-      const target =
-        href !== undefined && isRelative(href) ? (resolveLink?.(href) ?? href) : (href ?? "");
-      const external = /^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith("//");
+      if (href === undefined || href === "") return <span>{children}</span>;
+      const target = isRelative(href) ? (resolveLink?.(href) ?? href) : href;
+      const external = /^[a-z][a-z0-9+.-]*:/i.test(target);
       return (
         <AppLink
           {...rest}
@@ -74,8 +85,21 @@ export default function MarkdownBody({
     },
     img: ({ src, alt, node: _node, ...rest }) => {
       const url = typeof src === "string" ? src : "";
+      // A refused source shows its alt text, as a broken image would.
+      if (url === "") return alt ? <span>{alt}</span> : null;
       const target = isRelative(url) ? (resolveImage?.(url) ?? url) : url;
-      return <img {...rest} src={target} alt={alt ?? ""} loading="lazy" />;
+      // Another site learns the reader's address from an image, but not
+      // which page of which repository it was on.
+      return (
+        <img
+          {...rest}
+          src={target}
+          alt={alt ?? ""}
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+        />
+      );
     },
     pre: ({ children }) => <>{children}</>,
     code: ({ className: language, children, node }) => {
@@ -97,7 +121,11 @@ export default function MarkdownBody({
   };
   return (
     <div className={`markdown ${className}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, limitTables(source)]}
+        urlTransform={markdownUrl}
+        components={components}
+      >
         {source}
       </ReactMarkdown>
     </div>

@@ -1,13 +1,20 @@
 import type { Label } from "@infrawrench/git-contract";
 import { AppLink } from "./AppLink";
 
+/** `color` as a CSS colour when it is six hex digits (what labels store), else null. */
+export const labelColor = (color: string): string | null =>
+  /^[0-9a-f]{6}$/i.test(color) ? `#${color}` : null;
+
 /** A label's own colour as a dot. Decorative: the name is beside it. */
 export function LabelDot({ color, size = 8 }: { color: string; size?: number }) {
+  const background = labelColor(color);
   return (
     <span
       aria-hidden="true"
-      className="inline-block shrink-0 rounded-full border border-border-strong"
-      style={{ width: size, height: size, backgroundColor: `#${color}` }}
+      className={`inline-block shrink-0 rounded-full border border-border-strong ${
+        background === null ? "bg-surface-sunken" : ""
+      }`}
+      style={{ width: size, height: size, backgroundColor: background ?? undefined }}
     />
   );
 }

@@ -21,6 +21,7 @@ import { terraformEventSentence } from "../infrastructure/PlanSummary";
 import { CommentCard } from "./CommentCard";
 import { threadSearchHref } from "./ThreadList";
 import { cursorQuery } from "../../lib/cursor";
+import { showBidi } from "../../lib/bidi";
 
 type ReviewItem = Extract<TimelineItem, { type: "review" }>;
 type TerraformRunItem = Extract<TimelineItem, { type: "terraform_run" }>;
@@ -141,7 +142,7 @@ function describe(
               href={paths.commit(repo, item.commit.oid)}
               className="text-on-surface hover:underline"
             >
-              {item.commit.summary}
+              {showBidi(item.commit.summary)}
             </AppLink>{" "}
             <CommitLink repo={repo} oid={item.commit.oid} />
           </>
@@ -311,7 +312,7 @@ function CommitsRow({ item }: { item: Extract<TimelineItem, { type: "commits" }>
                 href={paths.commit(repo, commit.oid)}
                 className="min-w-0 truncate text-on-surface-secondary hover:underline"
               >
-                {commit.summary}
+                {showBidi(commit.summary)}
               </AppLink>
               <CommitStatusIcon state={commit.status} size={12} />
               <span className="ml-auto shrink-0">

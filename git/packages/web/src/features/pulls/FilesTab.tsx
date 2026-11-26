@@ -32,6 +32,7 @@ import {
   type LineAnchor,
 } from "./review-threads";
 import { cursorQuery } from "../../lib/cursor";
+import { showBidi } from "../../lib/bidi";
 
 const LAYOUT_KEY = "git-diff-layout";
 
@@ -103,7 +104,7 @@ function Tree({
                 className="flex items-center gap-1.5 py-1 pr-1.5 text-xs text-on-surface-muted"
               >
                 <Icon name="folder" size={12} />
-                <span className="truncate">{node.name}</span>
+                <span className="truncate">{showBidi(node.name)}</span>
               </div>
               <Tree
                 nodes={node.children}
@@ -132,7 +133,7 @@ function Tree({
               }`}
             >
               <Icon name="file" size={12} className={tone} />
-              <span className="min-w-0 flex-1 truncate">{node.name}</span>
+              <span className="min-w-0 flex-1 truncate">{showBidi(node.name)}</span>
               {count > 0 ? (
                 <span className="inline-flex items-center gap-0.5 text-on-surface-muted">
                   <Icon name="messageSquare" size={10} />
@@ -310,7 +311,7 @@ export function FilesTab() {
                 className="flex scroll-mt-24 items-center gap-2 bg-surface-inset px-3 py-1.5 text-xs"
               >
                 <span className="min-w-0 flex-1 truncate font-mono text-on-surface-muted">
-                  {file.path}
+                  {showBidi(file.path)}
                 </span>
                 <DiffStat additions={file.additions} deletions={file.deletions} />
                 {toggle}

@@ -41,6 +41,9 @@ function TokenForm({
   const [expiry, setExpiry] = useState<(typeof EXPIRY_CHOICES)[number]["value"]>("90");
   const [days, setDays] = useState(60);
   const create = useMutation({
+    // The answer carries the secret: the query client drops it as soon as
+    // this form closes, so it lives only in the page's "shown once" panel.
+    gcTime: 0,
     mutationFn: () =>
       api.account.createToken({
         payload: {

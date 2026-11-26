@@ -18,6 +18,7 @@ import { Button } from "./Button";
 import { CodeLine, linesOf } from "./CodeView";
 import { Icon } from "./icons";
 import { Panel } from "./Panel";
+import { showBidi } from "../lib/bidi";
 
 export type DiffLayout = "unified" | "split";
 
@@ -193,13 +194,13 @@ function DiffFileView({
         <span className="min-w-0 flex-1 truncate font-mono text-on-surface">
           {file.oldPath !== null && file.oldPath !== file.path ? (
             <>
-              <span className="text-on-surface-muted">{file.oldPath}</span>
+              <span className="text-on-surface-muted">{showBidi(file.oldPath)}</span>
               <span aria-label="renamed to" className="mx-1.5 text-on-surface-faint">
                 →
               </span>
             </>
           ) : null}
-          {file.path}
+          {showBidi(file.path)}
         </span>
         {label !== null ? (
           <Badge

@@ -168,3 +168,15 @@ Worked around, until the shell has it:
 - **`AppLink` over typed routes.** Links take an `href` from `paths.ts`. Typed `to` props would need the splat routes' refs and paths encoded at every call site.
 - **Diff context expands in the browser**: the view fetches the new side's blob once and fills the gaps between hunks itself, rather than asking for the diff again with more context.
 - **Syntax highlighting is Shiki's core with the JavaScript regex engine**, no WebAssembly, one chunk per grammar. Tokens carry both themes' colours and CSS picks by colour scheme.
+
+## What comes from a repository is text (after the security review)
+
+Everything a user can write reaches the page as React text; there is no HTML sink in `src/` and raw HTML in Markdown is never rendered. The rules that keep it so:
+
+- **Every URL from data goes through `lib/safe-url.ts`.** Links may be same-origin or `http(s)` (`mailto:` in Markdown); images same-origin or `https:` only. `AppLink` applies it to every `href`, and an address that fails renders without a link.
+- **Markdown has limits** (`lib/markdown-limits.ts`): over 500 000 characters, or nested deeper than 48 levels, shows as plain text; a table that would pad to over 20 000 cells shows as its source; a render that throws falls back to plain text. One comment of 20 000 `>` used to end the page for everyone who opened it.
+- **Images in Markdown are fetched by the reader's browser from wherever they point**, with `referrerpolicy="no-referrer"` and lazily. There is no image proxy: the author of a comment learns the address of whoever reads it. A proxy would be a worker route (a signed URL, an image-only content type allowlist, a size cap, a guard against private addresses, no cookies) and one line in `markdownUrl`.
+- **Bidirectional overrides and isolates are written out** (`lib/bidi.ts`, `<U+202E>`) in code, diffs, file names, breadcrumbs and commit summaries; ordinary right-to-left text is untouched.
+- **ANSI logs** keep colours from the fixed map and drop every OSC, DCS, APC, PM and SOS string (terminated or not), the one-byte C1 forms and other control characters.
+- **A new token's secret is not kept in the query cache** (`gcTime: 0`); it lives in the panel that shows it once.
+- The mock is a build-time constant (`VITE_GIT_MOCK`); nothing at run time turns it on.

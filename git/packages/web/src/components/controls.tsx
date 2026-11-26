@@ -4,6 +4,7 @@ import { useLocation } from "@tanstack/react-router";
 import { AppLink } from "./AppLink";
 import { Button, type ButtonVariant } from "./Button";
 import { Icon } from "./icons";
+import { showBidi } from "../lib/bidi";
 
 /** Copies `text`; the icon turns to a tick for a moment and the change is announced. */
 export function CopyButton({
@@ -160,11 +161,11 @@ export function Breadcrumbs({
                 href={crumb.href}
                 className="truncate text-on-surface-secondary hover:underline"
               >
-                {crumb.label}
+                {showBidi(crumb.label)}
               </AppLink>
             ) : (
               <span aria-current="page" className="truncate font-semibold text-on-surface">
-                {crumb.label}
+                {showBidi(crumb.label)}
               </span>
             )}
           </li>

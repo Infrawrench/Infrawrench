@@ -15,6 +15,7 @@ import { shortOid } from "../../lib/format";
 import { paths } from "../../lib/paths";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { DiffSection } from "./DiffSection";
+import { showBidi } from "../../lib/bidi";
 
 function Person({
   signature,
@@ -51,7 +52,7 @@ export function CommitPage({ sha }: { sha: string }) {
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-surface-inset px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <h1 className="flex items-center gap-2 text-base font-semibold text-on-surface">
-                      <span className="min-w-0 break-words">{commit.summary}</span>
+                      <span className="min-w-0 break-words">{showBidi(commit.summary)}</span>
                       <CommitStatusIcon state={commit.status} size={15} />
                     </h1>
                     {body !== "" ? (

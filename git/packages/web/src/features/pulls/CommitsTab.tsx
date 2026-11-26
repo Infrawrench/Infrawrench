@@ -12,6 +12,7 @@ import { dayKey, formatDate, groupConsecutive, shortOid } from "../../lib/format
 import { paths } from "../../lib/paths";
 import { usePull } from "./PullLayout";
 import { cursorQuery } from "../../lib/cursor";
+import { showBidi } from "../../lib/bidi";
 
 export function CommitsTab() {
   const repo = useRepoRef();
@@ -45,7 +46,7 @@ export function CommitsTab() {
                     href={paths.commit(repo, commit.oid)}
                     className="block truncate text-xs font-medium text-on-surface hover:underline"
                   >
-                    {commit.summary}
+                    {showBidi(commit.summary)}
                   </AppLink>
                   <div className="mt-0.5 flex items-center gap-1.5 text-xs text-on-surface-muted">
                     <CommitAuthor author={commit.author} user={commit.authorUser} />

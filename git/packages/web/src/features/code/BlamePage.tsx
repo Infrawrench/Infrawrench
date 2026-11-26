@@ -16,6 +16,7 @@ import { paths } from "../../lib/paths";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { useLineSelection } from "./BlobPage";
 import { CodeRefPicker, PathBreadcrumbs } from "./shared";
+import { showBidi } from "../../lib/bidi";
 
 export function BlamePage({ refName, path }: { refName: string; path: string }) {
   const repo = useRepoRef();
@@ -81,10 +82,10 @@ export function BlamePage({ refName, path }: { refName: string; path: string }) 
                         <div className="flex items-center gap-2 text-[11px] leading-5">
                           <AppLink
                             href={paths.commit(repo, commit.oid)}
-                            title={`${commit.summary}\n${commit.author.name}`}
+                            title={`${showBidi(commit.summary)}\n${commit.author.name}`}
                             className="min-w-0 flex-1 truncate text-on-surface-secondary hover:underline"
                           >
-                            {commit.summary}
+                            {showBidi(commit.summary)}
                           </AppLink>
                           <RelativeTime
                             iso={commit.author.when}
@@ -93,7 +94,7 @@ export function BlamePage({ refName, path }: { refName: string; path: string }) 
                           {range.previousCommitOid !== null ? (
                             <AppLink
                               href={paths.blame(repo, range.previousCommitOid, range.originalPath)}
-                              aria-label={`Blame before ${commit.summary}`}
+                              aria-label={`Blame before ${showBidi(commit.summary)}`}
                               title="Blame before this change"
                               className="inline-flex text-on-surface-faint hover:text-on-surface"
                             >

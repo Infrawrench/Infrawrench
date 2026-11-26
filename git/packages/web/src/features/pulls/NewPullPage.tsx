@@ -20,6 +20,7 @@ import { paths } from "../../lib/paths";
 import { formatHead, headQuery, parseHead } from "../../lib/refs";
 import { signInHref, useSession } from "../../lib/session";
 import { TriageFields, type ThreadTriage } from "../issues/ThreadSidebar";
+import { showBidi } from "../../lib/bidi";
 
 /** `feature/vpc-peering` as a first guess at a title: `Vpc peering`. */
 function titleFromBranch(branch: string): string {
@@ -314,7 +315,7 @@ export function NewPullPage({
                       href={paths.commit(headRepo, commit.oid)}
                       className="min-w-0 flex-1 truncate text-on-surface hover:underline"
                     >
-                      {commit.summary}
+                      {showBidi(commit.summary)}
                     </AppLink>
                     <CommitStatusIcon state={commit.status} size={12} />
                     <RelativeTime

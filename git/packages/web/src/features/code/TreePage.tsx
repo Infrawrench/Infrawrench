@@ -17,10 +17,12 @@ import { ErrorState, Loading } from "../../components/states";
 import { formatBytes, plural } from "../../lib/format";
 import { paths, type RepoRef } from "../../lib/paths";
 import { parentPath } from "../../lib/refs";
+import { webUrl } from "../../lib/safe-url";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { EmptyRepository } from "./EmptyRepository";
 import { ReadmePanel } from "./ReadmePanel";
 import { CloneMenu, CodeRefPicker, CommitStrip, PathBreadcrumbs } from "./shared";
+import { showBidi } from "../../lib/bidi";
 
 const ENTRY_ICON: Record<TreeEntry["type"], IconName> = {
   tree: "folder",
@@ -192,11 +194,11 @@ function FileTable({
                     </span>
                     {href !== null ? (
                       <AppLink href={href} className="truncate text-on-surface hover:underline">
-                        {entry.name}
+                        {showBidi(entry.name)}
                       </AppLink>
                     ) : (
                       <span className="truncate text-on-surface">
-                        {entry.name}
+                        {showBidi(entry.name)}
                         <span className="ml-1.5 font-mono text-on-surface-faint">
                           @ {entry.oid.slice(0, 7)}
                         </span>
@@ -209,9 +211,9 @@ function FileTable({
                     <AppLink
                       href={paths.commit(repo, commit.oid)}
                       className="block truncate hover:text-on-surface hover:underline"
-                      title={commit.summary}
+                      title={showBidi(commit.summary)}
                     >
-                      {commit.summary}
+                      {showBidi(commit.summary)}
                     </AppLink>
                   ) : null}
                 </Td>
@@ -233,6 +235,7 @@ function FileTable({
 }
 
 function About({ repository }: { repository: Repository }) {
+  const homepage = webUrl(repository.homepageUrl);
   return (
     <aside aria-labelledby="about-heading" className="space-y-3 text-xs">
       <h2 id="about-heading" className="text-sm font-semibold text-on-surface">
@@ -241,14 +244,14 @@ function About({ repository }: { repository: Repository }) {
       {repository.description !== null && repository.description !== "" ? (
         <p className="text-on-surface-secondary">{repository.description}</p>
       ) : null}
-      {repository.homepageUrl !== null && repository.homepageUrl !== "" ? (
+      {homepage !== null ? (
         <a
-          href={repository.homepageUrl}
+          href={homepage}
           rel="noopener noreferrer nofollow"
           className="flex items-center gap-1.5 text-accent"
         >
           <Icon name="link" size={12} />
-          <span className="truncate">{repository.homepageUrl.replace(/^https?:\/\//, "")}</span>
+          <span className="truncate">{homepage.replace(/^https?:\/\//, "")}</span>
         </a>
       ) : null}
       {repository.topics.length > 0 ? (
