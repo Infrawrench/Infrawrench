@@ -10,6 +10,16 @@ import { IssuesGroup, LabelsGroup, MilestonesGroup } from "./groups/issues";
 import { NamespacesGroup } from "./groups/namespaces";
 import { PullsGroup } from "./groups/pulls";
 import { RepositoriesGroup, RepositoryListsGroup } from "./groups/repositories";
+import {
+  AgentsGroup,
+  FindingsGroup,
+  InstructionsGroup,
+  ReviewGroup,
+  ReviewSettingsGroup,
+  T3Group,
+  TracesGroup,
+  VersionsGroup,
+} from "./groups/review";
 import { SessionGroup } from "./groups/session";
 import {
   AccountGroup,
@@ -27,6 +37,14 @@ export const GIT_API_GROUPS = [
   ContentsGroup,
   IssuesGroup,
   PullsGroup,
+  VersionsGroup,
+  TracesGroup,
+  FindingsGroup,
+  InstructionsGroup,
+  AgentsGroup,
+  ReviewSettingsGroup,
+  ReviewGroup,
+  T3Group,
   LabelsGroup,
   MilestonesGroup,
   CollaboratorsGroup,
@@ -48,6 +66,14 @@ export class GitApi extends withApiDefaults(
     .add(ContentsGroup)
     .add(IssuesGroup)
     .add(PullsGroup)
+    .add(VersionsGroup)
+    .add(TracesGroup)
+    .add(FindingsGroup)
+    .add(InstructionsGroup)
+    .add(AgentsGroup)
+    .add(ReviewSettingsGroup)
+    .add(ReviewGroup)
+    .add(T3Group)
     .add(LabelsGroup)
     .add(MilestonesGroup)
     .add(CollaboratorsGroup)
@@ -71,6 +97,18 @@ export class IssuesApi extends withApiDefaults(
   HttpApi.make("git-issues").add(IssuesGroup).add(LabelsGroup).add(MilestonesGroup),
 ) {}
 export class PullsApi extends withApiDefaults(HttpApi.make("git-pulls").add(PullsGroup)) {}
+/** Versions, traces, findings, instructions, agents and what configures them. */
+export class ReviewApi extends withApiDefaults(
+  HttpApi.make("git-review")
+    .add(VersionsGroup)
+    .add(TracesGroup)
+    .add(FindingsGroup)
+    .add(InstructionsGroup)
+    .add(AgentsGroup)
+    .add(ReviewSettingsGroup)
+    .add(ReviewGroup)
+    .add(T3Group),
+) {}
 export class RepositorySettingsApi extends withApiDefaults(
   HttpApi.make("git-repository-settings")
     .add(CollaboratorsGroup)

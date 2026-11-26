@@ -241,6 +241,12 @@ export const PullRequestSummary = Schema.Struct({
   status: Schema.NullOr(StatusState).annotate({ description: "The head's combined status." }),
   reviewDecision: Schema.NullOr(ReviewDecision),
   mergedAt: Schema.NullOr(IsoDateTime),
+  latestVersion: Schema.optionalKey(
+    Schema.NullOr(Schema.Int).annotate({
+      description:
+        "The newest version of its head branch (`versions.list`). Null before the first push is recorded.",
+    }),
+  ),
 }).annotate({ identifier: "PullRequestSummary" });
 export type PullRequestSummary = typeof PullRequestSummary.Type;
 
@@ -258,6 +264,7 @@ export const MERGE_BLOCKERS = [
   "push_restricted",
   "archived",
   "no_permission",
+  "must_fix_findings",
 ] as const;
 
 /**
@@ -316,6 +323,20 @@ export const Mergeability = Schema.Struct({
   canUpdateBranch: Schema.Boolean.annotate({
     description: "The head is behind, has no conflicts, and the viewer may push to it.",
   }),
+  findings: Schema.optionalKey(
+    Schema.Struct({
+      mustFixOpen: Schema.Int.annotate({
+        description:
+          "Open must-fix findings no override covers. Above 0 with `blocks`, the `must_fix_findings` blocker is listed.",
+      }),
+      blocks: Schema.Boolean.annotate({
+        description: "The repository holds merges on open must-fix findings.",
+      }),
+      canOverride: Schema.Boolean.annotate({
+        description: "The viewer administers the repository: `findings.override` is theirs.",
+      }),
+    }).annotate({ description: "What review agents hold the merge on." }),
+  ),
 }).annotate({ identifier: "Mergeability" });
 export type Mergeability = typeof Mergeability.Type;
 
@@ -446,6 +467,11 @@ export const ReviewComment = Schema.Struct({
   pending: Schema.Boolean.annotate({
     description: "Part of the viewer's unsubmitted review: only they see it.",
   }),
+  version: Schema.optionalKey(
+    Schema.NullOr(Schema.Int).annotate({
+      description: "The branch version it was written on.",
+    }),
+  ),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
   edited: Schema.Boolean,
@@ -474,6 +500,17 @@ export const ReviewThread = Schema.Struct({
   outdated: Schema.Boolean.annotate({
     description: "The lines it was written on have since changed.",
   }),
+  version: Schema.optionalKey(
+    Schema.NullOr(Schema.Int).annotate({
+      description: "The branch version it was started on. Null before versions were recorded.",
+    }),
+  ),
+  answeredInVersion: Schema.optionalKey(
+    Schema.NullOr(Schema.Int).annotate({
+      description:
+        "The version whose push changed the lines it is on. Null while those lines stand, in which case it carries forward to every later version.",
+    }),
+  ),
   hunk: Schema.NullOr(DiffHunk).annotate({
     description:
       "The lines it was written on with a few of context, as they were, to show it outside the diff.",

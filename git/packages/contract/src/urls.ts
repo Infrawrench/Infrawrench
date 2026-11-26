@@ -9,6 +9,7 @@
  * | `/auth/sign-in?returnTo=`                    | Redirects to WorkOS AuthKit.                     |
  * | `/auth/callback`                             | AuthKit's redirect; sets the session cookie.     |
  * | `/auth/sign-out`                             | `POST`; the API's `session.signOut` does the same. |
+ * | `/auth/t3/callback`                          | A T3 Code environment's OAuth redirect (`t3.beginOAuth`). |
  * | `/:owner/:repo.git/...`                      | Smart HTTP (`info/refs`, `git-upload-pack`, ...). |
  * | `/:owner/:repo/raw/:ref/*path`               | A file's bytes.                                  |
  * | `/:owner/:repo/archive/:ref.tar.gz` / `.zip` | The tree at a ref as an archive.                 |
@@ -31,6 +32,8 @@ export const AUTH_PATHS = {
   signIn: "/auth/sign-in",
   callback: "/auth/callback",
   signOut: "/auth/sign-out",
+  /** Where a T3 Code environment sends the browser back with `code` and `state`. */
+  t3Callback: "/auth/t3/callback",
 } as const;
 
 export interface RepoRef {

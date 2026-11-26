@@ -119,6 +119,8 @@ export const ERROR_CODES = [
   "terraform_locked",
   "terraform_unavailable",
   "ci_unavailable",
+  "must_fix_findings",
+  "not_implemented",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 
@@ -133,6 +135,10 @@ export const conflict = (error: string, code?: ErrorCode) =>
   new Conflict(code === undefined ? { error } : { error, code });
 export const unprocessable = (error: string, code?: ErrorCode) =>
   new UnprocessableEntity(code === undefined ? { error } : { error, code });
+
+/** An endpoint the contract defines and this server does not serve yet. A 503 with `not_implemented`. */
+export const notImplemented = (what: string) =>
+  new ServiceUnavailable({ error: `${what} is not available yet`, code: "not_implemented" });
 
 /** What a read may answer: a request that fails its schema, or nothing there for this caller. */
 export const ReadErrors = [BadRequest, NotFound] as const;

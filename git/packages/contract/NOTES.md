@@ -46,6 +46,14 @@ The JSON API of git.infrawrench.com as Effect `HttpApi` definitions. The worker 
 - **The CI switch is the repository's.** `ci.settings` and `ci.updateSettings` take `admin` on the repository. `available` is false in a personal namespace, where the update answers 422 `ci_unavailable`. Whether runs start is still `ci.status`, which also reads the owner's plan. Secrets and variables are not here.
 - **Token scopes are `repo:read` and `repo:write` only.** A token never reaches settings or credentials: `AccountGroup` is session only.
 
+- **Agent work review** (`schemas/review.ts`, `groups/review.ts`) is defined whole, ahead of the handlers: versions and their diffs, the branch page's state, the inbox, traces, findings and review runs, the merge override, instructions, the agent behind a branch, starting work, T3 Code environments, a repository's review settings and a person's review mode. An endpoint the worker does not serve yet answers 503 `not_implemented` (`notImplemented`), after its gates.
+  - Everything about one branch is under `/api/repos/:owner/:repo/pulls/:number`, because the branch page is the pull request shown another way. A version in a path is its number or `latest`.
+  - `versions.diff` is one endpoint: `from` is `base` (the whole change), `previous`, a version's number, or `reviewed` (the viewer's last mark).
+  - Fields added to shapes that existed are optional keys (`PullRequestSummary.latestVersion`, `ReviewThread.version` and `answeredInVersion`, `ReviewComment.version`, `Mergeability.findings`), so a client built before them still decodes. `MERGE_BLOCKERS` gained `must_fix_findings`.
+  - Lists that grow on the server (`reviewerKind`, an agent identity's `kind`, `deliveredVia`) are strings with their known values documented.
+  - `traces.record` is the one write annotated `read` without `RequiresUser`: a CI job's token has `read`, and the handler takes a person with `write` or the job. The contract test names it (`JOB_WRITES`).
+  - The `t3` group is session only in the worker, and its OAuth redirect is a URL, not an endpoint (`AUTH_PATHS.t3Callback`).
+
 ## Not here yet
 
 - Webhooks, notifications, releases, repository redirects after a rename, editing files in the browser, requested reviewers, reactions.

@@ -62,6 +62,12 @@ const OPEN = new Set([
   "repositoryLists.explore",
 ]);
 
+/**
+ * Writes a CI job's token makes with the `read` it has: the handler takes a
+ * person with `write` or the job, and refuses everyone else.
+ */
+const JOB_WRITES = new Set(["traces.record"]);
+
 describe("GitApi", () => {
   it("has every group's endpoints", () => {
     expect(endpoints.length).toBeGreaterThan(100);
@@ -114,6 +120,7 @@ describe("GitApi", () => {
     for (const e of endpoints) {
       if (e.method === "GET" || !e.path.startsWith(REPO_PREFIX)) continue;
       if (Context.get(e.annotations, RequiredAccess) !== "read") continue;
+      if (JOB_WRITES.has(`${e.group}.${e.name}`)) continue;
       expect(Context.get(e.annotations, RequiresUser), `${e.group}.${e.name}`).toBe(true);
     }
   });
@@ -162,6 +169,39 @@ describe("GitApi", () => {
       const found = endpoints.find((e) => e.group === "ci" && e.name === name);
       expect(Context.get(found!.annotations, RequiredAccess), name).toBe("admin");
     }
+  });
+
+  it("defines agent work review whole, for the handlers that come later", () => {
+    const ids = new Set(endpoints.map((e) => `${e.group}.${e.name}`));
+    for (const id of [
+      "versions.list",
+      "versions.diff",
+      "versions.markReviewed",
+      "versions.branchState",
+      "review.inbox",
+      "review.setMode",
+      "traces.record",
+      "findings.dismiss",
+      "findings.override",
+      "findings.requestRun",
+      "instructions.send",
+      "instructions.markAnswered",
+      "agents.startWork",
+      "agents.set",
+      "t3.beginOAuth",
+      "reviewSettings.update",
+    ]) {
+      expect(ids.has(id), id).toBe(true);
+    }
+    const gate = (id: string) =>
+      Context.get(
+        endpoints.find((e) => `${e.group}.${e.name}` === id)!.annotations,
+        RequiredAccess,
+      );
+    // Overriding the merge block is an administrator's, and so are the settings.
+    expect(gate("findings.override")).toBe("admin");
+    expect(gate("reviewSettings.update")).toBe("admin");
+    expect(gate("agents.startWork")).toBe("write");
   });
 
   it("builds an OpenAPI document", () => {
