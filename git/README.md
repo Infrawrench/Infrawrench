@@ -51,7 +51,7 @@ Access resolution is one function, `repoAccess(principal, repo) -> none | read |
 ## Transports
 
 - **Smart HTTP**: `GET /<owner>/<repo>.git/info/refs?service=…`, `POST /<owner>/<repo>.git/git-upload-pack|git-receive-pack`, v2 via `Git-Protocol`. The front Worker resolves the principal, the access and (for a push) the protected-branch rules, then hands the body stream to the repository's DO over one internal `fetch`; the DO runs `protocol` against its backend and streams the answer back. The DO never opens Postgres.
-- **SSH**: `git@git.infrawrench.com:<owner>/<repo>.git`. A Spectrum application on port 22 forwards TCP to the Worker's `connect(socket)` handler (inbound TCP, public beta; `startTls` is not available on inbound sockets, which SSH does not need). The Worker runs the `ssh` server; `exec` resolves the repository and access the same way HTTP does and opens the same internal `fetch` to the DO with both bodies streaming at once (`statelessRpc: false`).
+- **SSH**: `git@git.infrawrench.com:<owner>/<repo>.git`. The host is the Worker's `SSH_HOST` variable, the one place it is named: clone URLs are built from it and the Spectrum application is created under it, so it can become a host of its own (`ssh.git.infrawrench.com`) by changing that value. A Spectrum application on port 22 forwards TCP to the Worker's `connect(socket)` handler (inbound TCP, public beta; `startTls` is not available on inbound sockets, which SSH does not need). The Worker runs the `ssh` server; `exec` resolves the repository and access the same way HTTP does and opens the same internal `fetch` to the DO with both bodies streaming at once (`statelessRpc: false`).
 - **After a push** the DO sends an event (`{ repoId, actor, updates, at }`) to the `infrawrench-git-events` queue. The consumer updates the repository row, synchronises pull requests, closes issues a commit fixes, and starts CI and Terraform plans.
 
 ## The forge
@@ -82,3 +82,33 @@ Public repositories are free. Private repositories and storage follow the organi
 ## Style
 
 The app's look: `@infrawrench/ui`'s tokens and components, dense layouts, no blurbs. A page has a name and its controls; explanation goes in the docs. The layout follows the familiar forge shape (repository header with tabs, file table, README below).
+
+## Local development
+
+One command runs the whole forge on this machine and touches no account anywhere:
+
+```sh
+pnpm install
+node git/dev.mjs --migrate
+```
+
+| Where                   | What                                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `http://localhost:5174` | The UI under Vite, with hot reload. It proxies `/api`, `/auth` and the Git paths (`.git`, `raw`, `archive`, the Terraform state backend) to the Worker. |
+| `http://localhost:8787` | The Worker under `wrangler dev`: R2, the Durable Objects and the queue are local, in `git/packages/worker/.wrangler/state`.                             |
+| `localhost:8788`        | Git over SSH: the Worker's `connect` port. Clone URLs here are `ssh://git@localhost:8788/<owner>/<repo>.git`.                                           |
+| `http://localhost:4100` | The WorkOS emulator, the one the app's dev stack uses, with its seeded user.                                                                            |
+
+- **The database** is the one thing it does not start. It uses `DATABASE_URL`, or without one the app's dev stack's Postgres on port 5433 (`docker compose -f docker-compose.dev.yml up -d postgres`). The URL needs a password: wrangler refuses a Hyperdrive connection string without one. `--migrate` applies the app's migrations first (`pnpm --filter @infrawrench/web db:migrate`), which is where the forge's tables come from; leave it off once the database is current. Production is PostgreSQL 18; the migrations and the database suites were also run on 14.
+- **Signing in**: **Sign in** goes to the emulator's login page. The seeded user is `dev@infrawrench.local` / `devpassword1!` (`infra/docker/workos-emulate/seed.yaml`). The first sign-in asks for a username, as in production. The script starts the emulator (`@workos/emulate`, through `npx`) unless one already answers on port 4100, so it shares the app's when the dev stack is up, and the same user is then signed in to both. An organisation's namespace needs that organisation's rows, which the app makes: sign in to the local app once (`http://localhost:3000`) to have one.
+- **Secrets** are made on the first run and kept in `git/packages/worker/.dev.vars` (gitignored): an SSH host key from `ssh-keygen`, a cookie password, a job token key, the emulator's API key, and the dev stack's `ENCRYPTION_MASTER_KEY` so an `iwk_` key made in the local app verifies here. Delete the file to start over.
+- **Git over HTTPS** is `git clone http://localhost:5174/<owner>/<repo>.git` with a personal access token as the password. **Over SSH**, add a key in the UI's settings and use the `ssh://` URL the clone box shows.
+- **The UI alone**, with no Worker and no database: `pnpm --filter @infrawrench/git-web dev:mock` (its notes say what the mock covers). **The Worker alone**, serving the last `vite build`: `node git/dev.mjs --no-ui`. `--no-emulator` leaves WorkOS to whatever `WORKOS_API_HOSTNAME` in `.dev.vars` names.
+- CI for repositories here needs the app's CI proxy and is off locally; a push still records its run.
+
+## Tests, CI and deploys
+
+- **Each package's tests** are `pnpm --filter @infrawrench/git-<name> test`. They drive the real programs and skip the suites whose program is missing: `git` (core, ops, protocol, ssh, worker; a current one, since ops compares itself with `git merge-file --diff-algorithm`, which is 2.44's, and with how a current git scores renames), `ssh` and `ssh-keygen` from OpenSSH 9.9 or later (ssh, and the worker's workerd suites, which also want `GIT_WORKER_E2E=1`), `unzip` (ops), `terraform` (terraform). The worker's database suites are `test:db`, against a migrated scratch Postgres. Use a current Node 24: 24.21 and 24.22 pass, and on 24.11 seven of the SSH server's tests hang.
+- **Infrawrench CI** runs them in `.infrawrench/ci/git.yml`, on machines (`platform: linux`), because an isolate has neither Git over SSH, Terraform nor workerd. That file says what each kind of job has. There a skipped test fails the job (`.infrawrench/ci/no-skips.mjs`), so a suite that could not find its program cannot pass by not running; `.infrawrench/ci/git-tools.sh` builds the git and the OpenSSH client the suites need (Ubuntu 24.04's are too old for them) and fetches Terraform, each pinned by sum. Typechecks, Prettier and the source hashes are `.infrawrench/ci/test.yml`'s, with every other package's.
+- **The Worker's bundle** is checked by a test (`worker/src/__tests__/import-graph.test.ts`): no plugin code, nothing that cannot run in a Worker, and the size it was measured at. `worker/README.md` has the numbers.
+- **Deploys** are `.github/workflows/git-deploy.yml`: on a push to `main` that touches `git/**` or what the Worker and the UI are built from, it builds the UI, waits for the commit's migrations to be in the database (the app's deploy applies them), and deploys the Worker with the app's secrets it shares. `worker/README.md` lists every binding, variable and secret; `infra/README.md` ("git.infrawrench.com") is how the bucket, the queues, the host key and the Spectrum application are made.

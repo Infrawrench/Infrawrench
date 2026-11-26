@@ -4,8 +4,12 @@ import tailwindcss from "@tailwindcss/vite";
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 
 // The worker serves the built `dist/` as static assets and owns `/api` and
-// the git transports; in development Vite proxies those to `wrangler dev`.
+// the git transports; in development Vite proxies those to `wrangler dev`
+// (git/README.md, "Local development").
 // With `VITE_GIT_MOCK=1` the API never leaves the browser (`src/mock`).
+/** `wrangler dev` (`node git/dev.mjs` starts both). */
+const WORKER = "http://127.0.0.1:8787";
+
 export default defineConfig({
   plugins: [
     TanStackRouterVite({ target: "react", autoCodeSplitting: true }),
@@ -14,7 +18,16 @@ export default defineConfig({
   ],
   server: {
     port: 5174,
-    proxy: { "/api": "http://127.0.0.1:8787", "/auth": "http://127.0.0.1:8787" },
+    proxy: {
+      "/api": WORKER,
+      "/auth": WORKER,
+      // What the Worker's router calls the storage's routes (`http/router.ts`
+      // `routeOf`): Git over HTTP, raw files, archives and the Terraform state
+      // backend. Everything else under `/<owner>/<repo>` is a page of the UI.
+      "^/[^/]+/[^/]+\\.git(/|$)": WORKER,
+      "^/[^/]+/[^/]+/(raw|archive)/": WORKER,
+      "^/[^/]+/[^/]+/terraform/[^/]+/state(/|$)": WORKER,
+    },
   },
   // Each Shiki grammar is its own lazy chunk, and the largest (C++) is about 800 kB.
   build: { outDir: "dist", sourcemap: true, chunkSizeWarningLimit: 900 },
