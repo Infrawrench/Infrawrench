@@ -71,6 +71,18 @@ const suggestUsername = async (sources: ReadonlyArray<string | null>): Promise<s
   return null;
 };
 
+/**
+ * A username is the person's account, not a repository: claimed and changed
+ * from a signed-in browser only, never with a token, whatever its scopes. A
+ * freed username can be claimed by someone else, so a token that could rename
+ * one could hand the person's URLs to a stranger.
+ */
+export const requireSession = (cx: Pick<Cx, "principal">): void => {
+  if (cx.principal.kind !== "user" || cx.principal.via !== "session") {
+    throw forbidden("A username is changed from a signed-in browser, not with a token");
+  }
+};
+
 /** How often a namespace may be renamed: old URLs stop resolving each time. */
 const RENAME_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
@@ -228,6 +240,7 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
     .handle(
       "claimUsername",
       op(async (cx, { payload }) => {
+        requireSession(cx);
         const userId = cx.userId!;
         checkSlug(payload.username, "username_invalid", "username_reserved");
         const user = await getUser(userId);
@@ -245,6 +258,7 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
     .handle(
       "renameUsername",
       op(async (cx, { payload }) => {
+        requireSession(cx);
         checkSlug(payload.username, "username_invalid", "username_reserved");
         const current = await getNamespaceForUser(cx.userId!);
         if (!current) throw forbidden("Choose a username first", "username_required");
@@ -282,6 +296,13 @@ export const NamespacesHandlers = HttpApiBuilder.group(GitApi, "namespaces", (ha
         if (!namespace) throw notFound("No such user or organisation");
         if (!(await namespaceView(cx, namespace)).viewer.canAdminister) {
           throw forbidden("Only its owner can edit this profile");
+        }
+        if (
+          payload.websiteUrl !== undefined &&
+          payload.websiteUrl !== null &&
+          !/^https?:\/\/[^\s]+$/i.test(payload.websiteUrl)
+        ) {
+          throw badRequest("The website must be an http or https URL");
         }
         const updated = await updateNamespaceProfile(namespace.id, payload);
         return namespaceView(cx, updated ?? namespace);

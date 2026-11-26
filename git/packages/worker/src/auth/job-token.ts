@@ -62,6 +62,9 @@ export const verifyJobToken = async (
   const result = await verifyGitJobToken(key, token, commit ? { commit } : {}, now * 1000);
   if (!result.ok) return null;
   const { claims } = result;
+  // The signer refuses a longer life; so does the reader, in case a minter
+  // with the key does not (a token has no issue time, so this is the bound).
+  if (claims.expiresAt > now + JOB_TOKEN_MAX_TTL_SECONDS) return null;
   return {
     repositoryId: claims.repositoryId,
     write: claims.access === "write",

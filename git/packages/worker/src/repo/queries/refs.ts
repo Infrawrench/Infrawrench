@@ -259,7 +259,8 @@ export async function createBranch(
     throw new RepoReaderError("invalid_ref", "That is not a name Git accepts for a branch");
   }
   const session = await openSession(cx);
-  const from = await resolve(session, input.from);
+  // A writer may name a commit no ref reaches any more: that is how a deleted branch comes back.
+  const from = await resolve(session, input.from, { unreachable: true });
   const moved = await moveRef(
     cx,
     { name: BRANCH + input.name, oldOid: ZERO_OID, newOid: from.commitOid },

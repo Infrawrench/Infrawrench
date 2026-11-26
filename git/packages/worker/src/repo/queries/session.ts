@@ -48,9 +48,12 @@ export interface ReaderLimits {
   /** History walked for the file table in the call that lists a directory. */
   readonly treeWalkMillis: number;
   readonly treeWalkCommits: number;
+  /** Directory entries the walk reads in that call (git-ops `maxEntries`). */
+  readonly treeWalkEntries: number;
   /** And in each `treeLastCommits` call that carries on. */
   readonly lastCommitsMillis: number;
   readonly lastCommitsCommits: number;
+  readonly lastCommitsEntries: number;
   /** Commits visited looking for the last change to one path. */
   readonly lastChangeCommits: number;
   /** Commits a filtered or path-limited history page may visit. */
@@ -62,8 +65,14 @@ export interface ReaderLimits {
   readonly diffFiles: number;
   /** Time spent counting them; files not reached are left out like those past `diffFiles`. */
   readonly diffCountMillis: number;
+  /** Lines (both sides) a diff summary compares to count its files; files past it are not counted. */
+  readonly diffCountLines: number;
   /** Hunk lines rendered in one page of a diff. */
   readonly diffPageLines: number;
+  /** Characters of hunk text in one page of a diff: one line can be a megabyte. */
+  readonly diffPageBytes: number;
+  /** Lines (both sides) one page of a diff compares; later files of the page are left for asking by path. */
+  readonly diffPageCompared: number;
   readonly blameCommits: number;
   readonly blameMillis: number;
   /** Refs whose commits are read to sort a list by date; past it, lists are by name. */
@@ -74,6 +83,10 @@ export interface ReaderLimits {
   readonly countMillis: number;
   /** Commits a rebase replays. */
   readonly rebaseCommits: number;
+  /** Bytes of a message parsed for a commit shown on its own (git-ops `maxMessageBytes`). */
+  readonly shownMessageBytes: number;
+  /** And for each commit of a list, which can hold ten thousand. */
+  readonly listedMessageBytes: number;
 }
 
 export const DEFAULT_READER_LIMITS: ReaderLimits = {
@@ -82,21 +95,28 @@ export const DEFAULT_READER_LIMITS: ReaderLimits = {
   blobSniffBytes: 8 * 1024 * 1024,
   treeWalkMillis: 150,
   treeWalkCommits: 2000,
+  treeWalkEntries: 200_000,
   lastCommitsMillis: 400,
   lastCommitsCommits: 10_000,
+  lastCommitsEntries: 1_000_000,
   lastChangeCommits: 5000,
   logScanCommits: 20_000,
   logScanMillis: 500,
   compareCommits: 250,
   diffFiles: 300,
   diffCountMillis: 2500,
+  diffCountLines: 4_000_000,
   diffPageLines: 20_000,
+  diffPageBytes: 4 * 1024 * 1024,
+  diffPageCompared: 2_000_000,
   blameCommits: 10_000,
   blameMillis: 2000,
   sortRefs: 1000,
   countCommits: 1_000_000,
   countMillis: 200,
   rebaseCommits: 250,
+  shownMessageBytes: 64 * 1024,
+  listedMessageBytes: 4 * 1024,
 };
 
 export interface ReaderContext {
@@ -125,7 +145,11 @@ export const unavailable = (): RepoReaderError =>
 
 /** A cache over the same packs and graph with other bounds (a walk with its own budget). */
 export const boundedCache = (session: Session, limits: Partial<Limits>): ObjectCache =>
-  new ObjectCache(session.objects, limits, { graph: session.cx.state.graph });
+  new ObjectCache(
+    session.objects,
+    { maxMessageBytes: session.cx.limits.shownMessageBytes, ...limits },
+    { graph: session.cx.state.graph },
+  );
 
 export async function openSession(cx: ReaderContext): Promise<Session> {
   if (!cx.repo.isReady()) throw unavailable();
@@ -133,7 +157,12 @@ export async function openSession(cx: ReaderContext): Promise<Session> {
   return {
     cx,
     objects,
-    cache: new ObjectCache(objects, undefined, { graph: cx.state.graph }),
+    // Messages are cut for showing; a merge that writes one again reads it whole (git-ops).
+    cache: new ObjectCache(
+      objects,
+      { maxMessageBytes: cx.limits.shownMessageBytes },
+      { graph: cx.state.graph },
+    ),
     refs: cx.repo.listRefs(),
     head: cx.repo.head(),
   };
@@ -169,7 +198,11 @@ export async function commitOf(session: Session, oid: ObjectId): Promise<ObjectI
  * tag, else a commit id (whole, or an unambiguous start of one). Undefined
  * is the default branch.
  */
-export async function resolve(session: Session, input: RefInput): Promise<ResolvedRef> {
+export async function resolve(
+  session: Session,
+  input: RefInput,
+  options: ResolveOptions = {},
+): Promise<ResolvedRef> {
   const { refs, head } = session;
   const named = async (ref: Ref): Promise<ResolvedRef | null> => {
     const commitOid = await commitOf(session, ref.peeled ?? ref.oid);
@@ -209,24 +242,76 @@ export async function resolve(session: Session, input: RefInput): Promise<Resolv
       if (found) return found;
     }
   }
-  const commitOid = await resolveCommitId(session, input);
+  const commitOid = await resolveCommitId(session, input, options);
   if (commitOid) return { name: commitOid, kind: "commit", fullName: null, commitOid };
   throw new RepoReaderError("ref_not_found", `Nothing here is called ${JSON.stringify(input)}`);
 }
 
-/** A whole commit id, or four or more hex digits that start exactly one commit's. */
-export async function resolveCommitId(session: Session, text: string): Promise<ObjectId | null> {
+/** A short fingerprint of the refs, which changes whenever one of them moves. */
+function refsStamp(refs: readonly Ref[]): string {
+  let a = 0x811c9dc5;
+  let b = 0x01000193;
+  for (const ref of refs) {
+    const text = `${ref.name}\0${ref.oid}\0${ref.peeled ?? ""}\n`;
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i);
+      a = Math.imul(a ^ code, 0x01000193) >>> 0;
+      b = Math.imul(b ^ code, 0x5bd1e995) >>> 0;
+    }
+  }
+  return `${refs.length}:${a.toString(36)}:${b.toString(36)}`;
+}
+
+/**
+ * Whether a ref of this repository reaches the commit: a tip, what a tag
+ * peels to, or an ancestor of one (`refs/pull/*` included). An id a caller
+ * names is only resolved when it is, so what a forced push left behind, a
+ * fork's commits copied in for a comparison before any ref points at them,
+ * and whatever else no ref reaches cannot be read by id. The storage's
+ * check walks history, so the answer is kept by the refs as they stand and
+ * the commit: asking again costs nothing until a ref moves.
+ */
+export async function reachable(session: Session, oid: ObjectId): Promise<boolean> {
+  for (const ref of session.refs) if (ref.oid === oid || ref.peeled === oid) return true;
+  return session.cx.state.remember(`reach:${refsStamp(session.refs)}:${oid}`, () =>
+    session.cx.repo.isReachable(oid),
+  );
+}
+
+export interface ResolveOptions {
+  /**
+   * Also a whole id no ref reaches. Only for a writer giving a commit a
+   * branch again (a deleted branch restored by its id), never for reading.
+   */
+  readonly unreachable?: boolean;
+}
+
+/**
+ * A whole commit id, or four or more hex digits that start exactly one
+ * commit's, among the commits the refs reach. This is the one place a
+ * caller's id becomes a commit (`resolve`, and a commit page by id).
+ */
+export async function resolveCommitId(
+  session: Session,
+  text: string,
+  options: ResolveOptions = {},
+): Promise<ObjectId | null> {
   const id = text.toLowerCase();
-  if (isObjectId(id)) return commitOf(session, id);
+  if (isObjectId(id)) {
+    const commit = await commitOf(session, id);
+    if (commit === null) return null;
+    return options.unreachable === true || (await reachable(session, commit)) ? commit : null;
+  }
   if (!/^[0-9a-f]{4,39}$/.test(id)) return null;
   // Objects of every kind share the id space; a tree that starts the same way is not in the running.
   const candidates = await session.cx.repo.resolvePrefix(id, 8);
+  if (candidates.length >= 8) return null;
   const commits: ObjectId[] = [];
   for (const oid of candidates) {
     const object = await session.cache.read(oid);
-    if (object?.type === "commit") commits.push(oid);
+    if (object?.type === "commit" && (await reachable(session, oid))) commits.push(oid);
   }
-  return commits.length === 1 && candidates.length < 8 ? commits[0]! : null;
+  return commits.length === 1 ? commits[0]! : null;
 }
 
 /** The path as the contract spells one: no leading, trailing or doubled slashes. */

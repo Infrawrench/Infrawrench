@@ -189,7 +189,11 @@ async function advanceWalk(
   commit: ObjectId,
   path: string,
   names: readonly string[],
-  budget: { readonly maxCommits: number; readonly maxMillis: number },
+  budget: {
+    readonly maxCommits: number;
+    readonly maxMillis: number;
+    readonly maxEntries: number;
+  },
 ): Promise<LastCommitsProgress> {
   const { state, repo, now } = session.cx;
   const sql = repo.database;
@@ -242,6 +246,21 @@ async function directory(session: Session, ref: RefInput, rawPath: string): Prom
   };
 }
 
+/**
+ * The entries a file table shows: directories first, then by name, at most
+ * `maxTreeEntries`. The last-commit walk follows these names only, so a
+ * directory of tens of thousands costs what its first page does, and the
+ * answer written down stays one small row.
+ */
+function listedOf(cx: ReaderContext, entries: readonly TreeEntry[]): readonly TreeEntry[] {
+  const sorted = [...entries].sort(
+    (a, b) =>
+      Number(b.mode === "040000") - Number(a.mode === "040000") ||
+      (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+  );
+  return sorted.slice(0, cx.limits.maxTreeEntries);
+}
+
 export async function tree(
   cx: ReaderContext,
   input: { readonly ref: RefInput; readonly path: string; readonly lastCommits: boolean },
@@ -249,13 +268,7 @@ export async function tree(
   const session = await openSession(cx);
   const dir = await directory(session, input.ref, input.path);
   const { limits } = cx;
-  // Directories first, then by name, as a file table reads.
-  const sorted = [...dir.entries].sort(
-    (a, b) =>
-      Number(b.mode === "040000") - Number(a.mode === "040000") ||
-      (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
-  );
-  const listed = sorted.slice(0, limits.maxTreeEntries);
+  const listed = listedOf(cx, dir.entries);
   const sizes = await sizesOf(
     session,
     listed
@@ -270,8 +283,12 @@ export async function tree(
       session,
       dir.ref.commitOid,
       dir.path,
-      dir.entries.map((entry) => entry.name),
-      { maxCommits: limits.treeWalkCommits, maxMillis: limits.treeWalkMillis },
+      listed.map((entry) => entry.name),
+      {
+        maxCommits: limits.treeWalkCommits,
+        maxMillis: limits.treeWalkMillis,
+        maxEntries: limits.treeWalkEntries,
+      },
     );
     resolved = progress.resolved;
     complete = !progress.continuation;
@@ -294,7 +311,7 @@ export async function tree(
       size: sizes.get(entry.oid) ?? null,
       lastCommit: commits.get(resolved.get(entry.name) ?? "") ?? null,
     })),
-    truncated: sorted.length > listed.length,
+    truncated: dir.entries.length > listed.length,
     lastCommit: input.lastCommits ? await lastChange(session, dir.ref.commitOid, dir.path) : null,
     lastCommitsComplete: complete,
     commitCount: dir.path === "" ? await countCommits(session, dir.ref.commitOid) : null,
@@ -312,8 +329,12 @@ export async function treeLastCommits(
     session,
     dir.ref.commitOid,
     dir.path,
-    dir.entries.map((entry) => entry.name),
-    { maxCommits: cx.limits.lastCommitsCommits, maxMillis: cx.limits.lastCommitsMillis },
+    listedOf(cx, dir.entries).map((entry) => entry.name),
+    {
+      maxCommits: cx.limits.lastCommitsCommits,
+      maxMillis: cx.limits.lastCommitsMillis,
+      maxEntries: cx.limits.lastCommitsEntries,
+    },
   );
   const present = new Set(dir.entries.map((entry) => entry.name));
   const commits = await summaries(session, progress.resolved.values());

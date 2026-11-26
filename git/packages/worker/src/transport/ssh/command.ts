@@ -55,8 +55,13 @@ const SERVICES: ReadonlyArray<readonly [string, GitServiceName]> = [
 export function parseCommand(command: string): ParsedCommand {
   for (const [prefix, service] of SERVICES) {
     if (!command.startsWith(prefix)) continue;
-    const path = unquote(command.slice(prefix.length).trim());
-    if (path === null) return { kind: "unsupported", reason: "Invalid repository path." };
+    // Only ASCII blanks around the path: `trim` would also take Unicode
+    // spaces, and nothing git sends has those.
+    const path = unquote(command.slice(prefix.length).replace(/^[ \t]+|[ \t]+$/g, ""));
+    // A leading `-` would read as an option to anything that ran it.
+    if (path === null || path.startsWith("-")) {
+      return { kind: "unsupported", reason: "Invalid repository path." };
+    }
     if (path.startsWith("~") || path.startsWith("/~")) {
       return { kind: "unsupported", reason: "Home directory paths are not supported." };
     }

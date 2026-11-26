@@ -143,6 +143,19 @@ const assignable = async (cx: RepoCx): Promise<UserRef[]> => {
   return [...found.values()];
 };
 
+/** Whether the caller may list who can be assigned: `triage` here, or a member of the owning organisation. */
+export const maySeeAssignable = async (
+  cx: Pick<RepoCx, "userId" | "access" | "repo" | "viewer">,
+): Promise<boolean> => {
+  if (cx.userId === null) return false;
+  if (accessAtLeast(cx.access, "triage")) return true;
+  const organizationId = cx.repo.owner.organizationId;
+  if (organizationId === null) return false;
+  return (await cx.viewer()).organizations.some(
+    (organization) => organization.id === organizationId,
+  );
+};
+
 export const CollaboratorsHandlers = HttpApiBuilder.group(GitApi, "collaborators", (handlers) =>
   handlers
     .handle(
@@ -186,8 +199,10 @@ export const CollaboratorsHandlers = HttpApiBuilder.group(GitApi, "collaborators
     .handle(
       "listAssignable",
       repoOp(async (cx, { query }) => {
-        // Who works on a public repository is not a list for signed-out visitors.
-        if (cx.userId === null) return { users: [] };
+        // Who works on a repository is a list for the people who assign work there and the
+        // organisation's own members, never for a reader of a public repository: it is the
+        // organisation's membership.
+        if (!(await maySeeAssignable(cx))) return { users: [] };
         const q = (query.q ?? "").trim().toLowerCase();
         const users = (await assignable(cx))
           .filter(

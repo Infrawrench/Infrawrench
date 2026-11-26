@@ -64,6 +64,12 @@ const holdsOrgPermission = async (
 const BEFORE_USERNAME = new Set(["session"]);
 /** Groups only a session reaches: a token cannot mint or revoke credentials. */
 const SESSION_ONLY = new Set(["account"]);
+/**
+ * The only groups a CI job token reaches: it reports statuses on its
+ * repository's commits. Everything else a job reads it reads over Git; it
+ * never merges, comments or changes settings through the API.
+ */
+const JOB_GROUPS = new Set(["statuses"]);
 
 export const AuthenticationLive = Layer.succeed(Authentication)((httpEffect, { endpoint, group }) =>
   Effect.gen(function* () {
@@ -82,6 +88,9 @@ export const AuthenticationLive = Layer.succeed(Authentication)((httpEffect, { e
     if (authenticated.refused) return yield* unauthorized("That credential was not accepted");
 
     const principal = authenticated.principal;
+    if (principal.kind === "job" && !JOB_GROUPS.has(group.identifier)) {
+      return yield* forbidden("A CI job token reads over Git and reports commit statuses");
+    }
     const isPerson = principal.kind === "user";
     if (Context.get(endpoint.annotations, RequiresUser) && !isPerson) {
       return yield* principal.kind === "anonymous"

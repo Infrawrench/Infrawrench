@@ -8,7 +8,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { ZERO_OID, parseCommit } from "@infrawrench/git-core";
+import { ZERO_OID, parseCommit, serializeCommit, serializeTree } from "@infrawrench/git-core";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { tarArchive } from "../src/repo/do/archive";
 import { Repository } from "../src/repo/do/repository";
@@ -25,7 +25,7 @@ import {
   tempDir,
 } from "./support/git";
 import { MemoryBucket, nodeStorage } from "./support/node-platform";
-import { type NodeRepo, startNodeRepo } from "./support/node-server";
+import { type NodeRepo, peerOf, startNodeRepo } from "./support/node-server";
 
 afterAll(cleanupTempDirs);
 
@@ -382,6 +382,224 @@ describeGit("a repository with git on the other end", () => {
     expect(await gitOut(["--work-tree", root, "write-tree"], { cwd: check })).toBe(
       await gitOut(["rev-parse", `${head}^{tree}`], { cwd: work }),
     );
+  });
+});
+
+describeGit("what a repository gives out, and what a push may write", () => {
+  let repo: NodeRepo;
+  let work: string;
+  let main: string;
+
+  beforeEach(async () => {
+    resetClock();
+    repo = await startNodeRepo();
+    work = await initRepo("reach");
+    await commitFile(work, "a.txt", "a\n", "a");
+    main = await commitFile(work, "b.txt", "b\n", "b");
+    await git(["remote", "add", "origin", repo.url], { cwd: work });
+    await git(["push", "-q", "origin", "main"], { cwd: work });
+  });
+  afterEach(async () => {
+    expect(repo.errors).toEqual([]);
+    await repo.close();
+  });
+
+  const clone = async (url = repo.url): Promise<string> => {
+    const dir = join(tempDir("clone"), "clone");
+    await git(["clone", "-q", url, dir]);
+    await git(["fsck", "--strict", "--full"], { cwd: dir });
+    return dir;
+  };
+  const hasObject = async (cwd: string, oid: string): Promise<boolean> =>
+    (await git(["cat-file", "-e", oid], { cwd, allowFailure: true })).status === 0;
+
+  it("does not clone, fetch or read by id what a forced push left behind", async () => {
+    await clone();
+    expect(repo.requests.at(-1)?.packSource).toBe("everything");
+
+    const secret = await commitFile(work, "secret.txt", "a secret value\n", "oops");
+    const blob = await gitOut(["rev-parse", `${secret}:secret.txt`], { cwd: work });
+    await git(["push", "-q", "origin", "main"], { cwd: work });
+    await git(["reset", "-q", "--hard", main], { cwd: work });
+    await git(["push", "-q", "--force", "origin", "main"], { cwd: work });
+    expect(await repo.repository.hasObject(blob)).toBe(true);
+
+    const cloned = await clone();
+    expect(await hasObject(cloned, secret)).toBe(false);
+    expect(await hasObject(cloned, blob)).toBe(false);
+    expect(await allObjects(cloned)).toBe(await allObjects(work));
+    expect(repo.requests.at(-1)?.packSource).toBe("objects");
+    // The next clone knows without walking twice, and still walks.
+    await clone();
+    expect(repo.requests.at(-1)?.packSource).toBe("objects");
+
+    const fetched = await git(["fetch", repo.url, secret], { cwd: cloned, allowFailure: true });
+    expect(fetched.status).not.toBe(0);
+    expect(await repo.repository.isReachable(secret)).toBe(false);
+    expect(await repo.repository.isReachable(main)).toBe(true);
+  });
+
+  it("goes back to the stored packs once every object is reachable again", async () => {
+    await commitFile(work, "c.txt", "c\n", "c");
+    await git(["push", "-q", "origin", "main"], { cwd: work });
+    // A branch deleted after its work was merged leaves nothing behind.
+    await git(["push", "-q", "origin", "main:refs/heads/done"], { cwd: work });
+    await git(["push", "-q", "origin", ":done"], { cwd: work });
+    await clone();
+    expect(repo.requests.at(-1)?.packSource).toBe("everything");
+    // A push of a fast-forward keeps that known without a walk.
+    await commitFile(work, "d.txt", "d\n", "d");
+    await git(["push", "-q", "origin", "main"], { cwd: work });
+    await clone();
+    expect(repo.requests.at(-1)?.packSource).toBe("everything");
+  });
+
+  it("keeps commits copied in from another repository out of a clone, and exports only what is reachable", async () => {
+    // repo-1 plays a private fork with work on a branch; repo-3 is a public base that compared it.
+    await git(["checkout", "-q", "-b", "topic"], { cwd: work });
+    const topic = await commitFile(work, "private.txt", "private work\n", "private");
+    const blob = await gitOut(["rev-parse", `${topic}:private.txt`], { cwd: work });
+    await git(["push", "-q", "origin", "topic"], { cwd: work });
+    const base = await startNodeRepo("repo-3", {
+      bucket: repo.bucket,
+      peer: () => peerOf(repo.repository),
+    });
+    try {
+      await git(["push", "-q", base.url, "main"], { cwd: work });
+      expect(await base.repository.importFrom("repo-1", [topic])).toBe(true);
+      expect(await base.repository.hasObject(blob)).toBe(true);
+      const cloned = await clone(base.url);
+      expect(await hasObject(cloned, topic)).toBe(false);
+      expect(await hasObject(cloned, blob)).toBe(false);
+      expect(await base.repository.isReachable(topic)).toBe(false);
+
+      // A commit the fork's branches no longer reach is not handed over.
+      await git(["push", "-q", "origin", ":topic"], { cwd: work });
+      expect(await repo.repository.exportPack([topic], [])).toBeNull();
+      expect(await repo.repository.exportPack([main], [])).not.toBeNull();
+      expect(base.errors).toEqual([]);
+    } finally {
+      await base.close();
+    }
+  });
+
+  it("refuses a ref that would be a file and a directory at once, as git does", async () => {
+    await git(["push", "-q", "origin", "main:refs/heads/a"], { cwd: work });
+    const below = await git(["push", "origin", "main:refs/heads/a/b"], {
+      cwd: work,
+      allowFailure: true,
+    });
+    expect(below.stderr).toMatch(/'refs\/heads\/a' exists; cannot create 'refs\/heads\/a\/b'/);
+    await git(["push", "-q", "origin", "main:refs/heads/x/y"], { cwd: work });
+    const above = await git(["push", "origin", "main:refs/heads/x"], {
+      cwd: work,
+      allowFailure: true,
+    });
+    expect(above.stderr).toMatch(/'refs\/heads\/x\/y' exists/);
+    const both = await git(["push", "origin", "main:refs/heads/p", "main:refs/heads/p/q"], {
+      cwd: work,
+      allowFailure: true,
+    });
+    expect(both.stderr).toMatch(/'refs\/heads\/p' exists; cannot create 'refs\/heads\/p\/q'/);
+    // Deleting the one in the way makes room in the same push.
+    await git(["push", "-q", "origin", ":refs/heads/a", "main:refs/heads/a/b"], { cwd: work });
+    expect(repo.repository.listRefs().map((ref) => ref.name)).toEqual([
+      "refs/heads/a/b",
+      "refs/heads/main",
+      "refs/heads/p",
+      "refs/heads/x/y",
+    ]);
+  });
+
+  it("takes only branches and tags from a push, and never deletes HEAD's branch", async () => {
+    for (const name of ["refs/notes/commits", "refs/remotes/origin/main", "refs/pull/1/head"]) {
+      const pushed = await git(["push", "origin", `main:${name}`], {
+        cwd: work,
+        allowFailure: true,
+      });
+      expect(pushed.status, name).not.toBe(0);
+    }
+    expect(repo.repository.listRefs().map((ref) => ref.name)).toEqual(["refs/heads/main"]);
+    const deleted = await repo.repository.applyUpdates([
+      { name: "refs/heads/main", oldOid: main, newOid: ZERO_OID },
+    ]);
+    expect(deleted[0]?.error).toBe("deletion of the current branch prohibited");
+  });
+
+  it("refuses a push git's own checks refuse, and keeps nothing of it", async () => {
+    const files = repo.bucket.objects.size;
+    // Nothing here talks to the server, so these may block.
+    const made = (args: string[], input: string): string =>
+      spawnSync("git", args, { cwd: work, input, encoding: "utf8" }).stdout.trim();
+    const blob = made(["hash-object", "-w", "--stdin"], "x\n");
+    const tree = made(["mktree"], `100644 blob ${blob}\t.GIT\n`);
+    const commit = await gitOut(["commit-tree", tree, "-p", main, "-m", "hostile"], { cwd: work });
+    const pushed = await git(["push", "origin", `${commit}:refs/heads/hostile`], {
+      cwd: work,
+      allowFailure: true,
+    });
+    expect(pushed.status).not.toBe(0);
+    expect(pushed.stderr).toMatch(/\.git/i);
+    expect(repo.bucket.objects.size).toBe(files);
+    expect(repo.repository.listRefs().map((ref) => ref.name)).toEqual(["refs/heads/main"]);
+    expect(repo.repository.stats().pendingBytes).toBe(0);
+  });
+
+  it("refuses a push that inflates past its bound", async () => {
+    await repo.close();
+    repo = await startNodeRepo("repo-1", { limits: { maxInflatedBytes: 4096 } });
+    await commitFile(work, "big.txt", "x".repeat(64 * 1024), "big");
+    const pushed = await git(["push", repo.url, "main"], { cwd: work, allowFailure: true });
+    expect(pushed.status).not.toBe(0);
+    expect(pushed.stderr).toMatch(/inflates past 4096 bytes/);
+    expect(repo.repository.listRefs()).toEqual([]);
+  });
+
+  it("leaves out of an archive every name that could reach outside it", async () => {
+    const { repository } = repo;
+    const encode = (value: string): Uint8Array => new TextEncoder().encode(value);
+    const [blob] = await repository.writeObjects([{ type: "blob", data: encode("x\n") }]);
+    const inner = serializeTree([{ mode: "100644", name: "inside.txt", oid: blob! }]);
+    const [innerOid] = await repository.writeObjects([{ type: "tree", data: inner }]);
+    // Written by hand: no git would make this tree, but a push can carry one.
+    const root = serializeTree([
+      { mode: "040000", name: "..", oid: innerOid! },
+      { mode: "040000", name: ".git", oid: innerOid! },
+      { mode: "040000", name: ".GIT", oid: innerOid! },
+      { mode: "100644", name: "a/b", oid: blob! },
+      { mode: "100644", name: "..\\up", oid: blob! },
+      { mode: "120000", name: "ok", oid: blob! },
+      { mode: "040000", name: "ok", oid: innerOid! },
+      { mode: "100644", name: "fine.txt", oid: blob! },
+    ]);
+    const [rootOid] = await repository.writeObjects([{ type: "tree", data: root }]);
+    const who = { name: "A", email: "a@example.com", timestamp: 99_999_999_999, timezoneOffset: 0 };
+    const [commit] = await repository.writeObjects([
+      {
+        type: "commit",
+        data: serializeCommit({
+          tree: rootOid!,
+          parents: [],
+          author: who,
+          committer: who,
+          message: "hostile\n",
+          extraHeaders: [],
+        }),
+      },
+    ]);
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of tarArchive(repository.backend(), commit!, "repo-abc")) {
+      chunks.push(chunk);
+    }
+    // Valid headers too: the commit's date is past what the field holds, and is clamped.
+    const listed = spawnSync("tar", ["-tf", "-"], { input: Buffer.concat(chunks) });
+    expect(listed.status).toBe(0);
+    // The symlink `ok` comes first; the directory of the same name is left out.
+    expect(listed.stdout.toString().trim().split("\n")).toEqual([
+      "repo-abc/",
+      "repo-abc/ok",
+      "repo-abc/fine.txt",
+    ]);
   });
 });
 

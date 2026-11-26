@@ -79,7 +79,7 @@ export class CollaboratorsGroup extends HttpApiGroup.make("collaborators")
       .annotate(OpenApi.Summary, "People a thread can be assigned to")
       .annotate(
         OpenApi.Description,
-        "Everyone with at least `triage` who has a username, at most fifty; narrow with `q`.",
+        "Everyone with at least `triage` who has a username, at most fifty; narrow with `q`. Empty for a caller below `triage` who is not a member of the owning organisation: it is the organisation's membership.",
       )
       .annotate(SuccessDescription, "People"),
   )

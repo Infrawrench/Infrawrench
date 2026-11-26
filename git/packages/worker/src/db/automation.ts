@@ -39,9 +39,23 @@ export interface ListCiRunsOptions {
   readonly limit?: number | undefined;
 }
 
+/**
+ * Which of a repository's runs are its owner's: the organisation that owns
+ * it now. A run made before a transfer is the old organisation's (its logs
+ * and its jobs' output are in that organisation's store, and it ran with its
+ * secrets), so the new owner's readers do not see it. A personal namespace
+ * has no CI.
+ */
+const ownRuns = (repositoryId: string, organizationId: string | null): SQL =>
+  organizationId === null
+    ? sql`false`
+    : (and(eq(ciRuns.gitRepositoryId, repositoryId), eq(ciRuns.organizationId, organizationId)) ??
+      sql`false`);
+
 /** A repository's CI runs, newest first. `skipped` ones only when asked for by status. */
 export const listCiRuns = async (
   repositoryId: string,
+  organizationId: string | null,
   options: ListCiRunsOptions,
 ): Promise<PageOf<CiRunRow>> => {
   const limit = pageSize(options.limit);
@@ -50,7 +64,7 @@ export const listCiRuns = async (
     .from(ciRuns)
     .where(
       and(
-        eq(ciRuns.gitRepositoryId, repositoryId),
+        ownRuns(repositoryId, organizationId),
         options.status ? eq(ciRuns.status, options.status) : notInArray(ciRuns.status, ["skipped"]),
         options.sha ? eq(ciRuns.sha, options.sha.toLowerCase()) : undefined,
         options.ref ? eq(ciRuns.headRef, options.ref) : undefined,
@@ -64,12 +78,16 @@ export const listCiRuns = async (
   return toPage(rows, limit, (row) => ({ at: row.createdAt.getTime(), id: row.id }));
 };
 
-/** A run, only if it is this repository's. */
-export const getCiRun = async (repositoryId: string, runId: string): Promise<CiRunRow | null> => {
+/** A run, only if it is this repository's, under the organisation that owns it now. */
+export const getCiRun = async (
+  repositoryId: string,
+  organizationId: string | null,
+  runId: string,
+): Promise<CiRunRow | null> => {
   const [row] = await db
     .select()
     .from(ciRuns)
-    .where(and(eq(ciRuns.id, runId), eq(ciRuns.gitRepositoryId, repositoryId)))
+    .where(and(eq(ciRuns.id, runId), ownRuns(repositoryId, organizationId)))
     .limit(1);
   return row ?? null;
 };
@@ -223,6 +241,34 @@ export const updateWorkspace = async (
     if (!isUniqueViolation(error)) throw error;
     return null;
   }
+};
+
+/**
+ * A transferred repository's workspaces, moved to the organisation that owns
+ * it now (null for a person's namespace). The accounts they were lent and the
+ * resources their state matched were the old owner's, so both go: a
+ * workspace's accounts are always its own organisation's (`checkAccounts`),
+ * and the next state version links its resources again.
+ */
+export const moveWorkspacesToOrganization = async (
+  repositoryId: string,
+  organizationId: string | null,
+): Promise<void> => {
+  await db.transaction(async (tx) => {
+    const moved = await tx
+      .update(gitTerraformWorkspaces)
+      .set({ organizationId, updatedAt: new Date() })
+      .where(eq(gitTerraformWorkspaces.repositoryId, repositoryId))
+      .returning({ id: gitTerraformWorkspaces.id });
+    const ids = moved.map((row) => row.id);
+    if (ids.length === 0) return;
+    await tx
+      .delete(gitTerraformWorkspaceAccounts)
+      .where(inArray(gitTerraformWorkspaceAccounts.workspaceId, ids));
+    await tx
+      .delete(gitTerraformManagedResources)
+      .where(inArray(gitTerraformManagedResources.workspaceId, ids));
+  });
 };
 
 /** Delete a workspace, unless something holds its lock. False when it is locked. */

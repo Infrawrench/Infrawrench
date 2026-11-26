@@ -27,12 +27,28 @@ export interface PushPolicy {
 const RESERVED_PREFIXES = ["refs/pull/", "refs/infrawrench/"];
 
 const BRANCH_PREFIX = "refs/heads/";
+const TAG_PREFIX = "refs/tags/";
+
+/**
+ * What any push may name, whoever pushes and whatever the rules: a branch
+ * or a tag. Everything else under `refs/` is the server's (`refs/pull/*`)
+ * or nothing the forge shows, lists or protects, so a push cannot put
+ * history there that a clone of everything would then carry.
+ */
+export function namespaceRefusal(name: string): string | null {
+  if (RESERVED_PREFIXES.some((prefix) => name.startsWith(prefix))) {
+    return "this ref is managed by the server";
+  }
+  if (!name.startsWith(BRANCH_PREFIX) && !name.startsWith(TAG_PREFIX)) {
+    return "only branches and tags can be pushed";
+  }
+  return null;
+}
 
 /** The reason a push may not make this update, or null when it may. */
 export function refusal(policy: PushPolicy, update: ReceiveUpdate): string | null {
-  if (RESERVED_PREFIXES.some((prefix) => update.name.startsWith(prefix))) {
-    return "this ref is managed by the server";
-  }
+  const outside = namespaceRefusal(update.name);
+  if (outside !== null) return outside;
   if (policy.quotaRefusal && update.kind !== "delete") return policy.quotaRefusal;
   if (!update.name.startsWith(BRANCH_PREFIX)) return null;
   const branch = update.name.slice(BRANCH_PREFIX.length);
@@ -61,13 +77,17 @@ export function refusal(policy: PushPolicy, update: ReceiveUpdate): string | nul
   return null;
 }
 
+/**
+ * Every refused update with its reason. Without a policy (a caller that
+ * read none) only the namespace rule applies, never nothing at all.
+ */
 export function checkPush(
-  policy: PushPolicy,
+  policy: PushPolicy | null,
   updates: readonly ReceiveUpdate[],
 ): Map<string, string> {
   const refused = new Map<string, string>();
   for (const update of updates) {
-    const reason = refusal(policy, update);
+    const reason = policy ? refusal(policy, update) : namespaceRefusal(update.name);
     if (reason !== null) refused.set(update.name, reason);
   }
   return refused;

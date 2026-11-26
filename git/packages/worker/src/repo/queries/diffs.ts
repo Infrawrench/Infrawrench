@@ -96,17 +96,31 @@ async function summarise(
   const wanted = Math.min(changes.length, limits.diffFiles);
   const deadline = Date.now() + limits.diffCountMillis;
   const slots: Array<Counts | undefined> = new Array<Counts | undefined>(wanted);
+  // The deadline only moves across reads, and blobs already in memory are not reads: three
+  // hundred files that pair the same few blobs would be diffed with the clock standing still.
+  // So the lines compared are counted too, and a pair of blobs is diffed once.
+  let compared = 0;
+  const pairs = new Map<string, Promise<Counts>>();
   let next = 0;
   const worker = async (): Promise<void> => {
-    while (next < wanted && Date.now() < deadline) {
+    while (next < wanted && Date.now() < deadline && compared < limits.diffCountLines) {
       const index = next++;
-      const raw = await diffFile(session.cache, changes[index]!, options);
-      slots[index] = {
-        binary: raw.binary,
-        tooLarge: raw.tooLarge,
-        additions: raw.additions,
-        deletions: raw.deletions,
-      };
+      const change = changes[index]!;
+      const pair = `${change.old?.oid ?? ""}:${change.new?.oid ?? ""}:${change.old?.mode ?? ""}:${change.new?.mode ?? ""}`;
+      let counted = pairs.get(pair);
+      if (!counted) {
+        counted = diffFile(session.cache, change, options).then((raw) => {
+          compared += raw.oldLines.count + raw.newLines.count;
+          return {
+            binary: raw.binary,
+            tooLarge: raw.tooLarge,
+            additions: raw.additions,
+            deletions: raw.deletions,
+          };
+        });
+        pairs.set(pair, counted);
+      }
+      slots[index] = await counted;
     }
   };
   await Promise.all(Array.from({ length: Math.min(COUNT_AT_ONCE, wanted) }, worker));
@@ -134,14 +148,20 @@ async function renderFile(
   change: FileChange,
   options: OpsDiffOptions,
   single: boolean,
-): Promise<DiffFile> {
+): Promise<{ readonly file: DiffFile; readonly compared: number; readonly bytes: number }> {
   const cache = single ? boundedCache(session, SINGLE_FILE_LIMITS) : session.cache;
   const raw = await diffFile(cache, change, options);
   const rendered = renderFileDiff(raw);
+  let bytes = 0;
+  for (const hunk of rendered.hunks) for (const line of hunk.lines) bytes += line.text.length;
   return {
-    ...fileSummary(change, raw),
-    hunks: rendered.hunks.map((hunk, index) => hunkShape(hunk, raw.hunks[index]?.section ?? "")),
-    tooLarge: raw.tooLarge,
+    file: {
+      ...fileSummary(change, raw),
+      hunks: rendered.hunks.map((hunk, index) => hunkShape(hunk, raw.hunks[index]?.section ?? "")),
+      tooLarge: raw.tooLarge,
+    },
+    compared: raw.oldLines.count + raw.newLines.count,
+    bytes,
   };
 }
 
@@ -167,18 +187,27 @@ async function page(
     const change = summary.changes.find(
       (each) => each.newPath === options.path || each.oldPath === options.path,
     );
-    return answer(change ? [await renderFile(session, change, rendering, true)] : [], null);
+    return answer(change ? [(await renderFile(session, change, rendering, true)).file] : [], null);
   }
   const offset = offsetOf(options.cursor);
   const files: DiffFile[] = [];
+  const { limits } = session.cx;
   let lines = 0;
+  // A page is bounded by its text as well as its lines (one line can be a megabyte), and by
+  // the lines it compares, which cost the time whether or not they come out as hunks.
+  let bytes = 0;
+  let compared = 0;
   for (
     let index = offset;
     index < Math.min(summary.changes.length, offset + options.limit);
     index++
   ) {
     const change = summary.changes[index]!;
-    if (lines >= session.cx.limits.diffPageLines) {
+    if (
+      lines >= limits.diffPageLines ||
+      bytes >= limits.diffPageBytes ||
+      compared >= limits.diffPageCompared
+    ) {
       // The page is full: listed with its counts, its hunks a request of its own away.
       files.push({
         ...fileSummary(change, summary.counts[index] ?? null),
@@ -187,9 +216,11 @@ async function page(
       });
       continue;
     }
-    const file = await renderFile(session, change, rendering, false);
-    for (const hunk of file.hunks) lines += hunk.lines.length;
-    files.push(file);
+    const rendered = await renderFile(session, change, rendering, false);
+    for (const hunk of rendered.file.hunks) lines += hunk.lines.length;
+    bytes += rendered.bytes;
+    compared += rendered.compared;
+    files.push(rendered.file);
   }
   const next = offset + options.limit;
   return answer(files, next < summary.changes.length ? String(next) : null);
@@ -320,23 +351,34 @@ export interface Trial {
   readonly mergeBaseOid: ObjectId | null;
 }
 
-/** A merge of `head` into `base` with nothing written, kept by the pair of commits. */
+/**
+ * A merge of `head` into `base` with nothing written, kept by the pair of
+ * commits. A merge too large to try is kept too, as its refusal: every view
+ * of a pull request asks, and the work before the limit was reached is the
+ * same each time.
+ */
 export async function trialMerge(
   session: Session,
   baseOid: ObjectId,
   headOid: ObjectId,
 ): Promise<Trial> {
-  return session.cx.state.remember(`trial:${baseOid}:${headOid}`, async () => {
-    try {
-      const merged = await mergeCommits(session.cache, baseOid, headOid);
-      return {
-        conflictFiles: [...new Set(merged.conflicts.map((conflict) => conflict.path))],
-        mergeBaseOid: merged.bases[0] ?? null,
-      };
-    } catch (error) {
-      return tooLarge(error);
-    }
-  });
+  const outcome = await session.cx.state.remember(
+    `trial:${baseOid}:${headOid}`,
+    async (): Promise<Trial | { readonly refused: string }> => {
+      try {
+        const merged = await mergeCommits(session.cache, baseOid, headOid);
+        return {
+          conflictFiles: [...new Set(merged.conflicts.map((conflict) => conflict.path))],
+          mergeBaseOid: merged.bases[0] ?? null,
+        };
+      } catch (error) {
+        if (error instanceof GitError && error.code === "limit") return { refused: error.message };
+        throw error;
+      }
+    },
+  );
+  if ("refused" in outcome) throw new RepoReaderError("too_large", outcome.refused);
+  return outcome;
 }
 
 export async function compare(cx: ReaderContext, input: CompareInput): Promise<ReaderComparison> {
@@ -412,7 +454,7 @@ export async function diffAnchor(
     summary.changes.find((each) => (left ? each.oldPath : each.newPath) === input.path) ??
     summary.changes.find((each) => each.newPath === input.path || each.oldPath === input.path);
   if (!change) return null;
-  const file = await renderFile(session, change, lineOptions({}), true);
+  const { file } = await renderFile(session, change, lineOptions({}), true);
   const first = input.startLine ?? input.line;
   for (const hunk of file.hunks) {
     const numberOf = (index: number): number | null => {
@@ -443,6 +485,9 @@ export async function diffAnchor(
   return null;
 }
 
-/** A cache with the bound a long listing walks under. */
+/** A cache with the bound a long listing walks under, and messages cut to what a list shows. */
 export const scanCache = (session: Session) =>
-  boundedCache(session, { maxCommits: session.cx.limits.logScanCommits });
+  boundedCache(session, {
+    maxCommits: session.cx.limits.logScanCommits,
+    maxMessageBytes: session.cx.limits.listedMessageBytes,
+  });

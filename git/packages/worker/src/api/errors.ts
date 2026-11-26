@@ -27,6 +27,7 @@ import {
   UnprocessableEntity,
 } from "@infrawrench/git-contract";
 import { type RepoReaderCode, RepoReaderError } from "../repo/reader";
+import { describeError } from "../http/log";
 
 export const json = (body: unknown, status: number) =>
   HttpServerResponse.jsonUnsafe(body, { status });
@@ -92,10 +93,10 @@ export const renderFailure = (failure: unknown): HttpServerResponse.HttpServerRe
     const known = READER_STATUS[failure.code];
     return json(body(known.error, known.code), known.status);
   }
-  // The message and stack stay in the log: they can carry schema, paths and
-  // credentials. The id ties the answer to the log line.
+  // Nothing of the error is in the answer, and the log gets what
+  // `describeError` keeps of it. The id ties the answer to the log line.
   const correlationId = crypto.randomUUID();
-  console.error(`[git] uncaught error correlationId=${correlationId}:`, failure);
+  console.error(`[git] uncaught error correlationId=${correlationId}: ${describeError(failure)}`);
   return json({ error: "Internal server error", correlationId }, 500);
 };
 

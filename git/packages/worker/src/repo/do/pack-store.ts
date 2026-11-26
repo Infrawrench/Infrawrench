@@ -305,7 +305,13 @@ export class PackStore {
    * every step is cached: the objects of a chain are each other's bases,
    * and a walk over history asks for most of them.
    */
-  async readAt(packs: readonly PackHandle[], pack: PackHandle, offset: number): Promise<GitObject> {
+  async readAt(
+    packs: readonly PackHandle[],
+    pack: PackHandle,
+    offset: number,
+    /** Deltas already followed on the way here: a chain through `ref-delta`s counts them all. */
+    depth = 0,
+  ): Promise<GitObject> {
     const chain: Array<{ offset: number; delta: Uint8Array }> = [];
     let at = offset;
     let base: GitObject | null = null;
@@ -315,7 +321,7 @@ export class PackStore {
         base = cached;
         break;
       }
-      if (chain.length > 4096) throw new GitError("limit", "delta chain is too long");
+      if (depth + chain.length > 4096) throw new GitError("limit", "delta chain is too long");
       const length = pack.lengthAt(at);
       const entry = await readPackEntryAt(pack.read, at, {
         ...(length !== undefined ? { length } : {}),
@@ -330,8 +336,11 @@ export class PackStore {
       } else {
         chain.push({ offset: at, delta: entry.data });
         // A thin pack's base: in another pack, or elsewhere in this one.
-        base = await this.read(packs, entry.baseOid!);
-        if (!base) throw new GitError("missing-object", `delta base ${entry.baseOid} is missing`);
+        const located = this.locate(packs, entry.baseOid!);
+        if (!located) {
+          throw new GitError("missing-object", `delta base ${entry.baseOid} is missing`);
+        }
+        base = await this.readAt(packs, located.pack, located.offset, depth + chain.length);
       }
     }
     let object = base;

@@ -52,7 +52,8 @@ const compareQuery = {
   }),
   headRepository: Schema.optionalKey(
     Schema.String.annotate({
-      description: "`owner/name` of a fork (or the parent) that `head` is in.",
+      description:
+        "`owner/name` of a repository in this one's fork network that `head` is in. 422 for one the caller cannot read, one outside the network, and a private one unless this repository is private and has the same owner.",
     }),
   ),
 } as const;

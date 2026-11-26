@@ -31,7 +31,7 @@ export const pageContentSecurityPolicy = (env: Pick<Env, "WORKOS_API_HOSTNAME">)
     "connect-src 'self'",
     "worker-src 'self' blob:",
     "object-src 'none'",
-    "base-uri 'self'",
+    "base-uri 'none'",
     `form-action 'self' ${workosOrigin(env)}`,
     "frame-ancestors 'none'",
   ].join("; ");
@@ -63,6 +63,8 @@ export const withSecurityHeaders = (
   headers.set("x-frame-options", "DENY");
   setDefault("referrer-policy", "strict-origin-when-cross-origin");
   setDefault("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=()");
+  // A window this site opens, or that opens it, gets no handle on the other.
+  setDefault("cross-origin-opener-policy", "same-origin");
   if (new URL(request.url).protocol === "https:") {
     headers.set("strict-transport-security", "max-age=63072000; includeSubDomains");
   }

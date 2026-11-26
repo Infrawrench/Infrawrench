@@ -66,15 +66,21 @@ type AuthEnv = Pick<
   | "SITE_ORIGIN"
 >;
 
+/** Longer than any page of this site's address; the state that carries it rides in a URL. */
+const MAX_RETURN_TO_LENGTH = 2048;
+
 /**
  * Where to go after signing in: a path on this site, or the home page. A
  * `returnTo` that is anything else (another origin, a scheme-relative
  * `//host`, a backslash trick) is dropped, so sign-in is never an open
- * redirect.
+ * redirect. So is anything but printable ASCII: a browser drops tabs and
+ * newlines from a URL (`/\t/host` would read as `//host`), and a character
+ * a header cannot carry would fail the redirect after the session was made.
  */
 export const safeReturnTo = (value: string | null | undefined): string => {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/";
-  if (value.includes("\\") || /[\u0000-\u001f]/.test(value)) return "/";
+  if (!value || value.length > MAX_RETURN_TO_LENGTH) return "/";
+  if (!value.startsWith("/") || value.startsWith("//")) return "/";
+  if (value.includes("\\") || /[^ -~]/.test(value)) return "/";
   // Never back into the sign-in routes themselves.
   if (value === "/auth" || value.startsWith("/auth/")) return "/";
   return value;
@@ -189,19 +195,49 @@ export const signOut = async (
 };
 
 /**
- * Whether a state-changing request that rides on the cookie came from this
- * site. `SameSite=Lax` already keeps the cookie off cross-site POSTs; this is
- * the second lock, and the one that still holds for a browser that sends the
- * cookie anyway. A request with no `Origin` (curl, older clients) passes: it
- * carries no ambient cookie a page could abuse.
+ * Where a request came from, as the browser says it, for a request that may
+ * change something:
+ *
+ * - `safe`: GET, HEAD or OPTIONS, which change nothing.
+ * - `same-origin`: a page of this site sent it (`Origin` is ours, or
+ *   `Sec-Fetch-Site: same-origin`).
+ * - `foreign`: a page elsewhere sent it (another `Origin`, `null` included,
+ *   or `Sec-Fetch-Site: cross-site` or `same-site`). A sibling subdomain is
+ *   same-site, so `SameSite=Lax` lets the cookie ride on its POSTs: only
+ *   these headers tell it apart.
+ * - `unknown`: neither header. Git, Terraform, curl and CI send neither;
+ *   every current browser sends `Origin` with a write.
  */
-export const isSameOrigin = (request: IncomingRequest, env: Pick<Env, "SITE_ORIGIN">): boolean => {
+export type WriteOrigin = "safe" | "same-origin" | "foreign" | "unknown";
+
+export const writeOrigin = (
+  request: IncomingRequest,
+  env: Pick<Env, "SITE_ORIGIN">,
+): WriteOrigin => {
   if (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") {
-    return true;
+    return "safe";
   }
   const origin = request.headers.get("origin");
-  if (origin === null) return true;
-  return origin === siteOrigin(env) || origin === new URL(request.url).origin;
+  const site = request.headers.get("sec-fetch-site");
+  const ours =
+    origin !== null && (origin === siteOrigin(env) || origin === new URL(request.url).origin);
+  if ((origin !== null && !ours) || site === "cross-site" || site === "same-site") return "foreign";
+  if (ours || site === "same-origin") return "same-origin";
+  return "unknown";
+};
+
+/**
+ * Whether a state-changing request that rides on the cookie came from this
+ * site. `SameSite=Lax` already keeps the cookie off cross-site POSTs; this is
+ * the second lock, and the one that holds for a same-site page and for a
+ * browser that sends the cookie anyway. A write must say it came from here:
+ * one with neither `Origin` nor `Sec-Fetch-Site` is refused, since nothing
+ * that holds the cookie but a browser sends one, and a browser that sends
+ * neither cannot be told apart from a page elsewhere.
+ */
+export const isSameOrigin = (request: IncomingRequest, env: Pick<Env, "SITE_ORIGIN">): boolean => {
+  const from = writeOrigin(request, env);
+  return from === "safe" || from === "same-origin";
 };
 
 /** `POST /auth/sign-out`. */

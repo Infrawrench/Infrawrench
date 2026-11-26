@@ -73,6 +73,7 @@ describe("serve", () => {
         "frame-ancestors 'none'",
       );
       expect(response.headers.get("strict-transport-security"), path).toContain("max-age=");
+      expect(response.headers.get("cross-origin-opener-policy"), path).toBe("same-origin");
       expect(response.headers.get("x-request-id"), path).toMatch(/\S+/);
     }
   });
@@ -89,7 +90,11 @@ describe("serve", () => {
 
   it("gives a page the page's policy and data the closed one", async () => {
     const page = await serve(request("/acme/infra"), { ...env, ASSETS: assets() }, ctx, routes);
-    expect(page.headers.get("content-security-policy")).toContain("script-src 'self'");
+    const policy = page.headers.get("content-security-policy") ?? "";
+    expect(policy).toContain("script-src 'self';");
+    expect(policy).toContain("object-src 'none'");
+    expect(policy).toContain("base-uri 'none'");
+    expect(policy).not.toMatch(/script-src[^;]*'unsafe-(inline|eval)'/);
     const data = await serve(request("/api/session"), env, ctx, routes);
     expect(data.headers.get("content-security-policy")).toBe(
       "default-src 'none'; frame-ancestors 'none'",

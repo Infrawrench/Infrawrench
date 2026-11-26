@@ -8,8 +8,11 @@
  *    token (`iwg_`), an Infrawrench API key (`iwk_`) or a CI job token
  *    (`iwj_`). A header that is present but names nothing we can accept is a
  *    refusal (401), never the anonymous answer.
- * 2. The session cookie.
+ * 2. The session cookie, for a write only when the browser says it came
+ *    from this site (`isSameOrigin`).
  * 3. Nobody: anonymous, which reads public repositories.
+ *
+ * A write that a page elsewhere sent is refused whatever it carries.
  *
  * Call these inside `withDb` (`db/client.ts`). Nothing here logs a
  * credential, and no error it raises carries one.
@@ -32,7 +35,7 @@ import {
   sessionCookieName,
   setSessionCookie,
 } from "./session-cookie";
-import { type IncomingRequest, isSameOrigin } from "./sign-in";
+import { type IncomingRequest, isSameOrigin, writeOrigin } from "./sign-in";
 import { verifyAccessToken } from "./tokens";
 import { jwksUrl, workosConfig } from "./workos";
 
@@ -156,11 +159,16 @@ export const authenticateRequest = async (
   env: Env,
 ): Promise<Authenticated> => {
   const authorization = request.headers.get("authorization");
-  if (presentsCredentials(authorization)) return fromAuthorization(authorization ?? "", env);
-
   const sealed = parseCookies(request.headers.get("cookie")).get(
     sessionCookieName(isSecureRequest(request)),
   );
+  const presents = presentsCredentials(authorization);
+  // A page elsewhere never writes with a credential, whichever kind: a
+  // browser also sends Basic credentials it remembers from a Git URL on its
+  // own, and nothing here answers CORS, so no other site has a reason to.
+  if ((presents || sealed) && writeOrigin(request, env) === "foreign") return anonymous(true);
+
+  if (presents) return fromAuthorization(authorization ?? "", env);
   if (sealed) return fromCookie(sealed, request, env);
   return anonymous(false);
 };

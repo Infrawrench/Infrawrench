@@ -6,14 +6,25 @@
  */
 import {
   GitError,
+  type GitObject,
+  type ObjectId,
   type ObjectReader,
+  ObjectFsck,
   PackIndex,
   PackIndexer,
   memoryRangeReader,
+  readPackObjectAt,
   writePackIndex,
 } from "@infrawrench/git-core";
 import { ConnectivityCheck } from "@infrawrench/git-protocol";
-import { PackHandle, type PackStore, idxKey, packKey, rangeFetcher } from "./pack-store";
+import {
+  MAX_OBJECT_BYTES,
+  PackHandle,
+  type PackStore,
+  idxKey,
+  packKey,
+  rangeFetcher,
+} from "./pack-store";
 import type { MultipartUpload, UploadedPart } from "./platform";
 
 /**
@@ -35,6 +46,21 @@ export interface IngestOptions {
    * this server wrote from objects it already had (a repack).
    */
   readonly trusted?: boolean;
+  /**
+   * Refuse objects git's own `fsck` refuses on a push (`ObjectFsck`): tree
+   * entries named `.`, `..` or `.git` in any spelling a file system reads as
+   * one, a slash in a name, repeated or unsorted entries, hostile
+   * `.gitmodules` and `.gitattributes`, malformed commits and tags. For a
+   * push; objects the server makes or copies from another repository may
+   * come from history older than the check and are left as they are.
+   */
+  readonly fsck?: boolean;
+  /**
+   * Most bytes the pack may inflate to and rebuild, all objects together:
+   * a few MiB of tiny deltas each copying a large base is otherwise
+   * terabytes of work. Unbounded when absent.
+   */
+  readonly maxInflatedBytes?: number;
 }
 
 export interface Ingested {
@@ -43,7 +69,17 @@ export interface Ingested {
   readonly objectCount: number;
   readonly size: number;
   readonly idxSize: number;
+  /**
+   * The pack's objects that no other object of it names: what refs have to
+   * point at for everything in it to be reachable. Null when that was not
+   * worked out (a pack the server wrote itself) or there were too many to
+   * keep.
+   */
+  readonly roots: readonly ObjectId[] | null;
 }
+
+/** Past this many roots a pack is treated as holding objects nothing reaches. */
+const MAX_ROOTS = 1024;
 
 export function newPackId(): string {
   // Sorts by time, so a listing of the bucket reads in the order packs arrived.
@@ -109,6 +145,7 @@ export async function ingestPack(
   };
 
   const check = new ConnectivityCheck();
+  const fsck = options.fsck && !options.trusted ? new ObjectFsck() : null;
   let range = (offset: number, length: number): Promise<Uint8Array> => {
     throw new Error(`pack read back before it was stored (${offset}+${length})`);
   };
@@ -120,7 +157,17 @@ export async function ingestPack(
     heldDeltaBytes: 4 * 1024 * 1024,
     hashQueueBytes: 4 * 1024 * 1024,
     maxObjects: options.maxObjects,
-    ...(options.trusted ? {} : { onObject: (object, data) => check.note(object.type, data) }),
+    ...(options.maxInflatedBytes !== undefined
+      ? { maxInflatedBytes: options.maxInflatedBytes }
+      : {}),
+    ...(options.trusted
+      ? {}
+      : {
+          onObject: (object, data) => {
+            check.note(object.type, data);
+            fsck?.note(object.oid, object.type, data);
+          },
+        }),
   });
 
   const cleanup = async (): Promise<void> => {
@@ -163,16 +210,36 @@ export async function ingestPack(
     const result = await indexer.finish();
     if (result.objectCount === 0) {
       await cleanup();
-      return { handle: null, objectCount: 0, size: total, idxSize: 0 };
+      return { handle: null, objectCount: 0, size: total, idxSize: 0, roots: [] };
     }
     const idx = writePackIndex(result.objects, result.checksum);
     const index = new PackIndex(idx);
+    let roots: ObjectId[] | null = null;
     if (!options.trusted) {
       const missing = await check.firstMissing(
         (oid) => index.has(oid),
         (oid) => options.existing.hasSync(oid),
       );
       if (missing) throw new GitError("missing-object", `missing necessary object ${missing}`);
+      if (fsck) {
+        // The `.gitmodules` and `.gitattributes` blobs that did not pass by with their tree.
+        const readBack = async (oid: ObjectId): Promise<GitObject | null> => {
+          const record = index.lookup(oid);
+          if (!record) return options.existing.read(oid);
+          return readPackObjectAt(range, record.offset, {
+            maxSize: MAX_OBJECT_BYTES,
+            resolveBase: readBack,
+          });
+        };
+        await fsck.finish(async (oid) => (await readBack(oid))?.data ?? null);
+      }
+      roots = [];
+      for (let position = 0; position < index.count && roots !== null; position++) {
+        const oid = index.oidAt(position);
+        if (check.needs(oid)) continue;
+        if (roots.length >= MAX_ROOTS) roots = null;
+        else roots.push(oid);
+      }
     }
     await bucket.put(idxKey(repoId, id), idx);
     const selfContained = result.externalBases.length === 0;
@@ -187,7 +254,7 @@ export async function ingestPack(
     );
     const handle = new PackHandle(id, key, total, selfContained, index, bucket, memory);
     store.adopt(handle);
-    return { handle, objectCount: result.objectCount, size: total, idxSize: idx.length };
+    return { handle, objectCount: result.objectCount, size: total, idxSize: idx.length, roots };
   } catch (error) {
     await cleanup();
     throw error;

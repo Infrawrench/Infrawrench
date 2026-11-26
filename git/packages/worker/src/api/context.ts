@@ -21,7 +21,7 @@ import {
   type RequestScope,
   runInRequestScope,
 } from "@infrawrench/server-core/runtime/request-scope";
-import type { RepoAccessLevel } from "@infrawrench/git-contract";
+import { type RepoAccessLevel, forbidden } from "@infrawrench/git-contract";
 import type { Authenticated } from "../auth/authenticate";
 import { ANONYMOUS, type Principal } from "../auth/principal";
 import type { RepositoryWithOwner } from "../db/repositories";
@@ -29,6 +29,7 @@ import type { Env } from "../env";
 import type { RepoLocator, RepoReader } from "../repo/reader";
 import type { RepoReaderFactory } from "../repo/select";
 import { type Viewer, resolveViewer } from "./viewer";
+import { describeError } from "../http/log";
 
 /** One invocation of the Worker's `fetch`, as the API sees it. */
 export interface Invocation {
@@ -142,16 +143,38 @@ const makeCx = (inv: Invocation, auth: AuthState): Cx => {
     viewer: () => (viewer ??= resolveViewer(principal)),
     background: (work) =>
       inv.waitUntil(
-        work.catch((error: unknown) => console.error("[git] background work failed:", error)),
+        work.catch((error: unknown) =>
+          console.error(`[git] background work failed: ${describeError(error)}`),
+        ),
       ),
     setCookie: (line) => void inv.cookies.push(line),
   };
 };
 
+/** Methods that change nothing. */
+const READS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * Whether the principal may change anything through the API. A personal
+ * token without `repo:write` reads and nothing else: its scope is "clone and
+ * read", so it does not comment, open threads, review, star or rename either,
+ * which the per-repository level alone (`read` is enough for those) would let
+ * it do.
+ */
+export const mayWriteThroughApi = (principal: Principal): boolean =>
+  principal.kind !== "user" ||
+  principal.via !== "token" ||
+  (principal.scopes ?? []).includes("repo:write");
+
 const runHandler = <A>(build: (cx: Cx) => Promise<A>): Effect.Effect<A> =>
   Effect.gen(function* () {
     const auth = yield* AuthRef;
-    return yield* inScope((inv) => build(makeCx(inv, auth)));
+    return yield* inScope(async (inv) => {
+      if (!READS.has(inv.request.method.toUpperCase()) && !mayWriteThroughApi(auth.principal)) {
+        throw forbidden("This token can only read: it needs the repo:write scope");
+      }
+      return build(makeCx(inv, auth));
+    });
   });
 
 /** Serve an endpoint with promise code. Throw a contract error class to refuse. */

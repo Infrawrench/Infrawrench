@@ -36,8 +36,9 @@ import { BASIC_CHALLENGE } from "../../auth/credentials";
 import { ANONYMOUS, type Principal, principalActor } from "../../auth/principal";
 import type { Env } from "../../env";
 import { repoClient } from "../../repo/do/client";
-import type { GitDirectory, ResolvedRepository } from "../directory";
+import type { GitDirectory, RequestLike, ResolvedRepository } from "../directory";
 import { parseRepositoryPath } from "../directory";
+import { contentDisposition, rawHeaders } from "./raw-headers";
 
 export type GitRoute =
   | { readonly kind: "info-refs"; readonly owner: string; readonly name: string }
@@ -133,17 +134,63 @@ async function gate(
   return { ok: true, repository };
 }
 
-/** The request body, inflated when the client compressed it (git does above about 1 KiB). */
-function requestBody(request: Request): ReadableStream<Uint8Array> | null {
-  if (!request.body) return null;
-  const encoding = request.headers.get("content-encoding")?.toLowerCase();
+/**
+ * Most bytes of a fetch's request, after inflating: wants, haves and
+ * shallow lines at their protocol limits come to a few MiB. A push is
+ * bounded by the pack limits instead.
+ */
+export const MAX_NEGOTIATION_BYTES = 32 * 1024 * 1024;
+
+/** A stream that fails once more than `limit` bytes have passed through it. */
+function capped(source: ReadableStream<Uint8Array>, limit: number): ReadableStream<Uint8Array> {
+  let seen = 0;
+  return source.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+        if (seen > limit) controller.error(new Error("request body is over the size limit"));
+        else controller.enqueue(chunk);
+      },
+    }),
+  );
+}
+
+/**
+ * The request body, inflated when the client compressed it (git does above
+ * about 1 KiB), or null for an encoding this server does not take. Inflated
+ * as it is read, never whole, and a fetch's capped after inflating, so a
+ * small body cannot become gigabytes of work.
+ */
+function requestBody(
+  request: Request,
+  service: GitServiceName,
+): { readonly body: ReadableStream<Uint8Array> | null } | null {
+  const encoding = (request.headers.get("content-encoding") ?? "identity").trim().toLowerCase();
+  if (!request.body) return { body: null };
+  let body = request.body as ReadableStream<Uint8Array>;
   if (encoding === "gzip" || encoding === "x-gzip") {
-    return (request.body as ReadableStream<Uint8Array>).pipeThrough(
+    body = body.pipeThrough(
       new DecompressionStream("gzip") as unknown as ReadableWritablePair<Uint8Array, Uint8Array>,
     );
+  } else if (encoding !== "identity") {
+    // Anything else, stacked encodings included, is refused rather than read as it is.
+    return null;
   }
-  return request.body as ReadableStream<Uint8Array>;
+  return { body: service === "git-upload-pack" ? capped(body, MAX_NEGOTIATION_BYTES) : body };
 }
+
+/**
+ * The request as authentication sees it on the smart HTTP routes: without
+ * the session cookie. `git` authenticates with a token; a cookie here could
+ * only have been sent by a browser.
+ */
+const withoutCookie = (request: Request): RequestLike => ({
+  url: request.url,
+  method: request.method,
+  headers: {
+    get: (name) => (name.toLowerCase() === "cookie" ? null : request.headers.get(name)),
+  },
+});
 
 /**
  * Serves a git request, or returns null when the request is not one of
@@ -182,31 +229,34 @@ export async function gitHttp(
     return new Response(archive.body, {
       headers: {
         "Content-Type": "application/gzip",
-        "Content-Disposition": `attachment; filename="${repository.name}-${route.sha.slice(0, 12)}.tar.gz"`,
+        "Content-Disposition": contentDisposition(
+          "attachment",
+          `${repository.name}-${route.sha.slice(0, 12)}.tar.gz`,
+        ),
+        "X-Content-Type-Options": "nosniff",
+        "Cross-Origin-Resource-Policy": "same-origin",
         "Cache-Control": "private, no-store",
       },
     });
   }
 
-  const auth = await directory.authenticate(request);
-  if (auth.refused) return unauthorized();
-  const principal = auth.principal ?? ANONYMOUS;
-
   if (route.kind === "raw") {
-    const allowed = await gate(directory, principal, route.owner, route.name, "read");
+    // The browser's routes: the UI's images and download links carry the session cookie.
+    const auth = await directory.authenticate(request);
+    if (auth.refused) return unauthorized();
+    const allowed = await gate(directory, auth.principal, route.owner, route.name, "read");
     if (!allowed.ok) return allowed.response;
     const entry = await repoClient(env, allowed.repository.id).readPath(route.sha, route.path);
     if (!entry || entry.object.type !== "blob") return text(404, "No such file.\n");
-    return new Response(entry.object.data as Uint8Array<ArrayBuffer>, {
-      headers: {
-        // Never a type a browser would run: this is somebody's file, served from our origin.
-        "Content-Type": "application/octet-stream",
-        "X-Content-Type-Options": "nosniff",
-        "Content-Security-Policy": "default-src 'none'; sandbox",
-        "Cache-Control": "private, no-store",
-      },
+    const data = entry.object.data as Uint8Array<ArrayBuffer>;
+    return new Response(data, {
+      headers: rawHeaders(route.path, data, url.searchParams.get("download") === "1"),
     });
   }
+
+  const auth = await directory.authenticate(withoutCookie(request));
+  if (auth.refused) return unauthorized();
+  const principal = auth.principal ?? ANONYMOUS;
 
   const service = route.kind === "service" ? route.service : url.searchParams.get("service");
   if (!isGitService(service)) {
@@ -225,6 +275,8 @@ export async function gitHttp(
   const { repository } = allowed;
 
   const advertise = route.kind === "info-refs";
+  const input = advertise ? { body: null } : requestBody(request, service);
+  if (!input) return text(415, "Content-Encoding must be gzip or none.\n");
   const serveRequest = httpServeRequest(service, request.headers.get("git-protocol"), advertise);
   const response = await repoClient(env, repository.id).serve(
     {
@@ -234,7 +286,7 @@ export async function gitHttp(
       // The rules are only needed once refs are about to move.
       policy: push && !advertise ? await repository.pushPolicy() : null,
     },
-    advertise ? null : requestBody(request),
+    input.body,
     request.signal,
   );
   if (!response.ok) return text(502, "The repository could not be reached.\n");

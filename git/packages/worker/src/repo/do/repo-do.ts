@@ -37,6 +37,7 @@ import {
   serve,
 } from "@infrawrench/git-protocol";
 import type { Env } from "../../env";
+import { describeError } from "../../http/log";
 import { tarArchive } from "./archive";
 import { ARCHIVE_URL, type ArchiveCall, CALL_HEADER, type GitCall, SERVE_URL } from "./call";
 import { type ReaderReply, ReaderState, callReader, localRepoReader } from "../queries";
@@ -199,7 +200,14 @@ export class RepoDO extends DurableObject<Env> {
         continue;
       }
       const object = await repository.readObject(oid);
-      bytes += object?.data.length ?? 0;
+      const size = object?.data.length ?? 0;
+      // One large object past the budget is asked for again on its own, not added to a full answer.
+      if (out.length > 0 && bytes + size > READ_BATCH_BYTES) {
+        out.push(undefined);
+        bytes = READ_BATCH_BYTES;
+        continue;
+      }
+      bytes += size;
       out.push(object);
     }
     return out;
@@ -221,6 +229,8 @@ export class RepoDO extends DurableObject<Env> {
    */
   async readPath(repoId: string, commit: ObjectId, path: string): Promise<PathEntry | null> {
     const repository = this.at(repoId);
+    // The raw route names a commit from the URL: only one a ref reaches is anybody's to read.
+    if (!(await repository.isReachable(commit))) return null;
     const reader = repository.backend();
     const start = await reader.read(commit);
     if (!start) return null;
@@ -307,8 +317,11 @@ export class RepoDO extends DurableObject<Env> {
     if (!header) return new Response("not found", { status: 404 });
     if (request.url === ARCHIVE_URL) {
       const call = JSON.parse(header) as ArchiveCall;
-      const reader = this.at(call.repoId).backend();
-      if (!(await reader.has(call.commit))) return new Response("not found", { status: 404 });
+      const repository = this.at(call.repoId);
+      if (!(await repository.isReachable(call.commit))) {
+        return new Response("not found", { status: 404 });
+      }
+      const reader = repository.backend();
       const tar = streamOf(tarArchive(reader, call.commit, call.prefix));
       return new Response(tar.pipeThrough(new CompressionStream("gzip") as never), {
         headers: { "Content-Type": "application/gzip" },
@@ -327,8 +340,7 @@ export class RepoDO extends DurableObject<Env> {
       stats,
       onError: (error) => {
         console.error(
-          `git ${call.request.service} on ${call.repoId} failed:`,
-          error instanceof Error ? (error.stack ?? error.message) : error,
+          `git ${call.request.service} on ${call.repoId} failed: ${describeError(error)}`,
         );
       },
     });

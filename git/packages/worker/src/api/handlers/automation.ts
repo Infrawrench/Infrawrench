@@ -11,6 +11,7 @@ import {
   type TerraformRunStatus,
   type TerraformWorkspace,
   GitApi,
+  accessAtLeast,
   badRequest,
   conflict,
   forbidden,
@@ -69,6 +70,7 @@ import { treeReaderOf } from "../../terraform/tree";
 import { RepoRef, type RepoCx, inScope, repoOp } from "../context";
 import { statusViews } from "../views/pulls";
 import { iso, isoOrNull, peopleById, toUserRef } from "../views/repositories";
+import { describeError } from "../../http/log";
 
 const OID = /^[0-9a-f]{40}$/;
 
@@ -167,7 +169,7 @@ const ciRunViews = async (cx: RepoCx, rows: readonly CiRunRow[]): Promise<CiRun[
 };
 
 const ciRunOr404 = async (cx: RepoCx, runId: string): Promise<CiRunRow> => {
-  const row = await getCiRun(cx.repo.repository.id, runId);
+  const row = await getCiRun(cx.repo.repository.id, cx.repo.owner.organizationId, runId);
   if (!row) throw notFound("No such run");
   return row;
 };
@@ -239,7 +241,7 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
     .handle(
       "listRuns",
       repoOp(async (cx, { query }) => {
-        const found = await listCiRuns(cx.repo.repository.id, query);
+        const found = await listCiRuns(cx.repo.repository.id, cx.repo.owner.organizationId, query);
         return { items: await ciRunViews(cx, found.items), nextCursor: found.nextCursor };
       }),
     )
@@ -253,7 +255,9 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
           jobs = (await (await appCi()).getRun(row.organizationId, row.id)).jobs;
         } catch (error) {
           // The run is ours to show even when the runners' store cannot be read.
-          console.warn(`[git] could not read the output of CI run ${row.id}:`, error);
+          console.warn(
+            `[git] could not read the output of CI run ${row.id}: ${describeError(error)}`,
+          );
         }
         return {
           run: run!,
@@ -276,7 +280,13 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
       Effect.gen(function* () {
         const state = yield* RepoRef;
         const body = yield* inScope(async () => {
-          const row = state ? await getCiRun(state.found.repository.id, params.runId) : null;
+          const row = state
+            ? await getCiRun(
+                state.found.repository.id,
+                state.found.owner.organizationId,
+                params.runId,
+              )
+            : null;
           if (!row) throw notFound("No such run");
           const abort = new AbortController();
           const upstream = await (
@@ -391,17 +401,38 @@ const planOf = (stored: Record<string, unknown> | null): TerraformRun["plan"] =>
   };
 };
 
-/** Whether the caller may see what things cost in the organisation that owns the repository. */
-const seesCosts = async (cx: RepoCx): Promise<boolean> => {
-  const organizationId = cx.repo.owner.organizationId;
-  if (organizationId === null || cx.principal.kind !== "user" || cx.principal.via !== "session") {
-    return false;
-  }
-  const membership = (await cx.viewer()).organizations.find(
-    (organization) => organization.id === organizationId,
-  );
-  return membership !== undefined && hasPermission(membership.permissions, "costs:read");
+/**
+ * Whether a viewer's organisations give `permission` in `organizationId`: the
+ * app's rule for its own data (accounts, resources, costs). Reading the
+ * repository is not enough: a public repository is read by everyone.
+ */
+export const holdsInOrganization = (
+  organizations: ReadonlyArray<{ readonly id: string; readonly permissions: readonly string[] }>,
+  organizationId: string | null,
+  permission: string,
+): boolean => {
+  if (organizationId === null) return false;
+  const membership = organizations.find((organization) => organization.id === organizationId);
+  return membership !== undefined && hasPermission(membership.permissions, permission);
 };
+
+/** Whether the caller holds `permission` in the organisation that owns the repository. */
+const holdsInOwner = async (cx: RepoCx, permission: string): Promise<boolean> =>
+  cx.principal.kind === "user" &&
+  holdsInOrganization((await cx.viewer()).organizations, cx.repo.owner.organizationId, permission);
+
+/** Whether the caller may see what things cost in the organisation that owns the repository. */
+const seesCosts = async (cx: RepoCx): Promise<boolean> =>
+  cx.principal.kind === "user" &&
+  cx.principal.via === "session" &&
+  (await holdsInOwner(cx, "costs:read"));
+
+/**
+ * Who holds a workspace's lock, as the person when it is one. `lockedBy` is
+ * a principal string (`user:<id>`, `ci:<run id>`, ...); only a person is named.
+ */
+export const lockHolderUserId = (lockedBy: string | null): string | null =>
+  lockedBy?.startsWith("user:") ? lockedBy.slice("user:".length) || null : null;
 
 /**
  * Whether the caller may approve an apply: a signed-in person who is an
@@ -412,12 +443,7 @@ const seesCosts = async (cx: RepoCx): Promise<boolean> => {
 const mayApprove = async (cx: RepoCx): Promise<boolean> => {
   if (cx.principal.kind !== "user" || cx.principal.via !== "session") return false;
   if (hasAccess(cx.access, "admin")) return true;
-  const organizationId = cx.repo.owner.organizationId;
-  if (organizationId === null) return false;
-  const membership = (await cx.viewer()).organizations.find(
-    (organization) => organization.id === organizationId,
-  );
-  return membership !== undefined && hasPermission(membership.permissions, "ci:approve");
+  return holdsInOwner(cx, "ci:approve");
 };
 
 /** The cost reader's viewer: the person, when they may see costs at all. */
@@ -511,7 +537,12 @@ const workspaceViews = async (
   const byId = new Map(rows.map((row) => [row.id, row]));
   const runs = await runViews(cx, [...lastRuns.values()], byId);
   const runOf = new Map(runs.map((run) => [run.workspace.id, run]));
-  const holders = await peopleById(rows.map((row) => row.lockedBy));
+  const holders = await peopleById(rows.map((row) => lockHolderUserId(row.lockedBy)));
+  // The organisation's connected accounts are the app's to show (`accounts:read`), and what
+  // Terraform says of a lock is for those who may take or break it, not every reader of a
+  // public repository.
+  const seesAccounts = await holdsInOwner(cx, "accounts:read");
+  const seesLock = accessAtLeast(cx.access, "write");
   return Promise.all(
     rows.map(async (row) => {
       const state = row.currentStateVersionId ? states.get(row.currentStateVersionId) : undefined;
@@ -525,10 +556,12 @@ const workspaceViews = async (
         planOnPullRequest: row.planOnPullRequest,
         applyOnMerge: row.applyOnMerge,
         applyRequiresApproval: !row.autoApply,
-        accounts: (accounts.get(row.id) ?? []).map((account) => ({
-          ...account,
-          pluginName: account.pluginId,
-        })),
+        accounts: seesAccounts
+          ? (accounts.get(row.id) ?? []).map((account) => ({
+              ...account,
+              pluginName: account.pluginId,
+            }))
+          : [],
         stateAddress: `${siteOrigin(cx.env)}${terraformStatePath(
           { owner: owner.slug, repo: repository.name },
           row.name,
@@ -536,10 +569,10 @@ const workspaceViews = async (
         lock:
           row.lockId !== null
             ? {
-                id: row.lockId,
+                id: seesLock ? row.lockId : "",
                 operation: row.lockInfo?.Operation ?? null,
-                who: row.lockInfo?.Who ?? null,
-                holder: holders(row.lockedBy),
+                who: seesLock ? (row.lockInfo?.Who ?? null) : null,
+                holder: holders(lockHolderUserId(row.lockedBy)),
                 runId: null,
                 createdAt: iso(row.lockedAt ?? row.updatedAt),
               }
@@ -606,28 +639,54 @@ const workspaceSettings = (payload: {
   return settings;
 };
 
-/** A workspace's accounts must be the owning organisation's, and the caller's to use in the app. */
-const checkAccounts = async (cx: RepoCx, accountIds: readonly string[]): Promise<void> => {
-  if (accountIds.length === 0) return;
+/**
+ * Lending a connected account's credentials to runs is the app's CI access
+ * decision, `ci-access:write` there (`setConnectionAccess`): seeing accounts
+ * (`accounts:read`, every member) is not enough to hand them to a workspace.
+ */
+export const LEND_ACCOUNTS_PERMISSION = "ci-access:write";
+
+/**
+ * A workspace's accounts must be the owning organisation's, and the caller
+ * must be allowed to lend them. Checked whenever a payload names the accounts
+ * and they change, so a list of none (removing them all) is checked as well.
+ */
+const checkAccounts = async (
+  cx: RepoCx,
+  accountIds: readonly string[],
+  current: readonly string[] = [],
+): Promise<void> => {
+  const same =
+    accountIds.length === current.length && accountIds.every((id) => current.includes(id));
+  if (same) return;
   const organizationId = cx.repo.owner.organizationId;
   if (organizationId === null) {
     throw unprocessable("Only an organisation's repository can use connected accounts");
   }
-  const membership = (await cx.viewer()).organizations.find(
-    (organization) => organization.id === organizationId,
-  );
-  if (!membership || !hasPermission(membership.permissions, "accounts:read")) {
-    throw forbidden("Connecting accounts needs accounts:read in the organisation");
+  if (!(await holdsInOwner(cx, LEND_ACCOUNTS_PERMISSION))) {
+    throw forbidden(
+      `Lending accounts to a workspace needs ${LEND_ACCOUNTS_PERMISSION} in the organisation`,
+    );
   }
+  if (accountIds.length === 0) return;
   const known = await accountsOfOrganization(organizationId, accountIds);
   if (accountIds.some((id) => !known.has(id))) {
     throw unprocessable("One of those accounts is not this organisation's");
   }
 };
 
-const normalRoot = (rootPath: string): string => {
+/**
+ * A root directory as the run pipeline accepts it (`git-terraform`'s
+ * `validRootPath`): letters, digits, `.`, `_`, `-` and `/`, no empty, `.` or
+ * `..` segment. Refused here rather than at the first run.
+ */
+export const normalRoot = (rootPath: string): string => {
   const path = rootPath.replace(/^\/+|\/+$/g, "");
-  if (path.split("/").some((segment) => segment === ".." || segment === ".")) {
+  if (path === "") return path;
+  if (
+    !/^[A-Za-z0-9._/-]+$/.test(path) ||
+    path.split("/").some((segment) => segment === "" || segment === ".." || segment === ".")
+  ) {
     throw badRequest("The directory is a path inside the repository");
   }
   return path;
@@ -715,7 +774,14 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
       repoOp(async (cx, { params, payload }) => {
         const workspace = await workspaceOr404(cx, params.workspace);
         const settings = workspaceSettings(payload);
-        if (payload.accountIds !== undefined) await checkAccounts(cx, payload.accountIds);
+        if (payload.accountIds !== undefined) {
+          const current = (await workspaceAccounts([workspace.id])).get(workspace.id) ?? [];
+          await checkAccounts(
+            cx,
+            payload.accountIds,
+            current.map((account) => account.accountId),
+          );
+        }
         if (settings.name !== undefined && settings.name !== workspace.name && workspace.lockId) {
           throw unprocessable("A locked workspace cannot be renamed", "terraform_locked");
         }
@@ -929,9 +995,17 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
       "listResources",
       repoOp(async (cx, { params, query }) => {
         const workspace = await workspaceOr404(cx, params.workspace);
+        // Which of the organisation's resources an address is (their ids, names and the
+        // organisation itself) is the app's to show (`resources:read`); what the state calls
+        // an instance is for those who may write here. A public repository is read by anyone.
+        const seesResources = await holdsInOwner(cx, "resources:read");
+        const seesLabels = accessAtLeast(cx.access, "write");
+        const matchedFilter = query.matched === undefined ? undefined : query.matched === "true";
+        // Without the match, nothing is matched: the filter must not answer it either.
+        if (!seesResources && matchedFilter === true) return { items: [], nextCursor: null };
         const found = await listManagedResources(workspace.id, {
           q: query.q,
-          matched: query.matched === undefined ? undefined : query.matched === "true",
+          matched: seesResources ? matchedFilter : undefined,
           cursor: query.cursor,
           limit: query.limit,
         });
@@ -956,20 +1030,21 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
               address: resource.address,
               mode: parts[typeAt - 1] === "data" ? ("data" as const) : ("managed" as const),
               type: resource.terraformType,
-              name: resource.label ?? parts.slice(typeAt + 1).join(".") ?? "",
+              name: (seesLabels ? resource.label : null) ?? parts.slice(typeAt + 1).join("."),
               module: module.length > 0 ? module.join(".") : null,
               provider: resource.provider ?? "",
               providerId: null,
-              infrawrench: matched
-                ? {
-                    resourceId: matched.id,
-                    name: matched.displayName,
-                    pluginId: matched.pluginId,
-                    resourceTypeId: matched.resourceTypeId,
-                    appUrl: `${appOrigin(cx.env)}/org/${resource.organizationId}/resources/${encodeURIComponent(matched.id)}`,
-                  }
-                : null,
-              monthlyCost: (matched && costs?.get(matched.id)) || null,
+              infrawrench:
+                matched && seesResources
+                  ? {
+                      resourceId: matched.id,
+                      name: matched.displayName,
+                      pluginId: matched.pluginId,
+                      resourceTypeId: matched.resourceTypeId,
+                      appUrl: `${appOrigin(cx.env)}/org/${resource.organizationId}/resources/${encodeURIComponent(matched.id)}`,
+                    }
+                  : null,
+              monthlyCost: (matched && seesResources && costs?.get(matched.id)) || null,
               drift: null,
             };
           }),

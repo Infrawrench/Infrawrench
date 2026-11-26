@@ -21,6 +21,7 @@ import {
   handleSignOut,
   isSameOrigin,
   safeReturnTo,
+  writeOrigin,
 } from "../sign-in";
 import {
   type WorkosConfig,
@@ -400,8 +401,18 @@ describe("sign-in routes", () => {
       "/auth/sign-in",
       "/auth",
       "/a\nb",
+      "/\t/evil.example",
+      "/\u0000evil",
+      "/café",
+      "/Ā",
+      "/\u007f",
+      `/${"a".repeat(2048)}`,
     ]) {
       expect(safeReturnTo(bad)).toBe("/");
+    }
+    // Percent-encoded forms stay paths on this site: a browser never decodes them into a host.
+    for (const kept of ["/%5Cevil.example", "/%2F%2Fevil.example", "/@evil.example", "/a/../b"]) {
+      expect(safeReturnTo(kept)).toBe(kept);
     }
   });
 
@@ -547,11 +558,22 @@ describe("sign-in routes", () => {
 
   it("signs out of nothing gracefully, only by POST, only from this site", async () => {
     const none = await handleSignOut(
-      request("https://git.example.test/auth/sign-out", {}, "POST"),
+      request(
+        "https://git.example.test/auth/sign-out",
+        { origin: "https://git.example.test" },
+        "POST",
+      ),
       env,
       { config },
     );
     expect(none.headers.get("location")).toBe("/");
+    // A POST that does not say where it came from is not taken as this site's.
+    const unknown = await handleSignOut(
+      request("https://git.example.test/auth/sign-out", {}, "POST"),
+      env,
+      { config },
+    );
+    expect(unknown.status).toBe(403);
     const get = await handleSignOut(request("https://git.example.test/auth/sign-out"), env, {
       config,
     });
@@ -574,6 +596,29 @@ describe("sign-in routes", () => {
     expect(from("https://evil.example", "POST")).toBe(false);
     expect(from("https://app.example.test", "DELETE")).toBe(false);
     expect(from("https://git.example.test", "POST")).toBe(true);
-    expect(from(null, "POST")).toBe(true);
+    expect(from(null, "POST")).toBe(false);
+    expect(from("null", "POST")).toBe(false);
+  });
+
+  it("reads Sec-Fetch-Site where Origin is missing, and refuses a same-site page", () => {
+    const from = (headers: Record<string, string>, method = "POST") =>
+      writeOrigin(request("https://git.example.test/api/repos", headers, method), env);
+    expect(from({}, "GET")).toBe("safe");
+    expect(from({})).toBe("unknown");
+    expect(from({ "sec-fetch-site": "same-origin" })).toBe("same-origin");
+    expect(from({ "sec-fetch-site": "same-site" })).toBe("foreign");
+    expect(from({ "sec-fetch-site": "cross-site" })).toBe("foreign");
+    expect(from({ "sec-fetch-site": "none" })).toBe("unknown");
+    // Either header saying elsewhere wins over the other saying here.
+    expect(from({ origin: "https://git.example.test", "sec-fetch-site": "same-site" })).toBe(
+      "foreign",
+    );
+    expect(from({ origin: "https://app.example.test", "sec-fetch-site": "same-origin" })).toBe(
+      "foreign",
+    );
+    const write = (headers: Record<string, string>) =>
+      isSameOrigin(request("https://git.example.test/api/repos", headers, "PUT"), env);
+    expect(write({ "sec-fetch-site": "same-origin" })).toBe(true);
+    expect(write({ "sec-fetch-site": "same-site" })).toBe(false);
   });
 });

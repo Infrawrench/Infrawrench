@@ -3,7 +3,6 @@
  * settings, forks and stars (`repositories`). Postgres holds the record; the
  * storage is created, copied and destroyed through the `RepoReader`.
  */
-import { eq } from "drizzle-orm";
 import { HttpApiBuilder } from "effect/http-api";
 import {
   GitApi,
@@ -22,11 +21,10 @@ import {
   repositoryNameProblem,
   unprocessable,
 } from "@infrawrench/git-contract";
-import { gitTerraformWorkspaces } from "@infrawrench/server-core/db/schema";
 import { gitPrivateRepositoryRefusal } from "@infrawrench/server-core/git/quota";
 import type { RepoAccess } from "../../auth/access";
 import { repoAccess } from "../../auth/repo-access";
-import { db } from "../../db/client";
+import { moveWorkspacesToOrganization } from "../../db/automation";
 import { type NamespaceRow, getNamespaceBySlug } from "../../db/namespaces";
 import {
   type RepositoryPatch,
@@ -421,11 +419,8 @@ export const RepositoriesHandlers = HttpApiBuilder.group(GitApi, "repositories",
         if (repository.visibility === "private") await checkPrivateAllowed(namespace);
         const moved = await updateRepository(repository.id, { namespaceId: namespace.id });
         if (!moved) throw conflict("A repository with that name exists there", "name_taken");
-        // Its Terraform workspaces read accounts of the organisation that owns it.
-        await db
-          .update(gitTerraformWorkspaces)
-          .set({ organizationId: namespace.organizationId })
-          .where(eq(gitTerraformWorkspaces.repositoryId, repository.id));
+        // Its Terraform workspaces read accounts of the organisation that owns it, never the old one's.
+        await moveWorkspacesToOrganization(repository.id, namespace.organizationId);
         return reload(cx, repository.id);
       }),
     )

@@ -34,6 +34,8 @@ import {
   type RefUpdateResult,
   type RepositoryBackend,
   isAncestor,
+  peelWant,
+  reachableAmong,
   selectCommits,
   selectObjects,
 } from "@infrawrench/git-protocol";
@@ -67,6 +69,11 @@ export interface RepositoryLimits {
   readonly repackMaxTotalBytes: number;
   /** Most bytes copied in from another repository for one pull request head or comparison. */
   readonly maxImportBytes: number;
+  /**
+   * Most bytes one received pack may inflate to and rebuild, its objects
+   * together (core `PackIndexer` `maxInflatedBytes`). A repack is not held to it.
+   */
+  readonly maxInflatedBytes: number;
 }
 
 export const DEFAULT_LIMITS: RepositoryLimits = {
@@ -78,6 +85,7 @@ export const DEFAULT_LIMITS: RepositoryLimits = {
   repackMaxPackBytes: 256 * 1024 * 1024,
   repackMaxTotalBytes: 1024 * 1024 * 1024,
   maxImportBytes: 512 * 1024 * 1024,
+  maxInflatedBytes: 8 * 1024 * 1024 * 1024,
 };
 
 /** Another repository, as far as this one ever needs it: its refs, and objects out of it. */
@@ -103,6 +111,21 @@ export interface RepositoryObjects extends ObjectReader {
 
 /** Most ref tips offered as "already have" when objects are copied from another repository. */
 const MAX_IMPORT_HAVES = 2000;
+
+const isBranchOrTag = (name: string): boolean =>
+  name.startsWith("refs/heads/") || name.startsWith("refs/tags/");
+
+/**
+ * `meta` keys behind the full-clone fast path. `unreachable` is `0` while
+ * every stored object is known to be reachable from a branch or a tag, and
+ * anything else once that may not hold. `generation` counts changes to refs
+ * and packs, and `unreachable_checked` is the generation a walk last found
+ * objects nothing reaches at, so the next clone does not walk to learn it
+ * again.
+ */
+const UNREACHABLE = "unreachable";
+const GENERATION = "generation";
+const CHECKED = "unreachable_checked";
 
 export interface RepositoryDeps {
   readonly bucket: Bucket;
@@ -326,6 +349,8 @@ export class Repository {
     pack: ReadableStream<Uint8Array>,
     trusted = false,
     maxPackBytes = this.limits.maxPackBytes,
+    /** A push: held to git's object checks (`IngestOptions.fsck`). */
+    fsck = false,
   ): Promise<StagedPack> {
     const store = this.packs;
     const live = await store.live();
@@ -338,7 +363,9 @@ export class Repository {
       existing: this.reader(live),
       maxPackBytes,
       maxObjects: this.limits.maxObjectsPerPack,
+      maxInflatedBytes: this.limits.maxInflatedBytes,
       trusted,
+      fsck,
     });
     const visible = ingested.handle ? [...live, ingested.handle] : live;
     return {
@@ -373,6 +400,70 @@ export class Repository {
   }
 
   /**
+   * Records, inside a transaction, that refs or packs changed. `reachable`
+   * says the change cannot have left an object that no branch or tag
+   * reaches; otherwise the next full clone walks instead of sending the
+   * stored packs (`everythingReachable`).
+   */
+  private changed(reachable: boolean): void {
+    const generation = Number(getMeta(this.sql, GENERATION) ?? "0") + 1;
+    setMeta(this.sql, GENERATION, String(generation));
+    if (!reachable) setMeta(this.sql, UNREACHABLE, "1");
+  }
+
+  /**
+   * Refuses creating a ref where another is in the way, as git does:
+   * `refs/heads/a` and `refs/heads/a/b` cannot both exist, because a clone
+   * stores refs as files and one would have to be a file and a directory at
+   * once. A ref deleted in the same change is out of the way. Call inside
+   * the transaction; it rewrites `results` in place.
+   */
+  private refuseNameConflicts(updates: readonly RefUpdate[], results: RefUpdateResult[]): void {
+    const removed = new Set<string>();
+    updates.forEach((update, index) => {
+      if (results[index]!.error === null && update.newOid === ZERO_OID) removed.add(update.name);
+    });
+    const exists = (name: string): boolean =>
+      !removed.has(name) &&
+      this.sql.exec<{ n: number }>("SELECT 1 AS n FROM refs WHERE name = ?", name).toArray()
+        .length > 0;
+    const below = (name: string): string | null => {
+      // Every name that starts with `name/`: from `name/` up to, not including, `name0`.
+      for (const row of this.sql
+        .exec<{ name: string }>(
+          "SELECT name FROM refs WHERE name >= ? AND name < ? LIMIT 64",
+          `${name}/`,
+          `${name}0`,
+        )
+        .toArray()) {
+        if (!removed.has(row.name)) return row.name;
+      }
+      return null;
+    };
+    const created: string[] = [];
+    updates.forEach((update, index) => {
+      if (results[index]!.error !== null) return;
+      if (update.oldOid !== ZERO_OID || update.newOid === ZERO_OID) return;
+      let clash: string | null = null;
+      for (let at = update.name.indexOf("/"); at > 0 && clash === null;) {
+        const parent = update.name.slice(0, at);
+        if (exists(parent) || created.includes(parent)) clash = parent;
+        at = update.name.indexOf("/", at + 1);
+      }
+      clash ??=
+        below(update.name) ?? created.find((name) => name.startsWith(`${update.name}/`)) ?? null;
+      if (clash === null) {
+        created.push(update.name);
+        return;
+      }
+      results[index] = {
+        name: update.name,
+        error: `'${clash}' exists; cannot create '${update.name}'`,
+      };
+    });
+  }
+
+  /**
    * Compare-and-swap. The pack, when there is one, is published in the same
    * transaction as the refs that reach it, and dropped when no ref moves.
    */
@@ -383,7 +474,11 @@ export class Repository {
     const staged = (options.pack as StagedPack | null | undefined) ?? null;
     const handle = staged?.ingested.handle ?? null;
     // What each new tip peels to is read before the transaction, which must not await.
-    const reader = staged?.reader ?? this.reader(await this.packs.live());
+    const live = await this.packs.live();
+    const reader = staged?.reader ?? this.reader(live);
+    // The pack's roots that were not stored already: each must become a branch or tag tip.
+    const roots = staged?.ingested.roots ?? null;
+    const newRoots = roots === null ? null : roots.filter((oid) => !this.packs.has(live, oid));
     const peeled = new Map<string, ObjectId | null>();
     for (const update of updates) {
       if (update.newOid === ZERO_OID) continue;
@@ -415,6 +510,7 @@ export class Repository {
           error: current === ZERO_OID ? "reference does not exist" : "stale info",
         };
       });
+      this.refuseNameConflicts(updates, results);
       const failed = results.some((result) => result.error !== null);
       if (options.atomic && failed) {
         return {
@@ -441,6 +537,25 @@ export class Repository {
           target === update.newOid ? null : target,
         );
       });
+      const applied = updates.filter((_, index) => results[index]!.error === null);
+      const tips = new Set(
+        applied
+          .filter((update) => isBranchOrTag(update.name) && update.newOid !== ZERO_OID)
+          .map((update) => update.newOid),
+      );
+      this.changed(
+        // Reachability only grows when every change is a new branch or tag, or a branch
+        // moved forward, and everything the pack brought hangs off a tip that moved.
+        applied.every(
+          (update) =>
+            isBranchOrTag(update.name) &&
+            (update.oldOid === ZERO_OID ||
+              (update.newOid !== ZERO_OID &&
+                update.name.startsWith("refs/heads/") &&
+                (update as { readonly forced?: boolean }).forced === false)),
+        ) &&
+          (handle === null || (newRoots !== null && newRoots.every((oid) => tips.has(oid)))),
+      );
       return { published: handle !== null, results };
     });
 
@@ -463,7 +578,7 @@ export class Repository {
       has: (oid) => this.hasObject(oid),
       listRefs: async () => this.listRefs(),
       head: async () => this.head(),
-      ingestPack: (pack) => this.ingest(pack),
+      ingestPack: (pack) => this.ingest(pack, false, this.limits.maxPackBytes, true),
       updateRefs: (updates, options) => this.updateRefs(updates, options),
       discardPack: (pack) => this.discard(pack),
       packObjects: (request: PackRequest) => {
@@ -494,6 +609,7 @@ export class Repository {
       packEverything: async ({ ofsDelta }) => {
         const packs = await store.live();
         if (packs.length === 0) return null;
+        if (!(await this.everythingReachable(packs))) return null;
         const only = packs.length === 1 ? packs[0]! : null;
         if (only && only.selfContained && ofsDelta) {
           // One pack that stands alone is already the answer: R2 to the client, untouched.
@@ -508,10 +624,88 @@ export class Repository {
     };
   }
 
+  /**
+   * Whether every object in `packs` is reachable from a branch or a tag,
+   * which is when a full clone may be sent the stored packs as they are.
+   * Known without a walk while nothing has happened since that could leave
+   * an object behind (`changed`); otherwise one walk over the history
+   * decides, and its answer is kept until refs or packs change again. A
+   * repository that holds leftovers is walked by every full clone, as git
+   * does, rather than sending them: what a forced push removed, what only
+   * `refs/pull/*` reaches, and commits copied in from forks.
+   */
+  private async everythingReachable(packs: readonly PackHandle[]): Promise<boolean> {
+    if (getMeta(this.sql, UNREACHABLE) === "0") return true;
+    const generation = getMeta(this.sql, GENERATION) ?? "0";
+    if (getMeta(this.sql, CHECKED) === generation) return false;
+    let reachable: number;
+    try {
+      reachable = await this.countReachable(packs);
+    } catch {
+      // A push landed while this looked: its refs name a pack this list does not have.
+      return false;
+    }
+    const clean = reachable === selectEverything(packs).count;
+    this.deps.storage.transactionSync(() => {
+      if ((getMeta(this.sql, GENERATION) ?? "0") !== generation) return;
+      if (clean) setMeta(this.sql, UNREACHABLE, "0");
+      else setMeta(this.sql, CHECKED, generation);
+    });
+    return clean;
+  }
+
+  /** How many objects of `packs` the branches and tags reach, tag objects included. */
+  private async countReachable(packs: readonly PackHandle[]): Promise<number> {
+    const reader = this.reader(packs);
+    const graph = new CommitGraph(reader);
+    const commits: ObjectId[] = [];
+    const tags: ObjectId[] = [];
+    const trees: ObjectId[] = [];
+    const blobs: ObjectId[] = [];
+    for (const ref of this.listRefs()) {
+      if (!isBranchOrTag(ref.name)) continue;
+      const peeled = await peelWant(reader, ref.oid);
+      if (!peeled) throw new Error(`${ref.name} names a missing object`);
+      tags.push(...peeled.tags);
+      if (peeled.type === "commit") commits.push(peeled.oid);
+      else if (peeled.type === "tree") trees.push(peeled.oid);
+      else blobs.push(peeled.oid);
+    }
+    const none = new Set<ObjectId>();
+    const selection = await selectCommits(graph, commits, [], none, none);
+    const { objects } = await selectObjects(graph, {
+      commits: selection.commits,
+      edges: [],
+      tags,
+      trees,
+      blobs,
+    });
+    return objects.size;
+  }
+
+  /**
+   * Whether `oid` may be read by id from outside: a ref's tip, what a tag
+   * ref peels to, or a commit some ref reaches. Not what a forced push left
+   * behind, nor what was copied in from another repository and never given
+   * a ref. Used for the raw-file and archive routes, which name a commit.
+   */
+  async isReachable(oid: ObjectId): Promise<boolean> {
+    if (!isObjectId(oid)) return false;
+    const tips = new Set<ObjectId>();
+    for (const ref of this.listRefs()) {
+      tips.add(ref.oid);
+      if (ref.peeled) tips.add(ref.peeled);
+    }
+    if (tips.has(oid)) return true;
+    const graph = new CommitGraph(await this.objects());
+    return (await reachableAmong(graph, [...tips], [oid])).has(oid);
+  }
+
   /** The policy around a push: protected branches before, the event after. */
   hooks(actor: GitEventActor | null, policy: PushPolicy | null): ReceiveHooks {
     return {
-      check: async (updates) => (policy ? checkPush(policy, updates) : new Map()),
+      // Without a policy the namespace rule still holds: a push never writes `refs/pull/*`.
+      check: async (updates) => checkPush(policy, updates),
       after: (applied) => this.announce(actor, applied),
     };
   }
@@ -548,9 +742,15 @@ export class Repository {
     const graph = new CommitGraph(reader);
     const classified: ReceiveUpdate[] = [];
     const early = new Map<string, string>();
+    const head = this.head();
     for (const update of updates) {
       if (!update.name.startsWith("refs/") || !isValidRefName(update.name)) {
         early.set(update.name, "invalid ref name");
+        continue;
+      }
+      // The same rule a push keeps: HEAD never names a branch that is gone.
+      if (update.name === head && update.newOid === ZERO_OID) {
+        early.set(update.name, "deletion of the current branch prohibited");
         continue;
       }
       const kind =
@@ -618,7 +818,11 @@ export class Repository {
   private async adopt(staged: StagedPack): Promise<void> {
     const handle = staged.ingested.handle;
     if (!handle) return;
-    this.deps.storage.transactionSync(() => this.publish(handle.id));
+    this.deps.storage.transactionSync(() => {
+      this.publish(handle.id);
+      // Objects with no ref yet, and maybe never one (a merge attempt that lost, a fork's commits).
+      this.changed(false);
+    });
     this.packs.invalidate();
     await this.scheduleMaintenance();
   }
@@ -630,7 +834,8 @@ export class Repository {
    * to take in: the commits of a fork's pull request, as the base repository
    * needs them. It stands on its own (no delta leans on an object left
    * out), because the receiver's copy of a base may be packed differently.
-   * Null when a want is not a commit this repository has.
+   * Null when a want is not a commit this repository's branches or tags
+   * reach.
    */
   async exportPack(
     wants: readonly ObjectId[],
@@ -642,6 +847,13 @@ export class Repository {
     for (const want of wants) {
       if (!isObjectId(want) || (await graph.get(want)) === null) return null;
     }
+    // Only what this repository's own branches and tags reach leaves it: not a
+    // commit a forced push removed, nor one copied in here from somewhere else.
+    const tips = this.listRefs()
+      .filter((ref) => isBranchOrTag(ref.name))
+      .map((ref) => ref.peeled ?? ref.oid);
+    const reachable = await reachableAmong(graph, tips, wants);
+    if (!wants.every((want) => reachable.has(want))) return null;
     const known = haves.filter((oid) => isObjectId(oid) && store.has(packs, oid));
     const none = new Set<ObjectId>();
     const commits = await selectCommits(graph, wants, known, none, none);
@@ -1023,6 +1235,8 @@ export class Repository {
       }
       setMeta(this.sql, "head", manifest.head);
       setMeta(this.sql, "ready", "1");
+      // The packs come whole: whatever the parent held that its branches do not reach came too.
+      this.changed(false);
     });
     store.invalidate();
     await this.scheduleMaintenance();

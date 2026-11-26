@@ -104,6 +104,20 @@ describe("push policy", () => {
     expect(refusal(admin, update("refs/infrawrench/merge/7", "create"))).toMatch(/managed/);
   });
 
+  it("takes only branches and tags from a push, with or without rules", () => {
+    const admin = policy([], { admin: true });
+    for (const name of ["refs/notes/commits", "refs/remotes/origin/main", "refs/meta/config"]) {
+      expect(refusal(admin, update(name, "create"))).toMatch(/only branches and tags/);
+      expect(checkPush(null, [update(name, "create")]).get(name)).toMatch(/only branches/);
+    }
+    expect(checkPush(null, [update("refs/pull/1/head", "create")]).get("refs/pull/1/head")).toMatch(
+      /managed by the server/,
+    );
+    expect(
+      checkPush(null, [update("refs/heads/a", "create"), update("refs/tags/v1", "create")]),
+    ).toEqual(new Map());
+  });
+
   it("answers for a whole push by ref name", () => {
     const refused = checkPush(policy([rule()]), [
       update("refs/heads/main", "delete"),

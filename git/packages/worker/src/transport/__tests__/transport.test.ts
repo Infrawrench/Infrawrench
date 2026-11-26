@@ -3,6 +3,7 @@ import type { RepoAccess } from "../../auth/access";
 import { ANONYMOUS, type Principal } from "../../auth/principal";
 import type { Env } from "../../env";
 import { type GitDirectory, parseRepositoryPath } from "../directory";
+import { contentDisposition, rawHeaders } from "../http/raw-headers";
 import { gitHttp, matchGitRoute } from "../http/routes";
 import { parseCommand, unquote } from "../ssh/command";
 import { type CacheLike, addressKey, cacheFailureLimiter } from "../ssh/rate-limit";
@@ -245,6 +246,87 @@ describe("git routes", () => {
     expect((await get("/alice/public.git/info/refs", dir))?.status).toBe(403);
     expect(await get("/alice/public", dir)).toBeNull();
     expect(await get("/", dir)).toBeNull();
+  });
+
+  it("answers a missing and a private repository the same way, to anyone who cannot read", async () => {
+    for (const principal of [ANONYMOUS, user]) {
+      const dir = directory({ "alice/private": { access: "none" } }, principal);
+      const answers = await Promise.all(
+        ["/alice/private.git", "/alice/missing.git"].map(async (path) => {
+          const response = (await get(`${path}/info/refs?service=git-upload-pack`, dir))!;
+          return {
+            status: response.status,
+            body: await response.text(),
+            headers: [...response.headers],
+          };
+        }),
+      );
+      expect(answers[0]).toEqual(answers[1]);
+    }
+  });
+
+  it("never lets the session cookie authenticate smart HTTP", async () => {
+    const seen: Array<string | null> = [];
+    const dir: GitDirectory = {
+      ...directory({ "alice/public": { access: "read" } }, ANONYMOUS),
+      authenticate: async (request) => {
+        seen.push(request.headers.get("cookie"));
+        return { principal: ANONYMOUS, refused: false };
+      },
+    };
+    const headers = { cookie: "__Host-iwg-session=v1.a.b.c" };
+    await gitHttp(
+      new Request("https://git.example/alice/private.git/info/refs?service=git-upload-pack", {
+        headers,
+      }),
+      env,
+      dir,
+    );
+    expect(seen).toEqual([null]);
+  });
+
+  it("refuses a body in an encoding it does not take", async () => {
+    const dir = directory({ "alice/public": { access: "write" } }, user);
+    for (const encoding of ["br", "gzip, gzip", "deflate"]) {
+      const response = await gitHttp(
+        new Request("https://git.example/alice/public.git/git-upload-pack", {
+          method: "POST",
+          body: "0000",
+          headers: { "content-encoding": encoding },
+        }),
+        env,
+        dir,
+      );
+      expect(response?.status, encoding).toBe(415);
+    }
+  });
+
+  it("serves a repository's files so that none can run on this origin", () => {
+    const bytes = (value: string): Uint8Array => new TextEncoder().encode(value);
+    const page = rawHeaders("site/index.html", bytes("<script>alert(1)</script>"), false);
+    expect(page.get("content-type")).toBe("text/plain; charset=utf-8");
+    expect(page.get("content-security-policy")).toBe("default-src 'none'; sandbox");
+    expect(page.get("x-content-type-options")).toBe("nosniff");
+    expect(page.get("cross-origin-resource-policy")).toBe("same-origin");
+    expect(page.get("cache-control")).toBe("private, no-store");
+    const svg = rawHeaders("logo.svg", bytes("<svg onload='x()'/>"), false);
+    expect(svg.get("content-type")).toBe("image/svg+xml");
+    expect(svg.get("content-disposition")).toMatch(/^attachment;/);
+    expect(
+      rawHeaders("a.png", new Uint8Array([0x89, 0]), false).get("content-disposition"),
+    ).toMatch(/^inline;/);
+    expect(rawHeaders("a.png", new Uint8Array([0x89, 0]), true).get("content-disposition")).toMatch(
+      /^attachment;/,
+    );
+    expect(rawHeaders("blob", new Uint8Array([0, 1, 2]), false).get("content-type")).toBe(
+      "application/octet-stream",
+    );
+    // A file name can neither end the header nor add another.
+    const named = contentDisposition("attachment", 'a"b\r\nSet-Cookie: x=1;é.txt');
+    expect(named).not.toMatch(/[\r\n]/);
+    expect(named).toBe(
+      "attachment; filename=\"a_b__Set-Cookie: x=1__.txt\"; filename*=UTF-8''a%22b%0D%0ASet-Cookie%3A%20x%3D1%3B%C3%A9.txt",
+    );
   });
 
   it("takes an archive token only from the archive route's query", async () => {

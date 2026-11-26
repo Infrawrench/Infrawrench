@@ -28,7 +28,7 @@ import { type ReaderBranch, RepoReaderError } from "../../repo/reader";
 import { pageSize } from "../../db/cursor";
 import { type RepoCx, repoOp } from "../context";
 import { mayDelete, mayPush } from "../protection";
-import { otherRepository } from "../repos";
+import { headRepository } from "../repos";
 import { commitDecorator } from "../views/commits";
 
 export const badgeOf = ({ thread, pull }: PullRequestWithThread): PullRequestBadge => ({
@@ -96,7 +96,7 @@ const compareInput = async (
   cx: RepoCx,
   query: { readonly base: string; readonly head: string; readonly headRepository?: string },
 ) => {
-  const head = query.headRepository ? await otherRepository(cx, query.headRepository) : cx.repo;
+  const head = query.headRepository ? await headRepository(cx, query.headRepository) : cx.repo;
   return {
     head,
     input: {

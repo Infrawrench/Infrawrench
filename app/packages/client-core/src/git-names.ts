@@ -43,6 +43,7 @@ export const GIT_RESERVED_NAMESPACES: readonly string[] = [
   "logout",
   "new",
   "notifications",
+  "onboarding",
   "organizations",
   "orgs",
   "pricing",

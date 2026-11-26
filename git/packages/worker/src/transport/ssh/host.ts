@@ -6,15 +6,17 @@
  * Object in the stateful form of the protocol.
  */
 import type { Socket } from "@cloudflare/workers-types/index";
-import { type HostKey, loadHostKey, serveConnection } from "@infrawrench/git-ssh";
+import { type ExecChannel, type HostKey, loadHostKey, serveConnection } from "@infrawrench/git-ssh";
 import { parseGitProtocol } from "@infrawrench/git-protocol";
 import { hasAccess } from "../../auth/access";
+import type { OfferedSshKey } from "../../auth/authenticate";
 import { type Principal, principalActor } from "../../auth/principal";
 import type { Env } from "../../env";
 import { repoClient } from "../../repo/do/client";
+import { describeError } from "../../http/log";
 import type { GitDirectory } from "../directory";
 import { parseCommand } from "./command";
-import { type FailureLimiter, addressKey } from "./rate-limit";
+import { type FailureLimiter, addressKey, rateLimitKey } from "./rate-limit";
 
 /**
  * A push that is being indexed, or a fetch whose objects are being chosen,
@@ -26,10 +28,24 @@ const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 let hostKey: Promise<HostKey> | undefined;
 
 /** Who an SSH connection is, once its key has been proved. */
-interface Session {
+export interface Session {
   readonly principal: Principal;
   /** How the greeting addresses them. */
   readonly name: string;
+  /** The key that proved it, looked up again before every command. */
+  readonly key: OfferedSshKey;
+}
+
+/** The most of a client-chosen string a log line carries. */
+const LOG_TEXT_LIMIT = 80;
+
+/**
+ * A client-chosen string as one log field: quoted, so its spaces cannot
+ * pass for other fields, printable ASCII only, and cut short.
+ */
+export function logField(text: string): string {
+  const cut = text.length > LOG_TEXT_LIMIT ? `${text.slice(0, LOG_TEXT_LIMIT)}...` : text;
+  return `"${cut.replace(/[\\"]/g, "\\$&").replace(/[^\x20-\x7e]/g, "?")}"`;
 }
 
 export interface SshHostDeps {
@@ -51,6 +67,73 @@ async function say(stream: WritableStream<Uint8Array>, message: string): Promise
 }
 
 /**
+ * What a session's `exec` does: parse the command, look the key and the
+ * repository up again, and hand the streams to the repository's Durable
+ * Object. Exported for the tests, which drive it without a socket.
+ */
+export function gitExec(
+  env: Pick<Env, "REPO">,
+  directory: GitDirectory,
+): (
+  session: Session,
+  command: string,
+  channel: ExecChannel,
+  variables: ReadonlyMap<string, string>,
+) => Promise<number> {
+  return async (session, command, channel, variables) => {
+    const parsed = parseCommand(command);
+    if (parsed.kind === "unsupported") {
+      await say(channel.stderr, `ERROR: ${parsed.reason}\n`);
+      return 1;
+    }
+    // A connection can stay open for hours and run many commands. Asking
+    // again means a key removed since the connection opened, or a deploy
+    // key whose repository is gone, runs nothing more.
+    const principal = await directory.authenticateKey(session.key, false);
+    if (!principal) {
+      await say(channel.stderr, "ERROR: This key is no longer accepted.\n");
+      return 1;
+    }
+    const repository = await directory.resolveRepository(parsed.owner, parsed.name, principal);
+    const push = parsed.service === "git-receive-pack";
+    if (!repository || !hasAccess(repository.access, "read")) {
+      await say(channel.stderr, "ERROR: Repository not found.\n");
+      return 1;
+    }
+    if (push && !hasAccess(repository.access, "write")) {
+      const why = repository.archived
+        ? `${repository.owner}/${repository.name} is archived and read-only.`
+        : `You do not have permission to push to ${repository.owner}/${repository.name}.`;
+      await say(channel.stderr, `ERROR: ${why}\n`);
+      return 1;
+    }
+    const asked = parseGitProtocol(variables.get("GIT_PROTOCOL"));
+    const response = await repoClient(env, repository.id).serve(
+      {
+        request: {
+          service: parsed.service,
+          // No push in protocol v2: a client that asked is answered in v0 and carries on.
+          version: push && asked === 2 ? 0 : asked,
+          statelessRpc: false,
+          advertiseOnly: false,
+        },
+        httpPreamble: false,
+        actor: principalActor(principal),
+        policy: push ? await repository.pushPolicy() : null,
+      },
+      channel.stdin,
+      channel.signal,
+    );
+    if (!response.ok || !response.body) {
+      await say(channel.stderr, "ERROR: The repository could not be reached.\n");
+      return 1;
+    }
+    await (response.body as ReadableStream<Uint8Array>).pipeTo(channel.stdout);
+    return 0;
+  };
+}
+
+/**
  * Serves one SSH connection. The promise stays pending for as long as the
  * connection lives: the runtime closes the socket when it settles.
  */
@@ -68,7 +151,8 @@ export async function sshConnect(
   });
   const info = await socket.opened;
   const address = addressKey(info.remoteAddress);
-  if (address !== null && (await limiter.blocked(address))) {
+  const limited = address === null ? null : rateLimitKey(address);
+  if (limited !== null && (await limiter.blocked(limited))) {
     await socket.close().catch(() => undefined);
     return;
   }
@@ -82,75 +166,38 @@ export async function sshConnect(
       // Everyone is `git@`. The key says who they are.
       if (user !== "git") return null;
       const verified = phase === "verified";
-      const principal = await directory.authenticateKey(
-        { algorithm: offered.algorithm, blob: offered.blob, fingerprint: offered.fingerprint },
-        verified,
-      );
+      const offeredKey = {
+        algorithm: offered.algorithm,
+        blob: offered.blob,
+        fingerprint: offered.fingerprint,
+      };
+      const principal = await directory.authenticateKey(offeredKey, verified);
       if (!principal) return null;
       // The name is only for the greeting, and only a proven key gets one.
-      return { principal, name: verified ? await directory.describe(principal) : "" };
+      const name = verified ? await directory.describe(principal) : "";
+      return { principal, name, key: offeredKey };
     },
 
     shellGreeting: ({ name }) =>
       `Hi ${name}! You've authenticated, but git.infrawrench.com does not provide shell access.\n`,
 
-    exec: async ({ principal }, command, channel, variables) => {
-      const parsed = parseCommand(command);
-      if (parsed.kind === "unsupported") {
-        await say(channel.stderr, `ERROR: ${parsed.reason}\n`);
-        return 1;
-      }
-      const repository = await directory.resolveRepository(parsed.owner, parsed.name, principal);
-      const push = parsed.service === "git-receive-pack";
-      if (!repository || !hasAccess(repository.access, "read")) {
-        await say(channel.stderr, "ERROR: Repository not found.\n");
-        return 1;
-      }
-      if (push && !hasAccess(repository.access, "write")) {
-        const why = repository.archived
-          ? `${repository.owner}/${repository.name} is archived and read-only.`
-          : `You do not have permission to push to ${repository.owner}/${repository.name}.`;
-        await say(channel.stderr, `ERROR: ${why}\n`);
-        return 1;
-      }
-      const asked = parseGitProtocol(variables.get("GIT_PROTOCOL"));
-      const response = await repoClient(env, repository.id).serve(
-        {
-          request: {
-            service: parsed.service,
-            // No push in protocol v2: a client that asked is answered in v0 and carries on.
-            version: push && asked === 2 ? 0 : asked,
-            statelessRpc: false,
-            advertiseOnly: false,
-          },
-          httpPreamble: false,
-          actor: principalActor(principal),
-          policy: push ? await repository.pushPolicy() : null,
-        },
-        channel.stdin,
-        channel.signal,
-      );
-      if (!response.ok || !response.body) {
-        await say(channel.stderr, "ERROR: The repository could not be reached.\n");
-        return 1;
-      }
-      await (response.body as ReadableStream<Uint8Array>).pipeTo(channel.stdout);
-      return 0;
-    },
+    exec: gitExec(env, directory),
 
     onClose: (summary) => {
-      if (!summary.authenticated && address !== null && summary.clientVersion !== null) {
-        recorded = limiter.failed(address);
+      if (!summary.authenticated && limited !== null && summary.clientVersion !== null) {
+        recorded = limiter.failed(limited);
       }
+      // The version line is the client's own text: bounded and printable,
+      // so it cannot forge or bury the rest of the line.
       deps.log?.(
-        `ssh ${address ?? "unknown"} ${summary.clientVersion ?? "-"} ` +
+        `ssh ${address ?? "unknown"} ${logField(summary.clientVersion ?? "-")} ` +
           `auth=${summary.authenticated} kex=${summary.keyExchange ?? "-"} ` +
           `in=${summary.bytesIn} out=${summary.bytesOut}` +
-          (summary.error ? ` error=${summary.error.message}` : ""),
+          (summary.error ? ` error=${logField(summary.error.message)}` : ""),
       );
     },
     onError: (error) => {
-      console.error("ssh:", error instanceof Error ? (error.stack ?? error.message) : error);
+      console.error(`ssh: ${describeError(error)}`);
     },
   });
   await recorded;

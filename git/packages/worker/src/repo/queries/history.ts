@@ -15,6 +15,7 @@ import { headIn, scanCache } from "./diffs";
 import {
   BRANCH,
   type ReaderContext,
+  boundedCache,
   cleanPath,
   commitShape,
   offsetOf,
@@ -139,10 +140,15 @@ export async function commitRange(
       ),
     ].slice(0, MAX_EXCLUDED_TIPS);
   }
-  const found = await log(scanCache(session), input.head, {
-    limit: input.limit,
-    ...(exclude.length > 0 ? { exclude } : {}),
-  });
+  // Whole commits with their messages, as a commit page shows them, rather than a list's cut.
+  const found = await log(
+    boundedCache(session, { maxCommits: cx.limits.logScanCommits }),
+    input.head,
+    {
+      limit: input.limit,
+      ...(exclude.length > 0 ? { exclude } : {}),
+    },
+  );
   return found.entries.reverse().map((entry) => commitShape(entry.oid, entry.commit));
 }
 

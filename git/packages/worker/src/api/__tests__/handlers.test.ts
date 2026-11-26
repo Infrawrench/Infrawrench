@@ -298,6 +298,38 @@ describe("the gates, where they need no database", () => {
     expect((await call(handler, "/api/user/keys")).status).toBe(403);
   });
 
+  it("keeps a CI job token to commit statuses", async () => {
+    const handler = live(async () => ({
+      ...anonymous,
+      principal: { kind: "job" as const, repositoryId: "repo-1", write: true, runId: "run-1" },
+    }));
+    for (const [path, init] of [
+      ["/api/repos/acme/infra", {}],
+      ["/api/repos/acme/infra/issues", {}],
+      ["/api/explore/repos", {}],
+      ["/api/session", {}],
+      [
+        "/api/repos/acme/infra/pulls/1/merge",
+        { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+      ],
+    ] as const) {
+      expect((await call(handler, path, init)).status, path).toBe(403);
+    }
+  });
+
+  it("marks every answer private and same-origin only", async () => {
+    const handler = makeGitApi({ authenticate: async () => anonymous });
+    for (const path of ["/api/session", "/api/nothing-here", "/api/user/keys"]) {
+      const response = await handler.handle(
+        new Request(`https://git.example.test${path}`),
+        env,
+        ctx,
+      );
+      expect(response.headers.get("cache-control"), path).toBe("private, no-store");
+      expect(response.headers.get("cross-origin-resource-policy"), path).toBe("same-origin");
+    }
+  });
+
   it("puts a refreshed session's cookie on the answer, a refusal included", async () => {
     const handler = live(async () => ({ ...anonymous, setCookies: ["iwg-session=new; Path=/"] }));
     expect((await call(handler, "/api/session")).cookies).toEqual(["iwg-session=new; Path=/"]);

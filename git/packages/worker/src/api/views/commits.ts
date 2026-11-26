@@ -8,7 +8,12 @@ import { gitNamespaces, gitUsers, users } from "@infrawrench/server-core/db/sche
 import { db } from "../../db/client";
 import { combinedStatesFor } from "../../db/policy";
 
-/** People by the email address on their Infrawrench account, lowercased. */
+/**
+ * People on the forge by the email address on their Infrawrench account,
+ * lowercased. Only people with a username, whose profile is public here: an
+ * Infrawrench user who never claimed one is not named (nor their id or
+ * display name) because a commit someone wrote carries their address.
+ */
 export const usersByEmail = async (emails: readonly string[]): Promise<Map<string, UserRef>> => {
   const unique = [...new Set(emails.map((email) => email.toLowerCase()).filter(Boolean))];
   if (unique.length === 0) return new Map();
@@ -21,7 +26,7 @@ export const usersByEmail = async (emails: readonly string[]): Promise<Map<strin
       avatarUrl: sql<string | null>`coalesce(${gitNamespaces.avatarUrl}, ${gitUsers.avatarUrl})`,
     })
     .from(users)
-    .leftJoin(gitNamespaces, eq(gitNamespaces.userId, users.id))
+    .innerJoin(gitNamespaces, eq(gitNamespaces.userId, users.id))
     .leftJoin(gitUsers, eq(gitUsers.userId, users.id))
     .where(inArray(sql`lower(${users.email})`, unique));
   return new Map(rows.map(({ email, ...user }) => [email, user]));

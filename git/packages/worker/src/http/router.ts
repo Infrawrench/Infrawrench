@@ -21,6 +21,8 @@
 import { AUTH_PATHS } from "@infrawrench/git-contract";
 import type { Env } from "../env";
 import { requestIdOf, withSecurityHeaders } from "./security-headers";
+import { admissionFor } from "./admission";
+import { describeError, redact } from "./log";
 
 /** `owner` and `repo` as the path spelled them (`repo` without its `.git`). */
 export interface RepoPath {
@@ -199,14 +201,17 @@ export const serve = async (
   routes: Routes,
 ): Promise<Response> => {
   const requestId = requestIdOf(request);
+  // The UI's own files are not counted; everything that reaches code is.
+  const counted = routeOf(new URL(request.url).pathname).kind !== "assets";
+  const admission = counted ? admissionFor(env) : null;
   let response: Response;
   try {
-    response = await dispatch(request, env, ctx, routes);
+    response = (await admission?.refuse(request)) ?? (await dispatch(request, env, ctx, routes));
+    if (admission) ctx.waitUntil(admission.record(request, response));
   } catch (error) {
     // The path only: a query string can carry a token (the archive route's).
     console.error(
-      `[git] ${request.method} ${new URL(request.url).pathname} failed requestId=${requestId}:`,
-      error,
+      `[git] ${request.method} ${redact(new URL(request.url).pathname, 300)} failed requestId=${requestId}: ${describeError(error)}`,
     );
     response = text("Internal Server Error\n", 500);
   }

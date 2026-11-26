@@ -1383,3 +1383,54 @@ describeGit("the reader, with git as the judge", () => {
     await expect(down.stats()).rejects.toMatchObject({ code: "unavailable" });
   });
 });
+
+describeGit("commits no ref reaches", () => {
+  let repo: NodeRepo;
+
+  beforeAll(async () => {
+    resetClock();
+    repo = await startNodeRepo("repo-orphans");
+  });
+  afterAll(async () => {
+    expect(repo.errors).toEqual([]);
+    await repo.close();
+  });
+
+  it("are not read by id once a forced push left them behind, in full or abbreviated", async () => {
+    const work = await initRepo("orphans");
+    const kept = await commitFile(work, "README.md", "# kept\n", "kept");
+    const dropped = await commitFile(work, "secret.txt", "left behind\n", "dropped");
+    await git(["push", "-q", repo.url, "main"], { cwd: work });
+    const reader = localRepoReader(repo.repository, new ReaderState(), {
+      id: "repo-orphans",
+      owner: "acme",
+      name: "orphans",
+    });
+    // While a branch reaches it, the id reads like any other.
+    expect((await reader.commit(dropped)).commit.oid).toBe(dropped);
+
+    await git(["reset", "-q", "--hard", kept], { cwd: work });
+    await git(["push", "-q", "--force", repo.url, "main"], { cwd: work });
+    // The objects are still stored: only the refs no longer reach them.
+    expect(await (await repo.repository.objects()).has(dropped)).toBe(true);
+    for (const id of [dropped, dropped.slice(0, 12), dropped.slice(0, 7)]) {
+      await expect(reader.commit(id)).rejects.toMatchObject({ code: "ref_not_found" });
+      await expect(reader.commitDiff(id, { limit: 10 })).rejects.toMatchObject({
+        code: "ref_not_found",
+      });
+      await expect(reader.tree({ ref: id, path: "", lastCommits: false })).rejects.toMatchObject({
+        code: "ref_not_found",
+      });
+      await expect(reader.blob({ ref: id, path: "secret.txt" })).rejects.toMatchObject({
+        code: "ref_not_found",
+      });
+      await expect(reader.resolveRef(id)).rejects.toMatchObject({ code: "ref_not_found" });
+      await expect(reader.compare({ base: kept, head: id })).rejects.toMatchObject({
+        code: "ref_not_found",
+      });
+    }
+    // What a ref still reaches is read by id as before.
+    expect((await reader.resolveRef(kept.slice(0, 8))).commitOid).toBe(kept);
+    expect((await reader.commit(kept)).commit.oid).toBe(kept);
+  });
+});

@@ -73,9 +73,9 @@ Decisions:
 - **No `aud` or `iss` check on the access token**, for the reasons KNOWLEDGE.md gives for the app. The key set is per client, which is the isolation.
 - **A refused refresh does not clear the cookie** (`stale`). Refresh tokens are single use, so of two requests racing to refresh, the loser is refused; clearing the cookie on its response could delete the session the winner just set. The loser's request is anonymous and the next one carries the new cookie. A cookie that does not unseal (`garbage`) is cleared.
 - **WorkOS being down is an error, not a sign-out.** A 5xx or a network failure on refresh throws; only a 4xx ends the session.
-- **Writes that ride on the cookie must come from this origin** (`isSameOrigin`): a non-GET request with an `Origin` that is not ours is treated as refused. `SameSite=Lax` already keeps the cookie off cross-site POSTs; this is the second lock.
+- **Writes that ride on the cookie must come from this origin** (`isSameOrigin`, `writeOrigin`): a write must carry our `Origin` or `Sec-Fetch-Site: same-origin`. One that carries neither is refused when it rides on the cookie (git, Terraform and CI send neither and bring a token). One that says it came from elsewhere, a sibling `*.infrawrench.com` host included (`same-site`), is a 401 whatever credential it carries. `SameSite=Lax` does not cover the sibling host; this does.
 - **Provisioning is the app's statement** (`db/users.ts` `provisionUser`): insert `id`, `email` and a display name from first and last name, do nothing on conflict. It runs at sign-in and at each refresh, not on every request (the app runs it on every request; a row cannot vanish in between). `provisionSignedInUser` also upserts `git_users`, whose null `onboardedAt` is the "needs a username" state.
-- **WorkOS bearer tokens are not accepted** on this site. The API takes the cookie, `iwg_`, `iwk_` and `iwj_`. If a CLI ever signs in with PKCE, `jwt.ts` already verifies its token; `authenticate.ts` needs a branch.
+- **WorkOS bearer tokens are not accepted** on this site. The API takes the cookie, `iwg_` and `iwk_`, and `iwj_` on the commit status endpoints only. If a CLI ever signs in with PKCE, `jwt.ts` already verifies its token; `authenticate.ts` needs a branch.
 
 ### Tokens
 
@@ -214,7 +214,7 @@ The price is memory: every live pack's index is loaded (28 bytes an object, plus
 - A full clone of a repository that is one self-contained pack is that pack, R2 to the client.
 - A full clone of several packs is every entry of every pack, once, in file order, copied as stored. Nothing is inflated and no history is walked.
 - Anything else (a fetch with haves, a shallow clone, a single branch) walks history in the protocol and sends the chosen objects' stored entries. Only an `ofs-delta` header is rewritten. A delta whose base is not going out and that the client is not known to have is the one case read whole and compressed again.
-- "Everything" includes objects no branch or tag reaches (what a forced push left, pull request heads). See the protocol's notes; `Repository.backend().packEverything` is where to turn it off.
+- **The stored packs go out only while every stored object is known to be reachable from a branch or a tag** (`meta.unreachable`, `Repository.everythingReachable`). Creating a ref and moving a branch forward keep that true when everything the pack brought hangs off the new tips. A forced update, a deletion, objects the server wrote, an import from a fork and a fork's copy do not, and the next full clone walks history once to find out; the answer is kept until refs or packs change. A repository that does hold leftovers (pull requests from forks, a forced push) is walked by every full clone, as git does. Leftovers stay stored until a pruning repack exists; they are no longer served.
 
 **Repacking** runs from the alarm when there are more than 12 live packs: the newest run of packs under 256 MiB (at most 1 GiB, at most 500 000 objects) is streamed into one new pack through the same ingest path, so the result is indexed and verified like a push. The catalogue switches in one transaction; the old files are deleted after 24 hours, for a clone still streaming them. It merges and does not prune: unreachable objects stay.
 
@@ -446,3 +446,51 @@ The workerd suites are opt-in because they start `wrangler dev`; nothing in them
 `pnpm --filter @infrawrench/git-worker test` needs nothing. `DATABASE_URL=postgres://... pnpm --filter @infrawrench/git-worker test:db` runs `src/__tests__/db/` against a migrated scratch Postgres (they skip without it): the API end to end with a header in place of a session and `src/__tests__/helpers/fake-reader.ts` in place of the storage. They cover visibility (a private repository in no list and a 404 every way it is asked for), numbering under concurrency, the filters and paging of the thread lists, merging under protected branches with statuses written by server-core's writer, and the consumer's idempotency. `src/api/__tests__/handlers.test.ts` runs the content handlers through `HttpApiTest`'s in-memory client and the fetch handler with the two gates replaced, without a database.
 
 The unit suites: `src/auth/__tests__/access.test.ts` is the access matrix (public and private, organisation roles, collaborators, token scopes, API keys, deploy keys, job tokens, archived). The rest cover credentials, tokens, job tokens, the cookie, JWT verification, the session refresh, the three sign-in routes, SSH keys, protected-branch rules and the permission rule. None needs a database or the network.
+
+## After the security review
+
+`git/SECURITY-REVIEW.md` has the findings. The rules that came out of it, by area:
+
+### Access
+
+- **A pull request's or a comparison's head is the base, or a repository in its fork network** (`api/repos.ts` `headRepository`) that the caller can read, and a private head only goes into a private base of the same namespace (`mayProposeTo`). The consumer stops following a fork that no longer passes, and `updateBranch` does not copy a private base into a fork more people can read.
+- **A personal token without `repo:write` changes nothing through the API** (`api/context.ts` `mayWriteThroughApi`), and no token claims or renames a username.
+- **A job token reaches the `statuses` group only** (`api/middleware.ts`).
+- **Only a pull request from the base repository itself queues Terraform plans** (`plansPullRequest`).
+- **A workspace's accounts are shown with `accounts:read` and lent with `ci-access:write`** in the owning organisation; a resource's match is shown with `resources:read`; a lock's id and holder and state labels at repository `write`.
+- **A transfer drops the workspaces' account links and managed resources** (`moveWorkspacesToOrganization`), and CI runs are shown only under the organisation that made them.
+- The assignee list is for callers with `triage` and members of the owning organisation. Commit authors are matched only to people with a forge username.
+
+### What can be read by id
+
+- **A commit is read by id only when a ref reaches it**: the API (`queries/session.ts` `resolveCommitId`, memoised per ref state; `createBranch` is the exception, so a writer can restore a deleted branch), the raw and archive routes and `readPath` (`Repository.isReachable`, `refs/pull/*` included, which CI needs), and `exportPack`, which sends another repository only what the source's own branches and tags reach.
+
+### Pushes
+
+- **A push writes `refs/heads/*` and `refs/tags/*` and nothing else** (`policy.ts` `namespaceRefusal`), with or without a policy. A ref that would be a file and a directory at once is refused. The forge's own path refuses deleting HEAD's branch too.
+- **A pushed pack passes core's `ObjectFsck`** and may inflate and rebuild 8 GiB at most (`maxInflatedBytes`). Packs the server makes (repack, a fork's copy, an import) are not held to either.
+- Stored `ref-delta` chains are followed 4 096 deep at most.
+
+### HTTP
+
+- **Smart HTTP ignores the session cookie.** Raw and archive take it (the UI's images and download links).
+- **Raw files** (`transport/http/raw-headers.ts`): raster images inline with their type; SVG and PDF with their type as a download; UTF-8 text as `text/plain`; everything else `application/octet-stream` as a download. Always `Content-Security-Policy: default-src 'none'; sandbox`, `nosniff`, `Cross-Origin-Resource-Policy: same-origin`, `private, no-store`, and a file name that cannot end a header. These headers are the whole defence while raw files share the site's origin; a separate origin for them is the stronger answer and is not built.
+- A request body in an encoding other than gzip is a 415, and a fetch's body is 32 MiB at most once inflated.
+- **Archives** leave out names that could land outside the unpack directory, refuse a directory over 1 MiB and stop at 500 000 entries.
+- **Every `/api` answer is `private, no-store`** with `Cross-Origin-Resource-Policy: same-origin`; pages add `Cross-Origin-Opener-Policy: same-origin` and `base-uri 'none'`.
+- **Admission** (`http/admission.ts`, `http/rate-limit.ts`): a caller without a credential is counted by address (an IPv6 /64) against budgets for cheap reads, heavy reads and writes, and 60 refused credentials in ten minutes refuse that address's credentialed requests for the rest of the window. Counts live in the `RL_*` Rate Limiting bindings when the Worker has them, else the data centre's cache: best effort either way. **Signed-in callers are not counted yet**; that needs the principal, so it belongs after authentication in the API middleware and the transports (`rate-limit.ts` has the budgets).
+
+### SSH
+
+- **The key is looked up again before every command**, so a removed key stops working on a connection that is already open (a command that is running finishes).
+- Failed authentication is counted per IPv6 /64; an IPv4 address written inside IPv6 counts as that address.
+- The client's version string and an error's message are quoted, escaped and cut at 80 characters in the log line.
+- The command parser trims ASCII blanks only and refuses a path that starts with `-`.
+
+### The reader
+
+- New `ReaderLimits`: `treeWalkEntries` (200 000), `lastCommitsEntries` (1 000 000), `diffCountLines` (4M), `diffPageBytes` (4M characters), `diffPageCompared` (2M lines), `shownMessageBytes` (64 KiB), `listedMessageBytes` (4 KiB). The file table walks only the names it lists. A git-ops `limit` refusal is `too_large` (422). A trial merge that was refused is remembered like one that succeeded.
+
+### Logging
+
+- **Nothing passes an error object to `console`.** `http/log.ts` `describeError` writes the class, the message without a statement's parameters or a schema error's value, a few frames and the causes, with anything shaped like a credential cut to its kind and control characters removed.

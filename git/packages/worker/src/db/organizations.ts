@@ -19,6 +19,7 @@ import { keyedHash, legacySha256Hex } from "@infrawrench/server-core/encryption"
 import { intersectPermissions } from "@infrawrench/server-core/permissions/catalog";
 import { db } from "./client";
 import { type GrantFacts, effectivePermissions } from "./org-permissions";
+import { describeError } from "../http/log";
 
 /** As the app's `hasMembership`: a row in `organization_members`, nothing created. */
 export const isMember = async (userId: string, organizationId: string): Promise<boolean> => {
@@ -61,7 +62,9 @@ const approvedGrants = async (
         ),
       );
   } catch (error) {
-    console.error(`[git] reading elevations for ${userId} in ${organizationId}:`, error);
+    console.error(
+      `[git] reading elevations for ${userId} in ${organizationId}: ${describeError(error)}`,
+    );
     return [];
   }
 };

@@ -1,5 +1,8 @@
+import { signGitJobToken } from "@infrawrench/client-core";
 import { ACCESS_TOKEN_PREFIX as CONTRACT_PREFIX } from "@infrawrench/git-contract";
 import { describe, expect, it } from "vitest";
+import type { Env } from "../../env";
+import { authenticateRequest } from "../authenticate";
 import {
   ACCESS_TOKEN_PREFIX,
   parseAuthorization,
@@ -269,5 +272,99 @@ describe("CI job tokens", () => {
     await expect(mintJobToken("short", { repositoryId: "repo_1", write: false })).rejects.toThrow(
       /job token key/,
     );
+  });
+
+  it("refuses a token that would live longer than the longest lifetime", async () => {
+    // A minter whose clock runs two hours ahead signs a six-hour token.
+    const ahead = NOW + 2 * 3600;
+    const token = await signGitJobToken(
+      KEY,
+      {
+        repositoryId: "repo_1",
+        access: "read",
+        runId: "run_1",
+        expiresAt: ahead + JOB_TOKEN_MAX_TTL_SECONDS,
+      },
+      ahead * 1000,
+    );
+    expect(await verifyJobToken(KEY, token, NOW)).toBe(null);
+    expect(await verifyJobToken(KEY, token, ahead)).not.toBe(null);
+  });
+
+  it("takes a commit's archive token for that commit's archive only", async () => {
+    const commit = "c".repeat(40);
+    const token = await signGitJobToken(
+      KEY,
+      { repositoryId: "repo_1", access: "read", runId: "run_1", expiresAt: NOW + 600, commit },
+      NOW * 1000,
+    );
+    expect(await verifyJobToken(KEY, token, NOW)).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, "d".repeat(40))).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, commit)).toMatchObject({ repositoryId: "repo_1" });
+  });
+});
+
+describe("authenticateRequest before any credential is looked up", () => {
+  const env = { SITE_ORIGIN: "https://git.example.test", GIT_JOB_TOKEN_KEY: "k".repeat(48) } as Env;
+  const request = (headers: Record<string, string>, method = "POST") =>
+    new Request("https://git.example.test/acme/infra.git/git-receive-pack", { method, headers });
+  const token = `Basic ${toBase64(utf8(`git:iwg_${"a".repeat(43)}`))}`;
+
+  it("refuses a write a page elsewhere sent, whichever credential it carries", async () => {
+    for (const from of [
+      { origin: "https://elsewhere.example" },
+      { "sec-fetch-site": "cross-site" },
+      { "sec-fetch-site": "same-site" },
+    ]) {
+      for (const credential of [
+        { authorization: token },
+        { cookie: "__Host-iwg-session=v1.a.b.c" },
+      ]) {
+        const result = await authenticateRequest(request({ ...from, ...credential }), env);
+        expect(result, JSON.stringify(from)).toMatchObject({ refused: true });
+        expect(result.principal.kind).toBe("anonymous");
+      }
+    }
+  });
+
+  it("refuses a cookie on a write that does not say where it came from", async () => {
+    const result = await authenticateRequest(
+      request({ cookie: "__Host-iwg-session=v1.a.b.c" }),
+      env,
+    );
+    expect(result).toMatchObject({ refused: true });
+  });
+
+  it("never reads the development cookie over HTTPS", async () => {
+    const result = await authenticateRequest(
+      new Request("https://git.example.test/api/session", {
+        headers: { cookie: "iwg-session=v1.a.b.c" },
+      }),
+      env,
+    );
+    expect(result).toMatchObject({ refused: false, setCookies: [] });
+    expect(result.principal.kind).toBe("anonymous");
+  });
+
+  it("does not fall back to the cookie when the Authorization header is refused", async () => {
+    const result = await authenticateRequest(
+      new Request("https://git.example.test/api/session", {
+        headers: { authorization: "Bearer nothing-of-ours", cookie: "__Host-iwg-session=x" },
+      }),
+      env,
+    );
+    expect(result).toMatchObject({ refused: true });
+  });
+
+  it("takes a job token from a client that sends no browser headers", async () => {
+    const job = await mintJobToken(env.GIT_JOB_TOKEN_KEY, { repositoryId: "repo_1", write: true });
+    const result = await authenticateRequest(
+      request({ authorization: `Basic ${toBase64(utf8(`x-access-token:${job}`))}` }),
+      env,
+    );
+    expect(result).toMatchObject({
+      refused: false,
+      principal: { kind: "job", repositoryId: "repo_1", write: true },
+    });
   });
 });

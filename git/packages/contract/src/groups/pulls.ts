@@ -73,7 +73,7 @@ export class PullsGroup extends HttpApiGroup.make("pulls")
       .annotate(RequiresUser, true)
       .annotate(
         HandlerGate,
-        "Read access to the base repository and to the head repository; `write` is not needed to propose.",
+        "Read access to the base repository and to the head repository, which is in the base's fork network and, when private, only proposed to a private base of the same owner; `write` is not needed to propose.",
       )
       .annotate(OpenApi.Summary, "Open a pull request")
       .annotate(

@@ -66,6 +66,14 @@ export interface Env {
    * route itself. Absent under tests and before the UI is built.
    */
   readonly ASSETS?: Fetcher;
+  /**
+   * Cloudflare Rate Limiting bindings for callers without a credential
+   * (`http/admission.ts`): cheap reads, heavy reads, writes. Optional:
+   * without them the counts are kept in the data centre's cache.
+   */
+  readonly RL_READ_ANON?: { limit(options: { key: string }): Promise<{ success: boolean }> };
+  readonly RL_HEAVY_ANON?: { limit(options: { key: string }): Promise<{ success: boolean }> };
+  readonly RL_WRITE_ANON?: { limit(options: { key: string }): Promise<{ success: boolean }> };
 
   // Secrets (`wrangler secret put`, or the deploy's edge-env upload).
   /** WorkOS API key: the client secret of the code and refresh-token exchanges. */

@@ -22,6 +22,7 @@ import type { Commit } from "@infrawrench/git-contract";
 import { gitTimelineEvents } from "@infrawrench/server-core/db/schema";
 import { applyState, mentionedNumbers } from "../api/thread-edits";
 import { locatorOf } from "../api/context";
+import { mayProposeTo, plansPullRequest } from "../api/repos";
 import { db, withDb } from "../db/client";
 import { getNamespaceForUser } from "../db/namespaces";
 import { listProtectedBranches, protectionFor } from "../db/policy";
@@ -38,6 +39,7 @@ import { type RepoReader, RepoReaderError } from "../repo/reader";
 import { type RepoReaderFactory, repoReaderFor } from "../repo/select";
 import { announcePullRequest, announcePush } from "./ci";
 import { queueMergeApplies, queuePullRequestPlans } from "./terraform";
+import { describeError } from "../http/log";
 
 const BRANCH = "refs/heads/";
 const ZERO = /^0+$/;
@@ -92,6 +94,8 @@ const syncHead = async (
       ? cx.repo
       : await getRepositoryById(pull.repositoryId);
   if (!base) return;
+  // A fork made private since its pull request was opened stops feeding a base its readers could not see it from.
+  if (!mayProposeTo(base, cx.repo)) return;
   const baseReader = base === cx.repo ? cx.reader : cx.readers(cx.env, locatorOf(base));
   const fork = pull.headRepositoryId !== pull.repositoryId;
   let baseOid = pull.baseOid;
@@ -159,6 +163,8 @@ const syncHead = async (
     pull: { ...pull, headOid: update.newOid, baseOid },
   };
   await announcePullRequest(base, synced, "synchronize", cx.repo, cx.username);
+  // A fork's head never queues a plan in its base (`plansPullRequest`).
+  if (!plansPullRequest(base.repository.id, pull.headRepositoryId)) return;
   await queuePullRequestPlans({
     repositoryId: base.repository.id,
     organizationId: base.owner.organizationId,
@@ -345,7 +351,9 @@ export const consumeGitEvents = async (
         await handleGitEvent(message.body, env);
         message.ack();
       } catch (error) {
-        console.error(`[git] event ${message.id} failed and will be retried:`, error);
+        console.error(
+          `[git] event ${message.id} failed and will be retried: ${describeError(error)}`,
+        );
         message.retry();
       }
     }

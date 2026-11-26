@@ -63,7 +63,7 @@ import { queuePullRequestPlans } from "../../events/terraform";
 import { type RepoReader, RepoReaderError } from "../../repo/reader";
 import { type RepoCx, locatorOf, repoOp } from "../context";
 import { branchProtection, mayDelete } from "../protection";
-import { headRepositoryOf, otherRepository } from "../repos";
+import { headRepository, headRepositoryOf, mayProposeTo, plansPullRequest } from "../repos";
 import {
   applyState,
   applyText,
@@ -187,6 +187,7 @@ const announce = (
 ): void => {
   const { repository } = cx.repo;
   cx.background(announcePullRequest(cx.repo, found, action, head, cx.username));
+  if (!plansPullRequest(repository.id, found.pull.headRepositoryId)) return;
   cx.background(
     queuePullRequestPlans({
       repositoryId: repository.id,
@@ -295,7 +296,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
         const { repository } = cx.repo;
         if (!repository.hasPullRequests) throw unprocessable("Pull requests are switched off here");
         const head = payload.headRepository
-          ? await otherRepository(cx, payload.headRepository)
+          ? await headRepository(cx, payload.headRepository)
           : cx.repo;
         const sameRepository = head.repository.id === repository.id;
         if (sameRepository && payload.base === payload.head) {
@@ -430,6 +431,10 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
         if (thread.state === "open") return detail(cx, params.number);
         const head = await headRepositoryOf(cx, pull.headRepositoryId);
         if (!head) throw unprocessable("The repository it came from is gone", "ref_not_found");
+        // A fork made private since stays out of a base its readers could not see it from.
+        if (!mayProposeTo(cx.repo, head.repo)) {
+          throw unprocessable("The repository it came from is private now", "ref_not_found");
+        }
         const branch = await branchOr422(cx.reader(locatorOf(head.repo)), pull.headRef);
         if (
           await findOpenPullRequest(
@@ -645,6 +650,10 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
         }
         if (!accessAtLeast(head.access, "write")) {
           throw forbidden("This needs write access to the head repository");
+        }
+        // Updating copies the base's commits into the head: not from a private base into a fork more people read.
+        if (!mayProposeTo(head.repo, cx.repo)) {
+          throw unprocessable("This repository's commits cannot go to a fork more people can read");
         }
         const method = payload.method ?? "merge";
         const protection = await branchProtection(head.repo.repository.id, pull.headRef);

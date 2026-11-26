@@ -19,8 +19,32 @@ import {
 
 const BLOCK = 512;
 
+/** A number in a header field of `width` bytes: octal, NUL-terminated, clamped to what fits. */
 function octal(value: number, width: number): string {
-  return value.toString(8).padStart(width - 1, "0") + "\0";
+  const largest = 8 ** (width - 1) - 1;
+  const fitted = Math.min(Math.max(Math.floor(value), 0), largest);
+  return fitted.toString(8).padStart(width - 1, "0") + "\0";
+}
+
+/**
+ * A tree entry name an archive may hold. Git's own checkout refuses the
+ * rest, but a pushed tree is stored as it came, so a name that would climb
+ * out of the archive's directory (`..`, a slash inside a name), plant a
+ * repository (`.git`) or say nothing (`.`) is left out here. So is a name a
+ * tree repeats: a symlink and a directory of one name would let a later
+ * entry be written through the link.
+ */
+function safeName(name: Uint8Array, seen: Set<string>): boolean {
+  if (name.length === 0 || name.includes(0x2f) || name.includes(0)) return false;
+  const text = new TextDecoder().decode(name);
+  // A backslash separates on Windows, so its pieces are held to the same rule.
+  for (const piece of text.split("\\")) {
+    const folded = piece.toLowerCase();
+    if (folded === "." || folded === ".." || folded === ".git") return false;
+  }
+  if (seen.has(text)) return false;
+  seen.add(text);
+  return true;
 }
 
 function header(
@@ -139,6 +163,11 @@ function entryHeaders(
   return out;
 }
 
+/** The largest directory an archive reads, as git-ops' `maxTreeBytes`. */
+const MAX_TREE_BYTES = 1024 * 1024;
+/** The most files and directories one archive lists. The stream ends in an error past it. */
+const MAX_ENTRIES = 500_000;
+
 /**
  * Yields the tar for the tree of `commit` (or of a tag of one), every path
  * under `prefix/`. Submodules become empty directories.
@@ -164,6 +193,7 @@ export async function* tarArchive(
     if (slash) out[out.length - 1] = 0x2f;
     return out;
   };
+  let entries = 0;
   // Depth-first with an explicit stack, in tree order, so the listing reads like the repository.
   const stack: Array<{ dir: Uint8Array; oid: ObjectId }> = [{ dir: root, oid: parsed.tree }];
   while (stack.length > 0) {
@@ -171,9 +201,16 @@ export async function* tarArchive(
     const tree = await reader.read(oid);
     if (!tree || tree.type !== "tree")
       throw new GitError("missing-object", `tree ${oid} is missing`);
+    // Parsing a directory costs several hundred bytes of memory a name.
+    if (tree.data.length > MAX_TREE_BYTES) {
+      throw new GitError("limit", "a directory is too large to archive");
+    }
     const subtrees: Array<{ dir: Uint8Array; oid: ObjectId }> = [];
+    const seen = new Set<string>();
     for (const entry of parseTree(tree.data)) {
       const name = entry.rawName ?? encodeText(entry.name);
+      if (!safeName(name, seen)) continue;
+      if (++entries > MAX_ENTRIES) throw new GitError("limit", "too many files to archive");
       if (entry.mode === "040000") {
         const path = join(dir, name, true);
         yield* entryHeaders(path, 0o755, 0, mtime, "5", new Uint8Array(0));
@@ -189,7 +226,10 @@ export async function* tarArchive(
         } else {
           const mode = entry.mode === "100755" ? 0o755 : 0o644;
           yield* entryHeaders(path, mode, blob.data.length, mtime, "0", new Uint8Array(0));
-          if (blob.data.length > 0) yield padded(blob.data);
+          // The blob as it is and its padding apart: a copy of a large one would double what is held.
+          if (blob.data.length > 0) yield blob.data;
+          const rest = blob.data.length % BLOCK;
+          if (rest > 0) yield new Uint8Array(BLOCK - rest);
         }
       }
     }

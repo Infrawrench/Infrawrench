@@ -5,6 +5,7 @@
  * Durable Object in production (`RepoDO.reader`), on the Node stand-ins in
  * the tests. `../reader-do.ts` is the Worker's side of the same interface.
  */
+import { GitError } from "@infrawrench/git-core";
 import {
   type InitInput,
   type RepoLocator,
@@ -204,6 +205,11 @@ export async function callReader(
   } catch (error) {
     if (error instanceof RepoReaderError) {
       return { ok: false, code: error.code, message: error.message };
+    }
+    // A bound of git-ops reached anywhere (a tree too large to list, a commit with too many
+    // parents, a walk too long to be right) is the request being too large, not a failure.
+    if (error instanceof GitError && error.code === "limit") {
+      return { ok: false, code: "too_large", message: error.message };
     }
     throw error;
   }

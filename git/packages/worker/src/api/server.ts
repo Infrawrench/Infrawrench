@@ -111,6 +111,10 @@ export const makeGitApi = (options: GitApiOptions = {}): GitApiHandler => {
       const response = await web.handler(routed, Context.make(InvocationRef, invocation));
       const headers = new Headers(response.headers);
       for (const cookie of invocation.cookies) headers.append("set-cookie", cookie);
+      // Every answer depends on who asked: no cache between the browser and
+      // us keeps one, and no page elsewhere may load one as a subresource.
+      headers.set("cache-control", "private, no-store");
+      headers.set("cross-origin-resource-policy", "same-origin");
       if (head) await response.body?.cancel();
       return new Response(head ? null : response.body, {
         status: response.status,
