@@ -255,7 +255,7 @@ ${
     ? `<p class="warn">The answer goes to a program on this computer. The name above is what that program calls itself and is not verified: allow it only if you started this from an application you trust, just now.</p>`
     : ""
 }
-<p>You can end its access at any time under Settings, Tokens.</p>
+<p>You can end its access at any time under Settings, Access tokens.</p>
 <form method="post" action="">
 <input type="hidden" name="request" value="${escapeHtml(sealed)}">
 <div class="actions">

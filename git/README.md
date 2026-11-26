@@ -65,12 +65,23 @@ Review is what the forge is for, and a branch is the unit of it: a versioned rec
 - **Versions.** Every push to a branch other than the default branch records a version (v1, v2, ...), forced pushes and rebases included. Each keeps its commit, so an older version can be read and compared after the branch has moved on. They are kept until thirty days after the branch is merged or deleted.
 - **The branch page is the pull request, shown another way.** Merging, protected branches, statuses, reviews and review threads are the pull request's. A repository opens a draft pull request the first time a branch is pushed (a setting, on by default), so every branch has a page. Each person chooses how a branch opens for them: the branch page (`agent` mode, the default) or the pull request as it was (`classic`). Both read the same rows.
 - **Diffs between versions** compare each version against its own base, so a rebase alone shows nothing: the whole change, one step, or everything since the version a person last marked as reviewed. A review comment is written on a version and carries forward while its lines stand; when they change, it says which version answered it.
-- **Traces.** An agent records the ask, its steps, decisions, evidence and doubts through the API; entries wait on the branch and belong to the version its next push makes.
+- **Traces.** An agent records the ask, its steps, decisions, evidence and doubts through the API or the MCP server; entries wait on the branch and belong to the version its next push makes. Secrets are masked before an entry is stored.
 - **Findings.** Review agents, switched on per repository, leave line-anchored findings (`must_fix`, `should_fix`, `note`) with evidence. An open must-fix finding holds the merge until it is fixed, dismissed, or overridden by an administrator, on the record.
 - **Instructions.** A reviewer sends a comment, a finding or a note to the agent that wrote the branch; the version that answers it says so.
-- **Any agent** takes part through the API with a personal token. A pull request names the agent behind it: an Infrawrench agent session, a T3 Code thread in one of the person's environments (the forge is an OAuth client of that environment), or anything else that speaks the API.
+- **Any agent** takes part through the MCP server (below) or the API. A pull request names the agent behind it: an Infrawrench agent session, a T3 Code thread in one of the person's environments (the forge is an OAuth client of that environment), or anything else that speaks MCP or the API.
 
 `packages/worker/NOTES.md` ("Versions and review") has how versions are recorded and kept, and which parts are built.
+
+## Agents and MCP
+
+`https://git.infrawrench.com/mcp` is a Model Context Protocol server (Streamable HTTP, stateless, the 2026-07-28 revision and the earlier `initialize` handshake). An agent's client is given that address and nothing else: `claude mcp add --transport http infrawrench-git https://git.infrawrench.com/mcp`.
+
+- **The tools are the review loop**: `whoami`, `list_my_branches`, `get_branch`, `get_version_diff`, `record_trace`, `list_instructions`, `mark_instruction_delivered`, `mark_instruction_answered`, `list_findings`, `report_finding`, `start_work`. Each is a wrapper that calls the JSON API in the same process with the caller's credential, so what a tool may do is what the API lets that credential do, decided in the one place it always is (`repoAccess`). A tool whose endpoint is not built answers that in words.
+- **A client signs in with OAuth 2.1**, and the forge is its own authorization server: the two discovery documents under `/.well-known/`, a client id that is either the address of a Client ID Metadata Document or made by `/oauth/register`, PKCE (S256 only), `/oauth/authorize` (a consent page on the site's own sign-in), `/oauth/token` and `/oauth/revoke`. What a client is granted is a personal access token like any other (a row of `git_access_tokens`, `iwg_`, `repo:read` and `repo:write`), valid for an hour and renewed with a refresh token that works once. It is listed under **Settings > Access tokens** as `<client> (MCP)` and revoked there.
+- **Headless agents bring a token**: a personal access token, an organisation's API key, or a CI job's token, as `Authorization: Bearer`. A job's token records traces on the branch its run is of and does nothing else.
+- **Nothing new is stored.** A registered client id, an authorization code and a refresh token are sealed values that carry what they stand for, and a grant is the token's row. There is no table of clients, codes or sessions.
+
+`packages/worker/NOTES.md` ("MCP and OAuth") has the decisions. The user documentation is `features/git-agents-and-mcp.md` on the website.
 
 ## Infrawrench CI
 
@@ -106,12 +117,12 @@ pnpm install
 node git/dev.mjs --migrate
 ```
 
-| Where                   | What                                                                                                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `http://localhost:5174` | The UI under Vite, with hot reload. It proxies `/api`, `/auth` and the Git paths (`.git`, `raw`, `archive`, the Terraform state backend) to the Worker. |
-| `http://localhost:8787` | The Worker under `wrangler dev`: R2, the Durable Objects and the queue are local, in `git/packages/worker/.wrangler/state`.                             |
-| `localhost:8788`        | Git over SSH: the Worker's `connect` port. Clone URLs here are `ssh://git@localhost:8788/<owner>/<repo>.git`.                                           |
-| `http://localhost:4100` | The WorkOS emulator, the one the app's dev stack uses, with its seeded user.                                                                            |
+| Where                   | What                                                                                                                                                                                      |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `http://localhost:5174` | The UI under Vite, with hot reload. It proxies `/api`, `/auth`, `/mcp`, `/oauth`, `/.well-known` and the Git paths (`.git`, `raw`, `archive`, the Terraform state backend) to the Worker. |
+| `http://localhost:8787` | The Worker under `wrangler dev`: R2, the Durable Objects and the queue are local, in `git/packages/worker/.wrangler/state`.                                                               |
+| `localhost:8788`        | Git over SSH: the Worker's `connect` port. Clone URLs here are `ssh://git@localhost:8788/<owner>/<repo>.git`.                                                                             |
+| `http://localhost:4100` | The WorkOS emulator, the one the app's dev stack uses, with its seeded user.                                                                                                              |
 
 - **The database** is the one thing it does not start. It uses `DATABASE_URL`, or without one the app's dev stack's Postgres on port 5433 (`docker compose -f docker-compose.dev.yml up -d postgres`). The URL needs a password: wrangler refuses a Hyperdrive connection string without one. `--migrate` applies the app's migrations first (`pnpm --filter @infrawrench/web db:migrate`), which is where the forge's tables come from; leave it off once the database is current. Production is PostgreSQL 18; the migrations and the database suites were also run on 14.
 - **Signing in**: **Sign in** goes to the emulator's login page. The seeded user is `dev@infrawrench.local` / `devpassword1!` (`infra/docker/workos-emulate/seed.yaml`). The first sign-in asks for a username, as in production, once the user belongs to an organisation with Git turned on (the temporary flag, KNOWLEDGE.md "Git feature flag"): put `dev@infrawrench.local` in `INFRAWRENCH_PLATFORM_ADMIN_EMAILS` in the app's `.env`, open `http://localhost:3000/admin` and turn on **Git** for its organisation. The script starts the emulator (`@workos/emulate`, through `npx`) unless one already answers on port 4100, so it shares the app's when the dev stack is up, and the same user is then signed in to both. An organisation's namespace needs that organisation's rows, which the app makes: sign in to the local app once (`http://localhost:3000`) to have one.

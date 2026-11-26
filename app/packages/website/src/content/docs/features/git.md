@@ -6,7 +6,7 @@ sidebar_order: 6
 
 [git.infrawrench.com](https://git.infrawrench.com) is Infrawrench's Git forge: repositories, pull requests, issues, [CI](./ci.md) and Terraform state. It is its own site with its own pages. The app does not embed it. It links to it, and keeps the few settings that belong to your organization in **Settings > Git**.
 
-Using the forge itself is covered in [Get started on git.infrawrench.com](./git-getting-started.md) (signing in, SSH keys, access tokens, cloning) and [Issues and pull requests](./git-pull-requests.md) (reviews, merging, protected branches, forks).
+Using the forge itself is covered in [Get started on git.infrawrench.com](./git-getting-started.md) (signing in, SSH keys, access tokens, cloning) [Issues and pull requests](./git-pull-requests.md) (reviews, merging, protected branches, forks) and [Agents and MCP](./git-agents-and-mcp.md) (connecting Claude Code, Codex, Cursor or another agent).
 
 > **Cloud only.** A namespace belongs to a cloud organization. The desktop app shows Git when it is signed in to one.
 
