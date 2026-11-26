@@ -28,7 +28,7 @@ import { ReviewButton } from "../branch-page/ReviewForm";
 import { countThreads } from "../branch-page/review-threads";
 import { AgentPanel } from "./Agent";
 import { Ask } from "./Ask";
-import { DIFF_MODES, defaultSelection, isLive, type DiffMode } from "./branch";
+import { DIFF_MODES, defaultSelection, isLive, showsFindings, type DiffMode } from "./branch";
 import { LIVE_MS, useBranchState } from "./BranchNeeds";
 import { FindingsPanel } from "./Findings";
 import { InstructionsPanel, InstructionsProvider } from "./Instructions";
@@ -142,6 +142,8 @@ export function BranchPage({
     lastReviewed !== null &&
     lastReviewed >= selected.number;
   const canSend = repository.viewer.canPush && page.state === "open";
+  // Off means the forge's own agents do not run, not that nothing was found.
+  const agentsEnabled = state.data?.settings.reviewAgentsEnabled !== false;
   const pending = (traces.data?.items ?? []).filter((entry) => entry.version === null);
 
   // The strip above the diff: what to compare at its start, the reviewed mark at its end.
@@ -249,13 +251,18 @@ export function BranchPage({
         {/* What closes the page: the findings, the merge and the talk, with who and what beside them. */}
         <div className="grid gap-x-10 gap-y-6 border-t border-border pt-8 lg:grid-cols-[minmax(0,56rem)_18rem]">
           <div className="min-w-0 space-y-4">
-            {findings.data !== undefined && state.data?.settings.reviewAgentsEnabled !== false ? (
+            {findings.data !== undefined &&
+            showsFindings({
+              agentsEnabled,
+              findings: findings.data.findings.length,
+              run: state.data?.reviewRun ?? null,
+            }) ? (
               <FindingsPanel
                 findings={findings.data.findings}
                 branchKey={key}
                 version={list.latest}
                 run={state.data?.reviewRun ?? null}
-                canRun={canSend}
+                canRun={canSend && agentsEnabled}
               />
             ) : null}
 

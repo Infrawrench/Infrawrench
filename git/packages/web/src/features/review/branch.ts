@@ -100,6 +100,18 @@ export function needsNow(state: BranchPageState): { tone: Tone; text: string } {
   }
 }
 
+/**
+ * Whether the branch page lists findings. The repository's setting only says
+ * whether the forge's own agents run: a reviewer outside the forge (one in
+ * CI, one on somebody's machine) reports all the same, so what was found, or
+ * a run that looked, is shown whatever the setting says.
+ */
+export const showsFindings = (shown: {
+  readonly agentsEnabled: boolean;
+  readonly findings: number;
+  readonly run: BranchPageState["reviewRun"];
+}): boolean => shown.agentsEnabled || shown.findings > 0 || shown.run !== null;
+
 /** While any of this holds, the page asks again every few seconds. */
 export const isLive = (state: BranchPageState | undefined): boolean =>
   state !== undefined &&
@@ -107,6 +119,24 @@ export const isLive = (state: BranchPageState | undefined): boolean =>
     state.openInstructions > 0 ||
     state.reviewRun === "queued" ||
     state.reviewRun === "running");
+
+/**
+ * What to say in place of a diff the server no longer has: a pruned
+ * version's commits went thirty days after its branch was merged or deleted.
+ */
+export function prunedNotice(shown: {
+  readonly version: number;
+  readonly mode: DiffMode;
+  readonly merged: boolean;
+}): string {
+  const what =
+    shown.mode === "whole"
+      ? `The change at v${shown.version} cannot be shown`
+      : `What v${shown.version} changed since an earlier version cannot be shown`;
+  return `${what}: its commits were removed 30 days after the branch was ${
+    shown.merged ? "merged" : "deleted"
+  }. What was recorded and found on it is kept.`;
+}
 
 /** What to say above a diff that is not simply one version against another. */
 export function diffNotice(diff: Pick<VersionDiff, "kind" | "from" | "to" | "rebased" | "exact">) {
