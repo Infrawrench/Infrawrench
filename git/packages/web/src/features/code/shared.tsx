@@ -12,12 +12,13 @@ import { AppLink, useGo } from "../../components/AppLink";
 import { CommitStatusIcon } from "../../components/Badge";
 import { buttonClass } from "../../components/Button";
 import { Breadcrumbs, CopyButton, Segmented, type Crumb } from "../../components/controls";
+import { CodePageSkeleton } from "./CodePageSkeleton";
 import { prefetchEntry } from "./requests";
 import { Icon } from "../../components/icons";
 import { Popover } from "../../components/Menu";
 import { CommitAuthors, RelativeTime } from "../../components/people";
 import { RefPicker } from "../../components/RefPicker";
-import { ErrorState, Loading } from "../../components/states";
+import { ErrorState } from "../../components/states";
 import { shortOid } from "../../lib/format";
 import { paths, type RepoRef } from "../../lib/paths";
 import { pathCrumbs, splitRefPath, type RefAndPath } from "../../lib/refs";
@@ -43,7 +44,7 @@ export function WithRefAndPath({
   const refs = useQuery(queries.contents.listRefs({ params: repo, query: { limit: 100 } }));
   if (splat === "") return <>{children({ ref: repository.defaultBranch, path: "" })}</>;
   if (refs.data === undefined) {
-    return refs.error ? <ErrorState error={refs.error} /> : <Loading shape="page" />;
+    return refs.error ? <ErrorState error={refs.error} /> : <CodePageSkeleton kind="table" />;
   }
   const names = [...refs.data.branches, ...refs.data.tags].map((ref) => ref.name);
   return <>{children(splitRefPath(splat, names))}</>;

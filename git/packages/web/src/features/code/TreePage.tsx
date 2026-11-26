@@ -13,13 +13,14 @@ import { LanguageLabel } from "../../components/Badge";
 import { Icon, type IconName } from "../../components/icons";
 import { Page, Panel, PanelHeader, Table, Td, Th, Tr } from "../../components/Panel";
 import { RelativeTime } from "../../components/people";
-import { CommitStripSkeleton, ErrorState, Loading, Skeleton } from "../../components/states";
+import { CommitStripSkeleton, ErrorState, Skeleton } from "../../components/states";
 import { formatBytes, plural } from "../../lib/format";
 import { paths, type RepoRef } from "../../lib/paths";
 import { parentPath } from "../../lib/refs";
 import { webUrl } from "../../lib/safe-url";
 import { usePageTitle } from "../../lib/title";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
+import { CodePageSkeleton } from "./CodePageSkeleton";
 import { EmptyRepository } from "./EmptyRepository";
 import { Languages } from "./Languages";
 import { ReadmePanel } from "./ReadmePanel";
@@ -68,14 +69,12 @@ export function TreePage({ refName, path }: { refName: string; path: string }) {
     );
   }
   if (tree.data === undefined) {
-    return (
+    return tree.error && !isFile ? (
       <Page>
-        {tree.error && !isFile ? (
-          <ErrorState error={tree.error} onRetry={() => void tree.refetch()} />
-        ) : (
-          <Loading shape="table" />
-        )}
+        <ErrorState error={tree.error} onRetry={() => void tree.refetch()} />
       </Page>
+    ) : (
+      <CodePageSkeleton kind="table" root={path === ""} />
     );
   }
   const listing = tree.data;

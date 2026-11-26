@@ -11,7 +11,7 @@ import { CodeView } from "../../components/CodeView";
 import { CopyButton, Segmented } from "../../components/controls";
 import { Icon } from "../../components/icons";
 import { Page, Panel, PanelHeader } from "../../components/Panel";
-import { CommitStripSkeleton, ErrorState, Loading } from "../../components/states";
+import { CommitStripSkeleton, ErrorState } from "../../components/states";
 import { formatBytes, plural } from "../../lib/format";
 import { languageOfPath } from "../../lib/highlight";
 import { formatLineHash, parseLineHash, selectLine, type LineRange } from "../../lib/lines";
@@ -20,6 +20,7 @@ import { downloadUrl } from "../../lib/raw";
 import { resolveRelative } from "../../lib/refs";
 import { usePageTitle } from "../../lib/title";
 import { useRepoRef } from "../../layout/RepoLayout";
+import { CodePageSkeleton } from "./CodePageSkeleton";
 import { blobQuery, latestCommitQuery } from "./requests";
 import { RenderedMarkdown, isMarkdownPath } from "./ReadmePanel";
 import { CodeRefPicker, CommitStrip, PathBreadcrumbs } from "./shared";
@@ -75,14 +76,12 @@ export function BlobPage({ refName, path }: { refName: string; path: string }) {
   }, [isDirectory, go, repo.owner, repo.repo, refName, path]);
 
   if (blob.data === undefined) {
-    return (
+    return blob.error && !isDirectory ? (
       <Page>
-        {blob.error && !isDirectory ? (
-          <ErrorState error={blob.error} onRetry={() => void blob.refetch()} />
-        ) : (
-          <Loading shape="file" />
-        )}
+        <ErrorState error={blob.error} onRetry={() => void blob.refetch()} />
       </Page>
+    ) : (
+      <CodePageSkeleton kind="file" />
     );
   }
   return <BlobView repo={repo} blob={blob.data} />;

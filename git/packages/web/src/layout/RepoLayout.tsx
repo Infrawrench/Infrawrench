@@ -15,8 +15,10 @@ import { Badge, VisibilityBadge } from "../components/Badge";
 import { Dialog, LinkTabs, type LinkTab } from "../components/controls";
 import { Field, Input, Select } from "../components/forms";
 import { Icon } from "../components/icons";
+import { useLocation } from "@tanstack/react-router";
 import { Page } from "../components/Panel";
-import { ErrorState, InlineError, Loading } from "../components/states";
+import { ErrorState, InlineError, Loading, Skeleton } from "../components/states";
+import { CodePageSkeleton } from "../features/code/CodePageSkeleton";
 import { compactCount } from "../lib/format";
 import { mayUseName, useNewNameAvailability } from "../lib/name-availability";
 import { ownersOf, type Owner } from "../lib/owners";
@@ -345,6 +347,49 @@ function ForkButton({ repository, repo }: { repository: Repository; repo: RepoRe
   );
 }
 
+/**
+ * A repository's page while the repository loads: its header band at the
+ * height `RepoHeader` draws it (name, star and fork, the tabs), then the
+ * outline of the tab being opened, so nothing moves when it arrives.
+ */
+function RepoSkeleton() {
+  const { pathname } = useLocation();
+  const section = pathname.split("/").filter(Boolean)[2];
+  return (
+    <div role="status" aria-live="polite">
+      <span className="sr-only">Loading repository</span>
+      <div
+        className="h-[88px] overflow-hidden border-b border-border bg-surface-inset"
+        aria-hidden="true"
+      >
+        <div className="mx-auto w-full max-w-6xl px-4 pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <Skeleton className="h-[30px]" width={200} />
+            <span className="flex gap-2">
+              <Skeleton className="h-[30px]" width={112} />
+              <Skeleton className="h-[30px]" width={94} />
+            </span>
+          </div>
+          <div className="mt-4 flex gap-6">
+            {[56, 72, 112, 32, 96, 72].map((width, index) => (
+              <Skeleton key={index} className="h-4" width={width} />
+            ))}
+          </div>
+        </div>
+      </div>
+      {section === undefined || section === "tree" ? (
+        <CodePageSkeleton kind="table" root={section === undefined} />
+      ) : section === "blob" || section === "blame" ? (
+        <CodePageSkeleton kind="file" />
+      ) : (
+        <Page>
+          <Loading />
+        </Page>
+      )}
+    </div>
+  );
+}
+
 function RepoHeader({ repository, repo }: { repository: Repository; repo: RepoRef }) {
   return (
     <div className="border-b border-border bg-surface-inset">
@@ -454,7 +499,7 @@ export function RepoLayout({
         </Page>
       );
     }
-    return <Loading shape="page" />;
+    return <RepoSkeleton />;
   }
   const repository = query.data;
   // The API matches names case-insensitively; link with the repository's own spelling.

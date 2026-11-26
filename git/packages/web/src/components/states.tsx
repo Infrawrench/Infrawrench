@@ -46,11 +46,12 @@ export function CommitStripSkeleton() {
 
 export type LoadingShape = "rows" | "table" | "file" | "code" | "text" | "page" | "inline";
 
-function rows(count: number) {
+/** `dense`: a file table's rows, which are shorter than a list's. */
+function rows(count: number, dense = false) {
   return Array.from({ length: count }, (_, index) => (
     <div
       key={index}
-      className="flex items-center gap-3 border-t border-border px-3 py-2.5 first:border-t-0"
+      className={`flex items-center gap-3 border-t border-border px-3 first:border-t-0 ${dense ? "py-1.5" : "py-2.5"}`}
     >
       <Skeleton className="size-4 shrink-0 rounded-full" />
       <Skeleton className="h-3" width={widthAt(index)} />
@@ -88,6 +89,7 @@ export function Loading({
   shape = "rows",
   count,
   framed = true,
+  width = "wide",
 }: {
   label?: string;
   shape?: LoadingShape;
@@ -95,6 +97,8 @@ export function Loading({
   count?: number;
   /** Draw a panel around it. False where it sits inside one already. */
   framed?: boolean;
+  /** For `page`: the width of the page it stands in for (`Page`'s). */
+  width?: "wide" | "narrow";
 }) {
   const frame = framed ? panel : "";
   const announce = <span className="sr-only">{label}</span>;
@@ -122,7 +126,7 @@ export function Loading({
               <CommitStripSkeleton />
             </span>
           </div>
-          {rows(count ?? 8)}
+          {rows(count ?? 8, true)}
         </div>
       );
       break;
@@ -155,8 +159,12 @@ export function Loading({
       );
       break;
     case "page":
+      // Laid out as `Page` lays out the page it stands in for, so it does not
+      // span the window and then shrink.
       body = (
-        <div className="space-y-4">
+        <div
+          className={`mx-auto w-full space-y-4 px-4 py-5 ${width === "wide" ? "max-w-6xl" : "max-w-2xl"}`}
+        >
           <Skeleton className="h-6" width="30%" />
           <div className={panel}>{rows(count ?? 5)}</div>
         </div>

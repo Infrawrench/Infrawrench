@@ -17,7 +17,7 @@ import { ownersOf, visibilityFor, type Owner } from "../../lib/owners";
 
 export function NewRepositoryPage({ owner: initialOwner }: { owner?: string | undefined }) {
   const session = useSession();
-  if (session.data === undefined) return <Loading shape="page" />;
+  if (session.data === undefined) return <Loading shape="page" width="narrow" />;
   if (session.data.user === null) {
     return (
       <Page width="narrow">
@@ -34,7 +34,7 @@ export function NewRepositoryPage({ owner: initialOwner }: { owner?: string | un
     );
   }
   const owners = ownersOf(session.data);
-  if (owners.length === 0) return <Loading shape="page" />;
+  if (owners.length === 0) return <Loading shape="page" width="narrow" />;
   return <NewRepositoryForm owners={owners} initialOwner={initialOwner} />;
 }
 
