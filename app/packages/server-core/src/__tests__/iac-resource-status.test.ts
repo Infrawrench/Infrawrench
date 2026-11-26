@@ -28,6 +28,13 @@ vi.mock("../iac/store", () => ({
 }));
 
 vi.mock("../plugin-loader", () => ({ loadPlugins: () => Promise.resolve([]) }));
+// Which forge workspace manages the resource is read beside the badge, from
+// its own table: stood in for here so the recording driver's queued rows are
+// the badge's alone.
+const mockManagedBy = vi.fn(async (..._a: unknown[]): Promise<unknown[]> => []);
+vi.mock("../git-terraform/managed", () => ({
+  managedByForResource: (...a: unknown[]) => mockManagedBy(...a),
+}));
 vi.mock("../ownership/store", () => ({ lookupResourceOwners: () => Promise.resolve(new Map()) }));
 
 const { getIacResourceStatus, resetIacTypeMapCache } = await import("../iac/service");
@@ -124,8 +131,40 @@ describe("getIacResourceStatus scope selection", () => {
       stateLabel: null,
       terraformAddress: null,
       driftFieldCount: 0,
+      managedBy: [],
     });
     expect(mockLoadIacStateResources).not.toHaveBeenCalled();
+  });
+
+  it("says which forge workspace manages it, whatever the badge says", async () => {
+    const managed = {
+      repository: "acme/infra",
+      rootPath: "network/prod",
+      workspace: "prod",
+      address: "hcloud_server.web",
+      url: "https://git.infrawrench.com/acme/infra/terraform/prod",
+    };
+    mockManagedBy.mockResolvedValueOnce([managed]);
+    selectReturns([resourceRow]);
+    mockGetLatestIacState.mockResolvedValue(null);
+
+    const out = await getIacResourceStatus("org-1", "res-1");
+
+    // No uploaded state covers it, and a workspace's state does: both are true.
+    expect(out.status).toBeNull();
+    expect(out.managedBy).toEqual([managed]);
+    expect(mockManagedBy).toHaveBeenCalledWith("org-1", "res-1");
+  });
+
+  it("answers the badge when what manages it cannot be read", async () => {
+    mockManagedBy.mockRejectedValueOnce(new Error("the table is away"));
+    selectReturns([resourceRow]);
+    mockGetLatestIacState.mockResolvedValue(null);
+
+    expect(await getIacResourceStatus("org-1", "res-1")).toMatchObject({
+      status: null,
+      managedBy: [],
+    });
   });
 
   it("reports no status for an unknown resource without touching state at all", async () => {

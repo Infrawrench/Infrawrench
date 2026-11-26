@@ -87,7 +87,7 @@ if (!checked.ok) return unauthorized(); // checked.reason: malformed | signature
 - `GIT_JOB_TOKEN_KEY` is a secret of both the Worker and the app, with the same value, at least 32 characters.
 - A token is `iwj_<payload>.<signature>`, HMAC-SHA256, and names one repository **by id**, `read` or `write`, what it was minted for (a run's id, or `schedules` / `manual` / `env-file`) and an expiry at most an hour off. Nothing is stored; there is nothing to revoke.
 - In the credential resolver: a Basic password (any user name; the runner sends `x-access-token`) or a Bearer token starting `iwj_` is a job token. Resolve the repository from the URL **first**, then verify against its id, and map the result to `repoAccess` of `read` (or `write`) for that repository and nothing else. A job token is never a user: no API access, no other repository.
-- The app only mints `read` tokens today. `write` exists in the format for a later `changes: commit` push; refuse it on `git-receive-pack` unless the claim says `write`.
+- The app mints `read` tokens for everything CI itself does, and one `write` token: a Terraform workspace's run gets it as the run secret `IW_GIT_JOB_TOKEN`, for the state backend (`terraform/access.ts`). Refuse a push on `git-receive-pack` unless the claim says `write`.
 - Never log a token, and keep it out of error messages.
 
 What the runner's fetch needs from `git-upload-pack` (it uses gitoxide, protocol v2):

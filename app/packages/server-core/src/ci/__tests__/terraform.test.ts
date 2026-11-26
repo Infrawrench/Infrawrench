@@ -56,10 +56,10 @@ const plan = (over: {
 
 /** The row as `dispatchRun` reads it back: what an insert leaves null is null. */
 const asRow = (values: ReturnType<typeof terraformCiRun>) => ({
-  noTaskCache: false,
-  pipelineFile: null,
-  inputs: null,
   ...values,
+  noTaskCache: values.noTaskCache ?? false,
+  pipelineFile: values.pipelineFile ?? null,
+  inputs: values.inputs ?? null,
   pipelineText: values.pipelineText ?? null,
   baseSha: values.baseSha ?? null,
   pullNumber: values.pullNumber ?? null,
@@ -192,7 +192,9 @@ describe("who gets a run", () => {
     expect(terraformDispatchRefusal("skipped")).toMatch(/skipped/);
     expect(terraformDispatchRefusal("superseded")).not.toBeNull();
     expect(terraformDispatchRefusal("cancelled")).not.toBeNull();
-    for (const status of ["queued", "running", "planned", "failed", "applied"] as const) {
+    // Retrying a finished apply from the CI tab must not apply an old commit again.
+    expect(terraformDispatchRefusal("applied")).toMatch(/applied/);
+    for (const status of ["queued", "running", "planned", "failed"] as const) {
       expect(terraformDispatchRefusal(status)).toBeNull();
     }
   });

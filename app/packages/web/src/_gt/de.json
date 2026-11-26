@@ -24084,5 +24084,9 @@
   "0c9b0e05d2c97faa": "Insgesamt {total} gespeichert, öffentliche Repositorys eingeschlossen.",
   "7659227a5a1817cc": "Noch keine Repositorys.",
   "04fd71efaa2c3b92": "Offene Pull Requests",
-  "00c3c9481da47c12": "Letzter Push"
+  "00c3c9481da47c12": "Letzter Push",
+  "0b24fda6ab9c162a": "Verwaltet von",
+  "23a0c77472f8b19b": "{address} im Workspace {workspace}",
+  "e725c75ba8039aba": "{repository} (Repository-Stammverzeichnis)",
+  "ccc0004b5a8a002f": "{repository} ({root})"
 }

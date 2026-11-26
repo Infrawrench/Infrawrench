@@ -45703,6 +45703,13 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "managedBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IacManagedBy"
+            },
+            "description": "The Terraform workspaces on git.infrawrench.com whose current state holds this resource. Independent of `status`, which is about uploaded state documents. Empty when none matched."
           }
         },
         "required": [
@@ -45710,7 +45717,40 @@
           "stateId",
           "stateLabel",
           "terraformAddress",
-          "driftFieldCount"
+          "driftFieldCount",
+          "managedBy"
+        ],
+        "additionalProperties": false
+      },
+      "IacManagedBy": {
+        "type": "object",
+        "properties": {
+          "repository": {
+            "type": "string",
+            "description": "`<namespace>/<repository>` on git.infrawrench.com."
+          },
+          "rootPath": {
+            "type": "string",
+            "description": "The Terraform root, relative to the repository. Empty for its top."
+          },
+          "workspace": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string",
+            "description": "The resource's address in that workspace's state."
+          },
+          "url": {
+            "type": "string",
+            "description": "The workspace's page on git.infrawrench.com."
+          }
+        },
+        "required": [
+          "repository",
+          "rootPath",
+          "workspace",
+          "address",
+          "url"
         ],
         "additionalProperties": false
       },

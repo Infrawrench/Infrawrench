@@ -1,6 +1,6 @@
 # `@infrawrench/git-terraform`
 
-The Terraform side of git.infrawrench.com, as pure functions over interfaces. This file is the design the worker, the CI integration, the contract and server-core build against; `git/README.md` ("Terraform") is the summary.
+The Terraform side of git.infrawrench.com, as pure functions over interfaces. This file is the design, and what was built from it: the worker (`../worker/src/terraform/`, `../worker/src/events/terraform.ts`), server-core (`ci/terraform.ts`, `git-terraform/`) and the contract. `git/README.md` ("Terraform") is the summary.
 
 ## What is in the package
 
@@ -13,34 +13,40 @@ The Terraform side of git.infrawrench.com, as pure functions over interfaces. Th
 | `plan/summary.ts`                   | `summarizePlan(document)`: `terraform show -json <planfile>` reduced to counts, changes, replace reasons, outputs and drift, with attribute names and no values.                                          |
 | `roots/hcl.ts`, `roots/discover.ts` | `discoverTerraformRoots(tree)`: which directories are roots, over a `TreeReader`; what each declares (backend, providers, module calls, variables); `suggestWorkspaceName`, `isWorkspaceName`.            |
 | `pipeline/generate.ts`              | `workspacePipelineYaml(input)`: the Infrawrench CI pipeline of a plan or an apply; `backendEnvironment`, `backendConfiguration` (the block for someone's own machine).                                    |
+| `pipeline/releases.ts`              | `pinnedRelease(product, version)`: the releases a run may download, each with the publisher's SHA-256 per architecture. The first row of a product is its default.                                        |
+| `plan/pricing.ts`                   | `planPricingInputs(document)`: what pricing a plan needs of it (types, and plain scalar attributes the plan does not mark sensitive). Unlike a summary it carries values, so it is never stored on a run. |
+| `roots/touched.ts`                  | `rootsTouchedBy(roots, changedPaths, directories)`: which workspaces a pull request plans.                                                                                                                |
 | `match/`                            | `stateResourceInstances(state)` and `matchStateToInventory(instances, candidates)`: state addresses tied to Infrawrench resource ids.                                                                     |
 
 It imports nothing: no `node:*`, no `cloudflare:*`, no Effect, not even `git-core` yet (the tree is an interface the worker implements over its object reader).
 
 ## The flow
 
-1. **A repository gets workspaces.** When the Infrastructure tab opens, and after a push to the default branch, the worker runs `discoverTerraformRoots` over the default branch's tree and offers each root that is not a workspace yet. Creating one stores a `git_terraform_workspaces` row (name suggested from the path, root path, product and version) and the accounts it is linked to (`git_terraform_workspace_accounts`).
-2. **A pull request opens or gets a new commit.** The event consumer finds the workspaces the pull request touches: its changed paths are under the workspace's `rootPath` or under a directory the root calls as a local module, transitively (`TerraformDirectory.moduleCalls[].localPath`, read at the head commit). For each it inserts a `git_terraform_runs` row (`kind: plan`, `queued`) and asks server-core to dispatch a CI run with `workspacePipelineYaml({ kind: "plan", ... })` as the run request's `pipeline`. Older plans of the same pull request and workspace become `superseded` (the pipeline's concurrency group cancels them in CI).
-3. **The plan job** runs in a Linux machine: installs the pinned release, writes the backend override, `init`, `plan -out`, `show -json`, and posts the JSON to `planUrl`. The worker checks the job token belongs to that run, parses, calls `summarizePlan`, stores the summary and its three totals on the run (`planned`) and drops the document.
-4. **The pull request shows it.** The run row is the check: workspace, "2 to add, 1 to change, 2 to destroy", the changes, and the monthly cost change. The cost comes from server-core's existing pull request analysis (`pr-checks/analyze.ts`) over the same diff, limited to the workspace's directories, stored as `cost_delta` (null is not zero, as there).
-5. **The pull request merges.** The push to the default branch makes an apply run per touched workspace. With `autoApply` it is dispatched at once; otherwise it is `awaiting_approval` until someone who may approve presses Apply, and only then dispatched. The gate is the dispatch, not anything inside the pipeline.
+1. **A repository gets workspaces.** The Infrastructure tab lists the roots `discoverTerraformRoots` finds on the default branch; creating a workspace stores a `git_terraform_workspaces` row and the accounts it links (`git_terraform_workspace_accounts`). Linking takes `admin` on the repository and `accounts:read` in the organisation, and is the grant: a workspace's runs are lent those accounts and nothing else.
+2. **A pull request opens or gets a new commit.** The Worker (`events/terraform.ts`) reads what the pull request changes and plans the workspaces it touches (`rootsTouchedBy`: a file under the root or under a local module it reaches); when the storage cannot say, every workspace of the base branch. It inserts a `git_terraform_runs` row (`plan`, `queued`) and calls server-core's `startTerraformRun`, which records a `ci_runs` row with `workspacePipelineYaml(...)` as its `pipeline_text` and dispatches it. Plans of older heads become `superseded` (the pipeline's concurrency group cancels them in CI).
+   - **A fork's pull request is never planned.** Its run is recorded `skipped` with the reason and nothing is sent. It gets a timeline entry and no commit status.
+   - **A personal namespace has the state backend only**: nothing is recorded.
+3. **The plan job** runs in a Linux machine: installs the pinned release, writes the backend override, `init`, `plan -out`, `show -json`, and posts the JSON to `planUrl` with its job token. The Worker checks the token is the live run's own, calls `summarizePlan`, hands the summary to server-core (`recordTerraformPlan`) and drops the document. What pricing needs (`planPricingInputs`) is put beside the state in R2.
+4. **The pull request shows it.** The run row is the check: the commit status `Infrawrench Terraform / <workspace>` with Terraform's own line ("Plan: 2 to add, 1 to change, 0 to destroy."), a `terraform_run` entry in the timeline, and the run's changes. The monthly cost change is priced from the plan by the gateway's pass (`git-terraform/plan-cost.ts`) and stored as `cost_delta` (null is not zero).
+5. **The branch moves.** A push to the workspace's branch records an apply. It is dispatched at once only when the workspace applies on merge and asks for no approval (`initialApplyStatus`); otherwise it is `awaiting_approval` until an admin of the repository or someone with `ci:approve` approves it. The gate is the dispatch: a waiting run has no CI run, and `terraformDispatch` refuses to send one. A newer push replaces an apply still waiting.
 6. **The apply job** plans again at the merge commit, posts that plan (the apply run keeps its own summary), and applies exactly that plan file. Every state write goes through the backend with `?ID=<lock id>`.
-7. **A state version lands.** The store commits it; `onVersion` gives the worker the metadata, which it writes to `git_terraform_state_versions` (with the run, found from the principal `ci:<ci run id>`), mirrors onto the workspace row, and sends as a `terraform.state-version` event.
-8. **Resources are linked** by server-core on the gateway (plugins do not exist on the edge): it reads the version's bytes, runs `stateResourceInstances`, builds an `InventoryCandidate` per synced resource of the workspace's organisation from the plugin's own `terraformExport.mapResource` (type and `importId`) and `externalId`, runs `matchStateToInventory`, and replaces the workspace's `git_terraform_managed_resources` rows, unmatched addresses included with a null `resourceId`.
-9. **Both sides show it.** The app's resource page reads `git_terraform_managed_resources` by `(organization, resource id)` and says "managed by `<owner>/<repo>` at `<rootPath>`", linking to the workspace. The forge's Infrastructure tab lists what each workspace manages and sums the cost of its linked resource ids. Drift comes from IaC reconciliation: the same state version is registered as an `iac_states` document for the workspace's scope, so the IaC tab's managed, drifted and unmanaged lists work from the newest state with no upload.
+7. **A state version lands.** The store commits it; the workspace's Durable Object reports its head on the response, and the Worker writes `git_terraform_state_versions` (with the run, found from the job's CI run id) and mirrors the head onto the workspace row.
+8. **Resources are linked** by server-core on the gateway (plugins do not exist on the edge): the `git-terraform` poller pass finds workspaces whose current version is not the linked one, reads the state over the backend route with a service token, runs `stateResourceInstances`, builds an `InventoryCandidate` per synced resource from the plugin's own `terraformExport.mapResource` (type and `importId`) and `externalId`, runs `matchStateToInventory`, and replaces the workspace's `git_terraform_managed_resources` rows, unmatched addresses included with a null `resourceId`. A link is redone every six hours, for resources synced since.
+9. **Both sides show it.** The app's resource page reads `managedBy` (`GET /iac/resource`) and says "Managed by `<owner>/<repo>` (`<rootPath>`)", linking to the workspace. The forge's Infrastructure tab lists what each workspace manages and what it cost over the last thirty days, read through the caller's cost visibility.
 
 ## Where each piece runs
 
 | Piece                                     | Where                                                                                                                                           |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | Lock, current version, version catalogue  | A Durable Object per workspace (`idFromName(workspaceId)`), SQLite. It is the truth; Postgres mirrors it.                                       |
-| State bytes                               | R2, `terraform/<workspaceId>/states/<versionId>.tfstate`. Written before the DO commits; never overwritten.                                     |
+| State bytes                               | R2, `terraform/<workspaceId>/<serial>-<versionId>.tfstate`. Written before the DO commits; never overwritten.                                   |
+| A plan's pricing inputs                   | R2, `terraform/<workspaceId>/plans/<runId>.json`, until the app reads them once.                                                                |
 | The backend's HTTP routes, the plan route | The front Worker: resolves the workspace and `repoAccess`, builds a `StateAuth`, hands the request to the DO, which calls `handleStateRequest`. |
 | Root discovery                            | The Worker, over the repository DO's objects.                                                                                                   |
 | Plans and applies                         | Infrawrench CI, `platform: linux` jobs.                                                                                                         |
 | Dispatch, approval, run status            | server-core `ci/` (it owns runs, lending and billing).                                                                                          |
-| Linking, cost, drift                      | server-core on the gateway: a poller pass with `runtime: gateway`, or a gateway route the event consumer calls. It needs plugin code.           |
-| Workspaces, runs, version metadata, links | Postgres (`server-core/src/db/terraform-schema.ts`, migration `0196_git_terraform`).                                                            |
+| Linking and pricing                       | server-core on the gateway: the `git-terraform` poller pass (`git-terraform/pass.ts`). It needs plugin code.                                    |
+| Workspaces, runs, version metadata, links | Postgres (`server-core/src/db/terraform-schema.ts`, migrations `0196` and `0200_git_terraform_runtime`).                                        |
 
 ## The HTTP backend, as Terraform speaks it
 
@@ -64,192 +70,68 @@ Things the binary taught us:
 - **Serial rules.** Same lineage and a higher serial is a new version. The same serial with the same bytes is the same request again (`200`, no version). The same serial with other bytes, a lower serial, or another lineage is `409`. `terraform state push -force` of an older state is therefore refused; going back is `restoreVersion`, which writes the old document as a new version with the next serial and changes no other byte.
 - **`LOCK` and `UNLOCK` are served**, and so are `POST` and `DELETE` on `state/lock`, which is what jobs and the shown configuration use, since not every proxy passes WebDAV methods. Whether Cloudflare's edge passes `LOCK` to a Worker is not something this package depends on.
 
-## What the worker has to implement
+## What the worker implements
 
-- **`TerraformStateDO implements StateStore`.** SQLite: `head(version_id, lock_json)`, `versions(id, serial, lineage, ..., r2_key)`. `commit` puts the bytes in R2 under a fresh version id first, then in one synchronous SQLite step checks the expectation (current version id and lock id) and either records the version as head or reports the head as it is; a failed expectation deletes the object it wrote. `acquireLock` and `releaseLock` are single SQLite steps. Nothing awaits between a check and its write.
-- **Routes** (not part of the JSON API; Basic auth):
+- **`TerraformStateDO`** (`worker/src/terraform/state-do.ts`) over `WorkspaceStateStore` (`state-store.ts`), which is this package's `StateStore`. SQLite: `meta` (the workspace id, the current version id, the lock) and `versions`. `commit` puts the bytes in R2 under a fresh version id first, then in one synchronous SQLite transaction checks the expectation (current version id and lock id) and either records the version as head or reports the head as it is; a commit that loses deletes the object it wrote. `acquireLock` and `releaseLock` are single synchronous steps. Nothing awaits between a check and its write. The object never opens Postgres: every answer to a change carries the head in an internal header, which the front Worker mirrors and removes.
+- **Routes** (not part of the JSON API; Basic auth, or Bearer for a job token), in `worker/src/terraform/route.ts`:
   - `GET|POST|PUT|DELETE|LOCK|UNLOCK /:owner/:repo/terraform/:workspace/state`
   - `POST|PUT|DELETE|LOCK|UNLOCK /:owner/:repo/terraform/:workspace/state/lock`
   - `POST|PUT|DELETE|UNLOCK /:owner/:repo/terraform/:workspace/state/unlock`
-  - `POST /:owner/:repo/terraform/:workspace/runs/:runId/plan` (the plan JSON; `204`)
-- **`StateAuth` from `repoAccess`.** A state holds every secret the workspace manages, so reading it is not reading the repository: `canRead` and `canWrite` need `write`, `canAdmin` needs `admin`, and a public repository's readers get `403`. A personal access token needs `repo:write`. A job token gets `canRead` and `canWrite` for the workspaces of its own run only, never `canAdmin`. The principal string is `user:<id>`, `token:<id>` or `ci:<ci run id>`.
-- **`onVersion`**: insert the `git_terraform_state_versions` row, update the workspace mirror (`current_state_version_id`, `current_serial`), enqueue the event. Mirror the lock (`lock_id`, `lock_info`, `locked_by`, `locked_at`) after each lock and unlock.
-- **The plan route**: cap the body (32 MiB), `JSON.parse`, `summarizePlan` (a `PlanFormatError` is a `400`), store, discard. Never store or log the document: it has sensitive values in the clear.
-- **A `TreeReader`** over a commit's tree, for discovery.
-- **The UI's JSON API** (below), with `restoreVersion`, `unlockState({ lockId: null, force: true })` and `store.versions` behind it.
+  - `POST /:owner/:repo/terraform/:workspace/runs/:runId/plan` (the plan JSON from the run's own job; `204`)
+  - `GET /:owner/:repo/terraform/:workspace/runs/:runId/plan` (the pricing inputs, for the app's service token, once)
+- **`StateAuth` from `repoAccess`** (`worker/src/terraform/access.ts`, `decideStateAuth`). `canRead` and `canWrite` need `write`, `canAdmin` needs `admin`, and a public repository's readers get `403`. A personal access token needs `repo:write` and never administers. A job token gets `canRead` and `canWrite` for the workspace of its own run while that run is live, never `canAdmin`. The app's service token (`SERVICE_TOKEN_PURPOSE`) reads and nothing else. An archived repository's state is read, not changed. The principal string is `user:<id>`, `token:<id>`, `api-key:<id>`, `ci:<ci run id>` or `service:infrawrench`.
+- **Who gets what answer.** No valid credential is a `401` with a Basic challenge whatever the path names; a credential that may not, a missing repository and a missing workspace are all the same `403`. Never `404` or `204` for a refusal.
+- **The JSON API** (`worker/src/api/handlers/automation.ts`), with `restoreVersion` and the forced unlock behind it through `stateClient`.
 
-## What the CI side has to implement
+## What the CI side implements
 
-**How Terraform runs on Infrawrench CI today.** A job is a WebAssembly isolate, and Terraform is a native program, so it cannot run in one. It can run in a `platform: linux` job (a micro VM per job, merged as runner 0.3.42), which the generated pipeline uses. The machine image has no Terraform (`ci-runner/images/README.md` lists it as left out) and there is no `builtin:terraform`, so the job downloads the release it is told to from the publisher, checks it against a pinned SHA-256 and keeps it in a `cache:`. That works with nothing changed in the runner, on runners started with `--machines`.
+**How Terraform runs on Infrawrench CI today.** A job is a WebAssembly isolate, and Terraform is a native program, so it cannot run in one. It runs in a `platform: linux` job (a micro VM per job), which the generated pipeline uses. The machine image has no Terraform and there is no `builtin:terraform`, so the job downloads the release it is told to from the publisher, checks it against a pinned SHA-256 (`pipeline/releases.ts`) and keeps it in a `cache:`. That works with nothing changed in the runner, on runners started with `--machines`.
 
-What is missing, smallest first:
+Built, in `server-core/src/ci/terraform.ts` and the three hooks it has in CI:
 
-1. **Dispatch with an inline pipeline.** The runner's request already takes `pipeline` (a file's text run instead of the repository's); the app has to send it for a workspace run, with the run's `notify`, and the proxy has to place it on a runner that lists `linux` in its platforms.
-2. **A job token as a run secret.** `secrets.IW_GIT_JOB_TOKEN`: repository scoped, valid for the run, principal `ci:<ci run id>`. The pipeline uses it as `TF_HTTP_PASSWORD` and to post the plan.
-3. **Lending the workspace's accounts.** `connections:` names what is lent; for a workspace run the lent set is its linked accounts, granted by linking them (an admin's act), not by the per-repository CI toggle. Accounts offered in the picker are those whose plugin declares `ciCredential`.
-4. **Release pins.** Somebody has to hold `{ product, version, sha256 per architecture }` for the releases a workspace may choose. A small table beside the dispatcher, filled from the publishers' signed checksum lists.
-5. **A `builtin:opentofu` (and `builtin:terraform`) tool with `abi: native-gvisor`**, the way `builtin:bun` is: one static Go binary per target, pinned by content hash, published once. A job then is `using: env:bash@5` with `tools: [builtin:opentofu@1.8]` in a gVisor sandbox: no VM, no KVM host, no download at run time, no pin table. This is the proper fix and the only runner change proposed. OpenTofu is MPL-2.0; redistributing HashiCorp's BUSL binary from our store wants a licence check first, which downloading it in the user's own job does not.
+1. **Dispatch with an inline pipeline.** `terraformCiRun` makes the `ci_runs` values, with the generated text as `pipeline_text` and `terraform_run_id` set; the ordinary dispatcher sends it, with its `platforms` for the proxy to place it by.
+2. **A job token as a run secret.** `terraformDispatch` mints `IW_GIT_JOB_TOKEN` when the run is sent: repository scoped, `write`, two hours, its `run` claim the CI run's id. It goes in the request's `secrets` (which the proxy passes through and the runner masks) and is never stored. The pipeline uses it as `TF_HTTP_PASSWORD` and to post the plan.
+3. **Lending the workspace's accounts.** The pipeline's `connections:` names the linked accounts; `lend.ts` lends an account the run's workspace links without the per-connection CI opt-in (`LendingRun.linkedAccounts`), audited with who linked it.
+4. **Status.** `status.ts` hands a Terraform run's check updates to `reportTerraformCheck`, which moves the run's row and writes `Infrawrench Terraform / <workspace>`.
 
-Known limits, none of them ours to fix here:
+**A `builtin:opentofu` (and `builtin:terraform`) tool with `abi: native-gvisor`** would remove the virtual machine, the download at run time and the pin table: one static Go binary per target, pinned by content hash and published once, the way `builtin:bun` is. A job then is `using: env:bash@5` with `tools: [builtin:opentofu@1.13]` in a gVisor sandbox. It is the proper fix and was not built here. OpenTofu is MPL-2.0; redistributing HashiCorp's BUSL binary from our store wants a licence check first, which downloading it in the user's own job does not.
 
-- **No approval step inside a pipeline.** Approval is a run that is not dispatched yet. The generated files also list `on.manual`, which the app only lets `ci:approve` start.
+**What each linked account's Terraform provider gets.** A lent connection sets the variables its plugin's `lendCiCredential` chooses, which were written for the provider's CLI. Checked against each Terraform provider's documentation (November 2026); the fix for a gap belongs in that plugin's `lendCiCredential`, never in a list here:
+
+| Plugin              | Terraform provider                       | As lent                                                                                                                           |
+| ------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| aws                 | `hashicorp/aws`                          | Works (`AWS_*`). The session is from `GetSessionToken`, so IAM calls fail and `aws_iam_*` resources do not apply.                 |
+| azure               | `hashicorp/azurerm`                      | Works (`ARM_*`).                                                                                                                  |
+| gcp                 | `hashicorp/google`                       | Works for the token and the project. No region is lent. The token lasts an hour unless the organisation allows longer.            |
+| neon                | `kislerdm/neon`                          | Works (`NEON_API_KEY`).                                                                                                           |
+| cloudflare          | `cloudflare/cloudflare`                  | The token works. The provider does not read `CLOUDFLARE_ACCOUNT_ID`: `account_id` is set per resource.                            |
+| postgres            | `cyrilgdn/postgresql`                    | Works (`PG*`), except a private CA: the provider has no environment default for `sslrootcert`.                                    |
+| kubernetes          | `hashicorp/kubernetes`, `hashicorp/helm` | **Gap.** The providers read `KUBE_CONFIG_PATH`, not `KUBECONFIG`. Until the plugin lends both, set `config_path` from a variable. |
+| vercel              | `vercel/vercel`                          | **Gap.** The provider reads `VERCEL_API_TOKEN`; the plugin lends `VERCEL_TOKEN` (the CLI's).                                      |
+| mysql               | `petoju/mysql`                           | **Gap.** The provider reads `MYSQL_ENDPOINT` and `MYSQL_USERNAME`, which are not lent (only `MYSQL_PASSWORD` and `DATABASE_URL`). |
+| mongodb, redis, ssh | none                                     | Not Terraform providers' credentials.                                                                                             |
+
+A workspace can bridge a gap today with a secret variable (`secretVariables`: a Terraform variable read from a CI secret).
+
+Known limits:
+
+- **No approval step inside a pipeline.** Approval is a run that is not dispatched yet.
 - **Jobs reach public addresses only**, so a provider that needs a private endpoint cannot plan.
 - **Providers are downloaded on every `init`.** A `cache:` keyed on the root's `.terraform.lock.hcl` with `TF_PLUGIN_CACHE_DIR` would fix it; left out until it is known what `hashFiles` does for a root with no lock file.
-- **A fork's pull request is never planned.** A plan runs the repository's code (providers, `external` data sources) with real credentials, and an untrusted run gets neither secrets nor lent connections anyway. The run row should say so rather than fail.
-- **Token lifetimes.** A lent GCP access token lasts an hour unless the organisation allows longer.
+- **Token lifetimes.** The job token lasts two hours; a lent GCP access token an hour unless the organisation allows longer.
+- **A run's job token is `write` on the repository**, which the format has no narrower word for: it also lets the job push to unprotected branches. It is the repository's own code that holds it (a fork's never does), and protected branches bind it like any `write` credential.
 
-## API shapes needed from the contract
+## The API
 
-Paths are under the forge's JSON API; `:workspace` is the name. Times are ISO 8601.
+The contract is the reference (`../contract/src/groups/automation.ts`, `schemas/terraform.ts`); the shapes this file used to propose are there, renamed in places (`operation` for `kind`, `applyRequiresApproval` for the inverse of `autoApply`, `errored` and `discarded` for `failed` and `superseded`). Added with the runtime:
 
-```ts
-// GET  /repos/:owner/:repo/terraform/roots?ref=
-interface TerraformRootsResponse {
-  ref: string;
-  truncated: boolean;
-  roots: {
-    path: string;
-    reasons: ("backend" | "provider-block" | "unreferenced")[];
-    backend: string | null;
-    providers: string[];
-    requiredProviders: Record<string, string | null>;
-    requiredVersion: string | null;
-    variables: { name: string; required: boolean; sensitive: boolean }[];
-    workspace: string | null; // the workspace already on this root
-    suggestedName: string;
-  }[];
-}
+- `GET /repos/:owner/:repo/terraform/accounts`: the organisation's connected accounts, for the picker. Empty for a personal namespace and for a caller without `accounts:read`.
+- `POST /repos/:owner/:repo/terraform/workspaces/:workspace/runs` `{ operation, ref? }`: a run by hand.
+- `GET .../state-versions/:versionId/download` (`write`) and `POST .../state-versions/:versionId/restore` (`admin`).
+- `POST /repos/:owner/:repo/terraform/runs/:runId/approve` takes `read` at the gate and decides in the handler: an admin of the repository, or `ci:approve` in the organisation. `viewerCanApprove` on a waiting run says which the caller is.
+- Run status `skipped`; the timeline item `terraform_run`; `matchedResourceCount` on a workspace.
 
-// GET  /repos/:owner/:repo/terraform/workspaces
-// POST /repos/:owner/:repo/terraform/workspaces        (TerraformWorkspaceInput)
-// GET|PATCH|DELETE /repos/:owner/:repo/terraform/workspaces/:workspace
-interface TerraformWorkspace {
-  id: string;
-  name: string;
-  rootPath: string;
-  autoApply: boolean;
-  product: "terraform" | "opentofu";
-  toolVersion: string | null;
-  accounts: { id: string; name: string; pluginId: string }[];
-  variables: Record<string, string>;
-  secretVariables: Record<string, string>; // variable -> CI secret name
-  stateUrl: string;
-  backendConfiguration: string; // the HCL block to paste
-  lock: { id: string; who: string; operation: string; lockedBy: string; lockedAt: string } | null;
-  state: { versionId: string; serial: number; resourceCount: number; createdAt: string } | null;
-  latestRun: TerraformRunSummary | null;
-  managed: { resources: number; linked: number };
-  monthlyCost: { amount: number; currency: string; partial: boolean } | null;
-}
-interface TerraformWorkspaceInput {
-  name: string;
-  rootPath: string;
-  autoApply?: boolean;
-  product?: "terraform" | "opentofu";
-  toolVersion?: string | null;
-  accountIds?: string[];
-  variables?: Record<string, string>;
-  secretVariables?: Record<string, string>;
-}
-
-// GET  /repos/:owner/:repo/terraform/workspaces/:workspace/runs?cursor=
-// GET  /repos/:owner/:repo/pulls/:number/terraform-runs
-// GET  /repos/:owner/:repo/terraform/runs/:runId
-// POST /repos/:owner/:repo/terraform/workspaces/:workspace/runs   { kind, ref }
-// POST /repos/:owner/:repo/terraform/runs/:runId/approve | /cancel
-interface TerraformRunSummary {
-  id: string;
-  workspace: string;
-  kind: "plan" | "apply";
-  trigger: "pull-request" | "push" | "manual";
-  status:
-    | "queued"
-    | "running"
-    | "planned"
-    | "awaiting_approval"
-    | "applied"
-    | "failed"
-    | "cancelled"
-    | "superseded";
-  commitSha: string;
-  branch: string | null;
-  pullNumber: number | null;
-  add: number | null;
-  change: number | null;
-  destroy: number | null;
-  costDelta: TerraformRunCostDelta | null; // server-core/db/terraform-schema.ts
-  ciRunId: string | null;
-  ciRunUrl: string | null;
-  createdAt: string;
-  finishedAt: string | null;
-}
-interface TerraformRun extends TerraformRunSummary {
-  plan: PlanSummary | null; // this package's type, field for field
-  error: string | null;
-  approvedBy: { id: string; name: string } | null;
-}
-
-// GET  /repos/:owner/:repo/terraform/workspaces/:workspace/state-versions?before=&limit=
-// GET  /repos/:owner/:repo/terraform/workspaces/:workspace/state-versions/:id/download
-// POST /repos/:owner/:repo/terraform/workspaces/:workspace/state-versions/:id/restore
-// POST /repos/:owner/:repo/terraform/workspaces/:workspace/unlock   (admin; force)
-interface TerraformStateVersion {
-  id: string;
-  serial: number;
-  lineage: string;
-  size: number;
-  sha256: string;
-  terraformVersion: string | null;
-  resourceCount: number;
-  createdAt: string;
-  createdBy: { kind: "user" | "token" | "ci"; id: string; name: string | null };
-  runId: string | null;
-  current: boolean;
-}
-
-// GET  /repos/:owner/:repo/terraform/workspaces/:workspace/resources
-interface TerraformManagedResource {
-  address: string;
-  terraformType: string;
-  provider: string | null;
-  label: string | null;
-  resource: {
-    id: string;
-    name: string;
-    pluginId: string;
-    resourceTypeId: string;
-    url: string;
-  } | null;
-  matchedBy: "import-id" | "external-id" | "identifier" | null;
-  monthlyCost: number | null;
-}
-```
-
-Between the worker and server-core (queue events or internal routes, whichever the forge settles on):
-
-```ts
-// worker -> server-core
-type TerraformEvent =
-  | { type: "terraform.plan-wanted"; runId: string } // dispatch a plan or apply run's CI run
-  | { type: "terraform.state-version"; workspaceId: string; versionId: string; r2Key: string };
-
-// server-core -> worker: nothing new. It reads the state object for linking
-// (an internal `GET /internal/terraform/state-versions/:id` with the service
-// credential, or R2's S3 API) and writes Postgres.
-```
-
-And in the app's API, on the endpoint the resource page already has (`GET /iac/resource?resourceId=`), a new field (an `API_VERSION` minor bump):
-
-```ts
-managedBy: {
-  repository: string;
-  rootPath: string;
-  workspace: string;
-  address: string;
-  url: string;
-}
-[];
-```
+In the app's API, `GET /iac/resource?resourceId=` answers `managedBy: { repository, rootPath, workspace, address, url }[]` (API `1.129.0`).
 
 ## Matching, and what plugins have to declare
 
@@ -269,13 +151,20 @@ And one thing to check per plugin, which belongs in its `lendCiCredential`: that
 - **Summaries have no values.** A plan document has sensitive values in the clear. The summary names attributes, says which are sensitive or unknown, and keeps counts; tests assert the fixtures' secret strings are absent.
 - **Bounds.** State 32 MiB (configurable), lock info 64 KiB, plan lists 2000 resources, 500 outputs, 64 attributes each, state instances 20 000, discovery 5000 directories, depth 12, 1 MiB per file. Past each one the result says so (`omitted`, `truncated`) instead of failing. IaC reconciliation's own parser stops at 8 MiB, so a larger state is stored and linked but not registered for drift.
 
-## Open questions
+## Decided since
 
-1. Does Cloudflare's edge pass `LOCK` and `UNLOCK` to a Worker? If not, only `terraform` configured by hand with the default methods is affected; everything we generate uses `POST` and `DELETE`.
-2. Who may approve an apply: `git:admin` on the repository, `ci:approve` in the organisation, or both?
-3. Should a workspace's plans also run on pushes to branches with no pull request? The pipeline allows it (`on.manual`); nothing starts one yet.
-4. The apply plans again at the merge commit rather than applying the plan the pull request showed. Carrying a plan file between runs means storing a file full of secrets; the apply run stores its own summary instead, so what was applied is on record. Is that enough, or should an approval show the fresh plan before the apply (two runs: plan on push, then apply on approval)?
-5. Cost per run is the HCL analysis today (modules not expanded, `for_each` unpriced). Pricing from the plan JSON's `after` values before it is dropped would be more exact; it needs a server-core function next to `pr-checks/analyze.ts`.
-6. Cost visibility: the forge showing a workspace's cost is a new reader of cost data and has to go through the organisation's cost scoping.
-7. Personal namespaces: a workspace there has state and runs but no organisation, so no accounts and no links. Is that offered at all?
-8. Migration number `0196` will collide with the forge's own schema migration; whichever lands second regenerates.
+- **Who approves an apply:** an admin of the repository, or anyone with `ci:approve` in the organisation that owns it.
+- **Forks:** never planned. The run row is `skipped` with the reason, not failed.
+- **Personal namespaces:** the state backend only. No linked accounts, no runs.
+- **What is applied:** the apply plans again at the merge commit, posts that plan and applies that plan file. Carrying the pull request's plan file between runs would mean storing a file full of secrets.
+- **Cost per run** is priced from the plan (`git-terraform/plan-cost.ts`), not from the HCL diff: modules and `for_each` are already expanded there.
+- **Cost visibility:** the forge's cost figures go through `resolveCostVisibility` for the caller, on top of `costs:read`.
+
+## Not built
+
+1. **Drift.** The state is not registered as an `iac_states` document, so the app's IaC tab does not classify drift from a workspace's state, and `driftedCount` and `drift` are null.
+2. **`builtin:opentofu`** (above).
+3. **Sweeping.** A removed workspace's state versions stay in R2 (the contract promises thirty days; nothing deletes them after). A plan's pricing inputs are deleted when the app reads them, which it does for every plan within a pass or two; if the gateway's pass is not running they wait.
+4. **Plans of branches with no pull request** start by hand only.
+5. **`terraformExport.providerSources`** on plugin manifests (below), for offering the right accounts first.
+6. **Does Cloudflare's edge pass `LOCK` and `UNLOCK` to a Worker?** workerd does (`worker/test/e2e/terraform.test.ts`). Everything generated uses `POST` and `DELETE` either way.

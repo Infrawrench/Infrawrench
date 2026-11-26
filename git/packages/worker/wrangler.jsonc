@@ -96,10 +96,9 @@
   "r2_buckets": [{ "binding": "OBJECTS", "bucket_name": "infrawrench-git" }],
 
   // One Durable Object per repository (`idFromName(repoId)`) and one per
-  // Terraform workspace. `src/env.ts` already types both. Wrangler refuses a
-  // binding whose class the entry does not export, so `TERRAFORM_STATE` joins
-  // the bindings (and a later migration tag) in the change that exports
-  // `TerraformStateDO` from `src/index.ts`.
+  // Terraform workspace (`idFromName(workspaceId)`), both SQLite classes that
+  // `src/index.ts` exports. A class is created by the migration tag that
+  // first names it; never edit a tag that has been deployed, add one.
   "durable_objects": {
     "bindings": [
       { "name": "REPO", "class_name": "RepoDO" },

@@ -601,4 +601,7 @@
 // /namespace` (claim or rename, `git:admin`), `PUT /settings` (the default
 // visibility of new repositories) and `GET /repositories`, with their
 // `GitForge*` schemas. Additive.
-export const API_VERSION = "1.129.0";
+// 1.130.0: `GET /org/{orgId}/iac/resource` answers `managedBy`, the Terraform
+// workspaces on git.infrawrench.com whose current state holds the resource
+// (repository, root path, workspace, address and a link). Additive.
+export const API_VERSION = "1.130.0";

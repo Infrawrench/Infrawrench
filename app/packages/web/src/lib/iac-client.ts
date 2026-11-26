@@ -1,7 +1,9 @@
 import type { IacAccountOption, IacClient, IacStateUpload } from "@infrawrench/ui";
 import type {
   IacImportPlanResponse,
+  IacManagedBy,
   IacReconciliationResponse,
+  IacResourceStatusResponse,
   IacStateSummary,
 } from "@infrawrench/client-core";
 import { apiDelete, apiGet, apiPost } from "./api";
@@ -24,4 +26,15 @@ export function createWebIacClient(orgId: string): IacClient {
       apiPost<IacImportPlanResponse>(`${base}/import-plan`, { resourceIds }),
     listAccounts: () => apiGet<IacAccountOption[]>(`/api/org/${orgId}/accounts`),
   };
+}
+
+/** The forge workspaces that manage one resource, for the resource page's "Managed by" line. */
+export async function fetchWebManagedBy(
+  orgId: string,
+  resourceId: string,
+): Promise<IacManagedBy[]> {
+  const res = await apiGet<IacResourceStatusResponse>(
+    `/api/org/${encodeURIComponent(orgId)}/iac/resource?resourceId=${encodeURIComponent(resourceId)}`,
+  );
+  return res.managedBy ?? [];
 }

@@ -5,7 +5,12 @@
  */
 import { Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
-import { AllowedWhenArchived, RequiredAccess, SuccessDescription } from "../http/annotations";
+import {
+  AllowedWhenArchived,
+  RequiredAccess,
+  RequiresUser,
+  SuccessDescription,
+} from "../http/annotations";
 import { Authentication, RepositoryAccess } from "../http/auth";
 import { BadRequest, Conflict, NotFound, UnprocessableEntity } from "../http/errors";
 import { CommitSha, Ok, Page, PageQuery, RefQuery, RepoParams } from "../schemas/common";
@@ -228,10 +233,11 @@ export class TerraformGroup extends HttpApiGroup.make("terraform")
       error: [NotFound, Conflict, UnprocessableEntity],
     })
       .annotate(RequiredAccess, "read")
+      .annotate(RequiresUser, true)
       .annotate(OpenApi.Summary, "Approve an apply that is waiting")
       .annotate(
         OpenApi.Description,
-        "Takes `admin` on the repository, or `ci:approve` in the organisation that owns it (403 otherwise). The run is queued and sent to Infrawrench CI. 409 when it is not waiting any more.",
+        "For a signed-in person with `admin` on the repository, or with `ci:approve` in the organisation that owns it (403 otherwise; a personal access token never approves). The run is queued and sent to Infrawrench CI. 409 when it is not waiting any more.",
       )
       .annotate(SuccessDescription, "The run"),
     HttpApiEndpoint.post("createRun", "/terraform/workspaces/:workspace/runs", {
@@ -273,7 +279,6 @@ export class TerraformGroup extends HttpApiGroup.make("terraform")
       { params: StateVersionParams, success: StateDocument, error: NotFound },
     )
       .annotate(RequiredAccess, "write")
-      .annotate(AllowedWhenArchived, true)
       .annotate(OpenApi.Summary, "Download a state version")
       .annotate(
         OpenApi.Description,

@@ -24085,5 +24085,9 @@
   "0c9b0e05d2c97faa": "{total} stockés au total, dépôts publics compris.",
   "7659227a5a1817cc": "Aucun dépôt pour l'instant.",
   "04fd71efaa2c3b92": "Pull requests ouvertes",
-  "00c3c9481da47c12": "Dernier push"
+  "00c3c9481da47c12": "Dernier push",
+  "0b24fda6ab9c162a": "Géré par",
+  "23a0c77472f8b19b": "{address} dans l’espace de travail {workspace}",
+  "e725c75ba8039aba": "{repository} (racine du dépôt)",
+  "ccc0004b5a8a002f": "{repository} ({root})"
 }

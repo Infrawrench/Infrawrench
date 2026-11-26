@@ -71,7 +71,9 @@ import { ResourceHeartbeatPanel } from "@infrawrench/ui/heartbeats/ResourceHeart
 import type { HeartbeatsClient } from "@infrawrench/ui/heartbeats/types";
 import { createDesktopHeartbeatsClient } from "../../lib/heartbeats-client";
 import { fetchDesktopServicesForResource } from "../../lib/services-client";
-import { ServiceAnnotation } from "@infrawrench/ui/services";
+import { fetchDesktopManagedBy } from "../../lib/iac-client";
+import { openExternalUrl } from "../../lib/app-shell";
+import { ManagedByAnnotation, ServiceAnnotation } from "@infrawrench/ui/services";
 import { fetchCloudDependencyGraph } from "../../lib/cloud-resources";
 import { loadLocalDependencyGraph } from "../../lib/local-dependency-graph";
 import { desktopInstancePricingQuery } from "../../lib/instance-pricing";
@@ -514,6 +516,10 @@ export function DetailViewContainer({
                         mode: "pin",
                       })
                     }
+                  />
+                  <ManagedByAnnotation
+                    load={() => fetchDesktopManagedBy(decodedResourceId)}
+                    onOpen={(url) => void openExternalUrl(url)}
                   />
                   <ResourceOwnershipPanel
                     client={getOwnershipClient()}

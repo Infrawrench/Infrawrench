@@ -24070,5 +24070,9 @@
   "0c9b0e05d2c97faa": "共存储 {total}，包括公开仓库。",
   "7659227a5a1817cc": "还没有仓库。",
   "04fd71efaa2c3b92": "未合并的拉取请求",
-  "00c3c9481da47c12": "最近推送"
+  "00c3c9481da47c12": "最近推送",
+  "0b24fda6ab9c162a": "管理方",
+  "23a0c77472f8b19b": "工作区 {workspace} 中的 {address}",
+  "e725c75ba8039aba": "{repository}（仓库根目录）",
+  "ccc0004b5a8a002f": "{repository}（{root}）"
 }

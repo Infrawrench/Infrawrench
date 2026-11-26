@@ -1527,8 +1527,10 @@ export {
 export {
   IacPanel,
   IacImportPlanModal,
+  ManagedByAnnotation,
   type IacPanelProps,
   type IacImportPlanModalProps,
+  type ManagedByAnnotationProps,
   type IacClient,
   type IacAccountOption,
   type IacStateUpload,

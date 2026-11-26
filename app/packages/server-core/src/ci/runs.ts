@@ -548,7 +548,7 @@ export async function dispatchRun(id: string): Promise<void> {
   // accounts are lent without the per-connection opt-in. Added after the
   // pipelines were read, so the token is only ever in the request that runs.
   let linkedAccounts: Map<string, string | null> | undefined;
-  if (row.terraformRunId !== null) {
+  if (row.terraformRunId) {
     const { terraformDispatch } = await import("./terraform.js");
     let terraform: Awaited<ReturnType<typeof terraformDispatch>>;
     try {
@@ -756,7 +756,7 @@ async function skipRun(
     from,
   );
   if (!skipped) return false;
-  if (row.terraformRunId !== null) {
+  if (row.terraformRunId) {
     // A workspace's run that runs nothing did not plan: its run says so.
     await upsertCheck(row, {
       status: "completed",

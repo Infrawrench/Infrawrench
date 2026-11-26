@@ -41,7 +41,7 @@ import {
   type ResourceRunwayResponse,
   CloseIcon,
 } from "@infrawrench/ui";
-import { ServiceAnnotation } from "@infrawrench/ui/services";
+import { ManagedByAnnotation, ServiceAnnotation } from "@infrawrench/ui/services";
 import { ResourceHeartbeatPanel } from "@infrawrench/ui/heartbeats/ResourceHeartbeatPanel";
 import { createWebHeartbeatsClient } from "@/lib/heartbeats-client";
 import type {
@@ -103,6 +103,7 @@ import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { createWebLeasesClient } from "@/lib/leases-client";
 import { createWebOwnershipClient } from "@/lib/ownership-client";
 import { fetchWebServicesForResource } from "@/lib/services-client";
+import { fetchWebManagedBy } from "@/lib/iac-client";
 import { createWebBlastRadiusClient } from "@/lib/blast-radius-client";
 import { webInstancePricingQuery } from "@/lib/instance-pricing";
 import { SftpBrowser } from "@/components/SftpBrowser";
@@ -1687,6 +1688,10 @@ export function ResourceDetailClient({
                         mode: "pin",
                       })
                     }
+                  />
+                  <ManagedByAnnotation
+                    load={() => fetchWebManagedBy(orgId, resourceId)}
+                    onOpen={(url) => window.open(url, "_blank", "noopener,noreferrer")}
                   />
                   <ResourceOwnershipPanel
                     client={ownershipClient}

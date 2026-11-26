@@ -252,9 +252,12 @@ app_env = {
   # runs list their downloads but cannot hand out a link to one.
   CI_ARTIFACT_SIGNING_KEY = "<the proxy's ARTIFACT_SIGNING_KEY>"
   # Optional: CI for repositories on git.infrawrench.com (the forge in git/).
-  # GIT_JOB_TOKEN_KEY signs the short-lived, read-only job tokens runners
-  # clone those repositories with, and the app reads a branch's head, an
-  # `env-file:` and a cloud job's source archive with. At least 32 characters
+  # GIT_JOB_TOKEN_KEY signs the short-lived job tokens runners clone those
+  # repositories with (read-only; the app reads a branch's head, an
+  # `env-file:` and a cloud job's source archive with one too), the write
+  # token a Terraform workspace's run uses the forge's state backend with,
+  # and the token the gateway's pass reads a workspace's state with to link
+  # it to the organisation's resources. At least 32 characters
   # (`openssl rand -base64 48`), and the same value as the forge Worker's
   # JOB_TOKEN_KEY secret, which checks them. Without it runs of those
   # repositories stay queued, saying the key is missing; GitHub repositories

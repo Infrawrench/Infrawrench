@@ -375,21 +375,16 @@ const seesCosts = async (cx: RepoCx): Promise<boolean> => {
 };
 
 /**
- * Whether the caller may approve an apply: an admin of the repository, or
- * anyone with `ci:approve` in the organisation that owns it (a person by
- * their role, an API key by its own permissions).
+ * Whether the caller may approve an apply: a signed-in person who is an
+ * admin of the repository, or has `ci:approve` in the organisation that owns
+ * it. A personal access token never approves: it is capped below `admin`,
+ * and its scopes say nothing about the organisation's CI.
  */
 const mayApprove = async (cx: RepoCx): Promise<boolean> => {
+  if (cx.principal.kind !== "user" || cx.principal.via !== "session") return false;
   if (hasAccess(cx.access, "admin")) return true;
   const organizationId = cx.repo.owner.organizationId;
   if (organizationId === null) return false;
-  if (cx.principal.kind === "api-key") {
-    return (
-      cx.principal.organizationId === organizationId &&
-      hasPermission(cx.principal.permissions, "ci:approve")
-    );
-  }
-  if (cx.principal.kind !== "user") return false;
   const membership = (await cx.viewer()).organizations.find(
     (organization) => organization.id === organizationId,
   );

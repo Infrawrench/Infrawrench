@@ -85,13 +85,16 @@ export async function runTerraformPlanCostPass(limit = 5): Promise<number> {
         );
       if (changes === 0) {
         delta = { ...NOTHING_PRICED, monthlyDelta: 0 };
-      } else if (linked.length === 0) {
-        // No account to price through: every change is unpriced, and says so.
-        delta = { ...NOTHING_PRICED, partial: true, unpricedChanges: changes };
       } else {
+        // Read even when nothing can be priced: reading is what deletes the
+        // inputs, and nothing with a plan's values in it should outlive its use.
         const { planUrl } = terraformRunUrls(run.namespace, run.repository, run.workspace, run.id);
         const response = await forgeFetch(run.repositoryId, planUrl);
-        if (response.ok) {
+        if (response.ok && linked.length === 0) {
+          await response.body?.cancel();
+          // No account to price through: every change is unpriced, and says so.
+          delta = { ...NOTHING_PRICED, partial: true, unpricedChanges: changes };
+        } else if (response.ok) {
           const inputs = (await response.json()) as PlanPricingInputs;
           delta = await priceTerraformPlan(organizationId, linked, inputs, {
             capabilities: await loadCapabilities(),

@@ -120,6 +120,9 @@ export function terraformDispatchRefusal(status: GitTerraformRunStatus): string 
       return "A newer run replaced this one.";
     case "cancelled":
       return "This run was cancelled.";
+    case "applied":
+      // A retry from the CI tab would apply an old commit again, unasked.
+      return "This run has applied. Start a new run to apply again.";
     default:
       return null;
   }
