@@ -6353,6 +6353,16 @@ The app never embeds the forge: it links out and keeps the organisation's own se
 - **`infra/git/setup.mjs` is a script, not Terraform**, because what it makes is small, mostly one-off, and half of it is not a resource a provider models well: two secrets that must be generated once and never replaced, and a beta Spectrum application whose origin is a Worker's tag. It reads the names from `wrangler.jsonc`. `infra/README.md` ("git.infrawrench.com") is the runbook.
 - **Durable Object migrations**: `v1` creates `RepoDO`, `v2` `TerraformStateDO`. A deployed tag is never edited; a new class gets a new tag.
 
+### Agent work review (versions of a branch)
+
+`git/README.md` ("Agent work review") is the product and `git/packages/worker/NOTES.md` ("Versions and review") the mechanism. What binds a change:
+
+- **The tables are server-core's `db/git-review-schema.ts`** (migration `0204`): `git_branch_versions`, `git_version_reviews`, `git_trace_entries`, `git_review_runs`, `git_review_findings`, `git_merge_overrides`, `git_instructions`, `git_agent_links`, `git_t3_environments`, `git_review_settings`, plus `git_users.review_mode` and `version_number` / `answered_in_version` on `git_review_comments`. Everything hangs off `git_pull_requests`: the branch page is the pull request shown another way.
+- **A version is numbered where the branch moves**, in the repository's Durable Object, in the same transaction (`repo/do/versions.ts`). Postgres holds a copy the queue consumer makes, unique on repository, branch, lineage and number. Never number a version in Postgres, and never record one from the event alone: an event can be lost, and the consumer catches up from the object.
+- **`refs/infrawrench/versions/*` keeps each version's commit.** No client is shown those refs and no push may write them. They are not branches or tags, so they never count for the "stored packs are sent whole" answer; whatever removes one clears that answer.
+- **The contract defines every endpoint of the feature**, the unbuilt ones included, which answer 503 `not_implemented`. Building one is a handler in its own file (`api/handlers/traces.ts`, `findings.ts`, `instructions.ts`, `t3.ts`, and `t3/callback.ts`), with no migration and no contract change.
+- **T3 Code tokens are encrypted with `ENCRYPTION_MASTER_KEY`**, the app's master key the Worker already has, through server-core's `encrypt` with an AAD naming the row. There is no new secret.
+
 ### Git feature flag (temporary)
 
 Git is off for every organisation until a platform admin turns it on in the app's `/admin` (the **Git** column, `PUT /api/admin/organizations/:orgId/git`). One switch per organisation, a row in `git_feature_access` (migration `0202`), does two things:

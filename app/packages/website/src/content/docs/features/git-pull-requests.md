@@ -30,6 +30,8 @@ Fixes #12
 
 Push a branch, then open **Pull requests > New pull request** (or **Compare** on a branch) and pick the **base** branch to merge into and the branch to **compare**. The page says whether it merges without conflicts and shows the commits and the diff before you create anything. Tick **Draft** for a pull request that is not ready to merge.
 
+The first push of a new branch opens a draft pull request for it against the default branch, titled after the commit when there is one, or the branch. Edit its title and description and click **Ready for review** when it is. A pull request you close is not opened again by the next push, and a fork's branches are never opened this way.
+
 <insert [A pull request's Conversation tab: the description, an approving review with two inline comment threads on changed lines, the merge box showing "1 of 1 required approval" and "No conflicts with main", and the Reviewers sidebar] here>
 
 A pull request has four tabs:

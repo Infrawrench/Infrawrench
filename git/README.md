@@ -58,6 +58,20 @@ Access resolution is one function, `repoAccess(principal, repo) -> none | read |
 
 Code (tree, file with highlighting, raw, blame, history, archive download), branches, tags, compare, commits with diffs, issues (labels, milestones, assignees, comments), pull requests (diff, inline review comments, approvals, merge commit / squash / rebase, conflict check, protected branches with required approvals and required checks), stars, forks, explore and search, user and organisation pages, repository settings (rename, transfer, visibility, collaborators, deploy keys, protected branches, delete), personal settings (SSH keys, tokens, username).
 
+## Agent work review
+
+Review is what the forge is for, and a branch is the unit of it: a versioned record of work that people and agents read along the way, not only at the end.
+
+- **Versions.** Every push to a branch other than the default branch records a version (v1, v2, ...), forced pushes and rebases included. Each keeps its commit, so an older version can be read and compared after the branch has moved on. They are kept until thirty days after the branch is merged or deleted.
+- **The branch page is the pull request, shown another way.** Merging, protected branches, statuses, reviews and review threads are the pull request's. A repository opens a draft pull request the first time a branch is pushed (a setting, on by default), so every branch has a page. Each person chooses how a branch opens for them: the branch page (`agent` mode, the default) or the pull request as it was (`classic`). Both read the same rows.
+- **Diffs between versions** compare each version against its own base, so a rebase alone shows nothing: the whole change, one step, or everything since the version a person last marked as reviewed. A review comment is written on a version and carries forward while its lines stand; when they change, it says which version answered it.
+- **Traces.** An agent records the ask, its steps, decisions, evidence and doubts through the API; entries wait on the branch and belong to the version its next push makes.
+- **Findings.** Review agents, switched on per repository, leave line-anchored findings (`must_fix`, `should_fix`, `note`) with evidence. An open must-fix finding holds the merge until it is fixed, dismissed, or overridden by an administrator, on the record.
+- **Instructions.** A reviewer sends a comment, a finding or a note to the agent that wrote the branch; the version that answers it says so.
+- **Any agent** takes part through the API with a personal token. A pull request names the agent behind it: an Infrawrench agent session, a T3 Code thread in one of the person's environments (the forge is an OAuth client of that environment), or anything else that speaks the API.
+
+`packages/worker/NOTES.md` ("Versions and review") has how versions are recorded and kept, and which parts are built.
+
 ## Infrawrench CI
 
 Repositories here run Infrawrench CI the same way GitHub ones do: `.infrawrench/ci/*.yml`, on push and pull request, through `server-core/src/ci/`. A run's source is either a GitHub installation or a git.infrawrench.com repository; the runner fetches the commit over smart HTTP with a job token. Results show as commit statuses and checks in the repository UI (a CI tab per repository, a status on every commit and pull request) and in the app's CI tab, which links to the commit here. Billing is CI's existing outbox.
