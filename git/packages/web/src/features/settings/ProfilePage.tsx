@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { NAME_MAX_LENGTH, type Namespace } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
@@ -10,17 +10,9 @@ import { Panel } from "../../components/Panel";
 import { Avatar } from "../../components/people";
 import { SettingsRow, SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
+import { useDebounced } from "../../lib/name-availability";
 import { paths } from "../../lib/paths";
 import { useSession } from "../../lib/session";
-
-function useDebounced<T>(value: T, ms: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return settled;
-}
 
 function UsernameForm({ current }: { current: string }) {
   const [username, setUsername] = useState(current);

@@ -18,16 +18,18 @@ import type {
   ReviewComment,
   ReviewThread,
   ThreadComment,
+  RepositoryRef,
   TimelineItem,
   UserRef,
 } from "@infrawrench/git-contract";
-import type { ReviewDecision } from "@infrawrench/git-contract";
+import type { ReviewDecision, TerraformRunStatus } from "@infrawrench/git-contract";
 import { notFound, type Mutable } from "./define";
-import { accessTo, currentUser, gitOf, type RepositoryRecord } from "./db";
+import { accessTo, currentUser, gitOf, repositories, type RepositoryRecord } from "./db";
 import { aheadBehind, ancestors, diffCommits, mergeBase, statsOf, type GitFixture } from "./git";
 import { combine, statusesFor } from "./ci-data";
 import { mergeCommits } from "./git-write";
 import { hoursAgo, newId, person, ruleFor } from "./settings-data";
+import { terraformOf } from "./terraform-data";
 
 export type StoredItem = Mutable<Exclude<TimelineItem, { type: "review" }>>;
 export type StoredReview = Mutable<Review>;
@@ -39,6 +41,8 @@ export interface PullRecord {
   draft: boolean;
   baseRef: string;
   headRef: string;
+  /** `owner/name` of the fork the head is in. Absent for a branch of the repository itself. */
+  headRepository?: string;
   /** The head commit once the branch is gone or the pull request merged. */
   frozenHeadOid: string | null;
   frozenBaseOid: string | null;
@@ -1277,13 +1281,8 @@ export function toPullSummary(repo: RepositoryRecord, thread: ThreadRecord): Pul
     draft: pull.draft,
     baseRef: pull.baseRef,
     headRef: pull.headRef,
-    headRepository: {
-      id: repo.id,
-      owner: repo.owner.slug,
-      name: repo.name,
-      visibility: repo.visibility,
-    },
-    crossRepository: false,
+    headRepository: headRepositoryRef(repo, pull),
+    crossRepository: pull.headRepository !== undefined,
     headOid: refs.headOid,
     status: combine(statuses),
     reviewDecision: pull.merged ? null : reviewTally(repo, pull, refs.headOid).decision,
@@ -1334,6 +1333,20 @@ export function toPull(repo: RepositoryRecord, thread: ThreadRecord): PullReques
   };
 }
 
+/** Where a pull request's head is: the repository itself, a fork, or null for a fork that is gone. */
+function headRepositoryRef(repo: RepositoryRecord, pull: PullRecord): RepositoryRef | null {
+  if (pull.headRepository === undefined) {
+    return { id: repo.id, owner: repo.owner.slug, name: repo.name, visibility: repo.visibility };
+  }
+  const fork = repositories.find(
+    (item) =>
+      `${item.owner.slug}/${item.name}`.toLowerCase() === pull.headRepository!.toLowerCase(),
+  );
+  return fork === undefined || accessTo(fork) === "none"
+    ? null
+    : { id: fork.id, owner: fork.owner.slug, name: fork.name, visibility: fork.visibility };
+}
+
 /** A thread's timeline as the API serves it: stored entries with reviews placed by time. */
 export function timelineOf(repo: RepositoryRecord, thread: ThreadRecord): TimelineItem[] {
   const entries: Array<{ at: string; item: TimelineItem }> = thread.items.map((item) => ({
@@ -1361,8 +1374,43 @@ export function timelineOf(repo: RepositoryRecord, thread: ThreadRecord): Timeli
       });
     }
   }
+  if (thread.pull) {
+    for (const run of terraformOf(repo).runs) {
+      const outcome = TERRAFORM_OUTCOME[run.status];
+      if (run.pullNumber !== thread.number || outcome === undefined) continue;
+      const at = run.finishedAt ?? run.createdAt;
+      entries.push({
+        at,
+        item: {
+          type: "terraform_run",
+          id: `terraform_${run.id}`,
+          actor: run.actor,
+          createdAt: at,
+          runId: run.id,
+          workspace: run.workspace.name,
+          operation: run.operation === "apply" ? "apply" : "plan",
+          outcome,
+          add: run.plan?.add ?? null,
+          change: run.plan?.change ?? null,
+          destroy: run.plan?.destroy ?? null,
+          reason: outcome === "failed" || outcome === "skipped" ? run.statusReason : null,
+        },
+      });
+    }
+  }
   return entries.sort((a, b) => a.at.localeCompare(b.at)).map((entry) => entry.item);
 }
+
+type TerraformRunEvent = Extract<TimelineItem, { type: "terraform_run" }>;
+
+/** The runs a pull request's timeline names, by how they ended. A plan a newer one replaced is not one. */
+const TERRAFORM_OUTCOME: Partial<Record<TerraformRunStatus, TerraformRunEvent["outcome"]>> = {
+  planned: "planned",
+  no_changes: "no_changes",
+  applied: "applied",
+  errored: "failed",
+  skipped: "skipped",
+};
 
 // ---------------------------------------------------------------------------
 // Filtering and sorting a list

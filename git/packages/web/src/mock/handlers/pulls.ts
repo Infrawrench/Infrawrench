@@ -9,7 +9,14 @@ import {
   unprocessable,
   type Mutable,
 } from "../define";
-import { currentUser, findRepository, gitOf, requireUser, type RepositoryRecord } from "../db";
+import {
+  currentUser,
+  findRepository,
+  gitOf,
+  headRepositoryOf,
+  requireUser,
+  type RepositoryRecord,
+} from "../db";
 import { aheadBehind, diffCommits, statsOf, summarize, summaryOf } from "../git";
 import { mergeCommits, writeCommit } from "../git-write";
 import { startRun } from "../ci-data";
@@ -236,6 +243,7 @@ export default defineMockHandlers({
       const repo = findRepository(params.owner, params.repo);
       const author = requireUser();
       const fx = gitOf(repo);
+      const headRepo = headRepositoryOf(repo, payload.headRepository);
       const base = fx.branches[payload.base];
       const head = fx.branches[payload.head];
       if (base === undefined || head === undefined) {
@@ -253,7 +261,8 @@ export default defineMockHandlers({
         (thread) =>
           thread.state === "open" &&
           thread.pull?.baseRef === payload.base &&
-          thread.pull.headRef === payload.head,
+          thread.pull.headRef === payload.head &&
+          (thread.pull.headRepository === undefined) === (headRepo === repo),
       );
       if (existing) {
         throw conflict(
@@ -285,6 +294,9 @@ export default defineMockHandlers({
           draft: payload.draft ?? false,
           baseRef: payload.base,
           headRef: payload.head,
+          ...(headRepo === repo
+            ? {}
+            : { headRepository: `${headRepo.owner.slug}/${headRepo.name}` }),
           frozenHeadOid: null,
           frozenBaseOid: null,
           merged: null,

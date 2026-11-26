@@ -49,11 +49,17 @@ export const paths = {
   commit: (repo: RepoRef, sha: string) => `${repositoryPath(repo)}/commit/${seg(sha)}`,
   branches: (repo: RepoRef) => `${repositoryPath(repo)}/branches`,
   tags: (repo: RepoRef) => `${repositoryPath(repo)}/tags`,
-  /** `/compare/base...head`; without refs, the page that picks them. */
+  /**
+   * `/compare/base...head`; without refs, the page that picks them. A head in
+   * a fork is `owner/name:ref` (`lib/refs.ts` `formatHead`).
+   */
   compare: (repo: RepoRef, base?: string, head?: string) =>
     base === undefined || head === undefined
       ? `${repositoryPath(repo)}/compare`
       : `${repositoryPath(repo)}/compare/${encodePathSegments(base)}...${encodePathSegments(head)}`,
+  /** `/compare/head`: against the repository's default branch, whatever it is called. */
+  compareHead: (repo: RepoRef, head: string) =>
+    `${repositoryPath(repo)}/compare/${encodePathSegments(head)}`,
 
   issues: (repo: RepoRef) => `${repositoryPath(repo)}/issues`,
   issue: (repo: RepoRef, number: number) => `${repositoryPath(repo)}/issues/${number}`,

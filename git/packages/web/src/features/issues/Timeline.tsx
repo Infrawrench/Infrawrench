@@ -17,12 +17,17 @@ import { ThreadStateIcon, pullKind } from "../../components/StatusIcons";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { shortOid } from "../../lib/format";
 import { paths, type RepoRef } from "../../lib/paths";
+import { terraformEventSentence } from "../infrastructure/PlanSummary";
 import { CommentCard } from "./CommentCard";
 import { threadSearchHref } from "./ThreadList";
 import { cursorQuery } from "../../lib/cursor";
 
 type ReviewItem = Extract<TimelineItem, { type: "review" }>;
-type EventItem = Exclude<TimelineItem, { type: "comment" | "review" | "commits" }>;
+type TerraformRunItem = Extract<TimelineItem, { type: "terraform_run" }>;
+type EventItem = Exclude<
+  TimelineItem,
+  { type: "comment" | "review" | "commits" | "terraform_run" }
+>;
 
 const code = "rounded bg-surface-sunken px-1 py-px font-mono text-[11px] text-on-surface";
 
@@ -269,6 +274,31 @@ function EventRow({ item, kind }: { item: EventItem; kind: "issues" | "pulls" })
   );
 }
 
+const TERRAFORM_TONE = {
+  success: "text-success",
+  danger: "text-danger",
+  neutral: "text-on-surface-muted",
+} as const;
+
+/** A Terraform run of the pull request: the workspace, linked to the run, and what it reported. */
+function TerraformRunRow({ item }: { item: TerraformRunItem }) {
+  const repo = useRepoRef();
+  const { text, tone } = terraformEventSentence(item);
+  return (
+    <TimelineRow icon="boxes" tone={TERRAFORM_TONE[tone]}>
+      Terraform{" "}
+      <AppLink
+        href={paths.terraformRun(repo, item.workspace, item.runId)}
+        className="font-medium text-on-surface hover:underline"
+      >
+        {item.workspace}
+      </AppLink>{" "}
+      <span className={tone === "danger" ? "text-danger" : undefined}>{text}</span>{" "}
+      <RelativeTime iso={item.createdAt} />
+    </TimelineRow>
+  );
+}
+
 function CommitsRow({ item }: { item: Extract<TimelineItem, { type: "commits" }> }) {
   const repo = useRepoRef();
   return (
@@ -342,6 +372,7 @@ export function Timeline({
           );
         }
         if (item.type === "commits") return <CommitsRow key={item.id} item={item} />;
+        if (item.type === "terraform_run") return <TerraformRunRow key={item.id} item={item} />;
         if (item.type === "review") {
           return renderReview ? <div key={item.id}>{renderReview(item)}</div> : null;
         }

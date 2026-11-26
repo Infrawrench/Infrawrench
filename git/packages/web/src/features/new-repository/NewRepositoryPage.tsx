@@ -1,13 +1,7 @@
 /** Create a repository: where, its name, who can see it, and whether it starts with a README. */
 import { useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
-import {
-  REPOSITORY_NAME_MAX_LENGTH,
-  nameProblemMessage,
-  repositoryNameProblem,
-  type Session,
-  type Visibility,
-} from "@infrawrench/git-contract";
+import { REPOSITORY_NAME_MAX_LENGTH, type Visibility } from "@infrawrench/git-contract";
 import { ApiError, api } from "../../api/client";
 import { invalidate } from "../../api/queries";
 import { useGo } from "../../components/AppLink";
@@ -16,37 +10,10 @@ import { Checkbox, Field, Input, RadioCards, Select, Textarea } from "../../comp
 import { Icon } from "../../components/icons";
 import { Page, PageHeader } from "../../components/Panel";
 import { EmptyState, InlineError, Loading } from "../../components/states";
+import { mayUseName, useNewNameAvailability } from "../../lib/name-availability";
 import { paths } from "../../lib/paths";
 import { signInHref, useSession } from "../../lib/session";
-
-interface Owner {
-  readonly slug: string;
-  readonly label: string;
-  /** Whether the owner's plan allows private repositories. */
-  readonly privateRepositories: boolean;
-}
-
-/** The namespaces the person can create in: their own, and their organisations' with `git:write`. */
-function ownersOf(session: Session): Owner[] {
-  const owners: Owner[] = [];
-  if (session.user?.username != null) {
-    owners.push({
-      slug: session.user.username,
-      label: session.user.username,
-      privateRepositories: true,
-    });
-  }
-  for (const organization of session.organizations) {
-    if (organization.namespace === null) continue;
-    if (!organization.permissions.includes("git:write")) continue;
-    owners.push({
-      slug: organization.namespace,
-      label: `${organization.namespace} (${organization.name})`,
-      privateRepositories: organization.privateRepositories,
-    });
-  }
-  return owners;
-}
+import { ownersOf, visibilityFor, type Owner } from "../../lib/owners";
 
 export function NewRepositoryPage({ owner: initialOwner }: { owner?: string | undefined }) {
   const session = useSession();
@@ -84,13 +51,14 @@ function NewRepositoryForm({
   );
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [visibility, setVisibility] = useState<Visibility>("private");
+  // Null until the person chooses: until then each namespace shows its own default.
+  const [visibility, setVisibility] = useState<Visibility | null>(null);
   const [readme, setReadme] = useState(true);
   const [touched, setTouched] = useState(false);
 
   const owner = owners.find((o) => o.slug === ownerSlug) ?? owners[0]!;
-  const effectiveVisibility: Visibility = owner.privateRepositories ? visibility : "public";
-  const problem = repositoryNameProblem(name);
+  const effectiveVisibility = visibilityFor(owner, visibility);
+  const availability = useNewNameAvailability(owner.slug, name);
   const create = useMutation({
     mutationFn: () =>
       api.repositoryLists.create({
@@ -110,16 +78,21 @@ function NewRepositoryForm({
 
   const nameTaken = create.error instanceof ApiError && create.error.code === "name_taken";
   const nameError =
-    touched && problem !== null
-      ? nameProblemMessage(problem, REPOSITORY_NAME_MAX_LENGTH)
-      : nameTaken
-        ? (create.error?.message ?? null)
-        : null;
+    availability.state === "taken"
+      ? availability.message
+      : availability.state === "invalid"
+        ? touched
+          ? availability.message
+          : null
+        : nameTaken
+          ? (create.error?.message ?? null)
+          : null;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setTouched(true);
-    if (problem === null) create.mutate();
+    // A name still being checked is the server's to refuse.
+    if (mayUseName(availability) || availability.state === "checking") create.mutate();
   };
 
   return (
@@ -145,7 +118,16 @@ function NewRepositoryForm({
           <Field
             label="Name"
             error={nameError}
-            hint="Letters, digits, dots, dashes and underscores"
+            hint={
+              availability.state === "available" ? (
+                <span role="status" className="inline-flex items-center gap-1 text-success">
+                  <Icon name="check" size={12} />
+                  Available
+                </span>
+              ) : (
+                "Letters, digits, dots, dashes and underscores"
+              )
+            }
           >
             {(control) => (
               <Input
@@ -187,11 +169,9 @@ function NewRepositoryForm({
             {
               value: "private",
               label: "Private",
-              detail: owner.privateRepositories
-                ? "Only people with access can read it"
-                : "Not included in this organisation's plan",
+              detail: owner.privateRepositoryRefusal ?? "Only people with access can read it",
               icon: <Icon name="lock" size={12} />,
-              disabled: !owner.privateRepositories,
+              disabled: owner.privateRepositoryRefusal !== null,
             },
             {
               value: "public",

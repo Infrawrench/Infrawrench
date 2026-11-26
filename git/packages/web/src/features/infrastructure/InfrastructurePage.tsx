@@ -13,11 +13,7 @@ import { RelativeTime } from "../../components/people";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { formatMoney } from "../../lib/amounts";
-import type {
-  TerraformAccount,
-  TerraformRoot,
-  TerraformWorkspace,
-} from "@infrawrench/git-contract";
+import type { TerraformRoot, TerraformWorkspace } from "@infrawrench/git-contract";
 import { paths } from "../../lib/paths";
 import { AccountsPicker, accountLabel } from "./AccountsPicker";
 import { WORKSPACE_NAME, WORKSPACE_NAME_RULE, suggestWorkspaceName } from "./backend-snippet";
@@ -31,13 +27,10 @@ import {
 function AddWorkspaceDialog({
   root,
   taken,
-  accounts,
   onClose,
 }: {
   root: TerraformRoot;
   taken: ReadonlyArray<string>;
-  /** Accounts the repository's other workspaces already use: what the picker can offer. */
-  accounts: ReadonlyArray<TerraformAccount>;
   onClose: () => void;
 }) {
   const repo = useRepoRef();
@@ -104,7 +97,7 @@ function AddWorkspaceDialog({
         </Field>
         <div className="space-y-1">
           <span className="block text-xs font-medium text-on-surface">Accounts</span>
-          <AccountsPicker available={accounts} selected={accountIds} onChange={setAccountIds} />
+          <AccountsPicker selected={accountIds} onChange={setAccountIds} />
         </div>
         <Checkbox
           label="An apply waits for approval"
@@ -182,6 +175,9 @@ function WorkspaceRow({ workspace }: { workspace: TerraformWorkspace }) {
       </Td>
       <Td className="text-right">
         {workspace.resourceCount}
+        {workspace.matchedResourceCount !== undefined && workspace.resourceCount > 0 ? (
+          <div className="text-on-surface-muted">{workspace.matchedResourceCount} matched</div>
+        ) : null}
         {workspace.driftedCount !== null && workspace.driftedCount > 0 ? (
           <div className="text-warning">{workspace.driftedCount} drifted</div>
         ) : null}
@@ -214,10 +210,6 @@ export function InfrastructurePage() {
       <QueryView query={workspaces}>
         {({ workspaces: items }) => {
           const open = (roots.data?.roots ?? []).filter((root) => root.workspaces.length === 0);
-          const accounts = new Map<string, TerraformAccount>();
-          for (const workspace of items) {
-            for (const account of workspace.accounts) accounts.set(account.accountId, account);
-          }
           const totals = new Map<string, number>();
           for (const workspace of items) {
             if (workspace.monthlyCost === null) continue;
@@ -308,7 +300,6 @@ export function InfrastructurePage() {
                 <AddWorkspaceDialog
                   root={adding}
                   taken={items.map((workspace) => workspace.name)}
-                  accounts={[...accounts.values()]}
                   onClose={() => setAdding(null)}
                 />
               ) : null}

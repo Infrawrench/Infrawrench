@@ -3,17 +3,19 @@
  * it up, and the tabs. The tabs read the workspace with `useWorkspace()`.
  */
 import { createContext, useContext, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { queries } from "../../api/queries";
-import { AppLink } from "../../components/AppLink";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { api } from "../../api/client";
+import { invalidate, queries } from "../../api/queries";
+import { AppLink, useGo } from "../../components/AppLink";
+import { Button } from "../../components/Button";
 import { Breadcrumbs, LinkTabs } from "../../components/controls";
 import { Icon } from "../../components/icons";
 import { Page } from "../../components/Panel";
 import { RelativeTime } from "../../components/people";
-import { ErrorState, Loading } from "../../components/states";
+import { ErrorState, InlineError, Loading } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { formatMoney } from "../../lib/amounts";
-import type { TerraformWorkspace } from "@infrawrench/git-contract";
+import type { Repository, TerraformWorkspace } from "@infrawrench/git-contract";
 import { paths } from "../../lib/paths";
 import { accountLabel } from "./AccountsPicker";
 
@@ -25,6 +27,14 @@ export function useWorkspace(): TerraformWorkspace {
   if (workspace === null) throw new Error("useWorkspace outside the workspace layout");
   return workspace;
 }
+
+/**
+ * Whether the viewer is offered a plan by hand: `write` on a repository an
+ * organisation owns. A personal namespace has the state backend only, and
+ * `createRun` answers it 422 `terraform_unavailable`.
+ */
+export const canRunPlan = (repository: Pick<Repository, "owner" | "viewer">): boolean =>
+  repository.viewer.canPush && repository.owner.kind === "org";
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -44,7 +54,19 @@ export function WorkspaceLayout({
 }) {
   const repo = useRepoRef();
   const repository = useRepository();
+  const go = useGo();
   const query = useQuery(queries.terraform.getWorkspace({ params: { ...repo, workspace: name } }));
+  const plan = useMutation({
+    mutationFn: () =>
+      api.terraform.createRun({
+        params: { ...repo, workspace: name },
+        payload: { operation: "plan" },
+      }),
+    onSuccess: (run) => {
+      void invalidate("terraform");
+      go(paths.terraformRun(repo, run.workspace.name, run.id));
+    },
+  });
 
   if (query.data === undefined) {
     return query.error ? (
@@ -70,14 +92,27 @@ export function WorkspaceLayout({
               ]}
             />
           </h1>
-          <AppLink
-            href={paths.tree(repo, workspace.branch, workspace.rootPath)}
-            className="inline-flex items-center gap-1.5 font-mono text-[11px] text-on-surface-secondary hover:underline"
-          >
-            <Icon name="folder" size={12} />
-            {workspace.rootPath === "" ? "/" : workspace.rootPath}
-          </AppLink>
+          <div className="flex flex-wrap items-center gap-3">
+            <AppLink
+              href={paths.tree(repo, workspace.branch, workspace.rootPath)}
+              className="inline-flex items-center gap-1.5 font-mono text-[11px] text-on-surface-secondary hover:underline"
+            >
+              <Icon name="folder" size={12} />
+              {workspace.rootPath === "" ? "/" : workspace.rootPath}
+            </AppLink>
+            {canRunPlan(repository) ? (
+              <Button busy={plan.isPending} onClick={() => plan.mutate()}>
+                <Icon name="play" size={12} />
+                Run plan
+              </Button>
+            ) : null}
+          </div>
         </div>
+        {plan.error ? (
+          <div className="mb-3">
+            <InlineError error={plan.error} />
+          </div>
+        ) : null}
         <dl className="mb-4 grid grid-cols-2 gap-x-6 gap-y-3 rounded-md border border-border bg-surface-raised px-3 py-2.5 sm:grid-cols-3 lg:grid-cols-6">
           <Fact label="Accounts">
             {workspace.accounts.length === 0
@@ -101,6 +136,11 @@ export function WorkspaceLayout({
           </Fact>
           <Fact label="Resources">
             {workspace.resourceCount}
+            {workspace.matchedResourceCount !== undefined && workspace.resourceCount > 0 ? (
+              <span className="ml-1.5 font-normal text-on-surface-muted">
+                {workspace.matchedResourceCount} matched
+              </span>
+            ) : null}
             {workspace.driftedCount !== null && workspace.driftedCount > 0 ? (
               <span className="ml-1.5 font-normal text-warning">
                 {workspace.driftedCount} drifted

@@ -2,12 +2,10 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   REPOSITORY_NAME_MAX_LENGTH,
-  nameProblemMessage,
-  repositoryNameProblem,
   type MergeMethod,
   type Repository,
 } from "@infrawrench/git-contract";
-import { api, isNotFound } from "../../api/client";
+import { api } from "../../api/client";
 import { invalidate, queries, queryClient } from "../../api/queries";
 import { useGo } from "../../components/AppLink";
 import { Button } from "../../components/Button";
@@ -18,17 +16,9 @@ import { Panel } from "../../components/Panel";
 import { SettingsRow, SettingsSection } from "../../components/SideNav";
 import { InlineError } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
+import { mayUseName, useRenameAvailability } from "../../lib/name-availability";
 import { paths, type RepoRef } from "../../lib/paths";
 import { useSession } from "../../lib/session";
-
-function useDebounced<T>(value: T, ms: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return settled;
-}
 
 const refresh = (repo: RepoRef) => {
   void invalidate("repositories");
@@ -36,40 +26,11 @@ const refresh = (repo: RepoRef) => {
   void queryClient.invalidateQueries({ queryKey: ["contents", "listRefs", { params: repo }] });
 };
 
-/**
- * Whether a name is free under the owner. There is no endpoint that answers
- * it, so the page asks for the repository by that name: found means taken.
- */
-function useNameAvailability(owner: string, name: string, current: string) {
-  const settled = useDebounced(name, 300);
-  const changed = settled.toLowerCase() !== current.toLowerCase();
-  const problem = repositoryNameProblem(settled);
-  const lookup = useQuery({
-    ...queries.repositories.get({ params: { owner, repo: settled } }),
-    enabled: changed && problem === null,
-    retry: false,
-    staleTime: 0,
-  });
-  if (name !== settled) return { state: "checking" as const, message: null };
-  if (problem !== null) {
-    return {
-      state: "invalid" as const,
-      message: nameProblemMessage(problem, REPOSITORY_NAME_MAX_LENGTH),
-    };
-  }
-  if (!changed) return { state: "same" as const, message: null };
-  if (lookup.data !== undefined) {
-    return { state: "taken" as const, message: `${owner}/${settled} exists` };
-  }
-  if (isNotFound(lookup.error)) return { state: "available" as const, message: null };
-  return { state: "checking" as const, message: null };
-}
-
 function NameForm({ repository }: { repository: Repository }) {
   const repo = useRepoRef();
   const go = useGo();
   const [name, setName] = useState(repository.name);
-  const availability = useNameAvailability(repo.owner, name, repository.name);
+  const availability = useRenameAvailability(repo, repository.name, name);
   const rename = useMutation({
     mutationFn: () => api.repositories.rename({ params: repo, payload: { name } }),
     onSuccess: (next) => {
@@ -77,9 +38,9 @@ function NameForm({ repository }: { repository: Repository }) {
       go(paths.repoSettings({ owner: next.owner.slug, repo: next.name }), { replace: true });
     },
   });
+  // Its own name in another case is a rename too.
   const canRename =
-    availability.state === "available" ||
-    (availability.state === "same" && name !== repository.name);
+    mayUseName(availability) || (availability.state === "same" && name !== repository.name);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (canRename) rename.mutate();

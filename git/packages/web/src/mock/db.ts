@@ -8,13 +8,16 @@
  */
 import {
   httpCloneUrl,
+  privateRepositoryRefusal,
   sshCloneUrl,
+  type ForgePlan,
   type Namespace,
   type NamespaceRef,
   type Repository,
   type RepositorySummary,
   type Session,
   type UserRef,
+  type Visibility,
 } from "@infrawrench/git-contract";
 import { mockError, notFound, unauthorized, type Mutable } from "./define";
 import { FIXTURE_PEOPLE, fixtureInstance, type FixtureName, type GitFixture } from "./git";
@@ -53,6 +56,7 @@ export function setScenario(next: MockScenario): void {
 
 export const APP_URL = "https://app.infrawrench.com";
 const ACME_ORG_ID = "org_acme";
+const TIDEWATER_ORG_ID = "org_tidewater";
 
 const me = FIXTURE_PEOPLE["mara@acme.example"]!;
 let myUsername: string | null = scenario === "new-user" ? null : "mara";
@@ -78,11 +82,21 @@ export function session(): Session {
     return {
       user: null,
       onboarding: null,
+      personal: null,
       organizations: [],
       signInUrl: "/auth/sign-in",
       appUrl: APP_URL,
     };
   }
+  const own = namespaces.find((n) => n.userId === user.id && user.username !== null);
+  const fits = (namespace: NamespaceRecord) => {
+    const refusal = privateRefusal(namespace);
+    return {
+      privateRepositories: refusal === null,
+      privateRepositoryRefusal: refusal,
+      defaultVisibility: namespace.defaultVisibility,
+    };
+  };
   return {
     user: {
       id: user.id,
@@ -95,22 +109,27 @@ export function session(): Session {
       needsUsername: user.username === null,
       suggestedUsername: user.username === null ? "mara" : null,
     },
+    personal: own ? fits(own) : null,
     organizations: [
-      {
-        id: ACME_ORG_ID,
-        name: "Acme",
-        namespace: "acme",
-        permissions: ["git:read", "git:write", "git:admin"],
-        canClaimNamespace: false,
-        privateRepositories: true,
-      },
+      ...namespaces
+        .filter((n) => n.kind === "org")
+        .map((n) => ({
+          id: n.organizationId!,
+          name: n.displayName ?? n.slug,
+          namespace: n.slug,
+          permissions: ["git:read", "git:write", "git:admin"] as const,
+          canClaimNamespace: false,
+          ...fits(n),
+        })),
       {
         id: "org_northwind",
         name: "Northwind Labs",
         namespace: null,
         permissions: ["git:read", "git:write", "git:admin"],
         canClaimNamespace: true,
-        privateRepositories: false,
+        privateRepositories: true,
+        privateRepositoryRefusal: null,
+        defaultVisibility: "private",
       },
     ],
     signInUrl: "/auth/sign-in",
@@ -130,7 +149,12 @@ export function claimUsername(username: string): NamespaceRef {
   return { slug: username, kind: "user", displayName: me.displayName, avatarUrl: null };
 }
 
-type NamespaceRecord = Mutable<Omit<Namespace, "viewer" | "repositoryCount">>;
+type NamespaceRecord = Mutable<Omit<Namespace, "viewer" | "repositoryCount">> & {
+  /** Whose limits apply (`FORGE_LIMITS`): the organisation's plan, or a person's allowance. */
+  plan: ForgePlan;
+  /** What a new repository here starts as, as the app's Settings > Git sets it. */
+  defaultVisibility: Visibility;
+};
 
 const daysAgo = (days: number): string => new Date(Date.now() - days * 86_400_000).toISOString();
 
@@ -148,6 +172,25 @@ export const namespaces: NamespaceRecord[] = [
     organizationId: ACME_ORG_ID,
     appUrl: `${APP_URL}/org/${ACME_ORG_ID}`,
     createdAt: daysAgo(420),
+    plan: "paid",
+    defaultVisibility: "private",
+  },
+  {
+    id: "ns_tidewater",
+    slug: "tidewater",
+    kind: "org",
+    displayName: "Tidewater",
+    description: null,
+    avatarUrl: null,
+    websiteUrl: null,
+    location: null,
+    userId: null,
+    organizationId: TIDEWATER_ORG_ID,
+    appUrl: `${APP_URL}/org/${TIDEWATER_ORG_ID}`,
+    createdAt: daysAgo(64),
+    // On the free plan with every private repository it includes, and public by default.
+    plan: "free",
+    defaultVisibility: "public",
   },
   ...[
     { slug: "mara", displayName: "Mara Lindqvist", location: "Stockholm" },
@@ -166,6 +209,8 @@ export const namespaces: NamespaceRecord[] = [
     organizationId: null,
     appUrl: null,
     createdAt: daysAgo(300),
+    plan: "personal",
+    defaultVisibility: "private",
   })),
 ];
 
@@ -179,9 +224,18 @@ export function findNamespace(slug: string): NamespaceRecord {
 export function isMember(namespace: NamespaceRecord): boolean {
   const user = currentUser();
   if (!user) return false;
-  return namespace.kind === "org"
-    ? namespace.organizationId === ACME_ORG_ID
-    : namespace.userId === user.id;
+  return namespace.kind === "org" ? true : namespace.userId === user.id;
+}
+
+/**
+ * Why the namespace may not take one more private repository, or null: the
+ * plan's own limit and sentence, as the API's 402 words it.
+ */
+export function privateRefusal(namespace: NamespaceRecord): string | null {
+  const held = repositories.filter(
+    (repo) => repo.owner.slug === namespace.slug && repo.visibility === "private",
+  ).length;
+  return privateRepositoryRefusal(namespace.plan, held);
 }
 
 export interface RepositoryRecord extends Mutable<Omit<Repository, "viewer" | "viewerHasStarred">> {
@@ -271,6 +325,14 @@ const seeds: Seed[] = [
     fixture: null,
     language: null,
   },
+  ...["ledger", "tide-tables", "harbour-ops"].map((name): Seed => ({
+    owner: "tidewater",
+    name,
+    description: null,
+    visibility: "private",
+    fixture: null,
+    language: null,
+  })),
   {
     owner: "mara",
     name: "route-lab",
@@ -392,6 +454,29 @@ export function findRepository(owner: string, name: string): RepositoryRecord {
   );
   if (!repo || accessTo(repo) === "none") throw notFound("Repository not found");
   return repo;
+}
+
+/**
+ * The repository a comparison's head is in: the base itself, or a repository
+ * of the same fork network the caller can read. The mock's forks share their
+ * parent's history, so a fork's branch is compared in the base's own objects.
+ */
+export function headRepositoryOf(
+  base: RepositoryRecord,
+  headRepository: string | undefined,
+): RepositoryRecord {
+  if (headRepository === undefined) return base;
+  const [owner, name] = headRepository.split("/");
+  const head = findRepository(owner ?? "", name ?? "");
+  if (head === base) return base;
+  const related =
+    head.parent?.id === base.id ||
+    base.parent?.id === head.id ||
+    (head.parent !== null && head.parent.id === base.parent?.id);
+  if (!related || head.fixture !== base.fixture) {
+    throw mockError(422, "That repository is not a fork of this one");
+  }
+  return head;
 }
 
 /** The repository's Git history. A 422 `repository_empty` when nothing has been pushed. */

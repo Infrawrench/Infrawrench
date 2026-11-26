@@ -9,8 +9,10 @@ import { Icon } from "../../components/icons";
 import { Page, PageHeader, Panel, PanelHeader } from "../../components/Panel";
 import { RefPicker } from "../../components/RefPicker";
 import { EmptyState, QueryView } from "../../components/states";
+import { HeadRepoPicker } from "../../components/HeadRepoPicker";
 import { plural } from "../../lib/format";
 import { paths } from "../../lib/paths";
+import { formatHead, headQuery, parseHead } from "../../lib/refs";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { CommitRow } from "./CommitsPage";
 import { DiffSection } from "./DiffSection";
@@ -20,9 +22,13 @@ export function ComparePage({ base, head }: { base: string | null; head: string 
   const repo = useRepoRef();
   const go = useGo();
   const baseName = base ?? repository.defaultBranch;
+  // The head as the URL writes it: a ref here, or `owner/name:ref` in a fork.
   const headName = head ?? repository.defaultBranch;
-  const same = baseName === headName;
-  const request = { params: repo, query: { base: baseName, head: headName } };
+  const parsed = parseHead(headName);
+  const headRepo = parsed.repository ?? repo;
+  const cross = parsed.repository !== null;
+  const same = !cross && baseName === headName;
+  const request = { params: repo, query: { base: baseName, ...headQuery(parsed) } };
   const comparison = useQuery({
     ...queries.contents.compare(request),
     enabled: !same && !repository.isEmpty,
@@ -41,13 +47,39 @@ export function ComparePage({ base, head }: { base: string | null; head: string 
           />
           <Icon name="gitCompare" />
           <span>Head</span>
-          <RefPicker
-            repo={repo}
-            value={headName}
-            label="head"
-            onSelect={(name) => go(paths.compare(repo, baseName, name))}
+          <HeadRepoPicker
+            base={repo}
+            value={headRepo}
+            onSelect={(fork) =>
+              go(
+                paths.compare(
+                  repo,
+                  baseName,
+                  fork === null
+                    ? repository.defaultBranch
+                    : formatHead(repo, {
+                        repository: { owner: fork.owner.slug, repo: fork.name },
+                        ref: fork.defaultBranch,
+                      }),
+                ),
+              )
+            }
           />
-          {same ? null : (
+          <RefPicker
+            repo={headRepo}
+            value={parsed.ref}
+            label="head"
+            onSelect={(name) =>
+              go(
+                paths.compare(
+                  repo,
+                  baseName,
+                  formatHead(repo, { repository: parsed.repository, ref: name }),
+                ),
+              )
+            }
+          />
+          {same || cross ? null : (
             <AppLink
               href={paths.compare(repo, headName, baseName)}
               className="ml-1 text-on-surface-secondary hover:underline"
@@ -75,7 +107,7 @@ export function ComparePage({ base, head }: { base: string | null; head: string 
                   <div className="flex flex-wrap items-center gap-2 text-xs text-on-surface-secondary">
                     <span>
                       <span className="font-mono font-medium text-on-surface">
-                        {data.head.name}
+                        {cross ? `${headRepo.owner}:${data.head.name}` : data.head.name}
                       </span>{" "}
                       is {plural(data.ahead, "commit")} ahead of and {plural(data.behind, "commit")}{" "}
                       behind{" "}
@@ -105,7 +137,13 @@ export function ComparePage({ base, head }: { base: string | null; head: string 
                     data.base.kind === "branch" ? (
                     <ButtonLink
                       variant="primary"
-                      href={paths.newPull(repo, { base: data.base.name, head: data.head.name })}
+                      href={paths.newPull(repo, {
+                        base: data.base.name,
+                        head: formatHead(repo, {
+                          repository: parsed.repository,
+                          ref: data.head.name,
+                        }),
+                      })}
                     >
                       <Icon name="gitPullRequest" />
                       Create pull request
@@ -117,7 +155,8 @@ export function ComparePage({ base, head }: { base: string | null; head: string 
               {data.ahead === 0 ? (
                 <Panel>
                   <EmptyState>
-                    {data.base.name} already has everything in {data.head.name}
+                    {data.base.name} already has everything in{" "}
+                    {cross ? `${headRepo.owner}:${data.head.name}` : data.head.name}
                   </EmptyState>
                 </Panel>
               ) : (
@@ -132,12 +171,13 @@ export function ComparePage({ base, head }: { base: string | null; head: string 
                     </PanelHeader>
                     <ul className="divide-y divide-border">
                       {data.commits.map((commit) => (
-                        <CommitRow key={commit.oid} repo={repo} commit={commit} />
+                        <CommitRow key={commit.oid} repo={headRepo} commit={commit} />
                       ))}
                     </ul>
                   </Panel>
                   <DiffSection
-                    repo={repo}
+                    // The head's commits and files are the fork's to link to and read.
+                    repo={headRepo}
                     queryKey={["contents", "compareDiff", request]}
                     files={data.files}
                     filesTruncated={data.filesTruncated}

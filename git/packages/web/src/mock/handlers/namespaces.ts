@@ -5,8 +5,9 @@ import { findNamespace, isMember, requireUser, users, visibleRepositories } from
 function toNamespace(slug: string): Namespace {
   const record = findNamespace(slug);
   const member = isMember(record);
+  const { plan: _plan, defaultVisibility: _defaultVisibility, ...profile } = record;
   return {
-    ...record,
+    ...profile,
     organizationId: member ? record.organizationId : null,
     appUrl: member ? record.appUrl : null,
     repositoryCount: visibleRepositories().filter((r) => r.owner.slug === record.slug).length,

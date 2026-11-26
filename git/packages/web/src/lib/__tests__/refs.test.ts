@@ -1,6 +1,14 @@
 import { describe, expect, test } from "vitest";
 import { paths } from "../paths";
-import { parseCompare, pathCrumbs, resolveRelative, splitRefPath } from "../refs";
+import {
+  formatHead,
+  headQuery,
+  parseCompare,
+  parseHead,
+  pathCrumbs,
+  resolveRelative,
+  splitRefPath,
+} from "../refs";
 
 const refs = ["main", "feature/x", "feature/x-2", "release/2026.11", "v1.0.0"];
 
@@ -107,4 +115,55 @@ test("pathCrumbs", () => {
     { name: "c.ts", path: "a/b/c.ts" },
   ]);
   expect(pathCrumbs("")).toEqual([]);
+});
+
+describe("a comparison's head", () => {
+  const base = { owner: "acme", repo: "edge-router" };
+
+  test("is a ref of the base repository when no repository is named", () => {
+    expect(parseHead("feature/health-checks")).toEqual({
+      repository: null,
+      ref: "feature/health-checks",
+    });
+    expect(headQuery(parseHead("main"))).toEqual({ head: "main" });
+  });
+
+  test("names a fork before a colon, whatever slashes the ref has", () => {
+    const head = parseHead("jonas/edge-router:feature/health-checks");
+    expect(head).toEqual({
+      repository: { owner: "jonas", repo: "edge-router" },
+      ref: "feature/health-checks",
+    });
+    expect(headQuery(head)).toEqual({
+      head: "feature/health-checks",
+      headRepository: "jonas/edge-router",
+    });
+    expect(formatHead(base, head)).toBe("jonas/edge-router:feature/health-checks");
+  });
+
+  test("writes a head in the base repository bare", () => {
+    expect(formatHead(base, { repository: null, ref: "main" })).toBe("main");
+    expect(
+      formatHead(base, { repository: { owner: "Acme", repo: "Edge-Router" }, ref: "main" }),
+    ).toBe("main");
+  });
+
+  test("does not read a repository out of something that is not owner/name", () => {
+    expect(parseHead("nonsense:main").repository).toBeNull();
+    expect(parseHead("a/b/c:main").repository).toBeNull();
+  });
+
+  test("goes through a compare URL and back", () => {
+    const url = paths.compare(base, "main", "jonas/edge-router:feature/health-checks");
+    const splat = decodeURIComponent(url.split("/compare/")[1]!);
+    const refs = parseCompare(splat)!;
+    expect(refs.base).toBe("main");
+    expect(parseHead(refs.head).repository).toEqual({ owner: "jonas", repo: "edge-router" });
+    // Against the default branch, whatever it is called.
+    const bare = paths.compareHead(base, "jonas/edge-router:main");
+    expect(parseCompare(decodeURIComponent(bare.split("/compare/")[1]!))).toEqual({
+      base: null,
+      head: "jonas/edge-router:main",
+    });
+  });
 });

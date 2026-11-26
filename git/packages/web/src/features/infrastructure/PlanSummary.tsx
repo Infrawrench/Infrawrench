@@ -13,6 +13,7 @@ import type {
   TerraformPlanSummary,
   TerraformRun,
   TerraformRunStatus,
+  TimelineItem,
 } from "@infrawrench/git-contract";
 
 const STATUS: Record<TerraformRunStatus, { label: string; glyph: CiGlyphStatus; tone: BadgeTone }> =
@@ -57,6 +58,35 @@ const TRIGGER = {
 export const operationLabel = (run: Pick<TerraformRun, "operation">): string =>
   OPERATION[run.operation];
 export const triggerLabel = (run: Pick<TerraformRun, "trigger">): string => TRIGGER[run.trigger];
+
+type TerraformRunEvent = Extract<TimelineItem, { type: "terraform_run" }>;
+
+/**
+ * A pull request's timeline entry for a run, as a sentence after the
+ * workspace's name: Terraform's own counts for a plan, the reason for a
+ * failure or for a run that was never started.
+ */
+export function terraformEventSentence(
+  event: Pick<TerraformRunEvent, "operation" | "outcome" | "add" | "change" | "destroy" | "reason">,
+): { readonly text: string; readonly tone: "success" | "danger" | "neutral" } {
+  const counts =
+    event.add !== null && event.change !== null && event.destroy !== null
+      ? `${event.add} to add, ${event.change} to change, ${event.destroy} to destroy`
+      : null;
+  const why = event.reason !== null && event.reason !== "" ? `: ${event.reason}` : "";
+  switch (event.outcome) {
+    case "planned":
+      return { text: counts === null ? "planned" : `planned: ${counts}`, tone: "success" };
+    case "no_changes":
+      return { text: "planned: no changes", tone: "neutral" };
+    case "applied":
+      return { text: counts === null ? "applied" : `applied: ${counts}`, tone: "success" };
+    case "failed":
+      return { text: `${event.operation} failed${why}`, tone: "danger" };
+    case "skipped":
+      return { text: `${event.operation} skipped${why}`, tone: "neutral" };
+  }
+}
 
 /** `+2 ~1 -0`, as Terraform's own last line counts them, with the words for a screen reader. */
 export function PlanCounts({ plan }: { plan: TerraformPlanSummary }) {

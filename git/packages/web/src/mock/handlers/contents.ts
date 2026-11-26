@@ -1,6 +1,13 @@
 import { isValidRefName, type Branch, type FileBlob, type GitTag } from "@infrawrench/git-contract";
 import { badRequest, conflict, defineMockHandlers, mockError, ok, paginate } from "../define";
-import { currentUser, findRepository, gitOf, requireUser, toRepository } from "../db";
+import {
+  currentUser,
+  findRepository,
+  gitOf,
+  headRepositoryOf,
+  requireUser,
+  toRepository,
+} from "../db";
 import {
   aheadBehind,
   blameOf,
@@ -281,6 +288,7 @@ export default defineMockHandlers({
     compare: ({ params, query }) => {
       const repo = findRepository(params.owner, params.repo);
       const fx = gitOf(repo);
+      const headRepo = headRepositoryOf(repo, query.headRepository);
       const { baseRef, headRef, mergeBaseOid, distance } = comparison(fx, query.base, query.head);
       const files =
         mergeBaseOid === null
@@ -289,7 +297,7 @@ export default defineMockHandlers({
       return {
         base: baseRef,
         head: headRef,
-        headRepository: { owner: repo.owner.slug, name: repo.name },
+        headRepository: { owner: headRepo.owner.slug, name: headRepo.name },
         mergeBaseOid,
         ahead: distance.ahead.length,
         behind: distance.behind.length,
@@ -300,7 +308,9 @@ export default defineMockHandlers({
         filesTruncated: false,
         mergeable: distance.ahead.length === 0 ? null : true,
         pullRequest:
-          headRef.name === "feature/vpc-peering" && baseRef.name === fx.defaultBranch
+          headRepo === repo &&
+          headRef.name === "feature/vpc-peering" &&
+          baseRef.name === fx.defaultBranch
             ? {
                 number: 12,
                 title: "Peer with the shared services VPC",
@@ -311,7 +321,9 @@ export default defineMockHandlers({
       };
     },
     compareDiff: ({ params, query }) => {
-      const fx = gitOf(findRepository(params.owner, params.repo));
+      const repo = findRepository(params.owner, params.repo);
+      headRepositoryOf(repo, query.headRepository);
+      const fx = gitOf(repo);
       const { headRef, mergeBaseOid } = comparison(fx, query.base, query.head);
       const all =
         mergeBaseOid === null

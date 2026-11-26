@@ -10,7 +10,6 @@ import { Panel } from "../../components/Panel";
 import { SettingsRow, SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
-import type { TerraformAccount } from "@infrawrench/git-contract";
 import { paths } from "../../lib/paths";
 import { AccountsPicker } from "./AccountsPicker";
 import { WORKSPACE_NAME, WORKSPACE_NAME_RULE } from "./backend-snippet";
@@ -29,12 +28,6 @@ export function SettingsTab() {
   const [typed, setTyped] = useState("");
 
   const refs = useQuery(queries.contents.listRefs({ params: repo, query: { limit: 100 } }));
-  const all = useQuery(queries.terraform.listWorkspaces({ params: repo }));
-  const accounts = new Map<string, TerraformAccount>();
-  for (const item of all.data?.workspaces ?? []) {
-    for (const account of item.accounts) accounts.set(account.accountId, account);
-  }
-  for (const account of workspace.accounts) accounts.set(account.accountId, account);
 
   const update = useMutation({
     mutationFn: (payload: Parameters<typeof api.terraform.updateWorkspace>[0]["payload"]) =>
@@ -174,7 +167,7 @@ export function SettingsTab() {
 
       <SettingsSection title="Accounts">
         <AccountsPicker
-          available={[...accounts.values()]}
+          linked={workspace.accounts}
           selected={workspace.accounts.map((account) => account.accountId)}
           disabled={update.isPending}
           onChange={(accountIds) => update.mutate({ accountIds })}

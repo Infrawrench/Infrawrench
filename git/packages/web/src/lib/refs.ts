@@ -50,6 +50,52 @@ export function parseCompare(splat: string): CompareRefs | null {
   return { base, head };
 }
 
+/** The head of a comparison: a ref, and the repository it is in when that is not the base's. */
+export interface CompareHead {
+  /** Null for the base repository itself. */
+  readonly repository: { readonly owner: string; readonly repo: string } | null;
+  readonly ref: string;
+}
+
+/**
+ * A comparison's head as URLs write it: `feature/x` in the base repository,
+ * `owner/name:feature/x` in a fork. A ref name never contains a colon, so the
+ * first one ends the repository.
+ */
+export function parseHead(head: string): CompareHead {
+  const at = head.indexOf(":");
+  if (at < 0) return { repository: null, ref: head };
+  const [owner, repo, ...rest] = head.slice(0, at).split("/");
+  const ref = head.slice(at + 1);
+  if (owner === undefined || owner === "" || repo === undefined || repo === "" || rest.length > 0) {
+    return { repository: null, ref: head };
+  }
+  return { repository: { owner, repo }, ref };
+}
+
+/** The reverse of {@link parseHead}. A head in `base` itself is written bare. */
+export function formatHead(
+  base: { readonly owner: string; readonly repo: string },
+  head: CompareHead,
+): string {
+  const { repository, ref } = head;
+  if (
+    repository === null ||
+    (repository.owner.toLowerCase() === base.owner.toLowerCase() &&
+      repository.repo.toLowerCase() === base.repo.toLowerCase())
+  ) {
+    return ref;
+  }
+  return `${repository.owner}/${repository.repo}:${ref}`;
+}
+
+/** The compare and create requests' `head` and `headRepository` for a parsed head. */
+export function headQuery(head: CompareHead): { head: string; headRepository?: string } {
+  return head.repository === null
+    ? { head: head.ref }
+    : { head: head.ref, headRepository: `${head.repository.owner}/${head.repository.repo}` };
+}
+
 /** `a/b/c` as `[{ name: "a", path: "a" }, { name: "b", path: "a/b" }, ...]`. */
 export function pathCrumbs(path: string): Array<{ name: string; path: string }> {
   const segments = path.split("/").filter((segment) => segment !== "");

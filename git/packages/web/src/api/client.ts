@@ -33,6 +33,8 @@ export interface ApiCall {
   /** The contract's path template (`/api/repos/:owner/:repo/tree`). */
   readonly path: string;
   readonly request: WireRequest;
+  /** `text`: the endpoint answers a document, wanted exactly as the server sent it. */
+  readonly responseType: "json" | "text";
 }
 
 export type Transport = (call: ApiCall) => Promise<unknown>;
@@ -60,7 +62,17 @@ export function queryString(query: Readonly<Record<string, unknown>> | undefined
   return text === "" ? "" : `?${text}`;
 }
 
-const httpTransport: Transport = async ({ method, path, request }) => {
+/**
+ * Endpoints whose success is a document rather than JSON to read. A state
+ * file is JSON, but parsing and printing it again would change it (a number
+ * past 2^53, the spacing its checksum was taken over), so it stays text.
+ */
+const TEXT_ENDPOINTS: ReadonlySet<string> = new Set(["terraform.downloadStateVersion"]);
+
+export const responseTypeOf = (group: string, endpoint: string): "json" | "text" =>
+  TEXT_ENDPOINTS.has(`${group}.${endpoint}`) ? "text" : "json";
+
+export const httpTransport: Transport = async ({ method, path, request, responseType }) => {
   const url = fillPath(path, request.params ?? {}) + queryString(request.query);
   const hasBody = request.payload !== undefined && method !== "GET";
   let response: Response;
@@ -71,12 +83,15 @@ const httpTransport: Transport = async ({ method, path, request }) => {
       headers: hasBody
         ? { accept: "application/json", "content-type": "application/json" }
         : { accept: "application/json" },
+      // A document that holds secrets is never read from, or left in, a cache.
+      ...(responseType === "text" ? { cache: "no-store" as const } : {}),
       body: hasBody ? JSON.stringify(request.payload) : null,
     });
   } catch {
     throw new ApiError(0, "The server could not be reached");
   }
   const text = await response.text();
+  if (response.ok && responseType === "text") return text;
   let body: unknown;
   try {
     body = text === "" ? undefined : JSON.parse(text);
@@ -113,7 +128,14 @@ function makeClient(): ApiClient {
     const methods: Record<string, (request?: WireRequest) => Promise<unknown>> = {};
     for (const [endpoint, [method, path]] of Object.entries(endpoints)) {
       methods[endpoint] = (request) =>
-        transport({ group, endpoint, method, path, request: request ?? {} });
+        transport({
+          group,
+          endpoint,
+          method,
+          path,
+          request: request ?? {},
+          responseType: responseTypeOf(group, endpoint),
+        });
     }
     client[group] = methods;
   }

@@ -121,7 +121,7 @@ export function TerraformRunPage({ runId }: { runId: string }) {
                     {run.status === "queued" ? "Cancel" : "Discard"}
                   </Button>
                 ) : null}
-                {waiting && repository.viewer.canAdminister ? (
+                {waiting && run.viewerCanApprove === true ? (
                   <Button
                     variant="primary"
                     busy={approve.isPending}

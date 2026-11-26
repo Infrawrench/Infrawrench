@@ -19,7 +19,7 @@ import type {
   TerraformWorkspace,
 } from "@infrawrench/git-contract";
 import { notFound, type Mutable } from "./define";
-import { APP_URL, gitOf, type RepositoryRecord } from "./db";
+import { APP_URL, accessTo, gitOf, type RepositoryRecord } from "./db";
 import { flatten } from "./git";
 import { hoursAgo, newId, person } from "./settings-data";
 
@@ -568,6 +568,13 @@ export function findWorkspace(repo: RepositoryRecord, name: string): WorkspaceRe
   return found;
 }
 
+function lastRunOf(repo: RepositoryRecord, store: Store, item: WorkspaceRecord) {
+  const last = store.runs
+    .filter((run) => run.workspace.id === item.id)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  return last === undefined ? null : toRun(repo, last);
+}
+
 export function toWorkspace(
   repo: RepositoryRecord,
   item: WorkspaceRecord,
@@ -593,11 +600,11 @@ export function toWorkspace(
       item.resources.some((resource) => resource.monthlyCost !== null) && item.accounts.length > 0
         ? { amount: total, currency: "USD" }
         : null,
+    matchedResourceCount: item.resources.filter(
+      (resource) => resource.mode === "managed" && resource.infrawrench !== null,
+    ).length,
     driftedCount: item.accounts.length === 0 ? null : item.drifted,
-    lastRun:
-      store.runs
-        .filter((run) => run.workspace.id === item.id)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0] ?? null,
+    lastRun: lastRunOf(repo, store, item),
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
@@ -632,19 +639,29 @@ export function rootsOf(repo: RepositoryRecord, ref?: string): TerraformRoot[] {
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
+/**
+ * A run as the API serves it to this viewer: `viewerCanApprove` on one that
+ * waits, for an administrator of the repository (the mock has no `ci:approve`).
+ */
+export function toRun(repo: RepositoryRecord, run: TerraformRun): TerraformRun {
+  return run.status === "awaiting_approval"
+    ? { ...run, viewerCanApprove: accessTo(repo) === "admin" && !repo.archived }
+    : run;
+}
+
 /** Writes an older version's document again as the newest one, as `restoreVersion` does. */
 export function restoreVersion(
   repo: RepositoryRecord,
   name: string,
   versionId: string,
   by: UserRef,
-): void {
+): TerraformStateVersion {
   const item = findWorkspace(repo, name);
   const source = item.versions.find((version) => version.id === versionId);
   if (!source) throw notFound("State version not found");
   const top = Math.max(...item.versions.map((version) => version.serial));
   for (const version of item.versions) version.current = false;
-  item.versions.unshift({
+  const restored = {
     ...source,
     id: newId("sv"),
     serial: top + 1,
@@ -652,7 +669,9 @@ export function restoreVersion(
     createdBy: by,
     runId: null,
     current: true,
-  });
+  };
+  item.versions.unshift(restored);
+  return restored;
 }
 
 /** A stand-in for a state document: the mock has no real state to hand out. */

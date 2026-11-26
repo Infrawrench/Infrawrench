@@ -4,6 +4,9 @@ import { flatten, resolveRef } from "../git";
 import { combine, logFrames, reportStatus, runsOf, statusesFor, toDetail, toRun } from "../ci-data";
 import { newId } from "../settings-data";
 
+/** Repositories whose CI switch someone turned off. No entry means on. */
+const switchedOff = new Set<string>();
+
 export default defineMockHandlers({
   statuses: {
     forRef: ({ params, query }) => {
@@ -46,12 +49,27 @@ export default defineMockHandlers({
           pipelines.push({ file: path, name: name?.trim() ?? path.split("/").pop()! });
         }
       }
-      const enabled = repo.owner.kind === "org";
-      return {
-        enabled,
-        pipelines,
-        reason: enabled ? null : "CI runs for repositories that an organisation owns",
-      };
+      const reason =
+        repo.owner.kind !== "org"
+          ? "CI runs for an organisation's repositories"
+          : switchedOff.has(repo.id)
+            ? "CI is switched off for this repository"
+            : null;
+      return { enabled: reason === null, pipelines, reason };
+    },
+    settings: ({ params }) => {
+      const repo = findRepository(params.owner, params.repo);
+      return { enabled: !switchedOff.has(repo.id), available: repo.owner.kind === "org" };
+    },
+    updateSettings: ({ params, payload }) => {
+      const repo = findRepository(params.owner, params.repo);
+      requireUser();
+      if (repo.owner.kind !== "org") {
+        throw unprocessable("CI runs for an organisation's repositories", "ci_unavailable");
+      }
+      if (payload.enabled) switchedOff.delete(repo.id);
+      else switchedOff.add(repo.id);
+      return { enabled: payload.enabled, available: true };
     },
     listRuns: ({ params, query }) => {
       const repo = findRepository(params.owner, params.repo);

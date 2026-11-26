@@ -1,5 +1,5 @@
 /** First sign-in: pick the username that becomes the person's namespace. */
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   NAME_MAX_LENGTH,
@@ -15,18 +15,9 @@ import { Field, Input } from "../../components/forms";
 import { Icon } from "../../components/icons";
 import { Page, PageHeader } from "../../components/Panel";
 import { EmptyState, InlineError, Loading } from "../../components/states";
+import { useDebounced } from "../../lib/name-availability";
 import { paths } from "../../lib/paths";
 import { signInHref, useSession } from "../../lib/session";
-
-/** `value`, a moment after it stops changing. */
-function useDebounced<T>(value: T, ms: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(timer);
-  }, [value, ms]);
-  return settled;
-}
 
 /** Only a path on this site: `returnTo` comes from the URL. */
 const safeReturn = (returnTo: string | undefined): string =>

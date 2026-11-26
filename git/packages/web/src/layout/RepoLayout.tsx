@@ -5,22 +5,26 @@
  * Pages under it read the repository with `useRepository()` rather than
  * fetching it again.
  */
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useState, type FormEvent, type ReactNode } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { Repository } from "@infrawrench/git-contract";
+import { REPOSITORY_NAME_MAX_LENGTH, type Repository } from "@infrawrench/git-contract";
 import { api } from "../api/client";
 import { invalidate, queries, queryClient } from "../api/queries";
 import { AppLink, useGo } from "../components/AppLink";
 import { Badge, VisibilityBadge } from "../components/Badge";
-import { LinkTabs, type LinkTab } from "../components/controls";
+import { Dialog, LinkTabs, type LinkTab } from "../components/controls";
+import { Field, Input, Select } from "../components/forms";
 import { Icon } from "../components/icons";
 import { Page } from "../components/Panel";
 import { ErrorState, InlineError, Loading } from "../components/states";
 import { compactCount } from "../lib/format";
+import { mayUseName, useNewNameAvailability } from "../lib/name-availability";
+import { ownersOf, type Owner } from "../lib/owners";
 import { paths, type RepoRef } from "../lib/paths";
+import { formatHead } from "../lib/refs";
 import { signInHref, useSession } from "../lib/session";
 import { isNotFound } from "../api/client";
-import { buttonClass } from "../components/Button";
+import { Button, buttonClass } from "../components/Button";
 
 const RepositoryContext = createContext<Repository | null>(null);
 
@@ -169,20 +173,137 @@ function StarButton({ repository, repo }: { repository: Repository; repo: RepoRe
   );
 }
 
-function ForkButton({ repository, repo }: { repository: Repository; repo: RepoRef }) {
+/**
+ * Where a fork of the repository can go: the namespaces the person can create
+ * in. A private repository's fork stays in its owner's namespace, and one
+ * more private repository has to fit the plan there.
+ */
+export function forkTargets(
+  repository: Pick<Repository, "owner" | "visibility">,
+  owners: ReadonlyArray<Owner>,
+): Array<Owner & { readonly refusal: string | null }> {
+  const isPrivate = repository.visibility === "private";
+  return owners
+    .filter(
+      (owner) => !isPrivate || owner.slug.toLowerCase() === repository.owner.slug.toLowerCase(),
+    )
+    .map((owner) => ({ ...owner, refusal: isPrivate ? owner.privateRepositoryRefusal : null }));
+}
+
+/** Pick the namespace a fork goes to, and its name there. */
+function ForkDialog({
+  repository,
+  repo,
+  targets,
+  onClose,
+}: {
+  repository: Repository;
+  repo: RepoRef;
+  targets: ReturnType<typeof forkTargets>;
+  onClose: () => void;
+}) {
   const go = useGo();
-  const session = useSession();
-  const user = session.data?.user ?? null;
+  const [ownerSlug, setOwnerSlug] = useState(
+    (targets.find((target) => target.refusal === null) ?? targets[0])?.slug ?? "",
+  );
+  const [name, setName] = useState(repository.name);
+  const owner = targets.find((target) => target.slug === ownerSlug);
+  const availability = useNewNameAvailability(ownerSlug, name);
   const fork = useMutation({
-    // Into the person's own namespace; an organisation's is picked on the fork's settings.
-    mutationFn: () =>
-      api.repositories.fork({ params: repo, payload: { owner: user?.username ?? "" } }),
+    mutationFn: () => api.repositories.fork({ params: repo, payload: { owner: ownerSlug, name } }),
     onSuccess: (created) => {
       void invalidate("repositoryLists");
       void invalidate("repositories");
       go(paths.repo({ owner: created.owner.slug, repo: created.name }));
     },
   });
+  const blocked =
+    owner === undefined ||
+    owner.refusal !== null ||
+    !(mayUseName(availability) || availability.state === "checking");
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!blocked) fork.mutate();
+  };
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={`Fork ${repository.owner.slug}/${repository.name}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            busy={fork.isPending}
+            disabled={blocked}
+            onClick={() => fork.mutate()}
+          >
+            Fork
+          </Button>
+        </>
+      }
+    >
+      {targets.length === 0 ? (
+        <p className="text-on-surface-muted">
+          {repository.visibility === "private"
+            ? `A private repository is forked within ${repository.owner.slug}, where you cannot create repositories`
+            : "You have no namespace to fork into"}
+        </p>
+      ) : (
+        <form onSubmit={submit} className="space-y-3">
+          <Field label="Owner" error={owner?.refusal ?? null}>
+            {(control) => (
+              <Select
+                {...control}
+                value={ownerSlug}
+                onChange={(event) => {
+                  setOwnerSlug(event.target.value);
+                  if (fork.error) fork.reset();
+                }}
+              >
+                {targets.map((target) => (
+                  <option key={target.slug} value={target.slug}>
+                    {target.label}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+          <Field
+            label="Name"
+            error={
+              availability.state === "taken" || availability.state === "invalid"
+                ? availability.message
+                : null
+            }
+          >
+            {(control) => (
+              <Input
+                {...control}
+                value={name}
+                spellCheck={false}
+                autoComplete="off"
+                maxLength={REPOSITORY_NAME_MAX_LENGTH}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  if (fork.error) fork.reset();
+                }}
+              />
+            )}
+          </Field>
+          <InlineError error={fork.error} />
+        </form>
+      )}
+    </Dialog>
+  );
+}
+
+function ForkButton({ repository, repo }: { repository: Repository; repo: RepoRef }) {
+  const session = useSession();
+  const user = session.data?.user ?? null;
+  const [open, setOpen] = useState(false);
+  const targets = session.data === undefined ? [] : forkTargets(repository, ownersOf(session.data));
   const count = (
     <span
       className={`${countButton} rounded-r border-l-0 font-normal text-on-surface-secondary`}
@@ -202,8 +323,8 @@ function ForkButton({ repository, repo }: { repository: Repository; repo: RepoRe
         ) : (
           <button
             type="button"
-            disabled={!repository.viewer.canFork || user.username === null || fork.isPending}
-            onClick={() => fork.mutate()}
+            disabled={!repository.viewer.canFork || user.username === null}
+            onClick={() => setOpen(true)}
             className={`${countButton} rounded-l hover:bg-surface-sunken disabled:opacity-60`}
           >
             <Icon name="gitFork" />
@@ -212,7 +333,14 @@ function ForkButton({ repository, repo }: { repository: Repository; repo: RepoRe
         )}
         {count}
       </div>
-      <InlineError error={fork.error} />
+      {open ? (
+        <ForkDialog
+          repository={repository}
+          repo={repo}
+          targets={targets}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -266,6 +394,23 @@ function RepoHeader({ repository, repo }: { repository: Repository; repo: RepoRe
                 >
                   {repository.parent.owner}/{repository.parent.name}
                 </AppLink>
+                {repository.isEmpty ? null : (
+                  <>
+                    {" · "}
+                    <AppLink
+                      href={paths.compareHead(
+                        { owner: repository.parent.owner, repo: repository.parent.name },
+                        formatHead(
+                          { owner: repository.parent.owner, repo: repository.parent.name },
+                          { repository: repo, ref: repository.defaultBranch },
+                        ),
+                      )}
+                      className="text-on-surface-secondary hover:underline"
+                    >
+                      Compare with it
+                    </AppLink>
+                  </>
+                )}
               </p>
             ) : null}
           </div>

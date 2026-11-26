@@ -3,6 +3,7 @@ import {
   nameProblemMessage,
   repositoryNameProblem,
 } from "@infrawrench/git-contract";
+import { ApiError } from "../../api/client";
 import { badRequest, conflict, defineMockHandlers, mockError, ok, paginate } from "../define";
 import {
   createRepository,
@@ -12,8 +13,8 @@ import {
   isMember,
   removeRepository,
   repositories,
+  privateRefusal,
   requireUser,
-  session,
   toRepository,
   toSummary,
   visibleRepositories,
@@ -64,7 +65,28 @@ function checkName(name: string, owner: string, except?: RepositoryRecord) {
       r.owner.slug.toLowerCase() === owner.toLowerCase() &&
       r.name.toLowerCase() === name.toLowerCase(),
   );
-  if (clash) throw conflict("A repository with that name already exists", "name_taken");
+  if (clash) throw conflict("A repository with that name exists here", "name_taken");
+}
+
+/** The 402 a namespace at its plan's limit answers, in the quota's own words. */
+function checkPrivateAllowed(namespace: ReturnType<typeof findNamespace>): void {
+  const refusal = privateRefusal(namespace);
+  if (refusal !== null) throw mockError(402, refusal, "plan_required");
+}
+
+function availability(name: string, owner: string, except?: RepositoryRecord) {
+  try {
+    checkName(name, owner, except);
+    return { name, available: true, reason: null, message: null };
+  } catch (error) {
+    if (!(error instanceof ApiError)) throw error;
+    return {
+      name,
+      available: false,
+      reason: error.code === "name_taken" ? ("taken" as const) : ("invalid" as const),
+      message: error.message,
+    };
+  }
 }
 
 export default defineMockHandlers({
@@ -74,10 +96,7 @@ export default defineMockHandlers({
       const namespace = findNamespace(payload.owner);
       if (!isMember(namespace)) throw mockError(404, "No user or organisation by that name");
       checkName(payload.name, namespace.slug);
-      const organization = session().organizations.find((o) => o.namespace === namespace.slug);
-      if (payload.visibility === "private" && organization?.privateRepositories === false) {
-        throw mockError(402, "Private repositories need a paid plan", "plan_required");
-      }
+      if (payload.visibility === "private") checkPrivateAllowed(namespace);
       const record = createRepository({
         owner: namespace.slug,
         name: payload.name,
@@ -89,6 +108,12 @@ export default defineMockHandlers({
         language: payload.initialize?.readme === true ? "TypeScript" : null,
       });
       return toRepository(record);
+    },
+    nameAvailability: ({ params, query }) => {
+      requireUser();
+      const namespace = findNamespace(params.namespace);
+      if (!isMember(namespace)) throw mockError(403, "That is somebody else's namespace");
+      return availability(query.name, namespace.slug);
     },
     listForNamespace: ({ params, query }) => {
       const namespace = findNamespace(params.namespace);
@@ -149,8 +174,15 @@ export default defineMockHandlers({
       repo.name = payload.name;
       return toRepository(repo);
     },
+    renameAvailability: ({ params, query }) => {
+      const repo = findRepository(params.owner, params.repo);
+      return availability(query.name, repo.owner.slug, repo);
+    },
     setVisibility: ({ params, payload }) => {
       const repo = findRepository(params.owner, params.repo);
+      if (payload.visibility === "private" && repo.visibility !== "private") {
+        checkPrivateAllowed(findNamespace(repo.owner.slug));
+      }
       repo.visibility = payload.visibility;
       return toRepository(repo);
     },
@@ -171,6 +203,15 @@ export default defineMockHandlers({
       if (!isMember(target)) throw mockError(404, "No user or organisation by that name");
       const name = payload.name ?? parent.name;
       checkName(name, target.slug);
+      if (parent.visibility === "private") {
+        if (target.slug !== parent.owner.slug) {
+          throw mockError(
+            422,
+            "A private repository can only be forked within its owner's namespace",
+          );
+        }
+        checkPrivateAllowed(target);
+      }
       const fork = createRepository({
         owner: target.slug,
         name,

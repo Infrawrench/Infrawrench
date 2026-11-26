@@ -81,6 +81,15 @@ export function PullLayout({ number, children }: { number: number; children: Rea
   }
   const data = pull.data;
   const merged = data.state === "merged";
+  // A fork's pull request names the fork its branch is in, and links there.
+  const headRepo =
+    data.headRepository === null
+      ? null
+      : { owner: data.headRepository.owner, repo: data.headRepository.name };
+  const headName =
+    data.crossRepository && data.headRepository !== null
+      ? `${data.headRepository.owner}:${data.headRef}`
+      : data.headRef;
 
   return (
     <PullContext.Provider value={data}>
@@ -107,16 +116,23 @@ export function PullLayout({ number, children }: { number: number; children: Rea
               <span className="truncate">{data.baseRef}</span>
             </AppLink>
             <span>from</span>
-            {data.headRefExists ? (
+            {data.headRefExists && headRepo !== null ? (
               <AppLink
-                href={paths.tree(repo, data.headRef)}
+                href={paths.tree(headRepo, data.headRef)}
                 className={`${branch} hover:underline`}
               >
-                <span className="truncate">{data.headRef}</span>
+                <span className="truncate">{headName}</span>
               </AppLink>
             ) : (
-              <span className={`${branch} line-through`} title="This branch was deleted">
-                <span className="truncate">{data.headRef}</span>
+              <span
+                className={`${branch} line-through`}
+                title={
+                  data.crossRepository && data.headRepository === null
+                    ? "The fork was deleted"
+                    : "This branch was deleted"
+                }
+              >
+                <span className="truncate">{headName}</span>
               </span>
             )}
             <CopyButton text={data.headRef} label="Copy branch name" />

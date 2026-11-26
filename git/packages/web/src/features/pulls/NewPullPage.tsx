@@ -15,7 +15,9 @@ import { RefPicker } from "../../components/RefPicker";
 import { EmptyState, ErrorState, InlineError, Loading } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { plural, shortOid } from "../../lib/format";
+import { HeadRepoPicker } from "../../components/HeadRepoPicker";
 import { paths } from "../../lib/paths";
+import { formatHead, headQuery, parseHead } from "../../lib/refs";
 import { signInHref, useSession } from "../../lib/session";
 import { TriageFields, type ThreadTriage } from "../issues/ThreadSidebar";
 
@@ -46,9 +48,17 @@ export function NewPullPage({
       { replace: true },
     );
 
-  const ready = head !== undefined && head !== baseRef;
+  // The head as the URL writes it: a branch here, or `owner/name:branch` in a fork.
+  const parsed = parseHead(head ?? "");
+  const headRepo = parsed.repository ?? repo;
+  const cross = parsed.repository !== null;
+  const headLabel = cross ? `${headRepo.owner}:${parsed.ref}` : parsed.ref;
+  const ready = head !== undefined && parsed.ref !== "" && (cross || head !== baseRef);
   const comparison = useQuery({
-    ...queries.contents.compare({ params: repo, query: { base: baseRef, head: head ?? "" } }),
+    ...queries.contents.compare({
+      params: repo,
+      query: { base: baseRef, ...headQuery(parsed) },
+    }),
     enabled: ready,
     retry: false,
   });
@@ -69,7 +79,7 @@ export function NewPullPage({
       ? ""
       : comparison.data.commits.length === 1
         ? comparison.data.commits[0]!.summary
-        : titleFromBranch(head);
+        : titleFromBranch(parsed.ref);
   useEffect(() => {
     if (!touched) setTitle(suggestion);
   }, [suggestion, touched]);
@@ -82,7 +92,7 @@ export function NewPullPage({
           title: title.trim(),
           body,
           base: baseRef,
-          head: head ?? "",
+          ...headQuery(parsed),
           draft,
           labels: [...triage.labels],
           assignees: [...triage.assignees],
@@ -136,12 +146,29 @@ export function NewPullPage({
         />
         <span aria-hidden="true">←</span>
         <span>compare</span>
+        <HeadRepoPicker
+          base={repo}
+          value={headRepo}
+          onSelect={(fork) =>
+            pick({
+              head:
+                fork === null
+                  ? repository.defaultBranch
+                  : formatHead(repo, {
+                      repository: { owner: fork.owner.slug, repo: fork.name },
+                      ref: fork.defaultBranch,
+                    }),
+            })
+          }
+        />
         <RefPicker
-          repo={repo}
-          value={head ?? "Choose a branch"}
+          repo={headRepo}
+          value={head === undefined ? "Choose a branch" : parsed.ref}
           branchesOnly
           label="head"
-          onSelect={(name) => pick({ head: name })}
+          onSelect={(name) =>
+            pick({ head: formatHead(repo, { repository: parsed.repository, ref: name }) })
+          }
         />
         {data !== undefined ? (
           <span className="ml-auto inline-flex items-center gap-1.5">
@@ -190,7 +217,7 @@ export function NewPullPage({
           ) : data.ahead === 0 ? (
             <Panel>
               <EmptyState action={<ButtonLink href={paths.branches(repo)}>Branches</ButtonLink>}>
-                {head} has no commits that {baseRef} lacks
+                {headLabel} has no commits that {baseRef} lacks
               </EmptyState>
             </Panel>
           ) : (
@@ -284,7 +311,7 @@ export function NewPullPage({
                   >
                     <CommitAuthor author={commit.author} user={commit.authorUser} />
                     <AppLink
-                      href={paths.commit(repo, commit.oid)}
+                      href={paths.commit(headRepo, commit.oid)}
                       className="min-w-0 flex-1 truncate text-on-surface hover:underline"
                     >
                       {commit.summary}

@@ -18,6 +18,7 @@ export const API_ROUTES = {
   },
   repositoryLists: {
     create: ["POST", "/api/repos"],
+    nameAvailability: ["GET", "/api/namespaces/:namespace/repository-name-availability"],
     listForNamespace: ["GET", "/api/namespaces/:namespace/repos"],
     listStarredBy: ["GET", "/api/namespaces/:namespace/starred"],
     listMine: ["GET", "/api/user/repos"],
@@ -27,6 +28,7 @@ export const API_ROUTES = {
     get: ["GET", "/api/repos/:owner/:repo"],
     update: ["PATCH", "/api/repos/:owner/:repo"],
     rename: ["POST", "/api/repos/:owner/:repo/rename"],
+    renameAvailability: ["GET", "/api/repos/:owner/:repo/rename-availability"],
     transfer: ["POST", "/api/repos/:owner/:repo/transfer"],
     setVisibility: ["PUT", "/api/repos/:owner/:repo/visibility"],
     delete: ["DELETE", "/api/repos/:owner/:repo"],
@@ -137,6 +139,8 @@ export const API_ROUTES = {
   },
   ci: {
     status: ["GET", "/api/repos/:owner/:repo/ci"],
+    settings: ["GET", "/api/repos/:owner/:repo/ci/settings"],
+    updateSettings: ["PUT", "/api/repos/:owner/:repo/ci/settings"],
     listRuns: ["GET", "/api/repos/:owner/:repo/ci/runs"],
     getRun: ["GET", "/api/repos/:owner/:repo/ci/runs/:runId"],
     runLog: ["GET", "/api/repos/:owner/:repo/ci/runs/:runId/log"],
@@ -144,6 +148,7 @@ export const API_ROUTES = {
   terraform: {
     listWorkspaces: ["GET", "/api/repos/:owner/:repo/terraform/workspaces"],
     listRoots: ["GET", "/api/repos/:owner/:repo/terraform/roots"],
+    listAccounts: ["GET", "/api/repos/:owner/:repo/terraform/accounts"],
     createWorkspace: ["POST", "/api/repos/:owner/:repo/terraform/workspaces"],
     getWorkspace: ["GET", "/api/repos/:owner/:repo/terraform/workspaces/:workspace"],
     updateWorkspace: ["PATCH", "/api/repos/:owner/:repo/terraform/workspaces/:workspace"],
@@ -152,8 +157,11 @@ export const API_ROUTES = {
     listRuns: ["GET", "/api/repos/:owner/:repo/terraform/runs"],
     getRun: ["GET", "/api/repos/:owner/:repo/terraform/runs/:runId"],
     approveRun: ["POST", "/api/repos/:owner/:repo/terraform/runs/:runId/approve"],
+    createRun: ["POST", "/api/repos/:owner/:repo/terraform/workspaces/:workspace/runs"],
     discardRun: ["POST", "/api/repos/:owner/:repo/terraform/runs/:runId/discard"],
     listStateVersions: ["GET", "/api/repos/:owner/:repo/terraform/workspaces/:workspace/state-versions"],
+    downloadStateVersion: ["GET", "/api/repos/:owner/:repo/terraform/workspaces/:workspace/state-versions/:versionId/download"],
+    restoreStateVersion: ["POST", "/api/repos/:owner/:repo/terraform/workspaces/:workspace/state-versions/:versionId/restore"],
     listResources: ["GET", "/api/repos/:owner/:repo/terraform/workspaces/:workspace/resources"],
   },
 } as const;

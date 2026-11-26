@@ -2,18 +2,23 @@ import {
   badRequest,
   conflict,
   defineMockHandlers,
+  mockError,
   notFound,
   ok,
   paginate,
   unprocessable,
 } from "../define";
-import { findRepository, requireUser, type RepositoryRecord } from "../db";
+import { accessTo, findRepository, gitOf, requireUser, type RepositoryRecord } from "../db";
+import { resolveRef } from "../git";
 import { hoursAgo, newId } from "../settings-data";
 import {
   ACCOUNTS,
   findWorkspace,
+  restoreVersion,
   rootsOf,
+  stateDocument,
   terraformOf,
+  toRun,
   toWorkspace,
   type WorkspaceRecord,
 } from "../terraform-data";
@@ -57,6 +62,11 @@ export default defineMockHandlers({
     listRoots: ({ params, query }) => {
       const repo = findRepository(params.owner, params.repo);
       return { roots: rootsOf(repo, query?.ref) };
+    },
+    listAccounts: ({ params }) => {
+      const repo = findRepository(params.owner, params.repo);
+      // A personal namespace has no organisation whose accounts it could link.
+      return { accounts: repo.owner.kind === "org" ? ACCOUNTS : [] };
     },
     createWorkspace: ({ params, payload }) => {
       const repo = findRepository(params.owner, params.repo);
@@ -137,9 +147,53 @@ export default defineMockHandlers({
             (query?.status === undefined || run.status === query.status),
         )
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      return paginate(runs, query);
+      const page = paginate(runs, query);
+      return { ...page, items: page.items.map((run) => toRun(repo, run)) };
     },
-    getRun: ({ params }) => findRun(findRepository(params.owner, params.repo), params.runId),
+    getRun: ({ params }) => {
+      const repo = findRepository(params.owner, params.repo);
+      return toRun(repo, findRun(repo, params.runId));
+    },
+    createRun: ({ params, payload }) => {
+      const repo = findRepository(params.owner, params.repo);
+      const actor = requireUser();
+      const item = findWorkspace(repo, params.workspace);
+      if (repo.owner.kind !== "org") {
+        throw unprocessable(
+          "Runs are for an organisation's repositories. A personal namespace has the state backend only.",
+          "terraform_unavailable",
+        );
+      }
+      const branch = item.branch ?? repo.defaultBranch;
+      const ref = payload.ref ?? branch;
+      if (payload.operation === "apply" && ref !== branch) {
+        throw unprocessable(`An apply runs on ${branch} only`);
+      }
+      const run = {
+        id: newId("tfrun"),
+        workspace: { id: item.id, name: item.name },
+        operation: payload.operation,
+        trigger: "manual" as const,
+        // The mock has no CI to send it to: a plan stays queued, an apply waits.
+        status:
+          payload.operation === "apply" ? ("awaiting_approval" as const) : ("queued" as const),
+        statusReason: null,
+        commitOid: resolveRef(gitOf(repo), ref).commitOid,
+        ref,
+        pullNumber: null,
+        actor,
+        approvedBy: null,
+        createdAt: new Date().toISOString(),
+        startedAt: null,
+        finishedAt: null,
+        plan: null,
+        costDelta: null,
+        ciRunId: null,
+        stateVersionId: null,
+      };
+      terraformOf(repo).runs.push(run);
+      return toRun(repo, run);
+    },
     approveRun: ({ params }) => {
       const repo = findRepository(params.owner, params.repo);
       const run = findRun(repo, params.runId);
@@ -170,7 +224,7 @@ export default defineMockHandlers({
         item.versions.unshift(version);
         run.stateVersionId = version.id;
       }
-      return run;
+      return toRun(repo, run);
     },
     discardRun: ({ params }) => {
       const repo = findRepository(params.owner, params.repo);
@@ -181,11 +235,27 @@ export default defineMockHandlers({
       run.status = run.status === "queued" ? "cancelled" : "discarded";
       run.statusReason = `Discarded by ${requireUser().username ?? "someone"}`;
       run.finishedAt = new Date().toISOString();
-      return run;
+      return toRun(repo, run);
     },
     listStateVersions: ({ params, query }) => {
       const repo = findRepository(params.owner, params.repo);
       return paginate(findWorkspace(repo, params.workspace).versions, query);
+    },
+    downloadStateVersion: ({ params }) => {
+      const repo = findRepository(params.owner, params.repo);
+      // The document holds secrets: `write`, as the API asks.
+      if (accessTo(repo) !== "admin" && accessTo(repo) !== "write") {
+        throw mockError(403, "Forbidden");
+      }
+      return stateDocument(repo, params.workspace, params.versionId);
+    },
+    restoreStateVersion: ({ params }) => {
+      const repo = findRepository(params.owner, params.repo);
+      const item = findWorkspace(repo, params.workspace);
+      if (item.lock !== null) {
+        throw unprocessable("Something holds this workspace's lock", "terraform_locked");
+      }
+      return restoreVersion(repo, params.workspace, params.versionId, requireUser());
     },
     listResources: ({ params, query }) => {
       const repo = findRepository(params.owner, params.repo);

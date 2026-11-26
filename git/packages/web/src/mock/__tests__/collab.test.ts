@@ -5,17 +5,21 @@
  * says they do.
  */
 import { describe, expect, it } from "vitest";
+import { FORGE_LIMITS, privateRepositoryRefusal } from "@infrawrench/git-contract";
 import { ApiError } from "../../api/client";
 import { parseSse, reduceFrames } from "../../features/ci/live";
 import { deriveMergeBox } from "../../features/pulls/merge-box";
 import { indexThreads } from "../../features/pulls/review-threads";
 import ci from "../handlers/ci";
+import contents from "../handlers/contents";
 import infrastructure from "../handlers/infrastructure";
 import issues from "../handlers/issues";
 import labels from "../handlers/labels";
 import milestones from "../handlers/milestones";
 import pulls from "../handlers/pulls";
+import repositories from "../handlers/repositories";
 import repoSettings from "../handlers/repo-settings";
+import sessionHandlers from "../handlers/session";
 import settings from "../handlers/settings";
 
 const repo = { owner: "acme", repo: "infra" };
@@ -23,6 +27,8 @@ const I = issues.issues!;
 const P = pulls.pulls!;
 const C = ci.ci!;
 const T = infrastructure.terraform!;
+const R = repositories.repositoryLists!;
+const N = repositories.repositories!;
 
 async function failure(run: () => unknown): Promise<ApiError> {
   try {
@@ -357,6 +363,69 @@ describe("pull requests", () => {
   });
 });
 
+describe("a fork's pull request", () => {
+  const base = { owner: "acme", repo: "edge-router" };
+  const fork = "jonas/edge-router";
+  const K = contents.contents!;
+
+  it("compares the parent's branch with the fork's, and names the fork", async () => {
+    const comparison = await K.compare!({
+      params: base,
+      query: { base: "main", head: "feature/health-checks", headRepository: fork },
+    });
+    expect(comparison.headRepository).toEqual({ owner: "jonas", name: "edge-router" });
+    expect(comparison.ahead).toBeGreaterThan(0);
+    expect(comparison.commits).toHaveLength(comparison.ahead);
+    const diff = await K.compareDiff!({
+      params: base,
+      query: { base: "main", head: "feature/health-checks", headRepository: fork },
+    });
+    expect(diff.files.length).toBeGreaterThan(0);
+  });
+
+  it("refuses a head repository outside the fork network", async () => {
+    const refused = await failure(() =>
+      K.compare!({
+        params: base,
+        query: { base: "main", head: "main", headRepository: "acme/infra" },
+      }),
+    );
+    expect(refused.status).toBe(422);
+  });
+
+  it("opens from the fork into the parent, as a cross-repository pull request", async () => {
+    const pull = await P.create!({
+      params: base,
+      payload: {
+        title: "Health checks from the fork",
+        base: "main",
+        head: "feature/health-checks",
+        headRepository: fork,
+      },
+    });
+    expect(pull.crossRepository).toBe(true);
+    expect(pull.headRepository).toMatchObject({ owner: "jonas", name: "edge-router" });
+    expect(pull.headRef).toBe("feature/health-checks");
+    const again = await P.get!({ params: { ...base, number: pull.number } });
+    expect(again.crossRepository).toBe(true);
+  });
+
+  it("forks into a namespace the caller picks, under the name they give", async () => {
+    const made = await N.fork!({
+      params: base,
+      payload: { owner: "tidewater", name: "edge-router-fork" },
+    });
+    expect(made).toMatchObject({ name: "edge-router-fork", isFork: true });
+    expect(made.owner.slug).toBe("tidewater");
+    expect(made.parent).toMatchObject({ owner: "acme", name: "edge-router" });
+    // A private repository stays in its owner's namespace.
+    const elsewhere = await failure(() =>
+      N.fork!({ params: repo, payload: { owner: "tidewater", name: "infra" } }),
+    );
+    expect(elsewhere.status).toBe(422);
+  });
+});
+
 describe("CI", () => {
   it("lists runs newest first, one of them in progress", async () => {
     const { items } = await C.listRuns!({ params: repo, query: { limit: 100 } });
@@ -484,11 +553,176 @@ describe("Terraform", () => {
     expect(versions.items.filter((version) => version.current)).toHaveLength(1);
   });
 
+  it("offers an approval only on a run that waits, to someone who may approve", async () => {
+    const apply = await T.createRun!({
+      params: { ...repo, workspace: "production" },
+      payload: { operation: "apply" },
+    });
+    expect(apply).toMatchObject({ status: "awaiting_approval", viewerCanApprove: true });
+    const { items } = await T.listRuns!({ params: repo, query: { limit: 50 } });
+    const waiting = items.filter((run) => run.status === "awaiting_approval");
+    expect(waiting.map((run) => run.id)).toContain(apply.id);
+    expect(waiting.every((run) => run.viewerCanApprove === true)).toBe(true);
+    await T.discardRun!({ params: { ...repo, runId: apply.id } });
+    expect(
+      items
+        .filter((run) => run.status !== "awaiting_approval")
+        .every((run) => run.viewerCanApprove === undefined),
+    ).toBe(true);
+  });
+
+  it("names a pull request's plans in its timeline, and not the one a newer plan replaced", async () => {
+    const { items } = await I.timeline!({ params: { ...repo, number: 12 }, query: { limit: 100 } });
+    const runs = items.flatMap((item) => (item.type === "terraform_run" ? [item] : []));
+    expect(runs.map((item) => [item.workspace, item.outcome]).sort()).toEqual([
+      ["production", "no_changes"],
+      ["staging", "planned"],
+    ]);
+    const staging = runs.find((item) => item.workspace === "staging")!;
+    expect([staging.add, staging.change, staging.destroy]).toEqual([4, 0, 0]);
+    expect((await T.getRun!({ params: { ...repo, runId: staging.runId } })).pullNumber).toBe(12);
+  });
+
+  it("lists the organisation's accounts for the picker, and none in a personal namespace", async () => {
+    const { accounts } = await T.listAccounts!({ params: repo });
+    expect(accounts.length).toBeGreaterThan(0);
+    const { workspaces } = await T.listWorkspaces!({ params: repo });
+    for (const linked of workspaces.flatMap((workspace) => workspace.accounts)) {
+      expect(accounts.map((account) => account.accountId)).toContain(linked.accountId);
+    }
+    const personal = await T.listAccounts!({ params: { owner: "mara", repo: "infra" } });
+    expect(personal.accounts).toEqual([]);
+  });
+
+  it("starts a plan by hand, and refuses one in a personal namespace", async () => {
+    const run = await T.createRun!({
+      params: { ...repo, workspace: "staging" },
+      payload: { operation: "plan" },
+    });
+    expect(run).toMatchObject({ operation: "plan", trigger: "manual", status: "queued" });
+    expect(run.ref).toBe("main");
+    const listed = await T.listRuns!({ params: repo, query: { workspace: "staging" } });
+    expect(listed.items[0]?.id).toBe(run.id);
+    const elsewhere = await failure(() =>
+      T.createRun!({
+        params: { ...repo, workspace: "staging" },
+        payload: { operation: "apply", ref: "feature/vpc-peering" },
+      }),
+    );
+    expect(elsewhere.status).toBe(422);
+    await T.discardRun!({ params: { ...repo, runId: run.id } });
+  });
+
+  it("hands out a state version as text, and restores one as a new version", async () => {
+    const params = { ...repo, workspace: "production" };
+    const before = await T.listStateVersions!({ params, query: {} });
+    const old = before.items.find((version) => !version.current)!;
+    const text = await T.downloadStateVersion!({ params: { ...params, versionId: old.id } });
+    expect(typeof text).toBe("string");
+    expect(JSON.parse(text)).toMatchObject({ version: 4, serial: old.serial });
+    const restored = await T.restoreStateVersion!({ params: { ...params, versionId: old.id } });
+    expect(restored.current).toBe(true);
+    expect(restored.serial).toBe(Math.max(...before.items.map((version) => version.serial)) + 1);
+    const after = await T.listStateVersions!({ params, query: {} });
+    expect(after.items[0]?.id).toBe(restored.id);
+    expect(after.items.filter((version) => version.current)).toHaveLength(1);
+  });
+
+  it("counts the resources matched to Infrawrench ones", async () => {
+    const workspace = await T.getWorkspace!({ params: { ...repo, workspace: "production" } });
+    expect(workspace.matchedResourceCount).toBeGreaterThan(0);
+    expect(workspace.matchedResourceCount!).toBeLessThanOrEqual(workspace.resourceCount);
+  });
+
   it("refuses to delete a locked workspace until it is unlocked", async () => {
     const params = { ...repo, workspace: "staging" };
     expect((await failure(() => T.deleteWorkspace!({ params }))).code).toBe("terraform_locked");
     await T.forceUnlock!({ params });
     expect((await T.getWorkspace!({ params })).lock).toBeNull();
+  });
+});
+
+describe("the CI switch", () => {
+  it("is on until switched off, and the CI tab then says why nothing runs", async () => {
+    expect(await C.settings!({ params: repo })).toEqual({ enabled: true, available: true });
+    expect((await C.status!({ params: repo })).enabled).toBe(true);
+    expect(await C.updateSettings!({ params: repo, payload: { enabled: false } })).toEqual({
+      enabled: false,
+      available: true,
+    });
+    const off = await C.status!({ params: repo });
+    expect(off.enabled).toBe(false);
+    expect(off.reason).toMatch(/switched off/);
+    await C.updateSettings!({ params: repo, payload: { enabled: true } });
+    expect((await C.status!({ params: repo })).enabled).toBe(true);
+  });
+
+  it("has nothing to switch in a personal namespace", async () => {
+    const personal = { owner: "mara", repo: "route-lab" };
+    expect(await C.settings!({ params: personal })).toEqual({ enabled: true, available: false });
+    const refused = await failure(() =>
+      C.updateSettings!({ params: personal, payload: { enabled: false } }),
+    );
+    expect(refused.code).toBe("ci_unavailable");
+  });
+});
+
+describe("plan limits", () => {
+  const session = async () => (await sessionHandlers.session!.me!({}))!;
+
+  it("carries each namespace's default visibility and whether a private repository fits", async () => {
+    const { organizations, personal } = await session();
+    const acme = organizations.find((item) => item.namespace === "acme")!;
+    const tidewater = organizations.find((item) => item.namespace === "tidewater")!;
+    expect(acme).toMatchObject({ privateRepositories: true, privateRepositoryRefusal: null });
+    expect(tidewater.defaultVisibility).toBe("public");
+    expect(tidewater.privateRepositories).toBe(false);
+    expect(tidewater.privateRepositoryRefusal).toBe(
+      privateRepositoryRefusal("free", FORGE_LIMITS.free.privateRepositories!),
+    );
+    expect(personal).toMatchObject({ privateRepositories: true, defaultVisibility: "private" });
+  });
+
+  it("refuses a private repository past the plan's limit with the session's own sentence", async () => {
+    const { organizations } = await session();
+    const tidewater = organizations.find((item) => item.namespace === "tidewater")!;
+    const refused = await failure(() =>
+      R.create!({ payload: { owner: "tidewater", name: "one-more", visibility: "private" } }),
+    );
+    expect(refused.status).toBe(402);
+    expect(refused.code).toBe("plan_required");
+    expect(refused.message).toBe(tidewater.privateRepositoryRefusal);
+    expect(refused.message).not.toMatch(/need a paid plan/);
+    // A public one is free everywhere.
+    const made = await R.create!({
+      payload: { owner: "tidewater", name: "one-more", visibility: "public" },
+    });
+    expect(made.visibility).toBe("public");
+  });
+});
+
+describe("repository names", () => {
+  it("says whether a new repository's name is free where the caller can create", async () => {
+    const ask = (name: string) =>
+      R.nameAvailability!({ params: { namespace: "acme" }, query: { name } });
+    expect(await ask("fresh-name")).toEqual({
+      name: "fresh-name",
+      available: true,
+      reason: null,
+      message: null,
+    });
+    expect(await ask("INFRA")).toMatchObject({ available: false, reason: "taken" });
+    expect(await ask(".hidden")).toMatchObject({ available: false, reason: "invalid" });
+    const stranger = await failure(() =>
+      R.nameAvailability!({ params: { namespace: "jonas" }, query: { name: "edge-router" } }),
+    );
+    expect(stranger.status).toBe(403);
+  });
+
+  it("lets a rename keep the repository's own name and not take a sibling's", async () => {
+    const ask = (name: string) => N.renameAvailability!({ params: repo, query: { name } });
+    expect(await ask("Infra")).toMatchObject({ available: true });
+    expect(await ask("edge-router")).toMatchObject({ available: false, reason: "taken" });
   });
 });
 

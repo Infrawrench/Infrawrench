@@ -90,8 +90,13 @@ export function RunsTab() {
                       />
                     ) : null}
                   </div>
-                  {run.statusReason !== null && run.status === "errored" ? (
-                    <p className="mt-1 truncate font-mono text-[11px] text-danger">
+                  {run.statusReason !== null &&
+                  (run.status === "errored" || run.status === "skipped") ? (
+                    <p
+                      className={`mt-1 truncate font-mono text-[11px] ${
+                        run.status === "errored" ? "text-danger" : "text-on-surface-secondary"
+                      }`}
+                    >
                       {run.statusReason}
                     </p>
                   ) : null}
