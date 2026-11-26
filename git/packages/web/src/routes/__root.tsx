@@ -3,6 +3,7 @@ import { Outlet, createRootRoute, useLocation } from "@tanstack/react-router";
 import { useGo } from "../components/AppLink";
 import { AppShell } from "../layout/AppShell";
 import { paths } from "../lib/paths";
+import { useDocumentTitle } from "../lib/title";
 import { useSession } from "../lib/session";
 
 /** Someone signed in without a username is sent to pick one, and comes back afterwards. */
@@ -23,6 +24,7 @@ function useUsernameOnboarding() {
 
 function Root() {
   useUsernameOnboarding();
+  useDocumentTitle();
   return (
     <AppShell>
       <Outlet />

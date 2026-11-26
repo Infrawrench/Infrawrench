@@ -11,6 +11,7 @@ import { Page } from "../../components/Panel";
 import { RelativeTime, UserLink } from "../../components/people";
 import { ErrorState, InlineError, Loading } from "../../components/states";
 import { issueKind } from "../../components/StatusIcons";
+import { usePageTitle } from "../../lib/title";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { plural } from "../../lib/format";
 import { paths } from "../../lib/paths";
@@ -27,6 +28,10 @@ export function IssuePage({ number }: { number: number }) {
   const go = useGo();
   const request = { params: { ...repo, number } };
   const issue = useQuery(queries.issues.get(request));
+  usePageTitle(
+    issue.data && `${issue.data.title} · Issue #${issue.data.number}`,
+    `${repo.owner}/${repo.repo}`,
+  );
 
   // The number may be a pull request's: the two share one sequence.
   const missing = isNotFound(issue.error);

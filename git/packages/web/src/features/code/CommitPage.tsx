@@ -13,6 +13,7 @@ import { CommitAuthor, RelativeTime } from "../../components/people";
 import { QueryView } from "../../components/states";
 import { shortOid } from "../../lib/format";
 import { paths } from "../../lib/paths";
+import { usePageTitle } from "../../lib/title";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { DiffSection } from "./DiffSection";
 import { showBidi } from "../../lib/bidi";
@@ -38,6 +39,10 @@ function Person({
 export function CommitPage({ sha }: { sha: string }) {
   const repo = useRepoRef();
   const detail = useQuery(queries.contents.commit({ params: { ...repo, sha } }));
+  usePageTitle(
+    detail.data && `${detail.data.commit.summary} · ${detail.data.commit.oid.slice(0, 7)}`,
+    `${repo.owner}/${repo.repo}`,
+  );
   return (
     <Page>
       <QueryView query={detail}>

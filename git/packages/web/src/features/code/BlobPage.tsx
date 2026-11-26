@@ -18,6 +18,7 @@ import { formatLineHash, parseLineHash, selectLine, type LineRange } from "../..
 import { paths, type RepoRef } from "../../lib/paths";
 import { downloadUrl } from "../../lib/raw";
 import { resolveRelative } from "../../lib/refs";
+import { usePageTitle } from "../../lib/title";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { blobQuery, latestCommitQuery } from "./requests";
 import { RenderedMarkdown, isMarkdownPath } from "./ReadmePanel";
@@ -63,6 +64,10 @@ export function BlobPage({ refName, path }: { refName: string; path: string }) {
   const repo = useRepoRef();
   const go = useGo();
   const blob = useQuery(blobQuery(repo, refName, path));
+  usePageTitle(
+    blob.data && `${repo.repo}/${blob.data.path} at ${blob.data.ref.name}`,
+    `${repo.owner}/${repo.repo}`,
+  );
 
   const isDirectory = blob.error instanceof ApiError && blob.error.code === "not_a_file";
   useEffect(() => {

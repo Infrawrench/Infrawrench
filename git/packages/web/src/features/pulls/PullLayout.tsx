@@ -16,6 +16,7 @@ import { Page } from "../../components/Panel";
 import { RelativeTime, UserLink } from "../../components/people";
 import { ErrorState, Loading } from "../../components/states";
 import { pullKind } from "../../components/StatusIcons";
+import { usePageTitle } from "../../lib/title";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { plural } from "../../lib/format";
 import { paths } from "../../lib/paths";
@@ -58,6 +59,10 @@ export function PullLayout({ number, children }: { number: number; children: Rea
 
   // The number may be an issue's: the two share one sequence.
   const missing = isNotFound(pull.error);
+  usePageTitle(
+    pull.data && `${pull.data.title} · Pull request #${pull.data.number}`,
+    `${repo.owner}/${repo.repo}`,
+  );
   const asIssue = useQuery({ ...queries.issues.get(request), enabled: missing, retry: false });
   const isIssue = asIssue.data !== undefined;
   useEffect(() => {

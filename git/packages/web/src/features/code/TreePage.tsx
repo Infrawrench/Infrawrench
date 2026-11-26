@@ -18,6 +18,7 @@ import { formatBytes, plural } from "../../lib/format";
 import { paths, type RepoRef } from "../../lib/paths";
 import { parentPath } from "../../lib/refs";
 import { webUrl } from "../../lib/safe-url";
+import { usePageTitle } from "../../lib/title";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { EmptyRepository } from "./EmptyRepository";
 import { ReadmePanel } from "./ReadmePanel";
@@ -44,6 +45,13 @@ export function TreePage({ refName, path }: { refName: string; path: string }) {
   const repo = useRepoRef();
   const go = useGo();
   const tree = useQuery({ ...treeQuery(repo, refName, path), enabled: !repository.isEmpty });
+  // The root is the repository's own page; a folder is named with the ref it resolved to.
+  usePageTitle(
+    tree.data && tree.data.path !== ""
+      ? `${repo.repo}/${tree.data.path} at ${tree.data.ref.name}`
+      : null,
+    `${repo.owner}/${repo.repo}`,
+  );
 
   // A file's path under /tree is a link someone edited by hand: show the file.
   const isFile = tree.error instanceof ApiError && tree.error.code === "not_a_directory";

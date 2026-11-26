@@ -13,6 +13,7 @@ import { QueryView } from "../../components/states";
 import { formatBytes, plural } from "../../lib/format";
 import { languageOfPath } from "../../lib/highlight";
 import { paths } from "../../lib/paths";
+import { usePageTitle } from "../../lib/title";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { useLineSelection } from "./BlobPage";
 import { CodeRefPicker, PathBreadcrumbs } from "./shared";
@@ -21,6 +22,11 @@ import { showBidi } from "../../lib/bidi";
 export function BlamePage({ refName, path }: { refName: string; path: string }) {
   const repo = useRepoRef();
   const blame = useQuery(queries.contents.blame({ params: repo, query: { ref: refName, path } }));
+  usePageTitle(
+    blame.data && "Blame",
+    blame.data && `${repo.repo}/${blame.data.blob.path} at ${blame.data.blob.ref.name}`,
+    `${repo.owner}/${repo.repo}`,
+  );
   const { selected, select } = useLineSelection(blame.data !== undefined);
 
   // The range that starts at each line, so the gutter draws one cell per range.
