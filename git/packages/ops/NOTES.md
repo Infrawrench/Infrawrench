@@ -199,3 +199,24 @@ These are CPU figures with every object already in memory. In the worker, an obj
 - `export-ignore`/`export-subst` in archives.
 - Octopus merges.
 - Sizes are asked before reads only of a reader that has `size` (see Bounds); binary detection still needs the read.
+
+## Bounds added after the security review
+
+Every one is a count, because inside a Durable Object the clock does not move while code runs. `test/bounds.test.ts` builds the input for each.
+
+| Limit                                 | Default           | What happens at it                                                          |
+| ------------------------------------- | ----------------- | --------------------------------------------------------------------------- |
+| `maxTreeBytes`                        | 1 MiB             | `ObjectCache.tree` refuses (`limit`); one name is still found by `entryAt`. |
+| `treeCacheEntries`                    | 50 000            | The parsed-tree cache evicts.                                               |
+| `maxDiffTrees`                        | 50 000            | A tree diff is truncated; a tree merge refuses.                             |
+| `renameBudgetBytes`, `maxRenameWork`  | 32 MiB, 100M      | The rest only match as exact renames.                                       |
+| `maxMergeTextBytes`                   | 32 MiB            | Further files are `too-large` conflicts, unread.                            |
+| `maxParents`                          | 1 024             | A commit with more is refused.                                              |
+| `maxMessageBytes`                     | (see `limits.ts`) | `ObjectCache.commit` cuts the message; `fullCommit` reads it whole.         |
+| Merge-base candidates, virtual merges | 16, 32            | Refused.                                                                    |
+| Line diff work                        | 64 x lines        | The rest of the file is diffed by Myers.                                    |
+
+- **The histogram diff falls back to Myers** past its work bound. On input built for it (one file the other with every second line moved to the end) the histogram pass was quadratic: 199 s for 100 000 lines, 0.64 s now. The result is a correct diff and may not be the one git prints for such a file.
+- **A parsed tree costs several hundred bytes a name**, which is why the bound is on the raw tree: a 32 MiB tree of a million names took 536 MiB to parse.
+- **Archives leave out names that could land outside the directory they are unpacked in** (`isSafeArchiveName`: `..`, `.git`, a `/` or `\` in a name, and a second entry with a name already written), and walk with their own stack.
+- `lastCommitsForEntries` takes a `maxEntries` budget and answers with a continuation.

@@ -122,6 +122,33 @@ export function parseCommitNode(oid: ObjectId, data: Uint8Array): CommitNode {
   return { oid, tree, parents, time };
 }
 
+/** Headers a commit shown with a cut message may have; past it the commit is refused rather than parsed. */
+const SHOWN_HEADER_BYTES = 1024 * 1024;
+
+/**
+ * A commit's bytes with the message cut to `max` bytes at a character
+ * boundary, so it still decodes as the UTF-8 it was. Unchanged when the
+ * message fits.
+ */
+export function cutMessage(data: Uint8Array, max: number): Uint8Array {
+  if (!(max < data.length)) return data;
+  let blank = -1;
+  for (let at = data.indexOf(0x0a); at >= 0; at = data.indexOf(0x0a, at + 1)) {
+    if (data[at + 1] === 0x0a) {
+      blank = at + 1;
+      break;
+    }
+  }
+  const start = blank < 0 ? data.length : blank + 1;
+  if (start > SHOWN_HEADER_BYTES) {
+    throw new GitError("limit", `commit headers are ${start} bytes, too many to show`);
+  }
+  if (data.length - start <= max) return data;
+  let end = start + max;
+  while (end > start && (data[end]! & 0xc0) === 0x80) end--;
+  return data.subarray(0, end);
+}
+
 function modeOf(value: number): TreeEntryMode | null {
   switch (value & 0o170000) {
     case 0o040000:
@@ -236,6 +263,14 @@ export class ObjectCache implements ObjectReader {
     const known = this.graph ? this.graph.get(oid) : this.nodes.get(oid);
     if (known) return known;
     const node = parseCommitNode(oid, await readObjectOfType(this, oid, "commit"));
+    // Every walk reads each parent it follows, so the parents of one commit are reads a single
+    // step would make; a commit made to list a hundred thousand of them is refused instead.
+    if (node.parents.length > this.limits.maxParents) {
+      throw new GitError(
+        "limit",
+        `commit ${oid} has ${node.parents.length} parents, more than ${this.limits.maxParents}`,
+      );
+    }
     if (this.graph) {
       this.graph.set(node);
       return node;
@@ -252,7 +287,17 @@ export class ObjectCache implements ObjectReader {
     return node;
   }
 
+  /**
+   * The commit with its message cut to `maxMessageBytes`, for showing. A
+   * message can be tens of megabytes, and a page lists thirty commits.
+   */
   async commit(oid: ObjectId): Promise<Commit> {
+    const data = await readObjectOfType(this, oid, "commit");
+    return parseCommit(cutMessage(data, this.limits.maxMessageBytes));
+  }
+
+  /** The commit as stored, message and all: for writing it again (a rebase, a patch). */
+  async fullCommit(oid: ObjectId): Promise<Commit> {
     return parseCommit(await readObjectOfType(this, oid, "commit"));
   }
 
@@ -269,9 +314,16 @@ export class ObjectCache implements ObjectReader {
   async tree(oid: ObjectId): Promise<readonly TreeEntry[]> {
     const known = this.parsedTrees.get(oid);
     if (known) return known;
-    const entries = parseTree(await this.rawTree(oid));
-    // Bounded by entries rather than trees: one tree can hold a hundred thousand names.
-    if (this.parsedEntries + entries.length > 200_000) {
+    const raw = await this.rawTree(oid);
+    if (raw.length > this.limits.maxTreeBytes) {
+      throw new GitError(
+        "limit",
+        `tree ${oid} is ${raw.length} bytes, more than ${this.limits.maxTreeBytes} to list`,
+      );
+    }
+    const entries = parseTree(raw);
+    // Bounded by entries rather than trees: one tree can hold tens of thousands of names.
+    if (this.parsedEntries + entries.length > this.limits.treeCacheEntries) {
       this.parsedTrees.clear();
       this.parsedEntries = 0;
     }

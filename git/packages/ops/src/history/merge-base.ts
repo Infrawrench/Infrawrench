@@ -13,6 +13,13 @@ const PARENT2 = 2;
 const STALE = 4;
 const RESULT = 8;
 
+/**
+ * Candidates sorted out by `removeRedundant`, which walks once per
+ * candidate. A real criss-cross has two or three; a history built to have
+ * hundreds would make one request walk hundreds of times.
+ */
+const MAX_CANDIDATES = 16;
+
 export interface HistoryOptions {
   readonly limits?: Partial<Limits>;
 }
@@ -129,6 +136,12 @@ export async function mergeBases(
 ): Promise<ObjectId[]> {
   const cache = cacheOf(reader, options.limits);
   let bases = await mergeBasesMany(cache, a, [b]);
+  if (bases.length > MAX_CANDIDATES) {
+    throw new GitError(
+      "limit",
+      `${bases.length} merge base candidates, more than ${MAX_CANDIDATES}`,
+    );
+  }
   if (bases.length > 1) bases = await removeRedundant(cache, bases);
   // Stable, so equal dates keep the order the walk found them in.
   return bases.sort((x, y) => y.time - x.time).map((node) => node.oid);

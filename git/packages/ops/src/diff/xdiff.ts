@@ -513,6 +513,19 @@ function findLcs(
   return hasCommon && MAX_CHAIN < cnt ? 1 : 0;
 }
 
+/**
+ * Lines the histogram step may scan, per line of the two files. Each step
+ * scans its whole region to find one common run, so when every run it
+ * finds is a single line at the start (one file is the other with every
+ * second line moved to the end) the steps add up to the square of the
+ * length: 100 000 such lines took over three minutes. Real diffs stay far
+ * below this; past it, what is left is diffed by Myers, whose own
+ * heuristics bound its cost, and the result is a correct diff that may
+ * differ from git's.
+ */
+const HISTOGRAM_WORK_PER_LINE = 64;
+const HISTOGRAM_WORK_MIN = 1_000_000;
+
 function histogram(
   ha1: Int32Array,
   ha2: Int32Array,
@@ -522,6 +535,7 @@ function histogram(
   count1: number,
   line2: number,
   count2: number,
+  budget: { work: number },
 ): void {
   for (;;) {
     if (count1 <= 0 && count2 <= 0) return;
@@ -531,6 +545,18 @@ function histogram(
     }
     if (count2 === 0) {
       while (count1-- > 0) rchg1[line1++ - 1] = 1;
+      return;
+    }
+    budget.work -= count1 + count2;
+    if (budget.work < 0) {
+      myers(
+        ha1.subarray(line1 - 1, line1 - 1 + count1),
+        ha2.subarray(line2 - 1, line2 - 1 + count2),
+        rchg1,
+        line1 - 1,
+        rchg2,
+        line2 - 1,
+      );
       return;
     }
     const lcs: Region = { begin1: 0, end1: 0, begin2: 0, end2: 0 };
@@ -551,7 +577,7 @@ function histogram(
       while (count2-- > 0) rchg2[line2++ - 1] = 1;
       return;
     }
-    histogram(ha1, ha2, rchg1, rchg2, line1, lcs.begin1 - line1, line2, lcs.begin2 - line2);
+    histogram(ha1, ha2, rchg1, rchg2, line1, lcs.begin1 - line1, line2, lcs.begin2 - line2, budget);
     const last1 = line1 + count1 - 1;
     const last2 = line2 + count2 - 1;
     count1 = last1 - lcs.end1;
@@ -798,7 +824,8 @@ export function diffLineRanges(
   const rchg1 = mask1.subarray(1);
   const rchg2 = mask2.subarray(1);
   if (options.algorithm === "histogram") {
-    histogram(ha1, ha2, rchg1, rchg2, 1, aCount, 1, bCount);
+    const work = Math.max(HISTOGRAM_WORK_MIN, HISTOGRAM_WORK_PER_LINE * (aCount + bCount));
+    histogram(ha1, ha2, rchg1, rchg2, 1, aCount, 1, bCount, { work });
   } else {
     myers(ha1, ha2, rchg1, 0, rchg2, 0);
   }

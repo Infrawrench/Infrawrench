@@ -20,6 +20,13 @@ export interface LastCommitsBudget {
   /** Stop after this long, checked between commits. */
   readonly maxMillis?: number;
   /**
+   * Directory entries and parents looked at in this call, checked between
+   * commits. Each commit that changed the directory reads it in itself and
+   * in every parent, so a directory of a hundred thousand names makes one
+   * commit cost what thousands of small ones do. Default 1 000 000.
+   */
+  readonly maxEntries?: number;
+  /**
    * Answers already worked out for this directory at some commit (a cache
    * the caller keeps): name to the commit that last changed it. A walk that
    * reaches such a commit settles every name it holds from the answer and
@@ -58,10 +65,16 @@ async function directory(
   return at !== null && at.mode === "040000" ? at.oid : null;
 }
 
-async function entryMap(cache: ObjectCache, tree: ObjectId | null): Promise<Map<string, EntryRef>> {
+async function entryMap(
+  cache: ObjectCache,
+  tree: ObjectId | null,
+  cost: { scanned: number },
+): Promise<Map<string, EntryRef>> {
   const map = new Map<string, EntryRef>();
   if (tree === null) return map;
-  for (const entry of await cache.tree(tree)) map.set(entry.name, entry);
+  const entries = await cache.tree(tree);
+  cost.scanned += entries.length;
+  for (const entry of entries) map.set(entry.name, entry);
   return map;
 }
 
@@ -81,6 +94,8 @@ export async function lastCommitsForEntries(
   const resumed = typeof start !== "string";
   const parts = splitPath(resumed ? start.dirPath : dirPath);
   const maxCommits = budget.maxCommits ?? 500;
+  const maxEntries = budget.maxEntries ?? 1_000_000;
+  const cost = { scanned: 0 };
   const deadline = budget.maxMillis === undefined ? null : Date.now() + budget.maxMillis;
 
   const held = new Map<ObjectId, Set<string>>();
@@ -99,7 +114,13 @@ export async function lastCommitsForEntries(
   const resolved = new Map<string, ObjectId>();
   let walked = 0;
   while (queue.size > 0) {
-    if (walked >= maxCommits || (deadline !== null && Date.now() >= deadline)) break;
+    if (
+      walked >= maxCommits ||
+      cost.scanned >= maxEntries ||
+      (deadline !== null && Date.now() >= deadline)
+    ) {
+      break;
+    }
     const node = queue.pop()!;
     const names = held.get(node.oid)!;
     held.delete(node.oid);
@@ -115,7 +136,7 @@ export async function lastCommitsForEntries(
 
     const hereTree = await directory(cache, node.tree, parts);
     if (node.parents.length === 0) {
-      const here = await entryMap(cache, hereTree);
+      const here = await entryMap(cache, hereTree, cost);
       // A root commit introduced whatever it has. A name it lacks never existed on this line.
       for (const name of names) if (here.has(name)) resolved.set(name, node.oid);
       continue;
@@ -124,6 +145,7 @@ export async function lastCommitsForEntries(
     const parentTrees: Array<ObjectId | null> = [];
     let wholesale: ObjectId | null = null;
     for (const parent of node.parents) {
+      cost.scanned++;
       const tree = await directory(cache, (await cache.node(parent)).tree, parts);
       parentTrees.push(tree);
       // The directory is untouched relative to this parent: every name goes there, unread.
@@ -134,9 +156,9 @@ export async function lastCommitsForEntries(
       continue;
     }
 
-    const here = await entryMap(cache, hereTree);
+    const here = await entryMap(cache, hereTree, cost);
     const parentMaps: Array<Map<string, EntryRef>> = [];
-    for (const tree of parentTrees) parentMaps.push(await entryMap(cache, tree));
+    for (const tree of parentTrees) parentMaps.push(await entryMap(cache, tree, cost));
     const pass = node.parents.map(() => [] as string[]);
     for (const name of names) {
       const key = refKey(here.get(name));

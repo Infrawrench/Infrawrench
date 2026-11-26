@@ -293,7 +293,7 @@ export async function formatPatch(
   options: FormatPatchOptions = {},
 ): Promise<Uint8Array> {
   const cache = cacheOf(reader, options.limits);
-  const commit: Commit = await cache.commit(oid);
+  const commit: Commit = await cache.fullCommit(oid);
   const parent = commit.parents[0];
   const parentTree = parent ? (await cache.node(parent)).tree : null;
   const { changes } = await diffTreeFiles(cache, parentTree, commit.tree, options);

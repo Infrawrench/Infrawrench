@@ -8,6 +8,7 @@
 import {
   type ObjectId,
   type ObjectReader,
+  type TreeEntry,
   type TreeEntryMode,
   encodeText,
   streamFrom,
@@ -33,9 +34,27 @@ export interface ArchiveEntry {
 }
 
 /**
+ * True for a name that is one path component wherever the archive is
+ * unpacked. Git never writes another, but a tree is whatever was pushed:
+ * `..`, a name with a slash, or one a Windows unpacker splits at a
+ * backslash into `..`, would put a file outside the directory the person
+ * unpacks into.
+ */
+export function isSafeArchiveName(name: string): boolean {
+  if (name.includes("/") || name.includes("\0")) return false;
+  return name.split("\\").every((part) => part !== "" && part !== "." && part !== "..");
+}
+
+/**
  * The entries of an archive in the order git writes them: the prefix
  * directory, then the tree in tree order with each directory ahead of its
- * contents. A submodule is an empty directory.
+ * contents. A submodule is an empty directory. An entry whose name is not
+ * a safe path component, or that repeats a name before it in the same
+ * tree, is left out with everything under it.
+ *
+ * The walk keeps its own stack rather than nesting generators: a nested
+ * generator passes every entry up through each level above it, so a tree
+ * ten thousand directories deep would cost ten thousand steps an entry.
  */
 export async function* archiveEntries(
   cache: ObjectCache,
@@ -45,20 +64,40 @@ export async function* archiveEntries(
   if (prefix.endsWith("/")) {
     yield { path: prefix.replace(/\/+$/, "/"), mode: "040000", oid: tree };
   }
-  async function* walk(oid: ObjectId, base: string): AsyncGenerator<ArchiveEntry, void, void> {
-    for (const entry of await cache.tree(oid)) {
-      const path = base + entry.name;
-      if (entry.mode === "040000") {
-        yield { path: `${path}/`, mode: entry.mode, oid: entry.oid };
-        yield* walk(entry.oid, `${path}/`);
-      } else if (entry.mode === "160000") {
-        yield { path: `${path}/`, mode: entry.mode, oid: entry.oid };
-      } else {
-        yield { path, mode: entry.mode, oid: entry.oid };
-      }
+  interface Level {
+    readonly entries: readonly TreeEntry[];
+    next: number;
+    readonly base: string;
+    readonly names: Set<string>;
+  }
+  const level = async (oid: ObjectId, base: string): Promise<Level> => ({
+    entries: await cache.tree(oid),
+    next: 0,
+    base,
+    names: new Set(),
+  });
+  const stack: Level[] = [await level(tree, prefix)];
+  while (stack.length > 0) {
+    const top = stack[stack.length - 1]!;
+    const entry = top.entries[top.next++];
+    if (entry === undefined) {
+      stack.pop();
+      continue;
+    }
+    // A name twice in one tree (git never writes it) could be a symlink and then a directory
+    // of the same name, which an unpacker follows out of the directory: the first one stays.
+    if (!isSafeArchiveName(entry.name) || top.names.has(entry.name)) continue;
+    top.names.add(entry.name);
+    const path = top.base + entry.name;
+    if (entry.mode === "040000") {
+      yield { path: `${path}/`, mode: entry.mode, oid: entry.oid };
+      stack.push(await level(entry.oid, `${path}/`));
+    } else if (entry.mode === "160000") {
+      yield { path: `${path}/`, mode: entry.mode, oid: entry.oid };
+    } else {
+      yield { path, mode: entry.mode, oid: entry.oid };
     }
   }
-  yield* walk(tree, prefix);
 }
 
 const RECORD = 512;

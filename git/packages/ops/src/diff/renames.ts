@@ -166,16 +166,24 @@ export async function matchRenames(
   if (minimumScore >= MAX_SCORE) return result();
 
   const prints = new Map<ObjectId, Fingerprint | null>();
+  // What inexact matching may read and hold, and how much comparing it may do: a commit can
+  // delete and add hundreds of megabyte-sized files, and every pair is a candidate.
+  let spent = 0;
+  let work = 0;
   const print = async (entry: EntryRef): Promise<Fingerprint | null> => {
     const known = prints.get(entry.oid);
     if (known !== undefined) return known;
-    if (await cache.overTextLimit(entry.oid, cache.limits.maxRenameBytes)) {
+    if (
+      spent >= cache.limits.renameBudgetBytes ||
+      (await cache.overTextLimit(entry.oid, cache.limits.maxRenameBytes))
+    ) {
       prints.set(entry.oid, null);
       return null;
     }
     const data = await cache.blob(entry.oid);
     // Not held: only the fingerprint is kept, so a wide diff does not pin every blob it compared.
     const made = data.length > cache.limits.maxRenameBytes ? null : fingerprint(data);
+    spent += data.length + (made === null ? 0 : made.hashes.length * 8);
     prints.set(entry.oid, made);
     return made;
   };
@@ -196,6 +204,8 @@ export async function matchRenames(
     // A size change this drastic cannot reach the minimum, so the content is not compared.
     if (maxSize * (MAX_SCORE - minimum) < delta * MAX_SCORE) return 0;
     if (b.size === 0) return 0;
+    work += a.hashes.length + b.hashes.length;
+    if (work > cache.limits.maxRenameWork) return 0;
     return Math.floor((copiedBytes(a, b) * MAX_SCORE) / maxSize);
   };
 

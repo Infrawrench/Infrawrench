@@ -168,17 +168,21 @@ export async function blame(
   };
 
   let walked = 0;
+  // Parents past the second of an octopus merge: each is read, looked up and maybe diffed like
+  // a commit of its own, so they count against the same budget.
+  let extraParents = 0;
   let complete = true;
   while (queue.size > 0) {
     const current = queue.pop()!;
     suspects.delete(key(current.node.oid, current.path));
     if (current.spans.length === 0) continue;
-    if (walked >= maxCommits || (deadline !== null && Date.now() >= deadline)) {
+    if (walked + extraParents >= maxCommits || (deadline !== null && Date.now() >= deadline)) {
       complete = false;
       settle(current, current.spans, false);
       continue;
     }
     walked++;
+    extraParents += Math.max(0, current.node.parents.length - 2);
 
     // Where the file is in each parent: under the same name, or failing that under the name it was renamed from.
     const parts = splitPath(current.path);
@@ -228,8 +232,10 @@ export async function blame(
       if (await cache.overTextLimit(origin.blob)) continue;
       const parentData = await cache.blob(origin.blob);
       if (parentData.length > cache.limits.maxTextBytes || isBinary(parentData)) continue;
-      mine ??= splitLines(await cache.blob(current.blob));
       const theirs = splitLines(parentData);
+      // The parent's version is held to the same line bound as the file asked about.
+      if (theirs.count > cache.limits.maxTextLines) continue;
+      mine ??= splitLines(await cache.blob(current.blob));
       const { added, removed } = diffLines(theirs, mine);
       const toParent = new Int32Array(mine.count);
       for (let i = 0, j = 0; i < mine.count; i++) {

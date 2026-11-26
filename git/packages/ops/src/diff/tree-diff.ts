@@ -48,6 +48,7 @@ export async function diffTreeEntries(
 ): Promise<RawTreeDiff> {
   const changes: TreeChange[] = [];
   let truncated = false;
+  let trees = 0;
   const none: readonly TreeEntry[] = [];
 
   const add = (path: string, old: EntryRef | null, next: EntryRef | null): boolean => {
@@ -65,6 +66,12 @@ export async function diffTreeEntries(
     oldOid: ObjectId | null,
     newOid: ObjectId | null,
   ): Promise<boolean> => {
+    // Subtrees whose ids differ can still hold the same things (a mode spelled `100664` on one
+    // side), and those list nothing: the trees read are counted on their own.
+    if (++trees > cache.limits.maxDiffTrees) {
+      truncated = true;
+      return false;
+    }
     const olds = oldOid === null ? none : await cache.tree(oldOid);
     const news = newOid === null ? none : await cache.tree(newOid);
     let i = 0;

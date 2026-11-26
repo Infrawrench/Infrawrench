@@ -5,7 +5,13 @@
  * changed are merged as text; renames one side made are followed so that
  * the other side's edits land in the renamed file.
  */
-import type { ObjectId, ObjectReader, TreeEntry, TreeEntryMode } from "@infrawrench/git-core";
+import {
+  GitError,
+  type ObjectId,
+  type ObjectReader,
+  type TreeEntry,
+  type TreeEntryMode,
+} from "@infrawrench/git-core";
 import { isBinary } from "../diff/lines";
 import { type RenameCandidate, matchRenames } from "../diff/renames";
 import { diffTreeEntries, entryKind } from "../diff/tree-diff";
@@ -99,6 +105,17 @@ interface State {
   readonly deletedByTheirs: Deleted[];
   /** Directories both sides changed to the same thing, which are taken without being read. */
   readonly changedAlike: Array<{ prefix: string; base: ObjectId; side: ObjectId | null }>;
+  /** Bytes of the files read for text merges so far (`maxMergeTextBytes`). */
+  textBytes: number;
+  /** Directory levels merged so far (`maxDiffTrees`). */
+  trees: number;
+}
+
+/** Lines as git counts them for a text operation: newlines, plus a last line without one. */
+function lineCount(data: Uint8Array): number {
+  let count = data.length > 0 && data[data.length - 1] !== 0x0a ? 1 : 0;
+  for (let at = data.indexOf(0x0a); at >= 0; at = data.indexOf(0x0a, at + 1)) count++;
+  return count;
 }
 
 function isTree(entry: EntryRef | null): boolean {
@@ -139,20 +156,27 @@ async function mergeFileEntries(
   else {
     const { cache, sink, options } = state;
     // Where storage can say a size from its index, a file over the limit is refused unread.
-    let oversized = false;
+    // So is every file once the merge has read its share of text: the merged blobs are all held
+    // until the caller writes them, and both sides can change thousands of large files.
+    let oversized = state.textBytes >= cache.limits.maxMergeTextBytes;
     for (const side of [baseFile, ours, theirs]) {
-      if (side !== null && (await cache.overTextLimit(side.oid))) oversized = true;
+      if (!oversized && side !== null && (await cache.overTextLimit(side.oid))) oversized = true;
     }
     const none = new Uint8Array(0);
     const baseData = baseFile && !oversized ? await cache.blob(baseFile.oid) : none;
     const oursData = oversized ? none : await cache.blob(ours.oid);
     const theirsData = oversized ? none : await cache.blob(theirs.oid);
+    state.textBytes += baseData.length + oursData.length + theirsData.length;
     const limit = cache.limits.maxTextBytes;
+    const lines = cache.limits.maxTextLines;
     if (
       oversized ||
       baseData.length > limit ||
       oursData.length > limit ||
-      theirsData.length > limit
+      theirsData.length > limit ||
+      lineCount(baseData) > lines ||
+      lineCount(oursData) > lines ||
+      lineCount(theirsData) > lines
     ) {
       oid = ours.oid;
       kind = "too-large";
@@ -195,6 +219,10 @@ async function mergeLevel(
   theirsTree: ObjectId | null,
 ): Promise<ObjectId | null> {
   const { cache, sink } = state;
+  // A partial merge would be a wrong one, so a merge that has to read too many trees is refused.
+  if (++state.trees > cache.limits.maxDiffTrees) {
+    throw new GitError("limit", `merge reads more than ${cache.limits.maxDiffTrees} trees`);
+  }
   const names = new Map<string, [TreeEntry | null, TreeEntry | null, TreeEntry | null]>();
   const load = async (tree: ObjectId | null, slot: 0 | 1 | 2): Promise<void> => {
     if (tree === null) return;
@@ -507,6 +535,8 @@ export async function mergeTrees(
     deletedByOurs: [],
     deletedByTheirs: [],
     changedAlike: [],
+    textBytes: 0,
+    trees: 0,
   };
   let tree: ObjectId;
   // The same shortcuts as for any directory, at the root: nothing to do when a side did nothing.

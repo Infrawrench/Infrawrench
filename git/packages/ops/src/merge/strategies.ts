@@ -27,6 +27,12 @@ import {
 
 /** How deep a criss-cross history is unpicked before the base is taken to be empty. */
 const MAX_VIRTUAL_DEPTH = 4;
+/**
+ * Merges of bases one merge may make on the way to its virtual base. Each
+ * level can find several bases again, so without a total the work grows as
+ * the number of bases to the power of the depth.
+ */
+const MAX_VIRTUAL_MERGES = 32;
 
 /** A reader that also sees objects made earlier in the same operation and not yet stored. */
 function overlay(cache: ObjectCache, extra: Map<ObjectId, GitObject>): ObjectCache {
@@ -52,7 +58,13 @@ interface Base {
  * recursive strategy does; conflicts between bases stay in that tree as
  * markers.
  */
-async function baseFor(cache: ObjectCache, a: ObjectId, b: ObjectId, depth: number): Promise<Base> {
+async function baseFor(
+  cache: ObjectCache,
+  a: ObjectId,
+  b: ObjectId,
+  depth: number,
+  spent: { merges: number } = { merges: 0 },
+): Promise<Base> {
   const bases = await mergeBases(cache, a, b);
   if (bases.length === 0) return { tree: null, bases, reader: cache };
   if (bases.length === 1) return { tree: (await cache.node(bases[0]!)).tree, bases, reader: cache };
@@ -66,7 +78,10 @@ async function baseFor(cache: ObjectCache, a: ObjectId, b: ObjectId, depth: numb
     const inner: Base =
       depth >= MAX_VIRTUAL_DEPTH
         ? { tree: null, bases: [], reader: view }
-        : await baseFor(view, ordered[i - 1]!, next, depth + 1);
+        : await baseFor(view, ordered[i - 1]!, next, depth + 1, spent);
+    if (++spent.merges > MAX_VIRTUAL_MERGES) {
+      throw new GitError("limit", `more than ${MAX_VIRTUAL_MERGES} merges to make a base`);
+    }
     const merged = await mergeTrees(inner.reader, inner.tree, tree, (await view.node(next)).tree, {
       ours: "Temporary merge branch 1",
       theirs: "Temporary merge branch 2",
@@ -268,7 +283,9 @@ export async function rebaseMerge(
   let tipTree = (await cache.node(target)).tree;
   let wrote = false;
 
-  for (const { oid, commit } of todo) {
+  for (const { oid } of todo) {
+    // Read whole: the listing's copy may have its message cut for showing, and this one is written again.
+    const commit = await cache.fullCommit(oid);
     const parent = commit.parents[0];
     if (parent === tip && options.reuseUnchanged !== false) {
       tip = oid;
