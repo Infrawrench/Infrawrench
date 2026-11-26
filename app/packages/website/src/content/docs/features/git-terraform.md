@@ -35,7 +35,7 @@ Every workspace has an HTTP state backend at:
 https://git.infrawrench.com/<owner>/<repo>/terraform/<workspace>/state
 ```
 
-Runs on the forge use it without any configuration: whatever backend the root declares is overridden for the run. To use the same state from your own machine, copy the block the workspace page shows and put a [personal access token](#access) in `TF_HTTP_PASSWORD`:
+Runs on the forge use it without any configuration: whatever backend the root declares is overridden for the run. An admin of the repository can use the same state from their own machine: copy the block the workspace's State tab shows and put a [personal access token](#access) with `repo:write` in `TF_HTTP_PASSWORD`:
 
 ```hcl
 terraform {
@@ -51,22 +51,25 @@ terraform {
 ```
 
 - **Locking** works as with any backend: a second `plan` or `apply` waits for the first (`-lock-timeout`) and is told who holds the lock.
-- **Every version is kept.** The workspace page lists them with who or which run wrote each one. **Restore** makes an old version current again by writing it as a new version, so nothing in the history is rewritten, and **Download** gives you the document.
+- **Every version is kept.** The workspace page lists them with who or which run wrote each one. **Restore** makes an old version current again by writing it as a new version, so nothing in the history is rewritten, and **Download** gives you the document. Both take admin access.
 - **Force unlock** releases a lock left behind by a run that died. It takes admin access.
 
 <insert [A workspace's State tab: the list of state versions with serial, size, resource count and the run that wrote each, the current version marked, and the Restore and Download actions on an older row] here>
 
 ### Access
 
-A state holds every secret its workspace manages, so reading it takes more than reading the repository:
+A state holds every secret its workspace manages, and whoever writes it decides what the next apply destroys. Every member of an organization can write its repositories, so using a state takes more than that: it takes admin access to the repository.
 
-| You have                                    | State                                             |
-| ------------------------------------------- | ------------------------------------------------- |
-| Read access (including a public repository) | Nothing. Requests answer 403.                     |
-| Write access, or a token with `repo:write`  | Read, lock and write.                             |
-| Admin access                                | Also delete the state, force unlock, and restore. |
+| You have                                                          | State                                                  |
+| ----------------------------------------------------------------- | ------------------------------------------------------ |
+| Read or write access (a public repository gives everyone read)    | Nothing. Requests answer 403.                          |
+| Admin access, and a personal access token with `repo:write`       | Read, lock and write, through the backend.             |
+| Admin access, signed in on git.infrawrench.com                    | Download a version, restore one, and force unlock.     |
+| Admin access through an organization API key that has `git:admin` | Everything the backend serves, deleting the state too. |
 
-A run's job gets a token of its own that works for its workspace until the run ends.
+The backend takes tokens only. A personal access token never deletes the state or forces a lock open.
+
+A run's job gets a token of its own. It works for that workspace's state and that run's plan until the run ends, and for nothing else: it cannot clone the repository, push to it or call the API. A plan's token reads the state and takes the lock; only an apply's writes.
 
 ## Plans on pull requests
 
@@ -98,7 +101,7 @@ A merge into the workspace's branch records an apply. The apply plans again at t
 
 You can also start a plan or an apply by hand from the workspace page. An apply started by someone who may approve it needs no second approval.
 
-Runs appear in the organization's CI tab and count toward CI usage like any other run. Their logs are the CI run's logs.
+Runs appear in the organization's CI tab and count toward CI usage like any other run. Their logs are the CI run's logs. On git.infrawrench.com a run's output takes write access to the repository, because Terraform prints the values of attributes that are not marked sensitive; anyone who can read the repository still sees the run, its jobs and the plan's summary.
 
 ## What a workspace manages
 
@@ -110,7 +113,7 @@ In the app, a resource's **Ownership** tab says where it is managed:
 
 > Managed by acme/infra (network/prod)
 
-The link opens the workspace on git.infrawrench.com.
+The link opens the workspace on git.infrawrench.com. A workspace of a private repository is named only to people who can read the organization's repositories there (`git:read` or more).
 
 <insert [A resource page in the app, Ownership tab, with the line "Managed by acme/infra (network/prod)" above the owner picker] here>
 

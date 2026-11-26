@@ -6,7 +6,9 @@ Each finding has a severity, the scenario, what was changed and where it stands.
 
 Severity is about this forge: **high** is a private repository's content, a credential or cloud access reaching someone it should not; **medium** is a narrower leak, a write that should have been refused, or one request that takes a repository or a page down; **low** is hardening.
 
-Tests under `git/packages/worker/src/__tests__/db/` need a Postgres and were written but not run during the review; each is marked "(database)".
+Tests under `git/packages/worker/src/__tests__/db/` need a Postgres and were written but not run during the review; each is marked "(database)". They were run, with the workerd suites (`GIT_WORKER_E2E=1`), when sections 8 and 9 were closed.
+
+**Afterwards.** Sections 8 and 9, and the open half of 7.10, were closed once the Terraform runtime and the deploy configuration had landed. Each of those findings names the commit that closed it. What is still open is in the summary's last column.
 
 ## Summary
 
@@ -18,19 +20,19 @@ Tests under `git/packages/worker/src/__tests__/db/` need a Postgres and were wri
 | 4. Transports and storage         | 1        | 3    | 5      | 5   | raw files on their own origin; large raw blobs  |
 | 5. SSH and hostile bytes          |          | 2    | 3      | 3   | the address behind Spectrum; per-principal caps |
 | 6. Web UI                         |          |      | 1      | 6   | image proxy (a decision)                        |
-| 7. Denial of service and cost     |          | 2    | 7      | 1   | signed-in rate limits; bindings in wrangler     |
-| 8. Terraform (in flight)          |          | 2    | 4      | 8   | all of it, for the Terraform runtime            |
-| 9. Deploy configuration           |          |      | 1      | 2   | all of it, for the deploy configuration         |
+| 7. Denial of service and cost     |          | 2    | 7      | 1   | 7.11 (low); Git over SSH is not counted         |
+| 8. Terraform                      |          | 3    | 5      | 8   |                                                 |
+| 9. Deploy configuration           |          |      | 1      | 2   |                                                 |
 
-Sections 8 and 9 count only what is still open; the Terraform findings that could be fixed from outside the in-flight files are in section 2.
+Sections 8 and 9 were open when the review ended and are closed now; the Terraform findings that could be fixed from outside the files then in flight are in section 2.
 
 ## Decisions wanted
 
 1. **Raw files on their own origin.** Raw content is served from the site's origin behind `sandbox`, `nosniff` and a download disposition for anything that can script (4.5). That holds in current browsers, and it is the only thing that does. Forges serve raw content from a separate registrable domain so that a mistake there cannot reach the session. It needs a domain and a route; nothing else.
-2. **Who may read and write Terraform state** (8.2). The design says repository `write`. Every member of an organisation has `git:write` on every repository, so that is every member reading every state and able to rewrite it. Recommended: repository `admin` (or a new `git:terraform` permission) for people, a workspace-bound claim for job tokens.
+2. **Who may read and write Terraform state** (8.2). The design said repository `write`. Every member of an organisation has `git:write` on every repository, so that was every member reading every state and able to rewrite it. **Decided:** repository `admin` for people, a workspace-bound claim for job tokens (8.2, 8.4).
 3. **Private pull requests between private repositories of one namespace** (2.1): allowed today, although their collaborators can differ.
 4. **An image proxy** (6.2): without one, the author of a comment or README learns the address of everyone who reads it.
-5. **Rate Limiting bindings** (7.10): the config is in section 9; without them the counts are per data centre and best effort.
+5. **Rate Limiting bindings** (7.10). **Decided:** bound in `wrangler.jsonc` (9.4). The counts are per Cloudflare location and approximate, which is what the binding offers.
 
 ## 1. Object ids
 
@@ -237,40 +239,78 @@ Every read of Git data runs in the repository's storage object: one thread, 128 
 - **7.7 Commit messages of tens of megabytes** were listed whole (medium, fixed).
 - **7.8 Diff pages and line counts** were bounded by lines only (medium, fixed): a page also stops by characters and by lines compared.
 - **7.9 The file table's walk** followed every name of a directory (medium, fixed): only the names it lists, with an entry budget and a continuation.
-- **7.10 Nothing limited how often** (medium, fixed in part): `http/admission.ts` counts callers without a credential by address (an IPv6 /64) against budgets for cheap reads, heavy reads and writes, and refuses an address after 60 refused credentials in ten minutes (`http/__tests__/admission.test.ts`, `rate-limit.test.ts`). **Open:** signed-in callers are not counted (it needs the principal: after authentication in the API middleware and the transports), and the counts are per data centre and best effort until the Rate Limiting bindings exist (section 9).
+- **7.10 Nothing limited how often** (medium, fixed; the second half in `8a0dd3bfc`): `http/admission.ts` counts callers without a credential by address (an IPv6 /64) against budgets for cheap reads, heavy reads and writes, and refuses an address after 60 refused credentials in ten minutes. A caller who authenticated is counted by who they are (`Admission.admit`: a person by id whichever credential they used, an API key, a deploy key, a CI run) against the signed-in budgets, by the API's authentication and by the Git routes (smart HTTP, raw, archive), each right after it resolves the principal and before it looks anything up. Heavy reads are a diff, a blame, a comparison, a filtered history, an archive, a raw file, a clone and a search. The counts live in Cloudflare's Rate Limiting bindings (9.4): per location and approximate. `http/__tests__/admission.test.ts`, `rate-limit.test.ts`, `bindings.test.ts`; `api/__tests__/handlers.test.ts` and `transport/__tests__/transport.test.ts` for where it is asked. **Open:** Git over SSH is not counted against these budgets (the per-principal cap of section 5).
 - **7.11 `isReachable` walks without a commit cap** (low, open): memoised per ref state and id, so the cost is one walk per distinct old id; covered by the heavy budget for anonymous callers.
 
-## 8. Terraform (for the Terraform runtime, which was in flight)
+## 8. Terraform
 
-The state route, the plan route and the state object did not exist yet, so 8.2 to 8.5 are requirements for them. None of the files involved was changed by this review.
+The state route, the plan route and the state object did not exist when the review ran, so these were written as requirements for them. All are closed now; each names the commit that closed it. `d` below is `git/packages/worker/src/__tests__/db/terraform.test.ts` (database), `s` is `git/packages/worker/test/terraform-state.test.ts` (the real `terraform` against the routes) and `e` is `git/packages/worker/test/e2e/terraform.test.ts` (the same in workerd, with real job tokens).
 
-- **8.1 The dispatcher must check the fork rule again** (high): 2.2 stops plan rows being queued for forks; whatever sends a run must still refuse one whose head repository is not the base, and send it untrusted.
-- **8.2 State access at repository `write` is every member** (high, decision 2): the member role has `git:write` on every repository of the organisation. Reading state is reading the credentials Terraform created; writing it with a higher serial that lists a production resource makes the next apply destroy it; and it registers state as reconciliation input, which the app keeps from members on purpose (`iac:write`).
-- **8.3 The state route must take tokens only, and must not trust the last path segment** (medium): build the principal from `Authorization` alone and refuse a session; return 404 unless the workspace name is valid and the rest of the path is exactly nothing, `lock` or `unlock` (`state/http.ts` `routeOf` takes the URL's last segment, so `.../state/x/lock` is served as `lock`); answer an anonymous caller 401, never 404, which Terraform reads as "no state".
-- **8.4 Job tokens carry no workspace** (high as a gate for the route): a `write` job token is also a push token and is visible to the job's own code as `TF_HTTP_PASSWORD`. Add a workspace claim to client-core's `git-job-token.ts`, handled like the commit claim (refused everywhere that does not expect it), check it against a live run of that workspace, and give plans read and lock without write.
-- **8.5 Never surface a `JSON.parse` message** (medium): V8 quotes the input (`Unexpected token 's', "{"a":s3cr3t..."`). Catch and answer a fixed text; `describeError` (3.2) does not know this shape.
-- **8.6 Terraform's output in CI logs** (medium): plan and apply print attribute values not marked sensitive, and CI logs need `read`, which on a public repository is everyone. Print the summary lines only, or require `write` for a workspace run's log.
-- **8.7 Root discovery queues without bound** (medium): `roots/discover.ts:316` pushes every subdirectory before checking `maxDirectories`; twelve shared trees of 2 000 entries queue ten million. Push only while `walked + queue.length < maxDirectories`.
-- **8.8 Lower.** A 32 MiB plan parses to several hundred MB in the front Worker: parse in the workspace's object or cap at 16 MiB. Force-unlock clears only the Postgres mirror. `suggestWorkspaceName`'s regex is quadratic on a run of dashes (and the UI's copy in `backend-snippet.ts`). `describeReason` returns inherited properties (`constructor`). `withSerial` corrupts a serial written with an exponent. The cached Terraform binary is run without checking it came from the verified archive. The apply pipeline's `manual` trigger has no branch limit. A stored CI secret named `IW_GIT_JOB_TOKEN` could shadow the minted token.
-- **8.9 For the app** (medium): `GET /iac/resource`'s "managed by" must only name repositories the viewer can read.
+### 8.1 The dispatcher must check the fork rule again (high, fixed in `729f63e7c`)
+
+- **Scenario.** 2.2 stops plan rows being queued for forks. A row that got there some other way would still be sent, with the workspace's accounts and a token for its state.
+- **Fix.** `server-core/src/ci/terraform.ts` `terraformDispatch` reads the pull request's head repository again before it mints anything (`terraformForkRefusal`): a head that is not the base repository, or a pull request that is gone, is refused and nothing is sent.
+- **Test.** `server-core/src/ci/__tests__/terraform.test.ts` "asks the fork rule again when a run is sent"; `d`.
+
+### 8.2 State access at repository `write` was every member (high, fixed in `9aad0fce6`; decision 2)
+
+- **Scenario.** The member role has `git:write` on every repository of the organisation. Reading state is reading the credentials Terraform created; writing it with a higher serial that lists a production resource makes the next apply destroy it.
+- **Fix.** `worker/src/terraform/access.ts` `decideStateAuth`: people need `admin` on the repository to read, lock or write a state. A personal access token works for an administrator (the directory asks `repoAccess` about the token and about the person behind it, `stateHolder`), needs `repo:write`, and never administers. Downloading a version through the API takes `admin` too (`contract/src/groups/automation.ts`); restore, force-unlock and delete already did. The UI offers the backend block and the download to administrators only.
+- **Test.** `worker/src/terraform/__tests__/access.test.ts` (the whole table); `s`, `e`; `d` (the download).
+
+### 8.3 The state route must take tokens only, and must not trust the last path segment (medium, fixed in `9aad0fce6`)
+
+- **Fix.** `worker/src/terraform/route.ts` takes the cookie off before authentication, as smart HTTP does, so a session is a 401 there. The route comes from the router's own segments (`stateRouteOf`: nothing, `lock` or `unlock`; anything else is a 400, after the credential) and is handed to the handler, which no longer reads the URL. No valid credential is a 401 with a Basic challenge; a credential that may not, a missing repository and a missing workspace are the same 403; nothing is a 404 or 204 but a workspace that is truly empty.
+- **Test.** `s` "answers 401 and 403, and never 404 or 204, to those who may not".
+
+### 8.4 Job tokens carried no workspace (high, fixed in `34a266611`, `729f63e7c`, `9aad0fce6`)
+
+- **Scenario.** A run's token was `write` on the whole repository and visible to the job's own code as `TF_HTTP_PASSWORD`: a job could push with it, and reach the state of every workspace of the repository while its run was live.
+- **Fix.** client-core's `git-job-token.ts` has a `workspace` claim (`ws`), under the signature like the rest. A verifier that names a workspace takes only a token bound to it; one that names none refuses a bound token. Server-core mints a Terraform run's token with its workspace, `read` for a plan and `write` for an apply (`terraformTokenAccess`), and the app's own service token the same way. The Worker authenticates such a token on the Terraform routes only (`authenticateRequest` `workspaceTokens`), so it is a 401 on smart HTTP, the raw and archive routes and the API, and `repoAccess` gives such a principal nothing of the repository. On the state route it must name this workspace and its run must be live; a plan's reads and locks (`canLock`), an apply's writes too. A job token with no workspace is refused there.
+- **Test.** `client-core/src/__tests__/git-job-token.test.ts`; `worker/src/auth/__tests__/credentials.test.ts` "refuses a Terraform run's token on every route but Terraform's"; `access.test.ts`; `e` "keeps a run's token to its state" and "gives a plan's token the lock and the state, and nothing to write"; `d`.
+
+### 8.5 Never surface a `JSON.parse` message (medium, fixed in `10c191ada`)
+
+- **Fix.** A plan that does not parse answers "The plan is not valid JSON."; a state, a lock and a `*.tf.json` root file likewise answer in fixed words (`worker/src/terraform/route.ts`, `terraform/src/state/document.ts`, `state/http.ts`, `roots/discover.ts`, the last of which used to pass the parser's message on).
+- **Test.** `s` "takes a run's plan..." (a body with the fixture's secret in it); `terraform/test/roots.test.ts` "says a JSON file is not JSON without quoting what is in it".
+
+### 8.6 Terraform's output in CI logs (medium, fixed in `9aad0fce6`)
+
+- **Scenario.** Plan and apply print attribute values not marked sensitive, and a CI run is read with `read`, which on a public repository is everyone.
+- **Fix.** `worker/src/api/handlers/automation.ts` `terraformOutputWithheld`: for a workspace's run, `ci.getRun` answers its jobs with empty output and `ci.runLog` is a 403 unless the caller has `write`. The run, its jobs and the plan's summary (which has no values) stay readable.
+- **Test.** `d`.
+
+### 8.7 Root discovery queued without bound (medium, fixed in `10c191ada`)
+
+- **Fix.** `terraform/src/roots/discover.ts` pushes a directory only while `walked + queue.length < maxDirectories`.
+- **Test.** `roots.test.ts` "stops at its limits and says it did": 2 000 names at every level, ten listings asked for.
+
+### 8.8 Lower (fixed)
+
+- **A 32 MiB plan parsed to several hundred MB in the front Worker**: 16 MiB at most (`MAX_PLAN_BYTES`). `9aad0fce6`, `s`.
+- **`suggestWorkspaceName` was quadratic on a run of dashes**: trimmed by index on a bounded piece of the path; the UI's copy bounds its input. `10c191ada`, `roots.test.ts`.
+- **`describeReason` returned inherited properties**: own keys only. `10c191ada`, `terraform/test/plan-summary.test.ts`.
+- **`withSerial` corrupted a serial written with an exponent**: the whole number is replaced. `10c191ada`, `terraform/test/state-http.test.ts`.
+- **The cached Terraform binary was run without checking it came from the verified archive**: the cache holds the archive, and every job unpacks the program from the checked archive into its own directory (`pipeline/generate.ts`). `10c191ada`. Not run on a runner here.
+- **The apply pipeline's `manual` trigger had no branch limit**: the runner's `on.manual` takes no branch filter, so the limit is where the run is made. `terraformCiRun` refuses an apply that is not of the workspace's branch, and the forge records an apply by hand on that branch. `729f63e7c`, `9aad0fce6`, `server-core/src/ci/__tests__/terraform.test.ts`.
+- **Force-unlock cleared only the Postgres mirror**: it goes to the workspace's object, and the mirror follows (`stateClient.forceUnlock`). Was so when the runtime landed; `e`.
+- **A stored CI secret named `IW_GIT_JOB_TOKEN` could shadow the minted token**: it cannot. The proxy puts the secrets a request carries over stored ones (`ci-proxy/src/app.ts` `withStoredValues`). Checked, and held by a test now: `ci-proxy/src/__tests__/app.test.ts`, `729f63e7c`.
+
+### 8.9 For the app: "managed by" named repositories the viewer could not read (medium, fixed in `729f63e7c`)
+
+- **Fix.** `server-core/src/git-terraform/managed.ts` `managedByForResource` takes who is asking: a workspace of a private repository is named only to a caller with `git:read`, `git:write` or `git:admin` in the organisation, which `web/src/http/domains/iac/index.ts` reads from the principal. A caller that passes no viewer gets public repositories only. API `1.130.1`.
+- **Test.** `web/src/http/domains/__tests__/iac-pr-checks.test.ts`; `d`.
 
 Checked and holds: body and lock size limits, serial and lineage checks, MD5 as a checksum only; state and plan readers never assign from input and are depth-bounded; the plan summary keeps no values (addresses with their `for_each` keys, types, actions and attribute names survive); the generated pipeline takes every workspace value through `env:` as a quoted scalar and refuses `${{`; approval needs repository `admin` and is scoped to the repository.
 
-## 9. Deploy configuration (for whoever owns `wrangler.jsonc` and the workflows)
+## 9. Deploy configuration
 
-- **9.1 Archive tokens reach Workers Logs** (medium): `observability.enabled` records the request URL with its query, and the archive route's token rides there. Set `"observability": { "enabled": true, "redact_query_string": true }` (check the key against the installed wrangler's schema).
-- **9.2 Version preview URLs are not pinned off** (low): add `"preview_urls": false` beside `"workers_dev": false`; a `*.workers.dev` URL is a second origin outside the `__Host-` cookie and the origin checks.
-- **9.3 The job token key has two names** (low, fails closed): `infra/terraform/terraform.tfvars.example` and the header of client-core's `git-job-token.ts` say `JOB_TOKEN_KEY`; the Worker reads `GIT_JOB_TOKEN_KEY`.
-- **9.4 Rate Limiting bindings** (for 7.10), optional in `Env`:
+All closed, in `8a0dd3bfc` unless another commit is named. `worker/src/http/__tests__/bindings.test.ts` reads `wrangler.jsonc` and holds 9.1, 9.2 and 9.4.
 
-  ```jsonc
-  "ratelimits": [
-    { "name": "RL_READ_ANON", "namespace_id": "1101", "simple": { "limit": 300, "period": 60 } },
-    { "name": "RL_HEAVY_ANON", "namespace_id": "1103", "simple": { "limit": 30, "period": 60 } },
-    { "name": "RL_WRITE_ANON", "namespace_id": "1105", "simple": { "limit": 30, "period": 60 } }
-  ]
-  ```
-
-- **9.5** `TERRAFORM_STATE` is typed as bound and is not; add it with its migration when the class lands. No workflow builds, tests or deploys these packages yet.
+- **9.1 Archive tokens reached Workers Logs** (medium, fixed): `"observability": { "enabled": true, "redact_query_string": true }`. The key is in the installed wrangler's schema (4.162) and in Cloudflare's configuration reference; `wrangler deploy --dry-run` takes the file.
+- **9.2 Version preview URLs were not pinned off** (low, fixed): `"preview_urls": false` beside `"workers_dev": false`.
+- **9.3 The job token key had two names** (low, fixed in `34a266611`): the Worker's secret, the app's variable, the tfvars example, the deploy workflow and the notes all say `GIT_JOB_TOKEN_KEY`. The last place that said `JOB_TOKEN_KEY` was the header of client-core's `git-job-token.ts`.
+- **9.4 Rate Limiting bindings** (for 7.10, fixed): six `ratelimits` bindings, cheap reads, heavy reads and writes for callers without a credential (`RL_*_ANON`, namespaces 1101, 1103, 1105) and for callers who authenticated (`RL_*_SIGNED_IN`, 1102, 1104, 1106), with the limits of `DEFAULT_RATE_BUDGETS`. A namespace id is a number the configuration chooses: nothing is provisioned, and `infra/git/setup.mjs` says so.
+- **9.5** `TERRAFORM_STATE` is bound, with migration `v2` (it landed with the runtime); `.infrawrench/ci/git.yml` tests these packages and `.github/workflows/git-deploy.yml` deploys them. `worker/README.md` no longer says otherwise.
 
 Checked and holds: no secret values in `wrangler.jsonc`, `vars` are origins and hostnames, `workers_dev` is off, the queue has a dead-letter queue; no secret has a fallback in code; the dependencies the packages declare are few, current and without install scripts (`react-markdown`, `remark-gfm`, `shiki`, `effect`, `drizzle-orm`).
