@@ -47,6 +47,8 @@ export type GitReviewState =
 export type GitDiffSide = "LEFT" | "RIGHT";
 export type GitStatusState = "pending" | "success" | "failure" | "error";
 export type GitMilestoneState = "open" | "closed";
+/** How a person reads a branch: the versioned branch page (`agent`) or the pull request as it was (`classic`). */
+export type GitReviewMode = "agent" | "classic";
 
 /**
  * A username or an organisation's name: the first path segment of every
@@ -116,6 +118,8 @@ export const gitUsers = pgTable("git_users", {
   /** The WorkOS profile picture at last sign-in, shown until the namespace has its own. */
   avatarUrl: text("avatar_url"),
   lastSeenAt: timestamp("last_seen_at"),
+  /** Which page a branch opens as for this person (`git-review-schema.ts`). */
+  reviewMode: text("review_mode").$type<GitReviewMode>().notNull().default("agent"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -651,6 +655,10 @@ export const gitReviewComments = pgTable(
     diffHunk: text("diff_hunk"),
     /** The lines it was written on have changed since. */
     outdated: boolean("outdated").notNull().default(false),
+    /** The branch version it was written on (`git_branch_versions.number`). Null before versions were recorded. */
+    versionNumber: integer("version_number"),
+    /** The version whose push changed the lines it is on: what answered it. Set with `outdated`. */
+    answeredInVersion: integer("answered_in_version"),
     resolvedAt: timestamp("resolved_at"),
     resolvedByUserId: text("resolved_by_user_id").references(() => users.id, {
       onDelete: "set null",
