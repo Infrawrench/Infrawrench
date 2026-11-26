@@ -162,6 +162,14 @@ export const ciRuns = pgTable(
     pipelineFile: text("pipeline_file"),
     pipelineText: text("pipeline_text"),
     /**
+     * Set for the run of a Terraform workspace on git.infrawrench.com
+     * (`git_terraform_runs.id`, `ci/terraform.ts`): its pipeline is
+     * `pipelineText`, generated per run, its status on the commit is the
+     * workspace's and it is lent the workspace's linked accounts. No foreign
+     * key: the two tables are pruned on their own schedules.
+     */
+    terraformRunId: text("terraform_run_id"),
+    /**
      * A manual run's inputs, by name, as text: what the person starting it
      * gave, checked against the default branch's declaration (the runner
      * checks them again against the branch's own). Null for other events.

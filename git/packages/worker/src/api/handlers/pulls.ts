@@ -190,12 +190,20 @@ const announce = (
   cx.background(
     queuePullRequestPlans({
       repositoryId: repository.id,
+      organizationId: cx.repo.owner.organizationId,
       defaultBranch: repository.defaultBranch,
       baseRef: found.pull.baseRef,
       headRef: found.pull.headRef,
       headOid: found.pull.headOid,
       pullNumber: found.thread.number,
       userId: cx.userId,
+      // By id: a head anywhere but in this repository, or in none, is a fork's.
+      fromFork: found.pull.headRepositoryId !== repository.id,
+      reader: cx.git,
+      headRepositoryId:
+        found.pull.headRepositoryId !== null && found.pull.headRepositoryId !== repository.id
+          ? found.pull.headRepositoryId
+          : undefined,
     }),
   );
 };

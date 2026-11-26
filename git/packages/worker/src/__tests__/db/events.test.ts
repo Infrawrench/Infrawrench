@@ -3,7 +3,7 @@
  * once, so every push here is handled twice and must leave what one
  * delivery leaves.
  */
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { gitTerraformRuns } from "@infrawrench/server-core/db/schema";
 import { db } from "../../db/client";
@@ -181,7 +181,7 @@ describe.skipIf(!configured)("the push consumer, against a real Postgres", () =>
     expect((await world.call("GET", `${repo}/issues?state=closed`)).body.items).toHaveLength(1);
   });
 
-  it("queues one Terraform run per workspace and commit", async () => {
+  it("keeps a workspace in a personal namespace, and runs nothing for it", async () => {
     const created = await world.call("POST", `${repo}/terraform/workspaces`, {
       as: alice,
       body: { name: "prod", rootPath: "/infra/" },
@@ -210,46 +210,19 @@ describe.skipIf(!configured)("the push consumer, against a real Postgres", () =>
       ).status,
     ).toBe(403);
 
+    // A personal namespace has the state backend only: a pull request and a
+    // merge record no run (`terraform.test.ts` has an organisation's).
     await push("plan-me");
-    const pull = (
-      await world.call("POST", `${repo}/pulls`, {
-        as: bob,
-        body: { title: "Infra", base: "main", head: "plan-me" },
-      })
-    ).body;
-    const first = pull.headOid;
-    const moved = await push("plan-me");
-    const landed = await push("main");
-
-    const runs = async (query = "") =>
-      (await world.call("GET", `${repo}/terraform/runs?limit=100${query}`)).body.items as Array<
-        Record<string, any>
-      >;
-    const plans = await runs(`&pull=${pull.number}`);
+    await world.call("POST", `${repo}/pulls`, {
+      as: bob,
+      body: { title: "Infra", base: "main", head: "plan-me" },
+    });
+    await push("plan-me");
+    await push("main");
+    expect((await world.call("GET", `${repo}/terraform/runs?limit=100`)).body.items).toEqual([]);
     expect(
-      plans.map((run) => [run["commitOid"], run["operation"], run["trigger"], run["status"]]),
-    ).toEqual([
-      [moved.newOid, "plan", "pull_request", "queued"],
-      // The older head's plan gave way to the newer one's.
-      [first, "plan", "pull_request", "discarded"],
-    ]);
-    const applies = (await runs()).filter((run) => run["operation"] === "apply");
-    expect(applies.filter((run) => run["commitOid"] === landed.newOid)).toHaveLength(1);
-    expect(applies[0]).toMatchObject({ trigger: "merge", status: "queued", ref: "main" });
-    expect((await runs("&status=discarded")).map((run) => run["commitOid"])).toEqual([first]);
-
-    // A queued run can be cancelled, by someone who may, once.
-    const discard = (who: Person) =>
-      world.call("POST", `${repo}/terraform/runs/${applies[0]!["id"]}/discard`, { as: who });
-    expect((await discard(bob)).body).toMatchObject({ status: "cancelled" });
-    expect((await discard(bob)).status).toBe(409);
-    const rows = await db
-      .select({ id: gitTerraformRuns.id })
-      .from(gitTerraformRuns)
-      .where(
-        and(eq(gitTerraformRuns.repositoryId, id), eq(gitTerraformRuns.commitSha, landed.newOid)),
-      );
-    expect(rows).toHaveLength(1);
+      await db.select().from(gitTerraformRuns).where(eq(gitTerraformRuns.repositoryId, id)),
+    ).toEqual([]);
   });
 
   it("does nothing for a repository that has been deleted since", async () => {

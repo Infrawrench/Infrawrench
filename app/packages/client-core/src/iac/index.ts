@@ -120,4 +120,24 @@ export interface IacResourceStatusResponse {
   stateLabel: string | null;
   terraformAddress: string | null;
   driftFieldCount: number;
+  /**
+   * The Terraform workspaces on git.infrawrench.com whose current state holds
+   * this resource: which repository and root manage it. Independent of
+   * `status`, which is about uploaded state documents: empty when no
+   * workspace's state matched it. A client of an older server sees none.
+   */
+  managedBy?: IacManagedBy[];
+}
+
+/** One workspace that manages a resource: "Managed by acme/infra (network/prod)". */
+export interface IacManagedBy {
+  /** `<namespace>/<repository>` on git.infrawrench.com. */
+  repository: string;
+  /** The Terraform root, relative to the repository; empty for its top. */
+  rootPath: string;
+  workspace: string;
+  /** The resource's address in that workspace's state. */
+  address: string;
+  /** The workspace's page on the forge. */
+  url: string;
 }

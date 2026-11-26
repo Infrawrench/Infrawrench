@@ -23,6 +23,7 @@
 import { runCiStatusPass, runCiUpkeepPass } from "@infrawrench/server-core/ci/pass";
 import { runCiCloudPass } from "@infrawrench/server-core/ci/cloud-jobs";
 import { runGitStoragePass } from "@infrawrench/server-core/git/billing";
+import { runGitTerraformPass } from "@infrawrench/server-core/git-terraform/pass";
 import { eq } from "drizzle-orm";
 import { nextCronOccurrence } from "@infrawrench/client-core";
 import { db } from "@infrawrench/server-core/db/client";
@@ -569,6 +570,17 @@ export const PASSES: readonly Pass[] = [
     name: "network-flows",
     runtime: "gateway",
     run: guarded("[network-flow] flow tick failed:", () => runNetworkFlowPass({ limit: 2 })),
+  },
+
+  // Terraform workspaces of git.infrawrench.com: start queued runs nothing
+  // started, link each changed state to the organisation's resources and
+  // price the plans waiting for it. On the gateway because linking and
+  // pricing run every plugin's export mapper and cost estimator.
+  {
+    kind: "periodic",
+    name: "git-terraform",
+    runtime: "gateway",
+    run: guarded("[terraform] forge tick failed:", () => runGitTerraformPass()),
   },
 
   // AI request attribution: read configured request-log sources (Bedrock

@@ -87,6 +87,12 @@ export class PipelineInputError extends Error {
 /** The username the backend sees with a job token. The token alone decides access. */
 export const JOB_TOKEN_USERNAME = "infrawrench-ci";
 export const DEFAULT_TOKEN_SECRET = "IW_GIT_JOB_TOKEN";
+/**
+ * What the app's own job token is minted for when it reads a workspace's
+ * state to link it, or a plan to price it. The forge lets a token with this
+ * purpose read and nothing else: it is no run's.
+ */
+export const SERVICE_TOKEN_PURPOSE = "terraform-link";
 
 const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const DURATION = /^[1-9][0-9]*[smh]$/;

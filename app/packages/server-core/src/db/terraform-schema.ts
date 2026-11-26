@@ -124,6 +124,14 @@ export const gitTerraformWorkspaces = pgTable(
     /** The newest state version, mirrored the same way. Null when there is no state. */
     currentStateVersionId: text("current_state_version_id"),
     currentSerial: integer("current_serial"),
+    /**
+     * The state version `git_terraform_managed_resources` was last written
+     * from. The linking pass works on a workspace whose current version is
+     * another one.
+     */
+    linkedStateVersionId: text("linked_state_version_id"),
+    /** When the pass last matched its state against the inventory, whatever came of it. */
+    linkedAt: timestamp("linked_at"),
     createdByUserId: text("created_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
@@ -177,7 +185,9 @@ export type GitTerraformRunStatus =
   | "failed"
   | "cancelled"
   /** A newer commit of the same pull request, or a newer push, replaced it. */
-  | "superseded";
+  | "superseded"
+  /** Never run, on purpose (a fork's pull request); `error` says why. Not a failure. */
+  | "skipped";
 
 /**
  * One plan or apply of a workspace at a commit, run as an Infrawrench CI run
@@ -209,6 +219,8 @@ export const gitTerraformRuns = pgTable(
     resourcesToChange: integer("resources_to_change"),
     resourcesToDestroy: integer("resources_to_destroy"),
     costDelta: jsonb("cost_delta").$type<TerraformRunCostDelta | null>(),
+    /** When the plan's cost was worked out, priced or not. Null while it waits for the pass. */
+    costPricedAt: timestamp("cost_priced_at"),
     /** `ci_runs.id`. No foreign key: a CI run is pruned on its own schedule. */
     ciRunId: text("ci_run_id"),
     startedByUserId: text("started_by_user_id").references(() => users.id, {
@@ -234,7 +246,7 @@ export const gitTerraformRuns = pgTable(
     kindValid: check("git_terraform_runs_kind_valid", sql`${t.kind} IN ('plan', 'apply')`),
     statusValid: check(
       "git_terraform_runs_status_valid",
-      sql`${t.status} IN ('queued', 'running', 'planned', 'awaiting_approval', 'applied', 'failed', 'cancelled', 'superseded')`,
+      sql`${t.status} IN ('queued', 'running', 'planned', 'awaiting_approval', 'applied', 'failed', 'cancelled', 'superseded', 'skipped')`,
     ),
   }),
 );

@@ -774,7 +774,9 @@ export type GitTimelineEventType =
   | "base_changed"
   | "ready_for_review"
   | "converted_to_draft"
-  | "review_dismissed";
+  | "review_dismissed"
+  /** A Terraform workspace's plan or apply for the pull request reported its result. */
+  | "terraform_run";
 
 /**
  * What each event type carries. Ids, never copies of what they name (a
@@ -807,6 +809,14 @@ export interface GitTimelineEventPayload {
   /** `review_dismissed`. */
   reviewId?: string;
   reason?: string | null;
+  /** `terraform_run`: the `git_terraform_runs.id`, and what it found, as it was then. */
+  terraformRunId?: string;
+  terraformWorkspace?: string;
+  terraformKind?: "plan" | "apply";
+  terraformOutcome?: "planned" | "no_changes" | "applied" | "failed" | "skipped";
+  terraformAdd?: number;
+  terraformChange?: number;
+  terraformDestroy?: number;
 }
 
 /** Something that happened to a thread other than a comment or a review. */

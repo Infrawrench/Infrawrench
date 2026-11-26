@@ -79,6 +79,11 @@ export function setGitStatusWriter(next: GitStatusWriter | null): void {
   writer = next ?? writeGitCommitStatus;
 }
 
+/** Writes a commit status through the current writer: for a status CI's own three calls do not cover. */
+export function publishGitCommitStatus(status: GitCommitStatus): Promise<void> {
+  return writer(status);
+}
+
 /** The most a status description holds; a forge shows it on one line. */
 export const STATUS_DESCRIPTION_LENGTH = 140;
 
@@ -123,6 +128,12 @@ export interface RunStatusTarget {
   repoFullName: string;
   sha: string;
   gitRepositoryId?: string | null | undefined;
+  /**
+   * Set for a Terraform workspace's run, whose status on the commit is the
+   * workspace's (`Infrawrench Terraform / <workspace>`, `terraform.ts`) and
+   * never `Infrawrench CI / <event>` or a job's.
+   */
+  terraformRunId?: string | null | undefined;
 }
 
 /** And what its jobs' statuses need. */
@@ -157,6 +168,16 @@ async function write(
 /** Commit statuses on git.infrawrench.com. */
 export const gitStatusPublisher: StatusPublisher = {
   async run(target, update) {
+    if (target.terraformRunId) {
+      try {
+        // Loaded here: `terraform.ts` reads this module's writer.
+        const { reportTerraformCheck } = await import("./terraform.js");
+        await reportTerraformCheck(target, update);
+      } catch (err) {
+        console.warn(`[ci] could not report Terraform run ${target.terraformRunId}:`, err);
+      }
+      return;
+    }
     try {
       await write(target, {
         context: checkName(target.event),
@@ -169,6 +190,7 @@ export const gitStatusPublisher: StatusPublisher = {
   },
 
   async jobs(target, groups) {
+    if (target.terraformRunId) return;
     const next = { ...target.jobChecks };
     let changed = false;
     for (const group of groups.slice(0, MAX_JOB_CHECKS)) {
@@ -204,6 +226,7 @@ export const gitStatusPublisher: StatusPublisher = {
   },
 
   async abandonJobs(target, reason) {
+    if (target.terraformRunId) return;
     for (const [key, known] of Object.entries(target.jobChecks)) {
       if (known.sent.startsWith("completed") || !known.context) continue;
       try {

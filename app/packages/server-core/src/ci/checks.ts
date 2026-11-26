@@ -46,6 +46,8 @@ interface CheckTarget {
   installationId: number;
   /** Set for a repository on git.infrawrench.com, whose status is a commit status. */
   gitRepositoryId?: string | null | undefined;
+  /** Set for a Terraform workspace's run (`terraform.ts`), whose status is the workspace's. */
+  terraformRunId?: string | null | undefined;
   repoFullName: string;
   sha: string;
   checkRunId: number | null;

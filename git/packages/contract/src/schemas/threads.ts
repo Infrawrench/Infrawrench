@@ -608,6 +608,7 @@ export const TIMELINE_EVENT_TYPES = [
   "ready_for_review",
   "converted_to_draft",
   "review_dismissed",
+  "terraform_run",
 ] as const;
 export type TimelineEventType = (typeof TIMELINE_EVENT_TYPES)[number];
 
@@ -659,6 +660,21 @@ export const TimelineItem = Schema.Union([
   event("ready_for_review", {}),
   event("converted_to_draft", {}),
   event("review_dismissed", { reviewId: Schema.String, reason: Schema.NullOr(Schema.String) }),
+  event("terraform_run", {
+    runId: Schema.String,
+    workspace: Schema.String,
+    operation: Schema.Literals(["plan", "apply"]),
+    outcome: Schema.Literals(["planned", "no_changes", "applied", "failed", "skipped"]).annotate({
+      description:
+        "What the run reported: a plan with changes, a plan with none, an apply, a failure, or a run that was never started (a fork's pull request).",
+    }),
+    add: Schema.NullOr(Schema.Int),
+    change: Schema.NullOr(Schema.Int),
+    destroy: Schema.NullOr(Schema.Int),
+    reason: Schema.NullOr(Schema.String).annotate({
+      description: "Why it failed or was skipped.",
+    }),
+  }),
 ]).annotate({ identifier: "TimelineItem" });
 export type TimelineItem = typeof TimelineItem.Type;
 

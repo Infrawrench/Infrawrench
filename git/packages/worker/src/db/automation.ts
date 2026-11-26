@@ -277,6 +277,17 @@ export const accountsOfOrganization = async (
   return new Set(rows.map((row) => row.id));
 };
 
+/** Every connected account of an organisation, by name: what a workspace can link. */
+export const allAccountsOfOrganization = (
+  organizationId: string,
+): Promise<Array<{ accountId: string; name: string; pluginId: string }>> =>
+  db
+    .select({ accountId: accounts.id, name: accounts.displayName, pluginId: accounts.pluginId })
+    .from(accounts)
+    .where(eq(accounts.organizationId, organizationId))
+    .orderBy(asc(accounts.displayName), asc(accounts.id))
+    .limit(1000);
+
 export const stateVersionsById = async (
   ids: readonly string[],
 ): Promise<Map<string, StateVersionRow>> => {

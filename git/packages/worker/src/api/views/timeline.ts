@@ -240,6 +240,21 @@ export const timelinePage = async (
           reviewId: payload.reviewId ?? "",
           reason: payload.reason ?? null,
         };
+      case "terraform_run":
+        return payload.terraformRunId && payload.terraformOutcome
+          ? {
+              type: "terraform_run",
+              ...base,
+              runId: payload.terraformRunId,
+              workspace: payload.terraformWorkspace ?? "",
+              operation: payload.terraformKind ?? "plan",
+              outcome: payload.terraformOutcome,
+              add: payload.terraformAdd ?? null,
+              change: payload.terraformChange ?? null,
+              destroy: payload.terraformDestroy ?? null,
+              reason: payload.reason ?? null,
+            }
+          : null;
     }
   };
 

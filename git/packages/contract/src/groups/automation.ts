@@ -14,7 +14,9 @@ import { CombinedStatus, CommitStatus, CommitStatusCreate } from "../schemas/git
 import {
   TerraformManagedResource,
   TerraformRoot,
+  TerraformAccount,
   TerraformRun,
+  TerraformRunCreate,
   TerraformRunStatus,
   TerraformStateVersion,
   TerraformWorkspace,
@@ -115,6 +117,10 @@ const WorkspaceParams = {
   workspace: Schema.String.annotate({ description: "The workspace's name." }),
 } as const;
 const TerraformRunParams = { ...RepoParams, runId: Schema.String } as const;
+const StateVersionParams = { ...WorkspaceParams, versionId: Schema.String } as const;
+
+/** A state document, exactly as Terraform wrote it. */
+const StateDocument = Schema.String.pipe(HttpApiSchema.asText({ contentType: "application/json" }));
 
 export class TerraformGroup extends HttpApiGroup.make("terraform")
   .add(
@@ -135,6 +141,18 @@ export class TerraformGroup extends HttpApiGroup.make("terraform")
       .annotate(OpenApi.Summary, "Directories that look like Terraform roots")
       .annotate(OpenApi.Description, "For the picker a new workspace's directory comes from.")
       .annotate(SuccessDescription, "Roots"),
+    HttpApiEndpoint.get("listAccounts", "/terraform/accounts", {
+      params: RepoParams,
+      success: Schema.Struct({ accounts: Schema.Array(TerraformAccount) }),
+    })
+      .annotate(RequiredAccess, "admin")
+      .annotate(AllowedWhenArchived, true)
+      .annotate(OpenApi.Summary, "Connected accounts a workspace can link")
+      .annotate(
+        OpenApi.Description,
+        "The Infrawrench accounts of the organisation that owns the repository, by name, for the picker of a workspace's accounts. Empty for a repository in a personal namespace, for a caller without `accounts:read` in the organisation, and for anything but a signed-in person.",
+      )
+      .annotate(SuccessDescription, "Accounts"),
     HttpApiEndpoint.post("createWorkspace", "/terraform/workspaces", {
       params: RepoParams,
       payload: TerraformWorkspaceCreate,
@@ -209,8 +227,25 @@ export class TerraformGroup extends HttpApiGroup.make("terraform")
       success: TerraformRun,
       error: [NotFound, Conflict, UnprocessableEntity],
     })
-      .annotate(RequiredAccess, "admin")
+      .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "Approve an apply that is waiting")
+      .annotate(
+        OpenApi.Description,
+        "Takes `admin` on the repository, or `ci:approve` in the organisation that owns it (403 otherwise). The run is queued and sent to Infrawrench CI. 409 when it is not waiting any more.",
+      )
+      .annotate(SuccessDescription, "The run"),
+    HttpApiEndpoint.post("createRun", "/terraform/workspaces/:workspace/runs", {
+      params: WorkspaceParams,
+      payload: TerraformRunCreate,
+      success: TerraformRun,
+      error: [BadRequest, NotFound, UnprocessableEntity],
+    })
+      .annotate(RequiredAccess, "write")
+      .annotate(OpenApi.Summary, "Start a plan or an apply by hand")
+      .annotate(
+        OpenApi.Description,
+        "A plan of a branch or a commit starts at once. An apply runs on the workspace's branch only, and waits for approval unless the caller may approve it. 422 `terraform_unavailable` for a repository in a personal namespace, which has the state backend only.",
+      )
       .annotate(SuccessDescription, "The run"),
     HttpApiEndpoint.post("discardRun", "/terraform/runs/:runId/discard", {
       params: TerraformRunParams,
@@ -232,6 +267,35 @@ export class TerraformGroup extends HttpApiGroup.make("terraform")
         "Newest first. The state documents themselves hold secrets and are only served by the HTTP backend, to `write` and above.",
       )
       .annotate(SuccessDescription, "State versions"),
+    HttpApiEndpoint.get(
+      "downloadStateVersion",
+      "/terraform/workspaces/:workspace/state-versions/:versionId/download",
+      { params: StateVersionParams, success: StateDocument, error: NotFound },
+    )
+      .annotate(RequiredAccess, "write")
+      .annotate(AllowedWhenArchived, true)
+      .annotate(OpenApi.Summary, "Download a state version")
+      .annotate(
+        OpenApi.Description,
+        "The document as stored, as an attachment. It holds every secret the workspace manages, so it takes `write`: a reader of a public repository gets 403.",
+      )
+      .annotate(SuccessDescription, "The state document"),
+    HttpApiEndpoint.post(
+      "restoreStateVersion",
+      "/terraform/workspaces/:workspace/state-versions/:versionId/restore",
+      {
+        params: StateVersionParams,
+        success: TerraformStateVersion,
+        error: [NotFound, Conflict, UnprocessableEntity],
+      },
+    )
+      .annotate(RequiredAccess, "admin")
+      .annotate(OpenApi.Summary, "Make an old state version current again")
+      .annotate(
+        OpenApi.Description,
+        "Writes the old document as a new version with the next serial; no version is changed or removed. 422 `terraform_locked` while something holds the lock, 409 when the state changed meanwhile.",
+      )
+      .annotate(SuccessDescription, "The new current version"),
     HttpApiEndpoint.get("listResources", "/terraform/workspaces/:workspace/resources", {
       params: WorkspaceParams,
       query: {

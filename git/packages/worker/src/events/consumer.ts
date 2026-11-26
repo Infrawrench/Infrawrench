@@ -161,12 +161,17 @@ const syncHead = async (
   await announcePullRequest(base, synced, "synchronize", cx.repo, cx.username);
   await queuePullRequestPlans({
     repositoryId: base.repository.id,
+    organizationId: base.owner.organizationId,
     defaultBranch: base.repository.defaultBranch,
     baseRef: pull.baseRef,
     headRef: pull.headRef,
     headOid: update.newOid,
     pullNumber: thread.number,
     userId: cx.userId,
+    // By id, as CI tells: a head anywhere but in the base repository is a fork's.
+    fromFork: fork,
+    reader: baseReader,
+    headRepositoryId: fork ? cx.repo.repository.id : undefined,
   });
 };
 
@@ -266,6 +271,7 @@ const handleBranch = async (cx: PushContext, update: Update, branch: string): Pr
 
   await queueMergeApplies({
     repositoryId: repository.id,
+    organizationId: cx.repo.owner.organizationId,
     defaultBranch: repository.defaultBranch,
     branch,
     oid: update.newOid,

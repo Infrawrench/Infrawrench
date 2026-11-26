@@ -136,8 +136,16 @@ export async function startWorker(
       ...(options.sshMaxFailures ? { SSH_MAX_FAILURES: String(options.sshMaxFailures) } : {}),
     },
     r2_buckets: [{ binding: "OBJECTS", bucket_name: "infrawrench-git-test" }],
-    durable_objects: { bindings: [{ name: "REPO", class_name: "RepoDO" }] },
-    migrations: [{ tag: "v1", new_sqlite_classes: ["RepoDO"] }],
+    durable_objects: {
+      bindings: [
+        { name: "REPO", class_name: "RepoDO" },
+        { name: "TERRAFORM_STATE", class_name: "TerraformStateDO" },
+      ],
+    },
+    migrations: [
+      { tag: "v1", new_sqlite_classes: ["RepoDO"] },
+      { tag: "v2", new_sqlite_classes: ["TerraformStateDO"] },
+    ],
     queues: {
       producers: [{ binding: "EVENTS", queue: "infrawrench-git-events-test" }],
       consumers: [

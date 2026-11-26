@@ -22,7 +22,6 @@ import {
 } from "@infrawrench/git-contract";
 import {
   type PlanSummary,
-  type TreeReader,
   discoverTerraformRoots,
   isWorkspaceName,
 } from "@infrawrench/git-terraform";
@@ -36,10 +35,10 @@ import {
   type WorkspaceRow,
   type WorkspaceSettings,
   accountsOfOrganization,
+  allAccountsOfOrganization,
   ciKnownPipelines,
   ciRetriesOf,
   ciSwitchedOff,
-  clearWorkspaceLock,
   createWorkspace,
   deleteWorkspace,
   getCiRun,
@@ -58,8 +57,14 @@ import {
 } from "../../db/automation";
 import { combinedState, statusesForCommit, upsertCommitStatus } from "../../db/policy";
 import { userByUsername } from "../../db/users";
+import { hasAccess } from "../../auth/access";
 import { appOrigin, siteOrigin } from "../../env";
+import { recordRun } from "../../events/terraform";
 import { RepoReaderError } from "../../repo/reader";
+import { principalName } from "../../terraform/access";
+import { type StateClientFactory, stateClient } from "../../terraform/client";
+import { recordStateHead } from "../../terraform/directory-db";
+import { treeReaderOf } from "../../terraform/tree";
 import { RepoRef, type RepoCx, inScope, repoOp } from "../context";
 import { statusViews } from "../views/pulls";
 import { iso, isoOrNull, peopleById, toUserRef } from "../views/repositories";
@@ -278,6 +283,18 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
 // Terraform
 // ---------------------------------------------------------------------------
 
+/** Server-core's side of Terraform runs, which reaches CI: loaded when a run is first acted on. */
+const terraformCi = () => import("@infrawrench/server-core/ci/terraform");
+/** What the app knows about what a workspace manages: links and cost. */
+const terraformManaged = () => import("@infrawrench/server-core/git-terraform/managed");
+
+let stateClients: StateClientFactory = stateClient;
+
+/** Replaces how a workspace's Durable Object is reached, for tests; `null` restores the default. */
+export const setStateClientFactory = (factory: StateClientFactory | null): void => {
+  stateClients = factory ?? stateClient;
+};
+
 const RUN_STATUS: Record<GitTerraformRunStatus, TerraformRunStatus> = {
   queued: "queued",
   running: "planning",
@@ -287,6 +304,7 @@ const RUN_STATUS: Record<GitTerraformRunStatus, TerraformRunStatus> = {
   failed: "errored",
   cancelled: "cancelled",
   superseded: "discarded",
+  skipped: "skipped",
 };
 
 const runStatus = (row: TerraformRunRow): TerraformRunStatus => {
@@ -356,14 +374,42 @@ const seesCosts = async (cx: RepoCx): Promise<boolean> => {
   return membership !== undefined && hasPermission(membership.permissions, "costs:read");
 };
 
+/**
+ * Whether the caller may approve an apply: an admin of the repository, or
+ * anyone with `ci:approve` in the organisation that owns it (a person by
+ * their role, an API key by its own permissions).
+ */
+const mayApprove = async (cx: RepoCx): Promise<boolean> => {
+  if (hasAccess(cx.access, "admin")) return true;
+  const organizationId = cx.repo.owner.organizationId;
+  if (organizationId === null) return false;
+  if (cx.principal.kind === "api-key") {
+    return (
+      cx.principal.organizationId === organizationId &&
+      hasPermission(cx.principal.permissions, "ci:approve")
+    );
+  }
+  if (cx.principal.kind !== "user") return false;
+  const membership = (await cx.viewer()).organizations.find(
+    (organization) => organization.id === organizationId,
+  );
+  return membership !== undefined && hasPermission(membership.permissions, "ci:approve");
+};
+
+/** The cost reader's viewer: the person, when they may see costs at all. */
+const costViewer = async (cx: RepoCx): Promise<{ userId: string } | null> =>
+  cx.userId !== null && (await seesCosts(cx)) ? { userId: cx.userId } : null;
+
 const runViews = async (
   cx: RepoCx,
   rows: readonly TerraformRunRow[],
   workspaces: ReadonlyMap<string, WorkspaceRow>,
 ): Promise<TerraformRun[]> => {
-  const [person, costs] = await Promise.all([
+  const waiting = rows.some((row) => row.status === "awaiting_approval");
+  const [person, costs, approver] = await Promise.all([
     peopleById(rows.flatMap((row) => [row.startedByUserId, row.approvedByUserId])),
     seesCosts(cx),
+    waiting ? mayApprove(cx) : Promise.resolve(false),
   ]);
   return rows.map((row) => {
     const cost = row.costDelta;
@@ -396,6 +442,7 @@ const runViews = async (
           : null,
       ciRunId: row.ciRunId,
       stateVersionId: null,
+      ...(row.status === "awaiting_approval" ? { viewerCanApprove: approver } : {}),
     };
   });
 };
@@ -423,10 +470,19 @@ const workspaceViews = async (
 ): Promise<TerraformWorkspace[]> => {
   const { repository, owner } = cx.repo;
   const ids = rows.map((row) => row.id);
-  const [accounts, lastRuns, states] = await Promise.all([
+  const organizationId = owner.organizationId;
+  const [accounts, lastRuns, states, managed] = await Promise.all([
     workspaceAccounts(ids),
     lastRunsOf(ids),
     stateVersionsById(rows.flatMap((row) => row.currentStateVersionId ?? [])),
+    organizationId === null || ids.length === 0
+      ? null
+      : (async () =>
+          (await terraformManaged()).managedResourceCosts(
+            organizationId,
+            ids,
+            await costViewer(cx),
+          ))(),
   ]);
   const byId = new Map(rows.map((row) => [row.id, row]));
   const runs = await runViews(cx, [...lastRuns.values()], byId);
@@ -466,8 +522,10 @@ const workspaceViews = async (
             : null,
         currentState: currentState ?? null,
         resourceCount: state?.resourceCount ?? 0,
-        // The app's cost and drift for what a workspace manages are not read here yet.
-        monthlyCost: null,
+        // Through the app's cost visibility: only what this viewer may see is in it.
+        monthlyCost: managed?.byWorkspaceId.get(row.id) ?? null,
+        matchedResourceCount: managed?.matchedByWorkspaceId.get(row.id) ?? 0,
+        // The app's drift for what a workspace manages is not read here yet.
         driftedCount: null,
         lastRun: runOf.get(row.id) ?? null,
         createdAt: iso(row.createdAt),
@@ -551,31 +609,6 @@ const normalRoot = (rootPath: string): string => {
   return path;
 };
 
-/** The repository's tree at a ref, as Terraform root discovery reads it. */
-const treeReader = (cx: RepoCx, ref: string): TreeReader => ({
-  list: async (path) => {
-    try {
-      const listing = await cx.git.tree({ ref, path, lastCommits: false });
-      return listing.entries.map((entry) => ({
-        name: entry.name,
-        kind: entry.type === "tree" ? ("directory" as const) : ("file" as const),
-      }));
-    } catch (error) {
-      if (error instanceof RepoReaderError && error.code !== "unavailable") return [];
-      throw error;
-    }
-  },
-  read: async (path) => {
-    try {
-      const blob = await cx.git.blob({ ref, path });
-      return blob.text === null ? null : new TextEncoder().encode(blob.text);
-    } catch (error) {
-      if (error instanceof RepoReaderError && error.code !== "unavailable") return null;
-      throw error;
-    }
-  },
-});
-
 const workspacesById = async (cx: RepoCx) =>
   new Map((await listWorkspaces(cx.repo.repository.id)).map((row) => [row.id, row]));
 
@@ -593,7 +626,7 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
         // Resolved once, so the walk reads one commit however long it takes.
         const { commitOid } = await cx.git.resolveRef(query.ref);
         const [{ roots }, workspaces] = await Promise.all([
-          discoverTerraformRoots(treeReader(cx, commitOid)),
+          discoverTerraformRoots(treeReaderOf(cx.git, commitOid)),
           listWorkspaces(cx.repo.repository.id),
         ]);
         return {
@@ -603,6 +636,27 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
               .filter((workspace) => workspace.rootPath === root.path)
               .map((workspace) => workspace.name),
             backend: root.backend,
+          })),
+        };
+      }),
+    )
+    .handle(
+      "listAccounts",
+      repoOp(async (cx) => {
+        const organizationId = cx.repo.owner.organizationId;
+        // The picker lists what the caller could see in the app: a person
+        // with `accounts:read` there. Everyone else gets nothing to pick.
+        if (organizationId === null || cx.principal.kind !== "user") return { accounts: [] };
+        const membership = (await cx.viewer()).organizations.find(
+          (organization) => organization.id === organizationId,
+        );
+        if (!membership || !hasPermission(membership.permissions, "accounts:read")) {
+          return { accounts: [] };
+        }
+        return {
+          accounts: (await allAccountsOfOrganization(organizationId)).map((account) => ({
+            ...account,
+            pluginName: account.pluginId,
           })),
         };
       }),
@@ -655,6 +709,12 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
       "deleteWorkspace",
       repoOp(async (cx, { params }) => {
         const workspace = await workspaceOr404(cx, params.workspace);
+        // The object is the truth about the lock; the row may trail it.
+        const head = await stateClients(cx.env, workspace.id).head();
+        if (head.lock) {
+          await recordStateHead(workspace.id, head, null);
+          throw unprocessable("Something holds this workspace's lock", "terraform_locked");
+        }
         if (!(await deleteWorkspace(workspace.id))) {
           throw unprocessable("Something holds this workspace's lock", "terraform_locked");
         }
@@ -664,7 +724,9 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
     .handle(
       "forceUnlock",
       repoOp(async (cx, { params }) => {
-        await clearWorkspaceLock((await workspaceOr404(cx, params.workspace)).id);
+        const workspace = await workspaceOr404(cx, params.workspace);
+        const head = await stateClients(cx.env, workspace.id).forceUnlock();
+        await recordStateHead(workspace.id, head, null);
         return ok;
       }),
     )
@@ -703,13 +765,61 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
       repoOp(async (cx, { params }) => {
         const run = await getTerraformRun(cx.repo.repository.id, params.runId);
         if (!run) throw notFound("No such run");
-        // Approved, it is queued again: whatever dispatches runs applies it.
-        const approved = await moveTerraformRun(run.id, ["awaiting_approval"], "queued", {
-          approvedByUserId: cx.userId,
-          approvedAt: new Date(),
-        });
+        if (!(await mayApprove(cx))) {
+          throw forbidden(
+            "Approving an apply takes admin access to the repository, or ci:approve in its organisation",
+          );
+        }
+        // Approved, it is queued and sent to Infrawrench CI.
+        const approved = await (await terraformCi()).approveTerraformRun(run.id, cx.userId);
         if (!approved) throw conflict("This run is not waiting for approval");
         return (await runViews(cx, [approved], await workspacesById(cx)))[0]!;
+      }),
+    )
+    .handle(
+      "createRun",
+      repoOp(async (cx, { params, payload }) => {
+        const workspace = await workspaceOr404(cx, params.workspace);
+        const { repository, owner } = cx.repo;
+        if (owner.organizationId === null) {
+          throw unprocessable(
+            "Plans and applies run for an organisation's repositories. A personal namespace has the state backend only.",
+            "terraform_unavailable",
+          );
+        }
+        const branch = workspace.branch ?? repository.defaultBranch;
+        const ref = payload.ref ?? branch;
+        let commitOid: string;
+        let branchOid: string | null = null;
+        try {
+          commitOid = (await cx.git.resolveRef(ref)).commitOid;
+          if (payload.operation === "apply") {
+            branchOid = (await cx.git.getBranch(branch))?.commit.oid ?? null;
+          }
+        } catch (error) {
+          if (error instanceof RepoReaderError && error.code === "ref_not_found") {
+            throw unprocessable("There is no such branch or commit", "ref_not_found");
+          }
+          throw error;
+        }
+        if (payload.operation === "apply" && commitOid !== branchOid) {
+          throw unprocessable(`An apply runs on the head of ${branch}, the workspace's branch`);
+        }
+        const approver = payload.operation === "apply" && (await mayApprove(cx));
+        const id = await recordRun(workspace, {
+          kind: payload.operation,
+          trigger: "manual",
+          commitSha: commitOid,
+          branch: OID.test(ref) ? branch : ref,
+          pullNumber: null,
+          startedByUserId: cx.userId,
+          // Whoever may approve an apply has, by asking for it.
+          status: payload.operation === "plan" || approver ? "queued" : "awaiting_approval",
+          approvedByUserId: approver ? cx.userId : null,
+        });
+        const run = id ? await getTerraformRun(repository.id, id) : null;
+        if (!run) throw notFound("No such run");
+        return (await runViews(cx, [run], await workspacesById(cx)))[0]!;
       }),
     )
     .handle(
@@ -717,13 +827,12 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
       repoOp(async (cx, { params }) => {
         const run = await getTerraformRun(cx.repo.repository.id, params.runId);
         if (!run) throw notFound("No such run");
-        const finishedAt = new Date();
+        // A plan nobody applied is discarded; anything still going is stopped, its CI run with it.
         const discarded =
-          (await moveTerraformRun(run.id, ["queued"], "cancelled", { finishedAt })) ??
-          (await moveTerraformRun(run.id, ["planned", "awaiting_approval"], "superseded", {
-            finishedAt,
-          }));
-        if (!discarded) throw conflict("This run has already started or finished");
+          (await moveTerraformRun(run.id, ["planned"], "superseded", {
+            finishedAt: new Date(),
+          })) ?? (await (await terraformCi()).cancelTerraformRun(run.id));
+        if (!discarded) throw conflict("This run has already finished");
         return (await runViews(cx, [discarded], await workspacesById(cx)))[0]!;
       }),
     )
@@ -738,6 +847,60 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
         };
       }),
     )
+    .handleRaw("downloadStateVersion", ({ params }) =>
+      Effect.gen(function* () {
+        const state = yield* RepoRef;
+        const response = yield* inScope(async (inv) => {
+          const workspace = state
+            ? await getWorkspace(state.found.repository.id, params.workspace)
+            : null;
+          if (!workspace) throw notFound("No such workspace");
+          const version = (await stateVersionsById([params.versionId])).get(params.versionId);
+          if (!version || version.workspaceId !== workspace.id) {
+            throw notFound("No such state version");
+          }
+          const stored = await stateClients(inv.env, workspace.id).readVersion(version.id);
+          if (!stored) throw notFound("No such state version");
+          return new Response(stored.body, {
+            headers: {
+              "content-type": "application/json",
+              "content-disposition": `attachment; filename="${workspace.name}-${version.serial}.tfstate"`,
+              "cache-control": "private, no-store",
+            },
+          });
+        });
+        return HttpServerResponse.raw(response);
+      }),
+    )
+    .handle(
+      "restoreStateVersion",
+      repoOp(async (cx, { params }) => {
+        const workspace = await workspaceOr404(cx, params.workspace);
+        const version = (await stateVersionsById([params.versionId])).get(params.versionId);
+        if (!version || version.workspaceId !== workspace.id) {
+          throw notFound("No such state version");
+        }
+        const actor = principalName(cx.principal) ?? "unknown";
+        const outcome = await stateClients(cx.env, workspace.id).restore(version.id, actor);
+        switch (outcome.kind) {
+          case "not-found":
+            throw notFound("No such state version");
+          case "locked":
+            throw unprocessable("Something holds this workspace's lock", "terraform_locked");
+          case "busy":
+            throw conflict("The state changed while it was being restored. Try again.");
+          case "invalid":
+            throw unprocessable(outcome.reason);
+          case "restored":
+            break;
+        }
+        await recordStateHead(workspace.id, outcome.head, cx.principal, actor);
+        const written = outcome.head.written;
+        const row = written ? (await stateVersionsById([written.id])).get(written.id) : undefined;
+        if (!row) throw notFound("No such state version");
+        return (await stateVersionViews([row], row.id))[0]!;
+      }),
+    )
     .handle(
       "listResources",
       repoOp(async (cx, { params, query }) => {
@@ -748,6 +911,16 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
           cursor: query.cursor,
           limit: query.limit,
         });
+        const organizationId = cx.repo.owner.organizationId;
+        const viewer = organizationId === null ? null : await costViewer(cx);
+        const costs =
+          organizationId !== null && viewer !== null
+            ? (
+                await (
+                  await terraformManaged()
+                ).managedResourceCosts(organizationId, [workspace.id], viewer)
+              ).byResourceId
+            : null;
         return {
           items: found.items.map(({ resource, matched }) => {
             // `module.a.module.b.aws_s3_bucket.logs`, `data.aws_ami.base`.
@@ -772,7 +945,7 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
                     appUrl: `${appOrigin(cx.env)}/org/${resource.organizationId}/resources/${encodeURIComponent(matched.id)}`,
                   }
                 : null,
-              monthlyCost: null,
+              monthlyCost: (matched && costs?.get(matched.id)) || null,
               drift: null,
             };
           }),

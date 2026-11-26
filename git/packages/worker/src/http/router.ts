@@ -11,6 +11,7 @@
  * | `/:owner/:repo/raw/...`                      | `raw`             |
  * | `/:owner/:repo/archive/...`                  | `archive`         |
  * | `/:owner/:repo/terraform/:workspace/state..` | `terraform-state` |
+ * | `/:owner/:repo/terraform/:workspace/runs/:id/plan` | `terraform-plan` |
  * | everything else                              | `assets` (the UI) |
  *
  * The Git and Terraform routes are the storage's to serve. Until they exist
@@ -36,6 +37,11 @@ export type Route =
   | ({ readonly kind: "raw" } & RepoPath)
   | ({ readonly kind: "archive" } & RepoPath)
   | ({ readonly kind: "terraform-state"; readonly workspace: string } & RepoPath)
+  | ({
+      readonly kind: "terraform-plan";
+      readonly workspace: string;
+      readonly runId: string;
+    } & RepoPath)
   | { readonly kind: "assets" }
   | { readonly kind: "not-found" };
 
@@ -79,6 +85,22 @@ export const routeOf = (pathname: string): Route => {
       rest: segments.slice(5),
     };
   }
+  // A run's job posts its plan here, and the app reads what it prices (`terraform/route.ts`).
+  if (
+    third === "terraform" &&
+    segments[4] === "runs" &&
+    segments[6] === "plan" &&
+    segments.length === 7
+  ) {
+    return {
+      kind: "terraform-plan",
+      owner,
+      repo,
+      workspace: decode(segments[3] ?? ""),
+      runId: decode(segments[5] ?? ""),
+      rest: [],
+    };
+  }
   return { kind: "assets" };
 };
 
@@ -110,6 +132,8 @@ export interface Routes {
    * `handleStateRequest`.
    */
   readonly terraformState?: Handler<Extract<Route, { kind: "terraform-state" }>>;
+  /** `/<owner>/<repo>/terraform/<workspace>/runs/<run id>/plan`: a run's plan, posted by its job. */
+  readonly terraformPlan?: Handler<Extract<Route, { kind: "terraform-plan" }>>;
 }
 
 const text = (body: string, status: number, headers: Record<string, string> = {}): Response =>
@@ -156,6 +180,10 @@ const dispatch = (request: Request, env: Env, ctx: Ctx, routes: Routes): Promise
       return routes.terraformState
         ? routes.terraformState(request, env, ctx, route)
         : Promise.resolve(notReady("The Terraform state backend"));
+    case "terraform-plan":
+      return routes.terraformPlan
+        ? routes.terraformPlan(request, env, ctx, route)
+        : Promise.resolve(notReady("Terraform runs"));
     case "assets":
       return assets(request, env);
     case "not-found":

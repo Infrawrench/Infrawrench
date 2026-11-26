@@ -87,6 +87,7 @@ export {
   DEFAULT_TOKEN_SECRET,
   JOB_TOKEN_USERNAME,
   PipelineInputError,
+  SERVICE_TOKEN_PURPOSE,
   backendConfiguration,
   backendEnvironment,
   workspacePipeline,
@@ -111,3 +112,13 @@ export {
   type MatchResult,
   type ResourceLink,
 } from "./match/match.js";
+
+export {
+  MAX_PRICING_CHANGES,
+  planPricingInputs,
+  type PlanPricingChange,
+  type PlanPricingInputs,
+  type PricingLiteral,
+} from "./plan/pricing.js";
+export { pinnedRelease, pinnedVersions } from "./pipeline/releases.js";
+export { rootsTouchedBy } from "./roots/touched.js";

@@ -24,6 +24,7 @@ const git = async (request: Request, env: Env, ctx: Ctx): Promise<Response> =>
   (await (await transport()).gitFetch(request, env, ctx)) ??
   new Response("Not Found", { status: 404 });
 const database = lazy(() => import("./db/client"));
+const terraform = lazy(() => import("./terraform/mount"));
 
 const routes: Routes = {
   api: async (request, env, ctx) => {
@@ -48,8 +49,11 @@ const routes: Routes = {
   raw: git,
   archive: git,
 
-  // INSERTION POINT (Terraform): `terraformState: (request, env, ctx, route) => ...`.
-  // `http/router.ts` answers 503 while it is absent.
+  // Terraform's `http` backend and a run's plan (`terraform/mount.ts`).
+  terraformState: async (request, env, ctx, route) =>
+    (await terraform()).stateFetch(request, env, ctx, route),
+  terraformPlan: async (request, env, ctx, route) =>
+    (await terraform()).planFetch(request, env, ctx, route),
 };
 
 export default {
@@ -72,5 +76,5 @@ export default {
 // One Durable Object per repository: refs, the pack catalogue, and the git protocol itself.
 export { RepoDO } from "./repo/do/repo-do";
 
-// INSERTION POINT (Terraform): `export { TerraformStateDO } from ...`, with its
-// binding and a `v2` migration tag in wrangler.jsonc.
+// One Durable Object per Terraform workspace: the state's lock, its current version and its catalogue.
+export { TerraformStateDO } from "./terraform/state-do";

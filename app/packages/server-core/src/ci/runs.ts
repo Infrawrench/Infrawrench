@@ -543,6 +543,34 @@ export async function dispatchRun(id: string): Promise<void> {
   withPlatforms(body, concurrency);
   const notified = withNotify(body, row.id);
 
+  // A Terraform workspace's run (`terraform.ts`): its job token goes in as a
+  // run secret, minted now and never stored, and its workspace's linked
+  // accounts are lent without the per-connection opt-in. Added after the
+  // pipelines were read, so the token is only ever in the request that runs.
+  let linkedAccounts: Map<string, string | null> | undefined;
+  if (row.terraformRunId !== null) {
+    const { terraformDispatch } = await import("./terraform.js");
+    let terraform: Awaited<ReturnType<typeof terraformDispatch>>;
+    try {
+      terraform = await terraformDispatch(row);
+    } catch (err) {
+      await retryLater(row, tokenRefusal(row, err));
+      return;
+    }
+    if ("refuse" in terraform) {
+      await finish(row, "error", terraform.refuse);
+      await upsertCheck(row, {
+        status: "completed",
+        conclusion: "failure",
+        title: "Not run",
+        summary: terraform.refuse,
+      });
+      return;
+    }
+    body["secrets"] = terraform.secrets;
+    linkedAccounts = terraform.linkedAccounts;
+  }
+
   // Connections, SSH keys, resources and environment files its jobs name,
   // checked and read now (never for a fork's run). Reading them calls
   // plugins, which the edge cannot: there the run waits for the gateway's
@@ -554,7 +582,7 @@ export async function dispatchRun(id: string): Promise<void> {
     }
     // Loaded here: lending reaches plugin code, which only this branch needs.
     const { auditLends, buildLent, fitLent } = await import("./lend.js");
-    const built = await buildLent(row, access);
+    const built = await buildLent(linkedAccounts ? { ...row, linkedAccounts } : row, access);
     if (built) {
       // `env-file:`: the file read at the run's commit, each reference
       // checked against the grants like the rest.
@@ -728,6 +756,16 @@ async function skipRun(
     from,
   );
   if (!skipped) return false;
+  if (row.terraformRunId !== null) {
+    // A workspace's run that runs nothing did not plan: its run says so.
+    await upsertCheck(row, {
+      status: "completed",
+      conclusion: "failure",
+      title: "Nothing ran",
+      summary: "The runners found nothing to run for this workspace on this commit.",
+    });
+    return true;
+  }
   if (row.event !== "pull-request" && row.checkRunId === null) return true;
   await upsertCheck(row, {
     status: "completed",
@@ -1327,6 +1365,7 @@ export async function insertRetry(
       event: original.event,
       pipelineFile: original.pipelineFile,
       pipelineText: original.pipelineText,
+      terraformRunId: original.terraformRunId,
       inputs: original.inputs,
       startedByUserId: original.event === "manual" ? userId || null : null,
       branch: original.branch,

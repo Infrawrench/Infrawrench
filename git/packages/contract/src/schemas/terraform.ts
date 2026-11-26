@@ -27,11 +27,12 @@ export const TERRAFORM_RUN_STATUSES = [
   "errored",
   "cancelled",
   "discarded",
+  "skipped",
 ] as const;
 export const TerraformRunStatus = Schema.Literals(TERRAFORM_RUN_STATUSES).annotate({
   identifier: "TerraformRunStatus",
   description:
-    "`planned`: a plan with changes, nothing applied (a pull request's plan ends here). `no_changes`: the plan was empty. `awaiting_approval`: an apply waiting for someone to approve it. `discarded`: a plan nobody applied before a newer one replaced it.",
+    "`planned`: a plan with changes, nothing applied (a pull request's plan ends here). `no_changes`: the plan was empty. `awaiting_approval`: an apply waiting for someone to approve it. `discarded`: a plan nobody applied before a newer one replaced it. `skipped`: never run, on purpose (a pull request from a fork is never planned); `statusReason` says why, and it is not a failure.",
 });
 export type TerraformRunStatus = typeof TerraformRunStatus.Type;
 
@@ -130,8 +131,26 @@ export const TerraformRun = Schema.Struct({
   stateVersionId: Schema.NullOr(Schema.String).annotate({
     description: "The state version an apply wrote.",
   }),
+  viewerCanApprove: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Whether the caller may approve this run while it is `awaiting_approval`: an admin of the repository, or someone with `ci:approve` in the organisation that owns it.",
+    }),
+  ),
 }).annotate({ identifier: "TerraformRun" });
 export type TerraformRun = typeof TerraformRun.Type;
+
+/** A run started by hand. */
+export const TerraformRunCreate = Schema.Struct({
+  operation: Schema.Literals(["plan", "apply"]),
+  ref: Schema.optionalKey(
+    Schema.String.annotate({
+      description:
+        "A branch or a full commit id. Default: the workspace's branch. An apply only runs on the workspace's branch.",
+    }),
+  ),
+}).annotate({ identifier: "TerraformRunCreate" });
+export type TerraformRunCreate = typeof TerraformRunCreate.Type;
 
 export const TerraformStateVersion = Schema.Struct({
   id: Schema.String,
@@ -193,8 +212,13 @@ export const TerraformWorkspace = Schema.Struct({
   resourceCount: Schema.Int,
   monthlyCost: Schema.NullOr(Money).annotate({
     description:
-      "What the resources it manages cost a month, from the app. Null when none are matched or the viewer may not see costs.",
+      "What the resources it manages cost a month (the app's month to date figure, per matched resource), in the organisation's currency. Null when none are matched, none has a cost yet, or the viewer may not see costs. A viewer whose view of costs is limited to some accounts gets the sum of what they may see.",
   }),
+  matchedResourceCount: Schema.optionalKey(
+    Schema.Int.annotate({
+      description: "Resources of its current state matched to an Infrawrench resource.",
+    }),
+  ),
   driftedCount: Schema.NullOr(Schema.Int).annotate({
     description: "Resources the app's IaC reconciliation finds drifted. Null when not reconciled.",
   }),

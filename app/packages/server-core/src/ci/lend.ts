@@ -109,6 +109,13 @@ export interface LendingRun {
    */
   headRef: string;
   fromFork: boolean;
+  /**
+   * A Terraform workspace's run (`terraform.ts`): the accounts its workspace
+   * links, by id, with who linked each. Linking is the grant (an admin of
+   * the repository made it), so these are lent without the per-connection
+   * opt-in, and a name two connections share means the linked one.
+   */
+  linkedAccounts?: ReadonlyMap<string, string | null> | undefined;
 }
 
 /** What one lend was, for the audit log. */
@@ -521,12 +528,15 @@ async function lendAccount(
   if (chain.has(account.id)) throw new Error(`${what} goes through itself`);
   chain.add(account.id);
   const access = account.access;
-  if (!access?.lendEnabled) throw new Error(`${what} is not lent to CI`);
-  const refused = scopeRefusal(what, run, {
-    repos: access.lendRepos,
-    branchPattern: access.lendBranchPattern,
-  });
-  if (refused) throw new Error(refused);
+  const linked = run.linkedAccounts?.has(account.id) === true;
+  if (!linked) {
+    if (!access?.lendEnabled) throw new Error(`${what} is not lent to CI`);
+    const refused = scopeRefusal(what, run, {
+      repos: access.lendRepos,
+      branchPattern: access.lendBranchPattern,
+    });
+    if (refused) throw new Error(refused);
+  }
   const resolved = await deps.accountClient(account.id, run.organizationId);
   if (!resolved) throw new Error(`${what} is no longer connected`);
   // A credential the tunnel rewriter changed points at the gateway's end of
@@ -564,7 +574,9 @@ async function lendAccount(
     kind: "connection",
     name: account.displayName,
     entityId: account.id,
-    allowedBy: access.updatedByUserId,
+    allowedBy: linked
+      ? (run.linkedAccounts?.get(account.id) ?? null)
+      : (access?.updatedByUserId ?? null),
     summary: material.summary,
   });
   return materials;
@@ -583,8 +595,12 @@ async function lendConnections(
   const peers = await peerGrants(run.organizationId, all.slice(0, MAX_ENTRIES));
   for (const [i, name] of all.entries()) {
     if (i >= MAX_ENTRIES) break;
-    const matches = found.filter((a) => a.displayName === name);
-    const peer = peers.find((g) => g.ciName === name);
+    const named = found.filter((a) => a.displayName === name);
+    // A workspace's run names its linked accounts: of two connections with
+    // one name, the linked one is meant, and a granted peer of that name is not.
+    const linkedMatches = named.filter((a) => run.linkedAccounts?.has(a.id) === true);
+    const matches = linkedMatches.length > 0 ? linkedMatches : named;
+    const peer = linkedMatches.length > 0 ? undefined : peers.find((g) => g.ciName === name);
     if (peer && matches.length > 0) {
       out[name] = reason(
         `a connection and a resource granted as one are both called \`${name}\`; rename one so a pipeline can tell them apart`,

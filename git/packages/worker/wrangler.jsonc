@@ -101,9 +101,15 @@
   // the bindings (and a later migration tag) in the change that exports
   // `TerraformStateDO` from `src/index.ts`.
   "durable_objects": {
-    "bindings": [{ "name": "REPO", "class_name": "RepoDO" }],
+    "bindings": [
+      { "name": "REPO", "class_name": "RepoDO" },
+      { "name": "TERRAFORM_STATE", "class_name": "TerraformStateDO" },
+    ],
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RepoDO"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RepoDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["TerraformStateDO"] },
+  ],
 
   // The Durable Object sends a push here once the refs have moved
   // (git/README.md "After a push"). The consumer is this Worker's own `queue`

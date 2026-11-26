@@ -1239,6 +1239,9 @@ importers:
       '@infrawrench/client-core':
         specifier: workspace:*
         version: link:../client-core
+      '@infrawrench/git-terraform':
+        specifier: workspace:*
+        version: link:../../../git/packages/terraform
       '@infrawrench/plugin-aiven':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/aiven

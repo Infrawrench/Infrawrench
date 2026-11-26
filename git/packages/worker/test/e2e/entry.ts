@@ -31,8 +31,19 @@ import type { GitDirectory } from "../../src/transport/directory";
 import { gitHttp } from "../../src/transport/http/routes";
 import { sshConnect } from "../../src/transport/ssh/host";
 import { cacheFailureLimiter, defaultCache } from "../../src/transport/ssh/rate-limit";
+import { routeOf } from "../../src/http/router";
+import type { Bucket } from "../../src/repo/do/platform";
+import { decideStateAuth, isServiceToken } from "../../src/terraform/access";
+import { stateClient } from "../../src/terraform/client";
+import {
+  type TerraformDirectory,
+  type TerraformRouteDeps,
+  terraformPlan,
+  terraformState,
+} from "../../src/terraform/route";
 
 export { RepoDO } from "../../src/repo/do/repo-do";
+export { TerraformStateDO } from "../../src/terraform/state-do";
 
 export interface Fixture {
   /** Personal access tokens: the secret, and whose it is. */
@@ -50,6 +61,14 @@ export interface Fixture {
     readonly archived?: boolean;
     readonly collaborators?: Record<string, "read" | "triage" | "write" | "admin">;
     readonly rules?: readonly ProtectedBranchRule[];
+  }>;
+  /** Terraform workspaces, with the CI run and Terraform run whose job token works for each. */
+  readonly workspaces?: ReadonlyArray<{
+    readonly id: string;
+    readonly repositoryId: string;
+    readonly name: string;
+    readonly liveCiRun?: string;
+    readonly liveRun?: string;
   }>;
 }
 
@@ -164,6 +183,81 @@ function fixtureDirectory(env: TestEnv): GitDirectory {
   };
 }
 
+/**
+ * The Terraform routes' directory from the fixture. What Postgres would
+ * record (the state's mirror, a run's plan) is kept in the bucket under
+ * `__terraform/`, where `/__test/terraform` reads it back.
+ */
+function terraformFixture(env: TestEnv): TerraformDirectory {
+  const fixture = JSON.parse(env.FIXTURE) as Fixture;
+  const git = fixtureDirectory(env);
+  const bucket = env.OBJECTS as unknown as R2Bucket;
+  const note = (kind: string, value: unknown) =>
+    bucket.put(
+      `__terraform/${kind}/${Date.now().toString().padStart(15, "0")}-${crypto.randomUUID()}`,
+      JSON.stringify(value),
+    );
+  const live = (workspaceId: string, principal: Principal) => {
+    const workspace = fixture.workspaces?.find((each) => each.id === workspaceId);
+    return principal.kind === "job" && workspace?.liveCiRun !== undefined
+      ? principal.runId === workspace.liveCiRun
+      : false;
+  };
+  return {
+    authenticate: (request) => git.authenticate(request),
+    workspace: async (owner, repo, name, principal) => {
+      const found = fixture.repositories.find(
+        (each) =>
+          each.owner.toLowerCase() === owner.toLowerCase() &&
+          each.name.toLowerCase() === repo.toLowerCase(),
+      );
+      const workspace = fixture.workspaces?.find(
+        (each) => each.repositoryId === found?.id && each.name === name,
+      );
+      if (!found || !workspace) return null;
+      const decision = decideRepoAccess(
+        principal,
+        {
+          id: found.id,
+          visibility: found.visibility,
+          archived: found.archived ?? false,
+          owner: { kind: "user", userId: found.ownerUserId },
+        },
+        {
+          orgPermissions: [],
+          collaboratorRole:
+            principal.kind === "user" ? (found.collaborators?.[principal.userId] ?? null) : null,
+        },
+      );
+      return {
+        id: workspace.id,
+        auth: decideStateAuth(principal, {
+          repositoryId: found.id,
+          access: principal.kind === "job" ? null : decision,
+          liveRun: !isServiceToken(principal) && live(workspace.id, principal),
+        }),
+      };
+    },
+    recordHead: async (workspaceId, report, principal) => {
+      await note("heads", { workspaceId, report, principal });
+    },
+    planAccess: async (workspaceId, runId, principal) => {
+      const workspace = fixture.workspaces?.find((each) => each.id === workspaceId);
+      if (principal.kind !== "job" || principal.repositoryId !== workspace?.repositoryId) {
+        return { kind: "none" };
+      }
+      if (isServiceToken(principal)) return { kind: "service" };
+      return principal.write && live(workspaceId, principal) && runId === workspace.liveRun
+        ? { kind: "job", ciRunId: principal.runId! }
+        : { kind: "none" };
+    },
+    recordPlan: async (plan) => {
+      await note("plans", plan);
+      return true;
+    },
+  };
+}
+
 const json = (value: unknown): Response =>
   new Response(JSON.stringify(value), { headers: { "Content-Type": "application/json" } });
 
@@ -249,6 +343,46 @@ export default {
         if (body) events.push((await body.json()) as GitEvent);
       }
       return json(events.sort((a, b) => a.at - b.at));
+    }
+    if (url.pathname === "/__test/terraform") {
+      // What the routes recorded, oldest first, and the state objects in the bucket.
+      const bucket = env.OBJECTS as unknown as R2Bucket;
+      const read = async (kind: string) => {
+        const listed = await bucket.list({ prefix: `__terraform/${kind}/` });
+        const keys = listed.objects.map((object) => object.key).sort();
+        return Promise.all(keys.map(async (key) => (await bucket.get(key))!.json()));
+      };
+      const objects = (await bucket.list({ prefix: "terraform/" })).objects.map(
+        (object) => object.key,
+      );
+      return json({ heads: await read("heads"), plans: await read("plans"), objects });
+    }
+    if (url.pathname === "/__test/terraform-rpc" && request.method === "POST") {
+      const { workspaceId, method, args } = (await request.json()) as {
+        workspaceId: string;
+        method: "head" | "restore" | "forceUnlock" | "destroy";
+        args: string[];
+      };
+      const client = stateClient(env, workspaceId) as unknown as Record<
+        string,
+        (...args: string[]) => Promise<unknown>
+      >;
+      try {
+        return json({ ok: true, result: await client[method]!(...args) });
+      } catch (error) {
+        return json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    const route = routeOf(url.pathname);
+    if (route.kind === "terraform-state" || route.kind === "terraform-plan") {
+      const deps: TerraformRouteDeps = {
+        directory: terraformFixture(env),
+        client: (workspaceId) => stateClient(env, workspaceId),
+        bucket: env.OBJECTS as unknown as Bucket,
+      };
+      return route.kind === "terraform-state"
+        ? terraformState(request, route, deps)
+        : terraformPlan(request, route, deps);
     }
     const git = await gitHttp(request, env, fixtureDirectory(env));
     return git ?? new Response("Not Found", { status: 404 });
