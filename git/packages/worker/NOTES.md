@@ -4,6 +4,7 @@ Notes per area. Settled decisions move up into `git/README.md` and KNOWLEDGE.md.
 
 ## Bindings and configuration (`src/env.ts`, `wrangler.jsonc`)
 
+- **A cron trigger** (`triggers.crons`, hourly) runs `scheduled` in `src/index.ts`: pruning versions (`review/prune.ts`).
 - `Env` is the one type for bindings and secrets: `HYPERDRIVE`, `OBJECTS` (R2), `REPO` and `TERRAFORM_STATE` (Durable Object namespaces), `EVENTS` (queue producer, typed `Queue<GitEvent>`), and the secrets `WORKOS_API_KEY`, `WORKOS_CLIENT_ID`, `WORKOS_COOKIE_PASSWORD`, `SSH_HOST_KEY`, `GIT_JOB_TOKEN_KEY`, `ENCRYPTION_MASTER_KEY`. Variables: `SITE_ORIGIN`, `APP_ORIGIN`, `WORKOS_API_HOSTNAME`.
 - **Both Durable Objects are bound**: `REPO` (`RepoDO`, migration `v1`) and `TERRAFORM_STATE` (`TerraformStateDO`, migration `v2`), both SQLite classes exported from `src/index.ts`. A class is created by the migration tag that first names it: a deployed tag is never edited, a new class gets a new tag. The queue consumer is on: `src/index.ts` has the `queue` handler.
 - **`ASSETS`** is the built UI (`../web/dist`), with `run_worker_first` so every request reaches the Worker and `not_found_handling: "single-page-application"` so a path with no file is the SPA's shell.
@@ -416,6 +417,40 @@ The workerd suites are opt-in because they start `wrangler dev`; nothing in them
 - **`git_repositories.size_bytes`, `pushed_at` and the counts** are the queue consumer's to set, from the event and `stats()`.
 - **SSH rate limiting is per data centre.** A connection cap per principal is not there, and a session over SSH is not counted against the signed-in budgets the HTTP routes are (`http/admission.ts`).
 - `refs/pull/<n>/head` is written by `RepoReader.setPullRef` (the pull request handlers and the consumer call it); pushes may not touch `refs/pull/*`.
+
+## Versions and review (`repo/do/versions.ts`, `events/versions.ts`, `db/review.ts`, `review/`)
+
+A branch is reviewed as a record of versions, and the branch page is its pull request shown another way. `git/README.md` ("Agent work review") has the product; this is what the Worker does.
+
+### Recording
+
+- **The Durable Object records a version in the transaction that moves the branch** (`Repository.updateRefs` calls `recordVersions`). Every push to a branch other than `HEAD`'s is one, forced or not, whichever way the ref moved (a push, a merge from the UI, `updateBranch`). SQLite holds `versions` (branch, lineage, number, tip, previous, forced, at) and `version_branches` (the lineage and number given out last, which outlive pruning so neither is reused). A push that loses its compare-and-swap moves nothing and records nothing, so a client's retry cannot count twice.
+- **Lineage.** A branch created where none was starts lineage `n + 1` at number 1. Created at the commit its last version had (a deleted branch restored) it carries on and records nothing. Created at a commit the default branch already has (start work, `git push origin main:topic`) it starts the lineage with no version: the first push with work in it is version 1 (`bringNothing`, an ancestry walk done before the transaction).
+- **Each version's commit is kept by a ref**, `refs/infrawrench/versions/<lineage>/<number>/<branch>`, in the same `refs` table as every other ref. That is what makes it readable by id after a forced push (`Repository.isReachable`, `queries/session.ts` `reachable`), which the branch page's diffs of older versions need.
+- **No client sees or writes those refs.** `Repository.backend().listRefs` leaves out `refs/infrawrench/*` (`isHiddenRef`), and the protocol lists, resolves wants and checks old values from that one listing, so `ls-remote`, a clone, a fetch by id and `want-ref` never meet them. `policy.ts` `namespaceRefusal` already refused `refs/infrawrench/` to every push. `refs/pull/*` is still advertised: CI fetches it.
+- **The full-clone fast path is untouched by a version ref.** The ref points at the branch's new tip, so recording one changes nothing about what branches and tags reach, and `changed()` is told only what the push itself did. A commit only a version ref holds exists because a forced push or a deletion left it, and that update has already cleared the "everything is reachable" answer. `Repository.pruneVersions` clears it too, in the transaction that removes the refs. Version refs are not branches or tags, so `countReachable`, `exportPack` and a fork's copy never follow them.
+- **The queue consumer copies versions to Postgres** (`events/versions.ts` `recordVersions`, called from `handleBranch` before the "branch has moved on" return). It asks the object for every version after the newest one it has (`RepoReader.listVersions`) and inserts each, unique on repository, branch, lineage and number. So a redelivery writes nothing, and a push whose event was lost is copied by the next push to the branch (without a pusher: the event that named them is gone). The merge base and the stats come from `compare` against the pull request's base, else the default branch, when the storage answers.
+- **A push claims the trace entries waiting on its branch** (`claimTraceEntries`: those written at or before the push), and a new version in a lineage clears that lineage's `prune_after` and sets it on the lineages before.
+
+### The branch page
+
+- **A draft pull request is opened at a branch's first push** (`openBranchPage`) when the repository has `autoOpenBranchPages` (the default; no row in `git_review_settings` means the defaults). Not for the default branch, a fork (its branches are proposed to the parent by a person), an archived repository, one with pull requests off, a branch with nothing ahead of the default branch, a branch that has an open pull request, or a lineage that ever had one (closing the page does not reopen it at the next push). The title is the commit's subject when one commit was pushed, else the branch's name. CI hears `opened` and Terraform plans are queued, as for one opened by hand.
+- **Versions belong to a pull request** by `pull_request_id`: set when the version is copied (the first open pull request whose head is the branch), and by `linkVersionsToPull` when a pull request is opened on a branch that already has versions. `versionsForPull` reads those, of the newest lineage; a second pull request from the same head has none of its own and reads the branch's.
+- **Start work** (`handlers/agents.ts`) creates the branch at the base's commit and a draft pull request whose body is the ask, with no commits between them (`pulls.create` refuses that; this handler does not go through it).
+- **Review comments are written on a version** (`git_review_comments.version_number`) and carried forward by the consumer (`carryThreads`, in `syncHead`): `RepoReader.mapLines` says where an anchor's lines are at the new head. Lines that stand move the thread to their new numbers (`commit_oid`, `line`); lines that changed mark it `outdated` with `answered_in_version`. `RIGHT` anchors are compared head to head, `LEFT` ones merge base to merge base (from the versions' rows). A file renamed between versions counts as changed. Safe to repeat: a thread already at the new head is skipped.
+- **Diffs** (`queries/versions.ts` `versionDiff`, on the head repository's reader, which has every version's commit and each one's base): the whole change is base to tip. An interdiff with one base is tip to tip. After a rebase the older version is first carried to the newer base by a three-way merge in memory (`mergeTrees(oldBase, newBase, oldTip)`, nothing stored), and that tree is compared with the newer tip, so what the rebase brought does not show. When that merge conflicts the tips are compared as they are and the answer says `exact: false`. The merge is redone for each page of the diff.
+- **The must-fix merge block is live** in `mergeabilityDetail` (`must_fix_findings`, never bypassable with `bypass: true`): an open must-fix finding no `git_merge_overrides` row covers, where the repository's settings hold merges on them. Nothing writes findings yet.
+- **Pruning** (`review/prune.ts`, the hourly cron trigger): `prune_after` is set thirty days out when the branch is deleted (the consumer) or its pull request merged (`pulls.merge`). The run removes the refs in the object, then the rows. A repository whose storage does not answer is left for the next run.
+
+### Not built yet
+
+`handlers/traces.ts`, `handlers/findings.ts`, `handlers/instructions.ts`, `handlers/t3.ts` and `t3/callback.ts` answer 503 `not_implemented` after their gates. Each file's header says what is already in place for it. `review/masking.ts` (`maskSecrets`) is what a trace goes through before it is stored.
+
+### Known gaps
+
+- A version's commit stays readable by id (the API, raw, archive) until it is pruned, which is the point, and also means a secret pushed to a branch and forced away is still readable by the repository's readers for as long as the branch lives and thirty days more. There is no way to drop one version by hand yet.
+- A fork's version copied late (its event was lost and a forced push has since moved the branch) has no base: the base repository can only import what the fork's branches still reach.
+- The inbox counts comments and findings with a query per row of the page.
 
 ## Terraform (`src/terraform/`, `src/events/terraform.ts`)
 

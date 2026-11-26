@@ -8,6 +8,7 @@ import type { Commit, CommitSummary, FileBlob, ResolvedRef } from "@infrawrench/
 import {
   type MergeInput,
   type ReaderBranch,
+  type ReaderVersion,
   type RepoLocator,
   type RepoReader,
   RepoReaderError,
@@ -23,6 +24,10 @@ export interface FakeRepository {
   readonly pullRefs: Map<number, string>;
   /** `path` to text, at every ref. */
   readonly files: Map<string, string>;
+  /** The versions the storage recorded: one per move of a branch that is not the default branch. */
+  readonly versions: ReaderVersion[];
+  /** Versions `pruneVersions` was asked to forget, as `branch lineage/number`. */
+  readonly pruned: string[];
   defaultBranch: string;
   destroyed: boolean;
 }
@@ -37,8 +42,22 @@ export interface FakeStorage {
   /** What `commitRange` answers for a head commit. */
   readonly ranges: Map<string, string[]>;
   readonly merges: MergeInput[];
+  /** Keys of `mapLines` anchors (review thread ids) whose lines the next version changed. */
+  readonly changedLines: Set<string>;
+  /** How far `mapLines` moves the lines that stand. */
+  lineShift: number;
   /** A new commit id, different every time. */
   nextOid(): string;
+  /**
+   * Move a branch as a push does, recording the version the storage would
+   * (`repo/do/versions.ts`): `oid` null deletes it. Answers the old commit.
+   */
+  moveBranch(
+    id: string,
+    branch: string,
+    oid: string | null,
+    options?: { readonly forced?: boolean; readonly at?: number },
+  ): string | null;
   /** The repository's state, created on first use. */
   repository(id: string): FakeRepository;
 }
@@ -50,6 +69,7 @@ export const fakeStorage = (): FakeStorage => {
   const conflicting = new Set<string>();
   const ranges = new Map<string, string[]>();
   const merges: MergeInput[] = [];
+  const changedLines = new Set<string>();
   const nextOid = () => hex(++counter);
 
   const repository = (id: string): FakeRepository => {
@@ -59,12 +79,44 @@ export const fakeStorage = (): FakeStorage => {
         branches: new Map(),
         pullRefs: new Map(),
         files: new Map(),
+        versions: [],
+        pruned: [],
         defaultBranch: "main",
         destroyed: false,
       };
       repositories.set(id, found);
     }
     return found;
+  };
+
+  /** The last lineage and number given out for each branch, which outlive pruning. */
+  const counters = new Map<string, { lineage: number; number: number; tip: string | null }>();
+  const moveBranch: FakeStorage["moveBranch"] = (id, branch, oid, options = {}) => {
+    const state = repository(id);
+    const old = state.branches.get(branch) ?? null;
+    if (oid === null) {
+      state.branches.delete(branch);
+      return old;
+    }
+    state.branches.set(branch, oid);
+    if (branch === state.defaultBranch) return old;
+    const key = `${id}\0${branch}`;
+    const last = counters.get(key);
+    // Restored where it was: the same branch carries on, and nothing was pushed.
+    if (old === null && last && last.tip === oid) return old;
+    const lineage = old === null ? (last?.lineage ?? 0) + 1 : (last?.lineage ?? 1);
+    const number = old === null ? 1 : (last?.number ?? 0) + 1;
+    counters.set(key, { lineage, number, tip: oid });
+    state.versions.push({
+      branch,
+      lineage,
+      number,
+      tipOid: oid,
+      previousOid: old,
+      forced: options.forced ?? false,
+      at: options.at ?? Date.now(),
+    });
+    return old;
   };
 
   const summary = (oid: string): CommitSummary => {
@@ -205,6 +257,7 @@ export const fakeStorage = (): FakeStorage => {
       createBranch: async ({ name, from }) => {
         const state = repo();
         if (state.branches.has(name)) throw new RepoReaderError("ref_exists");
+        // Made where another branch is: nothing of its own, so no version (`repo/do/versions.ts`).
         state.branches.set(name, resolve(from).commitOid);
         return branch(name)!;
       },
@@ -288,8 +341,65 @@ export const fakeStorage = (): FakeStorage => {
         repo().branches.set(input.baseRef, commitOid);
         return { merged: true, commitOid };
       },
+      listVersions: async ({ branch, after }) =>
+        repo().versions.filter(
+          (version) =>
+            version.branch === branch &&
+            (after === undefined ||
+              version.lineage > after.lineage ||
+              (version.lineage === after.lineage && version.number > after.number)),
+        ),
+      pruneVersions: async ({ branch, versions }) => {
+        const state = repo();
+        let dropped = 0;
+        for (const { lineage, number } of versions) {
+          const index = state.versions.findIndex(
+            (version) =>
+              version.branch === branch && version.lineage === lineage && version.number === number,
+          );
+          if (index < 0) continue;
+          state.versions.splice(index, 1);
+          state.pruned.push(`${branch} ${lineage}/${number}`);
+          dropped++;
+        }
+        return { dropped };
+      },
+      versionDiff: async ({ from, to }) => ({
+        diff: {
+          baseOid: from ? from.tipOid : to.baseOid,
+          headOid: to.tipOid,
+          stats: { filesChanged: 0, additions: 0, deletions: 0 },
+          files: [],
+          nextCursor: null,
+        },
+        rebased: from !== null && from.baseOid !== to.baseOid,
+        exact: true,
+      }),
+      mapLines: async ({ anchors }) =>
+        anchors.map((anchor) =>
+          changedLines.has(anchor.key)
+            ? { key: anchor.key, changed: true as const }
+            : {
+                key: anchor.key,
+                line: anchor.line + storage.lineShift,
+                startLine: anchor.startLine === null ? null : anchor.startLine + storage.lineShift,
+              },
+        ),
     };
   };
 
-  return { readers, repositories, commits, conflicting, ranges, merges, nextOid, repository };
+  const storage: FakeStorage = {
+    readers,
+    repositories,
+    commits,
+    conflicting,
+    ranges,
+    merges,
+    changedLines,
+    lineShift: 0,
+    nextOid,
+    moveBranch,
+    repository,
+  };
+  return storage;
 };

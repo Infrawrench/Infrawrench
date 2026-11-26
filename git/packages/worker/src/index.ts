@@ -7,7 +7,12 @@
  * API's layers and server-core's schema is not work a Worker's start-up
  * budget covers (KNOWLEDGE.md "Edge/gateway split").
  */
-import type { ExecutionContext, MessageBatch, Socket } from "@cloudflare/workers-types/index";
+import type {
+  ExecutionContext,
+  MessageBatch,
+  ScheduledController,
+  Socket,
+} from "@cloudflare/workers-types/index";
 import { type Env, type GitEvent, siteOrigin } from "./env";
 import { type Ctx, type Routes, serve } from "./http/router";
 
@@ -36,6 +41,10 @@ const routes: Routes = {
     const signIn = await import("./auth/sign-in");
     if (route.action === "sign-in") return signIn.handleSignIn(request, env);
     if (route.action === "sign-out") return signIn.handleSignOut(request, env);
+    // A T3 Code environment's OAuth redirect (`t3/callback.ts`).
+    if (route.action === "t3-callback") {
+      return (await import("./t3/callback")).handleT3Callback(request, env);
+    }
     const [{ withDb }, { provisionSignedInUser }] = await Promise.all([
       database(),
       import("./db/users"),
@@ -74,6 +83,17 @@ export default {
   async queue(batch: MessageBatch<GitEvent>, env: Env, ctx: ExecutionContext): Promise<void> {
     const { consumeGitEvents } = await import("./events/consumer");
     await consumeGitEvents(batch, env, ctx);
+  },
+
+  /** The cron trigger (`wrangler.jsonc`): versions whose thirty days are up (`review/prune.ts`). */
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const [{ withDb }, { pruneVersions }] = await Promise.all([
+      database(),
+      import("./review/prune"),
+    ]);
+    await withDb(env, ctx, async () => {
+      await pruneVersions(env);
+    });
   },
 
   /** Git over SSH: inbound TCP, through Spectrum in production (git/README.md "Transports"). */

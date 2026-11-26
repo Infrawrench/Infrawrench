@@ -1,0 +1,62 @@
+/**
+ * Pruning versions: thirty days after a branch is merged or deleted its
+ * versions go (`git_branch_versions.prune_after`), and with each the ref
+ * that kept its commit readable. Run from the Worker's cron trigger.
+ *
+ * The refs go first and the rows after, a branch at a time, so a run that
+ * stops halfway leaves rows whose refs are gone (the next run finishes
+ * them) and never a ref no row knows about. Removing a version's ref clears
+ * the repository's "everything is reachable" answer in the same transaction
+ * (`Repository.pruneVersions`), so a full clone asks again.
+ */
+import { locatorOf } from "../api/context";
+import { getRepositoryById } from "../db/repositories";
+import { type VersionRow, deleteVersions, dueVersions } from "../db/review";
+import type { Env } from "../env";
+import { describeError } from "../http/log";
+import { RepoReaderError } from "../repo/reader";
+import { type RepoReaderFactory, repoReaderFor } from "../repo/select";
+
+/** Versions one run takes. More wait for the next. */
+const BATCH = 500;
+
+export interface PruneResult {
+  readonly pruned: number;
+  /** Left for the next run: their repository's storage did not answer. */
+  readonly deferred: number;
+}
+
+export const pruneVersions = async (
+  env: Env,
+  options: { readonly now?: Date; readonly readers?: RepoReaderFactory } = {},
+): Promise<PruneResult> => {
+  const due = await dueVersions(options.now ?? new Date(), BATCH);
+  const byBranch = new Map<string, VersionRow[]>();
+  for (const row of due) {
+    const key = `${row.repositoryId}\0${row.branch}`;
+    byBranch.set(key, [...(byBranch.get(key) ?? []), row]);
+  }
+  let pruned = 0;
+  let deferred = 0;
+  for (const rows of byBranch.values()) {
+    const first = rows[0]!;
+    try {
+      const repo = await getRepositoryById(first.repositoryId);
+      // A repository's rows go with it by cascade; one found here still has its storage.
+      if (repo) {
+        await (options.readers ?? repoReaderFor)(env, locatorOf(repo)).pruneVersions({
+          branch: first.branch,
+          versions: rows.map((row) => ({ lineage: row.lineage, number: row.number })),
+        });
+      }
+      await deleteVersions(rows.map((row) => row.id));
+      pruned += rows.length;
+    } catch (error) {
+      if (!(error instanceof RepoReaderError)) {
+        console.error(`[git] pruning versions failed: ${describeError(error)}`);
+      }
+      deferred += rows.length;
+    }
+  }
+  return { pruned, deferred };
+};

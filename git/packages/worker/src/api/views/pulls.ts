@@ -41,6 +41,7 @@ import {
   standingReviewsFor,
 } from "../../db/pulls";
 import { visibleRepositoriesById } from "../../db/repository-lists";
+import { findingsCount, getReviewSettings, latestVersionNumbers } from "../../db/review";
 import { RepoReaderError } from "../../repo/reader";
 import type { RepoCx } from "../context";
 import { bypasses, mayPush } from "../protection";
@@ -78,7 +79,7 @@ export const pullSummaries = async (
 ): Promise<PullRequestSummary[]> => {
   const { repository } = cx.repo;
   const viewer = await cx.viewer();
-  const [{ fields }, states, standing, rules, heads] = await Promise.all([
+  const [{ fields }, states, standing, rules, heads, versions] = await Promise.all([
     threadFieldsFor(rows.map((row) => row.thread)),
     combinedStatesFor(repository.id, [...new Set(rows.map((row) => row.pull.headOid))]),
     standingReviewsFor(rows.map((row) => row.pull.issueId)),
@@ -91,6 +92,7 @@ export const pullSummaries = async (
       ),
       viewer,
     ),
+    latestVersionNumbers(rows.map((row) => row.pull.issueId)),
   ]);
   return rows.map(({ thread, pull }) => {
     const head =
@@ -114,6 +116,7 @@ export const pullSummaries = async (
         protectionFor(rules, pull.baseRef)?.requiredApprovals ?? 0,
       ),
       mergedAt: isoOrNull(pull.mergedAt),
+      latestVersion: versions.get(pull.issueId) ?? null,
     };
   });
 };
@@ -142,6 +145,7 @@ const BLOCKER_MESSAGES: Record<Blocker["code"], string> = {
   push_restricted: "Only listed people may merge into this branch",
   archived: "This repository is archived",
   no_permission: "Merging needs write access",
+  must_fix_findings: "Review agents found problems that must be fixed",
 };
 
 export const allowedMethodsOf = (repository: RepoCx["repo"]["repository"]): MergeMethod[] =>
@@ -170,11 +174,13 @@ export const mergeabilityDetail = async (
   { thread, pull }: PullRequestWithThread,
 ): Promise<MergeabilityDetail> => {
   const { repository } = cx.repo;
-  const [rules, statusRows, standing, head] = await Promise.all([
+  const [rules, statusRows, standing, head, findings, reviewSettings] = await Promise.all([
     listProtectedBranches(repository.id),
     statusesForCommit(repository.id, pull.headOid),
     standingReviews(pull.issueId),
     headRepositoryOf(cx, pull.headRepositoryId),
+    findingsCount(pull.issueId),
+    getReviewSettings(repository.id),
   ]);
   const protection = protectionFor(rules, pull.baseRef);
   const open = thread.state === "open";
@@ -233,6 +239,10 @@ export const mergeabilityDetail = async (
     if (approvals < requiredApprovals) codes.push("approvals_required");
     if (requiredApprovals > 0 && changesRequested > 0) codes.push("changes_requested");
     if (!mayPush(protection, cx.access, cx.userId)) codes.push("push_restricted");
+    // Held until the findings are fixed or dismissed, or an administrator overrides them.
+    if (reviewSettings.mustFixBlocksMerge && findings.mustFixOpen > 0) {
+      codes.push("must_fix_findings");
+    }
   }
 
   const allowedMethods = allowedMethodsOf(repository);
@@ -270,6 +280,11 @@ export const mergeabilityDetail = async (
         state !== "conflicting" &&
         head !== null &&
         accessAtLeast(head.access, "write"),
+      findings: {
+        mustFixOpen: findings.mustFixOpen,
+        blocks: reviewSettings.mustFixBlocksMerge,
+        canOverride: accessAtLeast(cx.access, "admin"),
+      },
     },
   };
 };
@@ -375,6 +390,7 @@ const reviewCommentView = (
     author: person(row.authorUserId),
     body: row.body,
     pending: row.pending,
+    version: row.versionNumber,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
     edited: row.editedAt !== null,
@@ -421,6 +437,8 @@ export const reviewThreadViews = async (
       originalLine: root.originalLine,
       originalStartLine: root.originalStartLine,
       outdated: root.outdated,
+      version: root.versionNumber,
+      answeredInVersion: root.answeredInVersion,
       hunk: hunkOf(root.diffHunk),
       resolved: root.resolvedAt !== null,
       resolvedBy: person(root.resolvedByUserId),

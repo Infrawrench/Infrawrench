@@ -31,6 +31,10 @@ The rate limits are counted per Cloudflare location and are approximate; their l
 
 Two settings there are about what the site exposes, and a test holds both: `preview_urls` is off beside `workers_dev`, so no `*.workers.dev` URL is a second origin, and `observability.redact_query_string` keeps query strings out of Workers Logs, since the archive route takes a job token in its query.
 
+## Cron trigger
+
+`triggers.crons` runs the Worker's `scheduled` handler every hour (`17 * * * *`): versions of branches merged or deleted thirty days ago are pruned (`src/review/prune.ts`). Wrangler deploys the trigger with the Worker; nothing in `infra/git/setup.mjs` makes it.
+
 ## Variables (`vars` in `wrangler.jsonc`)
 
 | Variable              | Value in production           | What it is                                                                                                                                                         | Without it                                             |

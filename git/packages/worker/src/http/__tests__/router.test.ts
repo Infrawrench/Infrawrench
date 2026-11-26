@@ -18,6 +18,7 @@ describe("routeOf", () => {
     expect(routeOf("/auth/sign-in")).toEqual({ kind: "auth", action: "sign-in" });
     expect(routeOf("/auth/callback")).toEqual({ kind: "auth", action: "callback" });
     expect(routeOf("/auth/sign-out")).toEqual({ kind: "auth", action: "sign-out" });
+    expect(routeOf("/auth/t3/callback")).toEqual({ kind: "auth", action: "t3-callback" });
     expect(routeOf("/auth/anything-else")).toEqual({ kind: "not-found" });
     expect(routeOf("/acme/infra.git/info/refs")).toEqual({
       kind: "smart-http",

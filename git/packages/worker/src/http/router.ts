@@ -7,6 +7,7 @@
  * | -------------------------------------------- | ----------------- |
  * | `/api`, `/api/...`                           | `api`             |
  * | `/auth/sign-in`, `/callback`, `/sign-out`    | `auth`            |
+ * | `/auth/t3/callback`                          | `auth`            |
  * | `/:owner/:repo.git/...`                      | `smart-http`      |
  * | `/:owner/:repo/raw/...`                      | `raw`             |
  * | `/:owner/:repo/archive/...`                  | `archive`         |
@@ -35,7 +36,10 @@ export interface RepoPath {
 
 export type Route =
   | { readonly kind: "api" }
-  | { readonly kind: "auth"; readonly action: "sign-in" | "callback" | "sign-out" }
+  | {
+      readonly kind: "auth";
+      readonly action: "sign-in" | "callback" | "sign-out" | "t3-callback";
+    }
   | ({ readonly kind: "smart-http" } & RepoPath)
   | ({ readonly kind: "raw" } & RepoPath)
   | ({ readonly kind: "archive" } & RepoPath)
@@ -68,6 +72,7 @@ export const routeOf = (pathname: string): Route => {
     if (pathname === AUTH_PATHS.signIn) return { kind: "auth", action: "sign-in" };
     if (pathname === AUTH_PATHS.callback) return { kind: "auth", action: "callback" };
     if (pathname === AUTH_PATHS.signOut) return { kind: "auth", action: "sign-out" };
+    if (pathname === AUTH_PATHS.t3Callback) return { kind: "auth", action: "t3-callback" };
     return { kind: "not-found" };
   }
   if (first === undefined || second === undefined) return { kind: "assets" };

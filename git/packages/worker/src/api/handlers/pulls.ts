@@ -56,6 +56,7 @@ import {
   updatePullRequest,
 } from "../../db/pulls";
 import type { RepositoryWithOwner } from "../../db/repositories";
+import { latestVersionNumbers, linkVersionsToPull, markBranchForPruning } from "../../db/review";
 import { addTimelineEvent, countThreads, listThreads } from "../../db/threads";
 import { getUser, userByUsername } from "../../db/users";
 import { announcePullRequest } from "../../events/ci";
@@ -170,7 +171,12 @@ const BLOCKER_CODES: Record<Mergeability["blockers"][number]["code"], ErrorCode>
   push_restricted: "protected_branch",
   archived: "repository_archived",
   no_permission: "not_mergeable",
+  must_fix_findings: "must_fix_findings",
 };
+
+/** The version of its head branch a pull request is at, for what is written on it now. */
+const currentVersion = async (found: PullRequestWithThread): Promise<number | null> =>
+  (await latestVersionNumbers([found.pull.issueId])).get(found.pull.issueId) ?? null;
 
 const REVIEW_STATES = {
   comment: "commented",
@@ -353,6 +359,8 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
             conflictFiles: [],
           });
         }
+        // The pushes the branch has had so far are this pull request's versions.
+        await linkVersionsToPull(head.repository.id, payload.head, created.pull.issueId);
         // CI fetches the head through this ref, a fork's included.
         await cx.git.setPullRef({
           number: created.thread.number,
@@ -598,6 +606,10 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
               ref: pull.baseRef,
             },
           });
+          // Merged: the branch's versions are kept thirty days from now.
+          if (pull.headRepositoryId !== null) {
+            await markBranchForPruning(pull.headRepositoryId, pull.headRef, new Date());
+          }
         }
 
         let branchDeleted = false;
@@ -735,6 +747,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
         const hunks: string[] = [];
         for (const draft of drafts) hunks.push(await anchorHunk(cx, found, draft));
         const commitOid = payload.commitOid ?? pull.headOid;
+        const versionNumber = await currentVersion(found);
         // Adding to a pending review reuses it: a person has one at a time.
         const pending = payload.event ? null : await getPendingReview(pull.issueId, userId);
         const review = await db.transaction(async (tx) => {
@@ -762,6 +775,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
               startSide: draft.startSide ?? null,
               commitOid,
               diffHunk: hunks[index] ?? null,
+              versionNumber,
             });
           }
           return row;
@@ -874,6 +888,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
         }
 
         const commitOid = payload.commitOid ?? pull.headOid;
+        const versionNumber = await currentVersion(found);
         const pending =
           payload.pending === true ? await getPendingReview(pull.issueId, userId) : null;
         const created = await db.transaction(async (tx) => {
@@ -902,6 +917,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
             startSide: anchor.startSide ?? null,
             commitOid,
             diffHunk: anchor.hunk,
+            versionNumber,
           });
         });
         const threads = await threadsOf(cx, found);

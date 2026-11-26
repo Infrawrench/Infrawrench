@@ -479,6 +479,8 @@ export interface NewReviewComment {
   readonly startSide?: GitDiffSide | null;
   readonly commitOid: string;
   readonly diffHunk?: string | null;
+  /** The branch version it is written on, when versions are recorded for the pull request. */
+  readonly versionNumber?: number | null;
 }
 
 export const addReviewComment = async (
@@ -505,6 +507,7 @@ export const addReviewComment = async (
       originalLine: comment.line,
       originalStartLine: comment.startLine ?? null,
       diffHunk: comment.diffHunk ?? null,
+      versionNumber: comment.versionNumber ?? null,
     })
     .returning();
   return row!;
@@ -598,13 +601,14 @@ export const setThreadResolved = async (
 
 /**
  * Move a thread's anchor after a push: to its new line when the lines it was
- * written on survive, or `outdated` when they do not. The mapping is computed
- * by the caller from the two heads' diff.
+ * written on survive, or `outdated` when they do not, with the version whose
+ * push changed them. The mapping is computed by the caller from the two
+ * heads' diff (`events/versions.ts` `carryThreads`).
  */
 export const reanchorThread = async (
   threadId: string,
   anchor:
-    | { readonly outdated: true }
+    | { readonly outdated: true; readonly version: number | null }
     | {
         readonly outdated: false;
         readonly commitOid: string;
@@ -616,7 +620,7 @@ export const reanchorThread = async (
     .update(gitReviewComments)
     .set(
       anchor.outdated
-        ? { outdated: true, line: null, startLine: null }
+        ? { outdated: true, line: null, startLine: null, answeredInVersion: anchor.version }
         : {
             outdated: false,
             commitOid: anchor.commitOid,

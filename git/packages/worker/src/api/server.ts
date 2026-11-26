@@ -23,8 +23,11 @@ import type { Env } from "../env";
 import { type RepoReaderFactory, repoReaderFor } from "../repo/select";
 import { type Invocation, InvocationRef } from "./context";
 import { json } from "./errors";
+import { AgentsHandlers, ReviewSettingsHandlers } from "./handlers/agents";
 import { CiHandlers, StatusesHandlers, TerraformHandlers } from "./handlers/automation";
 import { ContentsHandlers } from "./handlers/contents";
+import { FindingsHandlers } from "./handlers/findings";
+import { InstructionsHandlers } from "./handlers/instructions";
 import { IssuesHandlers, LabelsHandlers, MilestonesHandlers } from "./handlers/issues";
 import { PullsHandlers } from "./handlers/pulls";
 import { RepositoriesHandlers, RepositoryListsHandlers } from "./handlers/repositories";
@@ -35,6 +38,9 @@ import {
   DeployKeysHandlers,
   ProtectedBranchesHandlers,
 } from "./handlers/settings";
+import { T3Handlers } from "./handlers/t3";
+import { TracesHandlers } from "./handlers/traces";
+import { ReviewHandlers, VersionsHandlers } from "./handlers/versions";
 import { MiddlewareLive } from "./middleware";
 
 /** Every group's handlers. A group added to `GitApi` without one here does not typecheck. */
@@ -46,6 +52,14 @@ export const HandlersLive = Layer.mergeAll(
   ContentsHandlers,
   IssuesHandlers,
   PullsHandlers,
+  VersionsHandlers,
+  TracesHandlers,
+  FindingsHandlers,
+  InstructionsHandlers,
+  AgentsHandlers,
+  ReviewSettingsHandlers,
+  ReviewHandlers,
+  T3Handlers,
   LabelsHandlers,
   MilestonesHandlers,
   CollaboratorsHandlers,

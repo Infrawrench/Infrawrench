@@ -4,7 +4,8 @@
  *
  * For each push: the repository row (`pushed_at`, size, counts); the pull
  * requests whose head or base moved (new head, timeline entry, mergeability
- * back to unknown, stale approvals dismissed); the issues a commit on the
+ * back to unknown, stale approvals dismissed); the branch's version and its
+ * page (`events/versions.ts`); the issues a commit on the
  * default branch closes (`Fixes #12`) or mentions; Infrawrench CI
  * (NOTES-ci.md section 1); and the Terraform runs the push asks for.
  *
@@ -39,6 +40,7 @@ import { type RepoReader, RepoReaderError } from "../repo/reader";
 import { type RepoReaderFactory, repoReaderFor } from "../repo/select";
 import { announcePullRequest, announcePush } from "./ci";
 import { queueMergeApplies, queuePullRequestPlans } from "./terraform";
+import { branchDeleted, carryThreads, openBranchPage, recordVersions } from "./versions";
 import { describeError } from "../http/log";
 
 const BRANCH = "refs/heads/";
@@ -150,6 +152,9 @@ const syncHead = async (
     if (protection?.dismissStaleApprovals) await dismissStaleApprovals(pull.issueId, update.newOid);
   }
 
+  // Review threads follow their lines to the new version, or are answered by it.
+  await carryThreads(cx, found, update.newOid);
+
   // CI fetches the head through `refs/pull/<n>/head` of the base repository.
   await tryRead(() =>
     baseReader.setPullRef({
@@ -249,8 +254,12 @@ const handleBranch = async (cx: PushContext, update: Update, branch: string): Pr
         at: new Date(cx.event.at),
       });
     }
+    await branchDeleted(cx, branch);
     return;
   }
+
+  // Every push is a version, the ones a later push has already overtaken included.
+  const copied = await recordVersions(cx, update, branch, heads);
 
   // A delivery that arrives after the branch has moved on describes the past:
   // the event for where it is now does the work.
@@ -265,6 +274,8 @@ const handleBranch = async (cx: PushContext, update: Update, branch: string): Pr
     }),
   );
 
+  // A branch with no page gets one: a draft pull request, opened at its head.
+  if (heads.length === 0) await openBranchPage(cx, update, branch, copied, commits);
   for (const found of heads) await syncHead(cx, found, update, commits);
   for (const { pull } of pulls) {
     if (pull.repositoryId !== repository.id || pull.baseRef !== branch) continue;
