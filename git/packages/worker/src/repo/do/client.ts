@@ -7,6 +7,7 @@ import type { GitObject, ObjectId, ObjectType, Ref, RefUpdate } from "@infrawren
 import type { RefUpdateResult } from "@infrawrench/git-protocol";
 import type { Env } from "../../env";
 import { ARCHIVE_URL, type ArchiveCall, CALL_HEADER, type GitCall, SERVE_URL } from "./call";
+import type { ReaderReply } from "../queries";
 import type { PathEntry, RepoDO } from "./repo-do";
 import type { InitOptions, RepoStats, UpdateRefsOptions } from "./repository";
 
@@ -33,6 +34,16 @@ export interface RepoClient {
   writeObjects(
     objects: ReadonlyArray<{ readonly type: ObjectType; readonly data: Uint8Array }>,
   ): Promise<ObjectId[]>;
+  /**
+   * One `RepoReader` method, run in the object beside the data. `locator` is
+   * the owner and name, for URLs. Go through `durableRepoReader`
+   * (`../reader-do.ts`), which gives the interface back.
+   */
+  reader(
+    locator: { readonly owner: string; readonly name: string },
+    method: string,
+    args: readonly unknown[],
+  ): Promise<ReaderReply>;
   /**
    * Runs a git conversation: `input` is what the client sends, the response
    * body what the server answers. Both stream, and for SSH both are open at
@@ -77,6 +88,7 @@ export function repoClient(env: Pick<Env, "REPO">, repoId: string): RepoClient {
     resolvePrefix: (prefix) => rpc.resolvePrefix(repoId, prefix),
     readPath: (commit, path) => rpc.readPath(repoId, commit, path),
     writeObjects: (objects) => rpc.writeObjects(repoId, objects),
+    reader: (locator, method, args) => rpc.reader(repoId, locator, method, args),
     serve: (call, input, signal) =>
       send(SERVE_URL, { ...call, repoId } satisfies GitCall, {
         ...(input ? { body: input, duplex: "half" } : {}),

@@ -165,23 +165,30 @@ export const RepositoryListsHandlers = HttpApiBuilder.group(GitApi, "repositoryL
         });
         if (!row) throw conflict("A repository with that name exists there", "name_taken");
         try {
-          const { headOid } = await cx
-            .reader({ id: row.id, owner: namespace.slug, name: row.name })
-            .init({
-              defaultBranch,
-              initialize: payload.initialize
-                ? {
-                    readme: payload.initialize.readme,
-                    gitignore: payload.initialize.gitignore,
-                    license: payload.initialize.license,
-                    author: await identityOf(cx),
-                    title: row.name,
-                    description: row.description,
-                  }
-                : undefined,
-            });
+          const storage = cx.reader({ id: row.id, owner: namespace.slug, name: row.name });
+          const { headOid } = await storage.init({
+            defaultBranch,
+            initialize: payload.initialize
+              ? {
+                  readme: payload.initialize.readme,
+                  gitignore: payload.initialize.gitignore,
+                  license: payload.initialize.license,
+                  author: await identityOf(cx),
+                  title: row.name,
+                  description: row.description,
+                }
+              : undefined,
+          });
           if (headOid !== null) {
-            await recordPush(row.id, { at: new Date(), isEmpty: false, branchesCount: 1 });
+            // The first commit is made by the storage and sends no push event: its sizes are read here.
+            const stats = await storage.stats();
+            await recordPush(row.id, {
+              at: new Date(),
+              sizeBytes: stats.sizeBytes,
+              branchesCount: stats.branchCount,
+              tagsCount: stats.tagCount,
+              isEmpty: stats.isEmpty,
+            });
           }
         } catch (error) {
           // A record without storage is a repository nobody can push to.

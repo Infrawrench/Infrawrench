@@ -39,10 +39,12 @@ import {
 import type { Env } from "../../env";
 import { tarArchive } from "./archive";
 import { ARCHIVE_URL, type ArchiveCall, CALL_HEADER, type GitCall, SERVE_URL } from "./call";
+import { type ReaderReply, ReaderState, callReader, localRepoReader } from "../queries";
 import type { Bucket, RepoStorage } from "./platform";
 import {
   type ForkManifest,
   type InitOptions,
+  type PeerRepository,
   type RepoStats,
   Repository,
   type UpdateRefsOptions,
@@ -59,8 +61,21 @@ export interface PathEntry {
   readonly object: GitObject;
 }
 
+/** The methods one repository's object calls on another's. */
+interface PeerStub {
+  listRefs(repoId: string): Promise<{ refs: Ref[]; head: string }>;
+  forkManifest(repoId: string): Promise<ForkManifest>;
+  exportPack(
+    repoId: string,
+    wants: readonly ObjectId[],
+    haves: readonly ObjectId[],
+  ): Promise<ReadableStream<Uint8Array> | null>;
+}
+
 export class RepoDO extends DurableObject<Env> {
   private readonly repository: Repository;
+  /** What the reader keeps while this object is awake (`queries/state.ts`). */
+  private readonly readerState = new ReaderState();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -68,7 +83,18 @@ export class RepoDO extends DurableObject<Env> {
       bucket: env.OBJECTS as unknown as Bucket,
       storage: ctx.storage as unknown as RepoStorage,
       events: env.EVENTS,
+      peer: (repoId) => this.peer(repoId),
     });
+  }
+
+  /** Another repository's object, with its id bound the way `repoClient` binds it. */
+  private peer(repoId: string): PeerRepository {
+    const stub = this.env.REPO.get(this.env.REPO.idFromName(repoId)) as unknown as PeerStub;
+    return {
+      listRefs: () => stub.listRefs(repoId),
+      forkManifest: () => stub.forkManifest(repoId),
+      exportPack: (wants, haves) => stub.exportPack(repoId, wants, haves),
+    };
   }
 
   private at(repoId: string): Repository {
@@ -88,16 +114,14 @@ export class RepoDO extends DurableObject<Env> {
 
   /** Deletes every file and every row. The object is empty afterwards and can be reused. */
   async destroy(repoId: string): Promise<{ deletedFiles: number }> {
+    this.readerState.clear();
     return this.at(repoId).destroy();
   }
 
   /** Makes this (empty) repository a copy of `sourceRepoId`: its packs, branches and tags. */
   async forkFrom(repoId: string, sourceRepoId: string): Promise<RepoStats> {
     const repository = this.at(repoId);
-    const source = this.env.REPO.get(this.env.REPO.idFromName(sourceRepoId)) as unknown as {
-      forkManifest(repoId: string): Promise<ForkManifest>;
-    };
-    await repository.importFork(await source.forkManifest(sourceRepoId));
+    await repository.importFork(await this.peer(sourceRepoId).forkManifest());
     return repository.stats();
   }
 
@@ -233,6 +257,38 @@ export class RepoDO extends DurableObject<Env> {
     objects: ReadonlyArray<{ readonly type: ObjectType; readonly data: Uint8Array }>,
   ): Promise<ObjectId[]> {
     return this.at(repoId).writeObjects(objects);
+  }
+
+  /**
+   * A pack of what `wants` reach and `haves` do not, for another
+   * repository's object to take in (a fork's pull request head). Null when a
+   * want is not a commit here.
+   */
+  async exportPack(
+    repoId: string,
+    wants: readonly ObjectId[],
+    haves: readonly ObjectId[],
+  ): Promise<ReadableStream<Uint8Array> | null> {
+    return this.at(repoId).exportPack(wants, haves);
+  }
+
+  // RPC: the JSON API's reader
+
+  /**
+   * One `RepoReader` method, run here beside the data (`queries/`). A
+   * refusal comes back as a value, because an error crossing this boundary
+   * keeps only its message. `locator` is the repository's owner and name,
+   * which only ever go into URLs.
+   */
+  async reader(
+    repoId: string,
+    locator: { readonly owner: string; readonly name: string },
+    method: string,
+    args: readonly unknown[],
+  ): Promise<ReaderReply> {
+    const repository = this.at(repoId);
+    const reader = localRepoReader(repository, this.readerState, { id: repoId, ...locator });
+    return callReader(reader, method, args);
   }
 
   // The internal fetch: a git conversation, or an archive

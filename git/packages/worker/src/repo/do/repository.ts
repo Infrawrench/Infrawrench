@@ -34,6 +34,8 @@ import {
   type RefUpdateResult,
   type RepositoryBackend,
   isAncestor,
+  selectCommits,
+  selectObjects,
 } from "@infrawrench/git-protocol";
 import type { GitEvent, GitEventActor } from "../../env";
 import { type Ingested, ingestPack } from "./ingest";
@@ -63,6 +65,8 @@ export interface RepositoryLimits {
   readonly repackMaxPackBytes: number;
   /** A repack writes at most this much. */
   readonly repackMaxTotalBytes: number;
+  /** Most bytes copied in from another repository for one pull request head or comparison. */
+  readonly maxImportBytes: number;
 }
 
 export const DEFAULT_LIMITS: RepositoryLimits = {
@@ -73,7 +77,32 @@ export const DEFAULT_LIMITS: RepositoryLimits = {
   repackAbovePacks: 12,
   repackMaxPackBytes: 256 * 1024 * 1024,
   repackMaxTotalBytes: 1024 * 1024 * 1024,
+  maxImportBytes: 512 * 1024 * 1024,
 };
+
+/** Another repository, as far as this one ever needs it: its refs, and objects out of it. */
+export interface PeerRepository {
+  listRefs(): Promise<{ refs: Ref[]; head: string }>;
+  /** What a fork of it copies. */
+  forkManifest(): Promise<ForkManifest>;
+  /**
+   * A pack of everything `wants` (commits) reach that `haves` do not,
+   * standing on its own. Null when a want is not there.
+   */
+  exportPack(
+    wants: readonly ObjectId[],
+    haves: readonly ObjectId[],
+  ): Promise<ReadableStream<Uint8Array> | null>;
+}
+
+/** An object reader that can also say a size without a read (`@infrawrench/git-ops` `SizedReader`). */
+export interface RepositoryObjects extends ObjectReader {
+  hasSync(oid: ObjectId): boolean;
+  size(oid: ObjectId): Promise<number | null>;
+}
+
+/** Most ref tips offered as "already have" when objects are copied from another repository. */
+const MAX_IMPORT_HAVES = 2000;
 
 export interface RepositoryDeps {
   readonly bucket: Bucket;
@@ -82,6 +111,12 @@ export interface RepositoryDeps {
   readonly events: EventSink<GitEvent> | null;
   readonly limits?: Partial<RepositoryLimits>;
   readonly now?: () => number;
+  /**
+   * How to reach another repository (a fork, or a fork's parent). In the
+   * Durable Object that is another object's stub; in tests, another
+   * `Repository`. Without it nothing can be copied across.
+   */
+  readonly peer?: (repoId: string) => PeerRepository;
 }
 
 export interface InitOptions {
@@ -90,6 +125,17 @@ export interface InitOptions {
   /** "Initialise with a README": the first commit, made here. */
   readonly readme?: {
     readonly content: string;
+    readonly authorName: string;
+    readonly authorEmail: string;
+    readonly message?: string;
+  };
+  /**
+   * The first commit as any set of files at the root (a README, a
+   * `.gitignore`, a `LICENSE`). Takes the place of `readme` when both are
+   * given.
+   */
+  readonly initial?: {
+    readonly files: ReadonlyArray<{ readonly name: string; readonly content: string }>;
     readonly authorName: string;
     readonly authorEmail: string;
     readonly message?: string;
@@ -207,6 +253,33 @@ export class Repository {
     setMeta(this.sql, "head", ref);
   }
 
+  /** Another repository, as this one was given the means to reach it. */
+  peer(repoId: string): PeerRepository {
+    if (!this.deps.peer) throw new Error("this repository cannot reach another one");
+    return this.deps.peer(repoId);
+  }
+
+  /** The id this storage is bound to, or null before `open`. */
+  get repoId(): string | null {
+    return this.store?.repoId ?? null;
+  }
+
+  /** `ctx.storage.sql`, for the reader's own small tables (`schema.ts`). */
+  get database(): Sql {
+    return this.sql;
+  }
+
+  /**
+   * Whether this is a repository somebody made: `init` or a fork has run,
+   * or something has been pushed. An object that was only ever asked about
+   * (a row whose storage was never created, or was destroyed) is not.
+   */
+  isReady(): boolean {
+    if (getMeta(this.sql, "ready") !== null) return true;
+    const [row] = this.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM refs").toArray();
+    return (row?.n ?? 0) > 0;
+  }
+
   // Objects
 
   async readObject(oid: ObjectId): Promise<GitObject | null> {
@@ -228,18 +301,32 @@ export class Repository {
     return [...found].slice(0, limit);
   }
 
-  private reader(packs: readonly PackHandle[]): ObjectReader & { hasSync(oid: string): boolean } {
+  private reader(packs: readonly PackHandle[]): RepositoryObjects {
     const store = this.packs;
     return {
       read: (oid) => store.read(packs, oid),
       has: async (oid) => store.has(packs, oid),
       hasSync: (oid) => store.has(packs, oid),
+      size: (oid) => store.size(packs, oid),
     };
+  }
+
+  /**
+   * The repository's objects as they are now: one list of packs for as long
+   * as the reader is used, so a repack that finishes meanwhile changes
+   * nothing under an operation. Take a new one after writing objects.
+   */
+  async objects(): Promise<RepositoryObjects> {
+    return this.reader(await this.packs.live());
   }
 
   // Receiving
 
-  async ingest(pack: ReadableStream<Uint8Array>, trusted = false): Promise<StagedPack> {
+  async ingest(
+    pack: ReadableStream<Uint8Array>,
+    trusted = false,
+    maxPackBytes = this.limits.maxPackBytes,
+  ): Promise<StagedPack> {
     const store = this.packs;
     const live = await store.live();
     // Before the first byte: if this object dies mid-push, the alarm is what
@@ -249,7 +336,7 @@ export class Repository {
     }
     const ingested = await ingestPack(store, pack, {
       existing: this.reader(live),
-      maxPackBytes: this.limits.maxPackBytes,
+      maxPackBytes,
       maxObjects: this.limits.maxObjectsPerPack,
       trusted,
     });
@@ -514,21 +601,96 @@ export class Repository {
     const built = await buildPack(
       fresh.map((object) => ({ type: object.type, data: object.data })),
     );
-    const staged = await this.ingest(
-      new ReadableStream<Uint8Array>({
-        start(controller) {
-          controller.enqueue(built.pack);
-          controller.close();
-        },
-      }),
+    await this.adopt(
+      await this.ingest(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(built.pack);
+            controller.close();
+          },
+        }),
+      ),
     );
-    const handle = staged.ingested.handle;
-    if (handle) {
-      this.deps.storage.transactionSync(() => this.publish(handle.id));
-      this.packs.invalidate();
-      await this.scheduleMaintenance();
-    }
     return oids;
+  }
+
+  /** Makes a received pack part of the repository with no ref pointing into it yet. */
+  private async adopt(staged: StagedPack): Promise<void> {
+    const handle = staged.ingested.handle;
+    if (!handle) return;
+    this.deps.storage.transactionSync(() => this.publish(handle.id));
+    this.packs.invalidate();
+    await this.scheduleMaintenance();
+  }
+
+  // Objects across repositories
+
+  /**
+   * A pack of what `wants` reach and `haves` do not, for another repository
+   * to take in: the commits of a fork's pull request, as the base repository
+   * needs them. It stands on its own (no delta leans on an object left
+   * out), because the receiver's copy of a base may be packed differently.
+   * Null when a want is not a commit this repository has.
+   */
+  async exportPack(
+    wants: readonly ObjectId[],
+    haves: readonly ObjectId[],
+  ): Promise<ReadableStream<Uint8Array> | null> {
+    const store = this.packs;
+    const packs = await store.live();
+    const graph = new CommitGraph(this.reader(packs));
+    for (const want of wants) {
+      if (!isObjectId(want) || (await graph.get(want)) === null) return null;
+    }
+    const known = haves.filter((oid) => isObjectId(oid) && store.has(packs, oid));
+    const none = new Set<ObjectId>();
+    const commits = await selectCommits(graph, wants, known, none, none);
+    const { objects } = await selectObjects(graph, {
+      commits: commits.commits,
+      edges: commits.edges,
+      tags: [],
+      trees: [],
+      blobs: [],
+    });
+    return streamPack(store, packs, selectByOid(store, packs, objects), {
+      thinBases: null,
+      ofsDelta: true,
+    });
+  }
+
+  /**
+   * Copies in, from another repository, whatever `wants` (commits) need
+   * that is not here yet. This is how a fork's pull request becomes
+   * something the base repository can diff, merge and hand to CI: once its
+   * head is here, every operation reads one repository. The objects are
+   * unreachable until a ref (`refs/pull/<n>/head`) points at them. Answers
+   * false when the source does not have a want.
+   */
+  async importFrom(sourceRepoId: string, wants: readonly ObjectId[]): Promise<boolean> {
+    const store = this.packs;
+    if (sourceRepoId === store.repoId) return this.hasAll(wants);
+    const live = await store.live();
+    const missing = wants.filter((oid) => !store.has(live, oid));
+    if (missing.length === 0) return true;
+    if (!missing.every(isObjectId)) return false;
+    const peer = this.peer(sourceRepoId);
+    // Tips, newest packs' worth first: enough for the source to leave out shared history.
+    const haves = this.sql
+      .exec<{ oid: string }>(
+        "SELECT DISTINCT COALESCE(peeled, oid) AS oid FROM refs WHERE name LIKE 'refs/heads/%' OR name LIKE 'refs/pull/%' LIMIT ?",
+        MAX_IMPORT_HAVES,
+      )
+      .toArray()
+      .map((row) => row.oid);
+    const pack = await peer.exportPack(missing, haves);
+    if (!pack) return false;
+    await this.adopt(await this.ingest(pack, false, this.limits.maxImportBytes));
+    return this.hasAll(wants);
+  }
+
+  private async hasAll(oids: readonly ObjectId[]): Promise<boolean> {
+    const live = await this.packs.live();
+    return oids.every((oid) => this.packs.has(live, oid));
   }
 
   /** Sets up a new repository: HEAD, and a first commit when asked for one. */
@@ -536,11 +698,26 @@ export class Repository {
     const branch = options.defaultBranch ?? "main";
     const ref = `refs/heads/${branch}`;
     this.setHead(ref);
-    if (!options.readme || this.listRefs().length > 0) return { head: ref, commit: null };
-    const { content, authorName, authorEmail } = options.readme;
-    const blob = new TextEncoder().encode(content);
-    const blobOid = hashObjectSync("blob", blob);
-    const tree = buildTree([{ mode: "100644", name: "README.md", oid: blobOid }]);
+    setMeta(this.sql, "ready", "1");
+    const first =
+      options.initial ??
+      (options.readme
+        ? {
+            ...options.readme,
+            files: [{ name: "README.md", content: options.readme.content }],
+          }
+        : null);
+    if (!first || first.files.length === 0 || this.listRefs().length > 0) {
+      return { head: ref, commit: null };
+    }
+    const { authorName, authorEmail } = first;
+    const blobs = first.files.map((file) => {
+      const data = new TextEncoder().encode(file.content);
+      return { name: file.name, data, oid: hashObjectSync("blob", data) };
+    });
+    const tree = buildTree(
+      blobs.map((blob) => ({ mode: "100644" as const, name: blob.name, oid: blob.oid })),
+    );
     const treeOid = hashObjectSync("tree", tree);
     const who = {
       name: authorName,
@@ -553,14 +730,16 @@ export class Repository {
       parents: [],
       author: who,
       committer: who,
-      message: `${options.readme.message ?? "Initial commit"}\n`,
+      message: `${first.message ?? "Initial commit"}\n`,
       extraHeaders: [],
     });
-    const [, , commitOid] = await this.writeObjects([
-      { type: "blob", data: blob },
-      { type: "tree", data: tree },
-      { type: "commit", data: commit },
-    ]);
+    const commitOid = (
+      await this.writeObjects([
+        ...blobs.map((blob) => ({ type: "blob" as const, data: blob.data })),
+        { type: "tree", data: tree },
+        { type: "commit", data: commit },
+      ])
+    ).at(-1);
     const [result] = await this.applyUpdates(
       [{ name: ref, oldOid: ZERO_OID, newOid: commitOid! }],
       { notify: false },
@@ -843,6 +1022,7 @@ export class Repository {
         );
       }
       setMeta(this.sql, "head", manifest.head);
+      setMeta(this.sql, "ready", "1");
     });
     store.invalidate();
     await this.scheduleMaintenance();

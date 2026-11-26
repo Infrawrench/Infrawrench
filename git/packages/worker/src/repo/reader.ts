@@ -6,9 +6,10 @@
  * the storage (the per-repository Durable Object `RepoDO` over R2, with
  * `@infrawrench/git-core` and `@infrawrench/git-ops`) implements it. This file
  * is that implementer's spec; `./select.ts` is the one place the
- * implementation is chosen, and until the real one exists it answers
+ * implementation is chosen. It is `./queries/`, run inside the repository's
+ * Durable Object and reached through `./reader-do.ts`.
  * {@link unavailableRepoReader}, whose every method refuses with
- * `unavailable` (a 503 on the API).
+ * `unavailable` (a 503 on the API), is what a test without storage passes.
  *
  * ## Rules for an implementation
  *
@@ -561,8 +562,9 @@ const refuse = (): Promise<never> =>
   Promise.reject(new RepoReaderError("unavailable", "Repository contents are not available yet"));
 
 /**
- * The reader until the storage exists: every method refuses with
- * `unavailable`, which the API answers as a 503. Chosen in `./select.ts`.
+ * A reader with no storage behind it: every method refuses with
+ * `unavailable`, which the API answers as a 503. For tests, and for
+ * spreading under a fake that implements only what a test needs.
  */
 export const unavailableRepoReader: RepoReader = {
   init: refuse,

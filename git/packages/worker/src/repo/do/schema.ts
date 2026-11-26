@@ -38,6 +38,20 @@ const MIGRATIONS: readonly string[] = [
      created_at INTEGER NOT NULL,
      state_at INTEGER NOT NULL
    ) WITHOUT ROWID;`,
+  // Answers the reader worked out by walking history, kept so an object that
+  // has just woken does not walk it again: the file table's "last commit"
+  // column per directory (`last`, keyed by path) and the number of commits a
+  // ref reaches (`count`). A row per directory and commit looked at, a few
+  // dozen at most: the reader prunes the oldest (`queries/state.ts`).
+  `CREATE TABLE reader_cache (
+     kind TEXT NOT NULL,
+     key TEXT NOT NULL,
+     commit_oid TEXT NOT NULL,
+     -- JSON.
+     value TEXT NOT NULL,
+     at INTEGER NOT NULL,
+     PRIMARY KEY (kind, key, commit_oid)
+   ) WITHOUT ROWID;`,
 ];
 
 /** Brings the schema up to date. Synchronous, so it runs in the constructor. */

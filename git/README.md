@@ -44,6 +44,8 @@ Access resolution is one function, `repoAccess(principal, repo) -> none | read |
 - **Fetches reuse stored bytes.** A full clone is the stored pack (or every entry of every pack, copied); anything else walks history and copies the chosen entries, rewriting only delta headers.
 - **Repacking** runs from the DO's alarm once a repository has many small packs: a run of adjacent packs is merged into one, verified like a push, and the old files are deleted a day later.
 - **Forks copy** the parent's packs within R2, so the two repositories share nothing afterwards.
+- **The API reads inside the object.** Everything the JSON API asks of Git (a file table with its last commits, a diff, blame, a merge) is one call from the Worker to the repository's `RepoDO`, which runs `ops` next to its packs and keeps the commit graph in memory while it is awake; a walk in the Worker would be a call per object. The answers a front page needs (the file table's last commits, the commit count) are written down per commit, so a woken object does not walk history again. A merge from the UI writes its objects and then moves the branch by the same compare-and-swap a push uses, with the same event.
+- **A fork's pull request lives in the base repository.** Its head's objects are copied from the fork's object into the base's (one object asking the other for a pack) and `refs/pull/<n>/head` points at them, so comparing, merging and CI all read one repository.
 - **Postgres** (server-core `db/git-schema.ts`, migrations through `drizzle-kit generate`): namespaces, repositories, collaborators, keys and tokens, issues, pull requests, reviews and comments, labels, milestones, stars, protected branches, commit statuses, Terraform workspaces and runs.
 
 ## Transports

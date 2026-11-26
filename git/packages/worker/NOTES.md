@@ -136,7 +136,7 @@ The contract's `GitApi` served by Effect `HttpApi`, the way the app's web server
 ## Storage (`src/repo/`)
 
 - **`repo/reader.ts` is the storage's spec**: the `RepoReader` interface every handler and the consumer call, its input and answer types in the contract's shapes, the refusal codes, and the rules an implementation keeps. Nothing outside `src/repo/` reads a Git object.
-- **`repo/select.ts` `repoReaderFor`** is the one place the implementation is chosen. It answers `unavailableRepoReader`, whose every method refuses `unavailable` (503), until the Durable Object backed one exists.
+- **`repo/select.ts` `repoReaderFor`** is the one place the implementation is chosen: `durableRepoReader` (`repo/reader-do.ts`), which runs every method inside the repository's Durable Object. "The reader", below, has the design and the measurements. `unavailableRepoReader` (every method refuses `unavailable`, a 503) is still there for a test that wants no storage.
 
 ## Events (`src/events/`)
 
@@ -165,6 +165,8 @@ The contract's `GitApi` served by Effect `HttpApi`, the way the app's web server
 | `repo/do/policy.ts`            | Protected-branch rules applied to a push. Pure.                                             |
 | `repo/do/archive.ts`           | A commit as a tar stream.                                                                   |
 | `repo/do/client.ts`, `call.ts` | `repoClient(env, repoId)`, and what travels on the internal `fetch`.                        |
+| `repo/reader-do.ts`            | The Worker's `RepoReader`: each method one call to the object.                              |
+| `repo/queries/`                | The reader itself, over `Repository` and git-ops. Runs in the object, and in Node's tests.  |
 | `transport/directory.ts`       | `GitDirectory`: what a transport asks about people and repositories.                        |
 | `transport/directory-db.ts`    | The same, answered from Postgres through `src/auth` and `src/db`.                           |
 | `transport/http/routes.ts`     | `gitHttp`: smart HTTP, raw file, archive.                                                   |
@@ -183,7 +185,7 @@ The front Worker authenticates, resolves the repository and its access, and load
 
 ### `RepoDO` storage
 
-SQLite holds three small tables: `refs` (name, id, and what a tag peels to), `packs` (the catalogue) and `meta` (`repo_id`, `head`). Packs are `repos/<repoId>/packs/pack-<id>.pack` with `pack-<id>.idx` beside each. The id is time-ordered and random, not the pack's checksum (the README said checksum): the key has to exist before the first byte is uploaded, and R2's binding cannot rename or copy.
+SQLite holds four small tables: `refs` (name, id, and what a tag peels to), `packs` (the catalogue), `meta` (`repo_id`, `head`, `ready`) and `reader_cache` (answers the reader walked history for; "The reader"). Packs are `repos/<repoId>/packs/pack-<id>.pack` with `pack-<id>.idx` beside each. The id is time-ordered and random, not the pack's checksum (the README said checksum): the key has to exist before the first byte is uploaded, and R2's binding cannot rename or copy.
 
 **No row per object.** An object is found through each pack's `.idx`, held in memory while the object is awake. The numbers that decided it:
 
@@ -237,8 +239,76 @@ Call through `repoClient(env, repoId)` (`repo/do/client.ts`), which binds the id
 | `destroy()`                                              | Delete everything.                                                                                   |
 | `serve(call, input, signal)`                             | A git conversation (the internal `fetch`).                                                           |
 | `archive(commit, prefix)`                                | The commit as a gzipped tar under one directory.                                                     |
+| `reader(locator, method, args)`                          | One `RepoReader` method, run in the object. Answers a `ReaderReply`; use `durableRepoReader`.        |
+| `exportPack(wants, haves)`                               | A pack of what `wants` reach and `haves` do not, as a stream, for another repository's object.       |
 
-`RepoReader` (the API's content interface) can be implemented over `readObjects`, `readPath`, `listRefs` and `resolvePrefix`. A walk that reads many objects one RPC at a time will be slow; batch with `readObjects`, or add a method here that does the walk next to the data, as `readPath` does.
+### The reader
+
+`RepoReader` (`repo/reader.ts`) is implemented once, in `repo/queries/`, against `Repository` and `@infrawrench/git-ops`: `refs.ts` (branches, tags, ref changes), `content.ts` (tree, blob, README), `history.ts` (lists of commits, blame), `diffs.ts` (commits, comparisons, their diffs), `merges.ts` (mergeability, merge, update branch), `index.ts` (lifecycle and the composition), `session.ts` (one call's view, ref resolution, the contract's shapes), `state.ts` (what is kept between calls). `localRepoReader(repository, state, locator)` is that reader wherever a `Repository` is.
+
+**Every method runs inside the Durable Object.** `RepoDO.reader(repoId, locator, method, args)` runs one method next to the data and the Worker's reader (`reader-do.ts`) is nothing but that call. The alternative, the same code in the Worker with the object as an object store, was measured in workerd on this repository (2 870 commits, 93 303 objects), timed in the Worker around each call:
+
+| Request                                  | In the object (one call) | In the Worker (a call an object) |
+| ---------------------------------------- | ------------------------ | -------------------------------- |
+| History, first 30 commits                | 1 ms                     | 33 ms, 62 calls                  |
+| History of `KNOWLEDGE.md`, first 30      | 3 ms                     | 110 ms, 332 calls                |
+| Last commits of `/`, 300 commits of walk | under 373 ms (see below) | 330 ms, 602 calls, and not done  |
+
+Locally a call to the object is about half a millisecond, which is the best it will ever be: in production it is a hop to wherever the object lives. So the number that decides it is calls, not milliseconds here, and every operation that walks needs tens to hundreds of them. The operations that do not walk (a blob, a ref, a tree without history) are one call either way, and gain nothing from a second code path. `readObjects` batching does not help a walk, which learns the next id from the last object. So there is one implementation and one place it runs. The costs of that choice: reads share the object's 128 MB and its one thread with pushes (a diff holds two files of at most 1 MiB and its hunks; a push peaks near 88 MiB, "Memory" below), and a refusal has to cross the boundary as a value (`ReaderReply`), because an error thrown across it keeps only its message. An error the platform raises for the object itself (`overloaded`, `retryable`) becomes `unavailable`; anything our code throws stays a 500.
+
+**Only types come from the contract in `queries/`.** The object's module graph is loaded at the Worker's start-up, and the contract's entry evaluates every schema of the API. `rawUrl` and the 1 MiB text limit are restated there; `test/reader.test.ts` holds both equal to the contract's.
+
+**What is kept between calls** (`ReaderState`, one per object, gone when it sleeps):
+
+- **The commit graph**: parents, tree and commit time of every commit a walk has read (`CommitGraphSource` in git-ops), up to 200 000 commits. Each request's `ObjectCache` reads through it, so only the first walk after a wake-up reads commits. It is in memory only. Loading it is what a cold request pays: counting this repository's 2 870 commits from nothing is about 120 ms on Node. A graph written down (with generation numbers) was not built: once the two answers below are stored, no request on the code page walks from the top, and at this size the cold cost is not worth a table. At a hundred thousand commits it would be (about four seconds cold for a count), and that is where to add it.
+- **Sizes** (50 000), **diff summaries** (the changed files of a pair of trees with their line counts, 8), trial merges and last-change answers (256).
+- **The file table's last commits, in steps.** `tree` walks for at most 2 000 commits or 150 ms and answers what it has (`lastCommitsComplete`); `treeLastCommits` carries the same walk on from where it stopped (10 000 commits or 400 ms a call). The continuation stays in the object's memory, keyed by commit and directory; if the object slept in between, the walk starts again.
+- **Written down** (`reader_cache`, at most 128 rows, oldest pruned): a finished file table per directory and commit, and the number of commits a ref reaches. A woken object reads the row instead of walking, and a new head walks only as far as a commit that has a row (`known`, git-ops), or counts only what was added. This is one billed row write per directory viewed per new head.
+
+**Sizes come from the pack, not from reading the object** (`PackStore.size`): the entry's header for a whole object, the second number of a delta's instructions for a delta (the first bytes of its zlib stream). One range read of 128 bytes, its own and not the block cache's, so a file table's size column (a probe per file, 24 at a time) does not push the commits and trees a walk is reading out of the cache. git-ops asks through it before reading a blob for a diff, a blame or a merge.
+
+**Time budgets see time pass only across I/O.** In workerd `Date.now()` does not advance while code runs, so a walk over objects already in memory never reaches a `maxMillis`. Every budget therefore also has a count (commits, files, lines; `ReaderLimits` in `session.ts`), and the count is the real bound.
+
+**The code page's requests**, this repository's root (26 entries), in milliseconds. Node figures are `test/reader-bench.test.ts` with R2 as a map; workerd figures are `test/e2e/reader.test.ts`, timed in the Worker around the call, local R2:
+
+| Request                                              | Node   | R2 reads | workerd |
+| ---------------------------------------------------- | ------ | -------- | ------- |
+| `tree /` with last commits, first ever (walk begins) | 195 ms | 47       | 373 ms  |
+| `treeLastCommits`, the one round it then takes       | 21 ms  | 4        | 262 ms  |
+| `readme /`                                           | 1 ms   | 1        | 7 ms    |
+| `tree /`, object just woken, answer written down     | 25 ms  | 30       |         |
+| `tree /` again, object awake                         | 0.4 ms | 0        | 1 ms    |
+| `readme /` again                                     | 0.2 ms | 0        | 1 ms    |
+
+Of the woken object's 30 reads, 22 are size probes made at once and one is the pack index. Other requests, cold on Node (workerd, first call, object awake): a subdirectory's table first ever 141 ms (168 ms), a 400 KiB blob 45 ms (51 ms), 30 commits 23 ms (1 ms), 30 commits of one file 28 ms (3 ms), a commit with its file list 24 ms (17 ms), `HEAD~50...HEAD` with 250 changed files 386 ms and 514 reads (1.3 s), blame of `CLAUDE.md` 206 ms and 98 reads (415 ms). The comparison is the slow one: each changed file is two blobs read from wherever they lie, twelve files at a time, each through a 256 KiB block. Reading exact ranges, sorted and joined, would cut both the reads and the bytes, and is not built; the count stops after 2.5 s and says so (`filesTruncated`).
+
+**Writes** are compare-and-swap on the base, like a push. A merge (merge commit, squash, rebase) is computed by git-ops against the base as it was read, its objects are written as one small pack (`writeObjects`), and `applyUpdates` moves the branch only if it is still there, sending the push event with the merging person as its actor. If the base moved, the merge is computed once more against where it went; if it moved again the caller is told (`base_moved`). The objects of a lost attempt are unreachable, as a refused push's would be. `updateBranch` is the same with the sides swapped (a rebase is a forced update of the head branch, and its event says so). `createBranch`, `deleteBranch` and `setPullRef` are one compare-and-swap each; `setPullRef` sends no event.
+
+**A fork's pull request is read in the base repository.** Before anything that needs a commit from another repository (`compare` with `headRepositoryId`, `mergeability`, `merge`, `setPullRef`, `diffAnchor`, and `updateBranch` taking from the base), the object asks the other repository's object for a pack of what that commit reaches and its own branch and pull request tips do not (`exportPack`, one object calling the other and streaming the answer), takes it in through the same path as a push (indexed, every reference checked), and from then on reads one repository. A head named by branch is resolved in the other repository's refs first. The copy is skipped when the commit is already here, and capped at 512 MiB (`maxImportBytes`). The objects are unreachable until `refs/pull/<n>/head` points at them, which is how GitHub keeps a fork's pull request too. Two things follow: whoever may open a comparison against a fork can make the base repository store that fork's commits (the handlers only offer repositories the caller can read), and a full clone carries them, since a clone of everything includes what no branch reaches (see "Sending").
+
+**Lifecycle.** `init` sets `HEAD`, marks the storage `ready` and, when asked, makes the first commit from `templates.ts` (a README; a `.gitignore` for Terraform, Node, Python, Go or Rust; MIT, ISC or Apache-2.0, the last byte for byte as published); a template it does not know is left out. A repository whose storage was never made, or was destroyed, refuses `unavailable` rather than looking empty. `forkFrom` is `importFork` (with only the default branch's ref when asked; the packs are copied whole either way). `destroy` empties the bucket prefix and the tables and can be called again. The API's handlers already called all three; `repositories.create` now also reads `stats()` after a first commit, which sends no push event.
+
+**The reader's own limits** (`ReaderLimits`, `queries/session.ts`), on top of git-ops' (`Limits`):
+
+| Limit                                   | Value                          | What happens at it                                          |
+| --------------------------------------- | ------------------------------ | ----------------------------------------------------------- |
+| Entries of a directory                  | 1 000                          | `truncated`.                                                |
+| Text of a blob                          | 1 MiB (the contract's)         | `truncated`, `text: null`.                                  |
+| A blob read to tell text from binary    | 8 MiB                          | Larger is `truncated` without being read.                   |
+| File table walk, in `tree`              | 2 000 commits, 150 ms          | `lastCommitsComplete: false`; `treeLastCommits` carries on. |
+| File table walk, in `treeLastCommits`   | 10 000 commits, 400 ms a call  | `complete: false`; call again.                              |
+| Last change of one path                 | 5 000 commits                  | `lastCommit: null`.                                         |
+| A filtered or path-limited history page | 20 000 commits, 500 ms         | A short page with a cursor, or the end.                     |
+| Commits of a comparison                 | 250                            | `commitsTruncated` (the newest are listed).                 |
+| Files of a diff with line counts        | 300, 2.5 s                     | `filesTruncated`; `stats` counts lines of those files only. |
+| Hunk lines in one page of a diff        | 20 000                         | Later files of the page: `tooLarge`, ask by `path`.         |
+| One file asked for by `path`            | 4 MiB, 400 000 lines           | `tooLarge`.                                                 |
+| Blame                                   | 10 000 commits, 2 s            | Lines still in flight name the commit they had reached.     |
+| Refs sorted by date                     | 1 000 branches, 5 000 tags     | Sorted by name instead.                                     |
+| Commit count                            | 1 000 000 commits, 200 ms cold | `commitCount: null` until a later call finishes it.         |
+| Commits a rebase replays                | 250                            | `too_large` (422).                                          |
+
+**Where it differs from what the contract says.** `DiffFileSummary.additions` and `deletions` are exact for the files counted, and zero for a file over the text limit (`tooLarge`) or past the 300; `stats` adds up what was counted. `BlameRange.previousCommitOid` is the first parent that had the file under the same name, so it is null across a rename. A tag of a tree or a blob resolves to nothing (`ref_not_found`), as does an abbreviated id in another repository. Cursors are positions, so a branch list that changes between pages can repeat or skip a branch.
 
 ### Events
 
@@ -274,6 +344,8 @@ After refs move, the object sends `{ type: "push", repoId, actor, updates: [{ na
 | Object held whole           | 64 MiB to read; 32 MiB as a delta or base when pushed | `pack-store.ts`, core  |
 | Objects in a repository     | a few million (indexes in memory)                     | above                  |
 | `readObjects` batch         | 256 objects or 16 MiB                                 | `repo-do.ts`           |
+| Objects copied from a fork  | 512 MiB a pull request head                           | `RepositoryLimits`     |
+| The reader's bounds         | "The reader"                                          | `queries/session.ts`   |
 | Wants, haves, ref updates   | 10 000, 50 000, 10 000 a request                      | protocol `ServeLimits` |
 | Packs before a repack       | 12                                                    | `RepositoryLimits`     |
 | Deleted files' grace period | 24 hours                                              | `RepositoryLimits`     |
@@ -314,8 +386,12 @@ A clone's wall time is mostly the client's own `index-pack`; "server only" is th
 - `test/repository.test.ts`: the storage code with the real `git` on the other end, on Node stand-ins for R2 (which enforce R2's multipart rules) and SQLite (`node:sqlite`): a push as one request and as a multipart upload, clones and fetches out of several thin packs, a client without `ofs-delta`, repacking and the grace period, refused pushes leaving nothing behind, server-side objects and ref changes, forks, deletion, the tar archive, init with a README.
 - `test/e2e/git.test.ts` (opt-in, `GIT_WORKER_E2E=1`): the worker under `wrangler dev` with a fixture in place of Postgres (`test/e2e/entry.ts`; access is still decided by `decideRepoAccess`). The real `git` over HTTPS in v0, v1 and v2 and over SSH (the real `ssh`, to the `connect` listener) in v0 and v2: clone, shallow clone, fetch with haves, push, protected branches, the events queue, job tokens on smart HTTP and on the raw and archive routes, deploy keys, the greeting, the failure limit, and init, repack, fork and destroy through RPC.
 - `test/e2e/monorepo.test.ts` and `test/memory.test.ts` (opt-in, `GIT_WORKER_BENCH=1`): the measurements above.
+- `test/reader.test.ts`: the reader on the Node stand-ins against a history `git` built and pushed, with `git` as the judge: refs, the file table against `git log -1` per entry (in one call, in steps, and read back by a woken object), blobs (text, binary, over the limit), history (whole, by path, following a rename, by author and date, paged) against `git log`, commits and diffs against `git diff --numstat` and its patch text, comparisons across a merge against `git merge-base` and `rev-list --left-right`, blame against `git blame --porcelain`, review anchors, sizes of whole and delta objects against `git cat-file`, branch changes and their events, merge commit, squash and rebase against the trees `git merge`, `git merge --squash` and `git rebase` make, conflicts, a base that moves under a merge, `updateBranch` both ways, a fork's pull request compared, given its ref, brought up to date and merged across two repositories, init with templates, destroy, and the reply that crosses the object's boundary.
+- `test/reader-api.test.ts`: the API's fetch handler over that reader for the content routes that need no database (refs, blob, readme, a commit's diff, a comparison's diff) and their refusals.
+- `test/e2e/reader.test.ts` (opt-in, `GIT_WORKER_E2E=1`): the same path in workerd. The Worker's reader calling the real `RepoDO`, refusals crossing with their codes, the API's content routes served from it (`test/e2e/api.ts`: the real `makeGitApi` with its two gates answered from the fixture), init with a first commit cloned back by `git`, a branch created and a squash merge landed with their events on the queue naming the actor, and a fork's pull request: forked, pushed to, compared, `refs/pull/7/head` fetched from the base by `git` the way CI does, merged, the fork destroyed. With `GIT_WORKER_BENCH=1` too it pushes this repository and records the table in "The reader".
+- `test/reader-bench.test.ts` (opt-in, `GIT_WORKER_BENCH=1`): the Node half of that table, with R2 reads counted.
 
-The workerd suites are opt-in because they start `wrangler dev`; nothing in them needs an account or the network. `directory-db.ts` (the Postgres half of the transports) is covered by neither: it is a few calls into `src/auth` and `src/db`, which have their own tests, and it needs a database to run.
+The workerd suites are opt-in because they start `wrangler dev`; nothing in them needs an account or the network. The test entry now bundles the API, so the harness gives wrangler the production config's `define` and the alias map built from server-core's `gateway-only-modules.json`. The API routes that also read Postgres (the people behind commits, statuses: tree, history, a commit, branches, tags, blame, and everything about pull requests) are covered at the reader, not through their handlers: there is no database in either harness, and `src/__tests__/db/` runs those handlers on a fake reader. `directory-db.ts` (the Postgres half of the transports) is covered by neither: it is a few calls into `src/auth` and `src/db`, which have their own tests, and it needs a database to run.
 
 ### Left to do
 
@@ -325,10 +401,11 @@ The workerd suites are opt-in because they start `wrangler dev`; nothing in them
 - **Index paging** for repositories past a few million objects.
 - **Keepalives** during long indexing, instead of a long SSH idle timeout.
 - **`TERRAFORM_STATE`** is not bound in `wrangler.jsonc`: its class is not exported yet, and wrangler refuses a binding without one. It joins `durable_objects` and a new migration tag with its class.
-- **Deleting a repository's row does not call `destroy()`**, and neither does anything sweep objects whose row is gone. The API's delete handler should call it.
-- **`git_repositories.size_bytes`, `pushed_at` and the counts** are the queue consumer's to set, from the event and `stats()`.
+- **Nothing sweeps objects whose row is gone.** The API's delete handler destroys the storage from `waitUntil` (`RepoReader.destroy`); a row deleted by a cascade in the app, or a `destroy` that failed, leaves objects only a sweep by id can find.
+- **`git_repositories.size_bytes`, `pushed_at` and the counts** are set by the queue consumer from the event and `RepoReader.stats()`, and by `repositories.create` and `fork` when they make the first commit or the copy. A lost event leaves them stale until the next push.
+- **The reader**: a commit graph that survives a sleep (with generation numbers, for exact and cheaper ahead/behind) once repositories reach tens of thousands of commits; exact range reads for a wide diff instead of a block per blob; objects copied from a fork are never pruned; `refs/pull/<n>/merge` is not written (nothing asks for it); line counts past 300 files; the handlers that read Postgres are not run end to end against real storage.
 - **SSH rate limiting is per data centre.** A connection cap per principal is not there.
-- `refs/pull/<n>/head` is written by whoever owns pull requests, through `updateRefs`; pushes may not touch `refs/pull/*`.
+- `refs/pull/<n>/head` is written by `RepoReader.setPullRef` (the pull request handlers and the consumer call it); pushes may not touch `refs/pull/*`.
 
 ## Tests (auth and data access)
 

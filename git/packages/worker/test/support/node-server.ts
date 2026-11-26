@@ -16,7 +16,11 @@ import {
 } from "@infrawrench/git-protocol";
 import type { GitEvent } from "../../src/env";
 import type { PushPolicy } from "../../src/repo/do/policy";
-import { Repository, type RepositoryLimits } from "../../src/repo/do/repository";
+import {
+  type PeerRepository,
+  Repository,
+  type RepositoryLimits,
+} from "../../src/repo/do/repository";
 import { MemoryBucket, type NodeStorage, nodeStorage } from "./node-platform";
 
 export interface NodeRepo {
@@ -34,7 +38,12 @@ export interface NodeRepo {
 
 export async function startNodeRepo(
   repoId = "repo-1",
-  options: { limits?: Partial<RepositoryLimits>; bucket?: MemoryBucket; now?: () => number } = {},
+  options: {
+    limits?: Partial<RepositoryLimits>;
+    bucket?: MemoryBucket;
+    now?: () => number;
+    peer?: (repoId: string) => PeerRepository;
+  } = {},
 ): Promise<NodeRepo> {
   const bucket = options.bucket ?? new MemoryBucket();
   const storage = nodeStorage();
@@ -47,6 +56,7 @@ export async function startNodeRepo(
     events: { send: async (event) => void events.push(event) },
     ...(options.limits ? { limits: options.limits } : {}),
     ...(options.now ? { now: options.now } : {}),
+    ...(options.peer ? { peer: options.peer } : {}),
   });
   repository.open(repoId);
   const state: { policy: PushPolicy | null } = { policy: null };
@@ -115,3 +125,10 @@ export async function startNodeRepo(
     },
   };
 }
+
+/** A repository as another one reaches it: what a Durable Object's stub is in production. */
+export const peerOf = (repository: Repository): PeerRepository => ({
+  listRefs: async () => ({ refs: repository.listRefs(), head: repository.head() }),
+  forkManifest: async () => repository.forkManifest(),
+  exportPack: (wants, haves) => repository.exportPack(wants, haves),
+});

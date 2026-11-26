@@ -25,7 +25,8 @@ import type { Authenticated } from "../../auth/authenticate";
 import { ANONYMOUS } from "../../auth/principal";
 import type { RepositoryWithOwner } from "../../db/repositories";
 import type { Env } from "../../env";
-import { repoReaderFor } from "../../repo/select";
+import { unavailableRepoReader } from "../../repo/reader";
+import type { RepoReaderFactory } from "../../repo/select";
 import { type Invocation, InvocationRef, RepoRef } from "../context";
 import { RequestErrorsLive } from "../errors";
 import { ContentsHandlers } from "../handlers/contents";
@@ -165,8 +166,8 @@ describe("the API as a fetch handler", () => {
     return { status: response.status, body: text ? (JSON.parse(text) as unknown) : null };
   };
 
-  it("answers 503 for content while the storage has no implementation", async () => {
-    const handler = makeGitApi({ middleware: TestGates, readers: repoReaderFor });
+  it("answers 503 for content while the storage does not answer", async () => {
+    const handler = makeGitApi({ middleware: TestGates, readers: () => unavailableRepoReader });
     for (const path of ["/refs", "/tree", "/blob?path=a", "/commits", "/branches", "/tags"]) {
       const { status, body } = await get(handler, `/api/repos/acme/infra${path}`);
       expect(status, path).toBe(503);
@@ -216,8 +217,8 @@ describe("the API as a fetch handler", () => {
   });
 
   it("says nothing of the server in a 500", async () => {
-    const readers: typeof repoReaderFor = () => ({
-      ...repoReaderFor(env, { id: "", owner: "", name: "" }),
+    const readers: RepoReaderFactory = () => ({
+      ...unavailableRepoReader,
       listRefs: () => Promise.reject(new Error("pack repos/x/secret-path is corrupt")),
     });
     const { status, body } = await get(api(readers), "/api/repos/acme/infra/refs");

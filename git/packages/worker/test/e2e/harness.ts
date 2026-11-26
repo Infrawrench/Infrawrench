@@ -55,6 +55,22 @@ export interface TestWorker {
   sshCommand(key: SshKey): string;
   /** Calls a `RepoClient` method on a repository's Durable Object. */
   rpc<T>(repoId: string, method: string, ...args: unknown[]): Promise<T>;
+  /**
+   * Calls a `RepoReader` method the way the API does: the Worker's reader,
+   * one call to the repository's Durable Object. A refusal is thrown with
+   * its `code`.
+   */
+  reader<T>(
+    locator: { id: string; owner: string; name: string },
+    method: string,
+    ...args: unknown[]
+  ): Promise<T>;
+  /** The same, with how long the Worker waited for the answer. */
+  timedReader<T>(
+    locator: { id: string; owner: string; name: string },
+    method: string,
+    ...args: unknown[]
+  ): Promise<{ result: T; millis: number }>;
   /** Push events the queue has delivered, oldest first. */
   events(): Promise<Array<{ repoId: string; updates: Array<{ name: string; forced: boolean }> }>>;
   /** Resident memory of the workerd processes, in bytes. */
@@ -72,6 +88,26 @@ function processTree(pid: number): number[] {
     for (const line of children.split("\n")) if (line.trim() !== "") all.push(Number(line));
   }
   return all;
+}
+
+/**
+ * What the production `wrangler.jsonc` gives the bundler, restated for the
+ * test entry: the API reaches server-core, and with it libraries that only
+ * load on Node, each of which resolves to the stub that throws when used.
+ */
+function bundling(): { define: Record<string, string>; alias: Record<string, string> } {
+  const edge = join(WORKER_ROOT, "../../../app/packages/server-core/edge");
+  const { modules } = JSON.parse(readFileSync(join(edge, "gateway-only-modules.json"), "utf8")) as {
+    modules: string[];
+  };
+  const stub = join(edge, "gateway-only-stub.cjs");
+  return {
+    define: {
+      "process.env.NODE_ENV": '"production"',
+      "globalThis.__INFRAWRENCH_EDGE_PLUGINS__": "true",
+    },
+    alias: Object.fromEntries(modules.map((name) => [name, stub])),
+  };
 }
 
 export async function startWorker(
@@ -92,6 +128,7 @@ export async function startWorker(
     compatibility_date: "2026-11-20",
     compatibility_flags: ["nodejs_compat", "webcrypto_modern_algorithms"],
     limits: { cpu_ms: 300000 },
+    ...bundling(),
     vars: {
       FIXTURE: JSON.stringify(fixture),
       SSH_HOST_KEY: readFileSync(hostKeyPath, "utf8"),
@@ -144,10 +181,15 @@ export async function startWorker(
     },
   );
   const ready = new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`wrangler dev did not start:\n${lines.join("")}`)),
-      120_000,
-    );
+    const timer = setTimeout(() => {
+      // Nothing is left running behind a start that failed.
+      try {
+        process.kill(-child.pid!, "SIGKILL");
+      } catch {
+        child.kill("SIGKILL");
+      }
+      reject(new Error(`wrangler dev did not start:\n${lines.join("")}`));
+    }, 180_000);
     const onData = (chunk: Buffer): void => {
       const text = chunk.toString("utf8");
       lines.push(text);
@@ -166,7 +208,30 @@ export async function startWorker(
   await ready;
 
   const httpUrl = `http://127.0.0.1:${httpPort}`;
+  const timedReader = async <T>(
+    locator: { id: string; owner: string; name: string },
+    method: string,
+    ...args: unknown[]
+  ): Promise<{ result: T; millis: number }> => {
+    const response = await fetch(`${httpUrl}/__test/reader`, {
+      method: "POST",
+      // `undefined` does not survive JSON: a null argument is the default ref.
+      body: JSON.stringify({ locator, method, args }),
+    });
+    const answer = (await response.json()) as {
+      ok: boolean;
+      result: T;
+      millis: number;
+      code?: string;
+      error?: string;
+    };
+    if (!answer.ok) throw Object.assign(new Error(answer.error), { code: answer.code });
+    return { result: answer.result, millis: answer.millis };
+  };
   return {
+    timedReader,
+    reader: async (locator, method, ...args) =>
+      (await timedReader<never>(locator, method, ...args)).result,
     httpUrl,
     sshPort,
     sshUrl: (path) => `ssh://git@127.0.0.1:${sshPort}/${path}`,

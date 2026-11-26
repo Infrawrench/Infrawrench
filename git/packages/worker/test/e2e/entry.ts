@@ -4,6 +4,11 @@
  * repositories read from a fixture (`FIXTURE`, JSON) instead of Postgres.
  * Access is still decided by the worker's own rules (`decideRepoAccess`).
  *
+ * The JSON API is the real one too (`./api.ts`), with its two gates
+ * answered from the fixture, so its content routes run against the real
+ * reader and the real `RepoDO`. Handlers that also read Postgres (people
+ * behind commits, statuses) have no database here and cannot answer.
+ *
  * The `/__test/*` routes exist only here.
  */
 import type {
@@ -12,6 +17,7 @@ import type {
   R2Bucket,
   Socket,
 } from "@cloudflare/workers-types/index";
+import { ObjectCache, lastCommitsForEntries, log } from "@infrawrench/git-ops";
 import { decideRepoAccess, hasAccess } from "../../src/auth/access";
 import { presentedCredential } from "../../src/auth/credentials";
 import { verifyJobToken } from "../../src/auth/job-token";
@@ -19,6 +25,8 @@ import { ANONYMOUS, type Principal } from "../../src/auth/principal";
 import type { ProtectedBranchRule } from "../../src/db/policy-rules";
 import type { Env, GitEvent } from "../../src/env";
 import { repoClient } from "../../src/repo/do/client";
+import { RepoReaderError } from "../../src/repo/reader";
+import { repoReaderFor } from "../../src/repo/select";
 import type { GitDirectory } from "../../src/transport/directory";
 import { gitHttp } from "../../src/transport/http/routes";
 import { sshConnect } from "../../src/transport/ssh/host";
@@ -177,6 +185,60 @@ export default {
       } catch (error) {
         return json({ ok: false, error: error instanceof Error ? error.message : String(error) });
       }
+    }
+    // A `RepoReader` method, called the way the API and the queue consumer call it.
+    if (url.pathname === "/__test/reader" && request.method === "POST") {
+      const { locator, method, args } = (await request.json()) as {
+        locator: { id: string; owner: string; name: string };
+        method: string;
+        args: unknown[];
+      };
+      const reader = repoReaderFor(env, locator) as unknown as Record<
+        string,
+        (...args: unknown[]) => Promise<unknown>
+      >;
+      const started = performance.now();
+      try {
+        const result = await reader[method]!(...args);
+        return json({ ok: true, result, millis: performance.now() - started });
+      } catch (error) {
+        if (error instanceof RepoReaderError) {
+          return json({ ok: false, code: error.code, error: error.message });
+        }
+        return json({ ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    // The road not taken, for the measurement: the same walk run here in the Worker, every
+    // object a call to the Durable Object, where the reader runs it inside the object.
+    if (url.pathname === "/__test/worker-side" && request.method === "POST") {
+      const { repoId, op, commit, path } = (await request.json()) as {
+        repoId: string;
+        op: "log" | "last-commits";
+        commit: string;
+        path?: string;
+      };
+      const client = repoClient(env, repoId);
+      let reads = 0;
+      const cache = new ObjectCache({
+        read: (oid) => {
+          reads++;
+          return client.readObject(oid);
+        },
+        has: async (oid) => (await client.hasObjects([oid]))[0] === true,
+      });
+      const started = performance.now();
+      if (op === "log") {
+        await log(cache, commit, { limit: 30, ...(path !== undefined ? { path } : {}) });
+      } else {
+        const names = (await cache.tree((await cache.node(commit)).tree)).map((each) => each.name);
+        await lastCommitsForEntries(cache, commit, "", names, { maxCommits: 300 });
+      }
+      return json({ millis: performance.now() - started, reads });
+    }
+    if (url.pathname.startsWith("/api/")) {
+      const { apiFor } = await import("./api");
+      const api = apiFor(JSON.parse(env.FIXTURE) as Fixture, url.pathname);
+      if (api) return api.handle(request, env, { waitUntil: () => {} });
     }
     if (url.pathname === "/__test/events") {
       const bucket = env.OBJECTS as unknown as R2Bucket;

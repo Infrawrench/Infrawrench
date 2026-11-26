@@ -8,12 +8,15 @@ import {
   type ObjectId,
   PackIndex,
   type ReadRange,
+  acquireInflater,
   applyDelta,
   cachedRangeReader,
+  decodeEntryHeader,
   isDeltaType,
   memoryRangeReader,
   readDeltaHeader,
   readPackEntryAt,
+  releaseInflater,
 } from "@infrawrench/git-core";
 import type { Bucket, Sql } from "./platform";
 
@@ -36,6 +39,11 @@ export function rangeFetcher(bucket: Bucket, key: string, size: number): ReadRan
     return new Uint8Array(await object.arrayBuffer());
   };
 }
+
+/** Enough of an entry for its header and the start of a delta's zlib stream. */
+const SIZE_PROBE_BYTES = [128, 4096] as const;
+/** Two sizes of at most ten bytes each open a delta's instructions. */
+const DELTA_SIZES_BYTES = 20;
 
 export type PackState = "incoming" | "live" | "garbage";
 
@@ -336,6 +344,47 @@ export class PackStore {
       this.cache.set(`${pack.id}:${step.offset}`, object);
     }
     return object;
+  }
+
+  /**
+   * How big an object is, without reading it. A whole object's size is in
+   * its entry header; a delta's is the second number at the start of its
+   * instructions, which the first bytes of its zlib stream give. Either way
+   * it is one small read through the block cache, where the object itself
+   * could be megabytes and a chain of them.
+   */
+  async size(packs: readonly PackHandle[], oid: ObjectId): Promise<number | null> {
+    const located = this.locate(packs, oid);
+    if (!located) return null;
+    const { pack, offset } = located;
+    const cached = this.cache.get(`${pack.id}:${offset}`);
+    if (cached) return cached.data.length;
+    for (const probe of SIZE_PROBE_BYTES) {
+      // Its own small range, not the block cache: a file table asks this of blobs scattered
+      // over the pack, and their blocks would push out the commits and trees a walk is reading.
+      const bytes = await pack.fetchRange(offset, probe);
+      const header = decodeEntryHeader(bytes, 0, offset);
+      if (!header) continue;
+      if (!isDeltaType(header.type)) return header.size;
+      const start = new Uint8Array(DELTA_SIZES_BYTES);
+      let filled = 0;
+      const inflater = acquireInflater();
+      try {
+        inflater.push(bytes.subarray(header.headerLength), (chunk) => {
+          const take = Math.min(chunk.length, start.length - filled);
+          start.set(chunk.subarray(0, take), filled);
+          filled += take;
+        });
+      } finally {
+        releaseInflater(inflater);
+      }
+      try {
+        return readDeltaHeader(start.subarray(0, filled)).resultSize;
+      } catch {
+        // The stream's own tables took the whole probe: look again with more of it.
+      }
+    }
+    return (await this.readAt(packs, pack, offset)).data.length;
   }
 
   /** Deletes a pack's files. The catalogue row is the caller's. */
