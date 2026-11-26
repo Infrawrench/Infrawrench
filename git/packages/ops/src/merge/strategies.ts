@@ -15,7 +15,7 @@ import {
 import { log } from "../history/log";
 import { isAncestor, mergeBases } from "../history/merge-base";
 import type { Limits } from "../limits";
-import { ObjectCache, cacheOf } from "../objects";
+import { ObjectCache, type SizedReader, cacheOf } from "../objects";
 import { createCommit } from "./commit";
 import type { NewObject } from "./sink";
 import {
@@ -30,13 +30,13 @@ const MAX_VIRTUAL_DEPTH = 4;
 
 /** A reader that also sees objects made earlier in the same operation and not yet stored. */
 function overlay(cache: ObjectCache, extra: Map<ObjectId, GitObject>): ObjectCache {
-  return new ObjectCache(
-    {
-      read: async (oid) => extra.get(oid) ?? cache.read(oid),
-      has: async (oid) => extra.has(oid) || cache.has(oid),
-    },
-    cache.limits,
-  );
+  const reader: SizedReader = {
+    read: async (oid) => extra.get(oid) ?? cache.read(oid),
+    has: async (oid) => extra.has(oid) || cache.has(oid),
+    // Sizes still come from storage's index for what is stored; a new object's is its length.
+    size: async (oid) => extra.get(oid)?.data.length ?? cache.size(oid),
+  };
+  return new ObjectCache(reader, cache.limits);
 }
 
 interface Base {

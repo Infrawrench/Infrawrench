@@ -36,6 +36,32 @@ export interface EntryRef {
   readonly oid: ObjectId;
 }
 
+/**
+ * A reader that can say how big an object is without reading it. Storage
+ * answers from the pack entry's header (and, for a delta, the first bytes of
+ * its instructions), so asking costs a few dozen bytes where a read costs
+ * the whole object. Optional: without it every size limit is enforced after
+ * the read, as before.
+ */
+export interface SizedReader extends ObjectReader {
+  /** The object's size in bytes, or null when the store does not have it. */
+  size(oid: ObjectId): Promise<number | null>;
+}
+
+/**
+ * A commit graph kept by whoever owns the storage (parents, tree and commit
+ * time per commit), so walks that outlive one request do not parse the same
+ * commits again. `ObjectCache.node` reads through it and fills it.
+ */
+export interface CommitGraphSource {
+  get(oid: ObjectId): CommitNode | undefined;
+  set(node: CommitNode): void;
+}
+
+export interface ObjectCacheOptions {
+  readonly graph?: CommitGraphSource;
+}
+
 export const EMPTY_TREE_OID: ObjectId = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 export const EMPTY_BLOB_OID: ObjectId = "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391";
 
@@ -166,6 +192,8 @@ export class ObjectCache implements ObjectReader {
   readonly limits: Limits;
   private readonly rawTrees: ByteLru<ObjectId>;
   private readonly nodes = new Map<ObjectId, CommitNode>();
+  private readonly graph: CommitGraphSource | null;
+  private readonly sizer: ((oid: ObjectId) => Promise<number | null>) | null;
   private readonly parsedTrees = new Map<ObjectId, readonly TreeEntry[]>();
   private parsedEntries = 0;
   /** Objects read from the underlying reader, for tests and for callers that meter work. */
@@ -174,9 +202,25 @@ export class ObjectCache implements ObjectReader {
   constructor(
     private readonly reader: ObjectReader,
     limits?: Partial<Limits>,
+    options: ObjectCacheOptions = {},
   ) {
     this.limits = resolveLimits(limits);
     this.rawTrees = new ByteLru(this.limits.treeCacheBytes);
+    this.graph = options.graph ?? null;
+    const size = (reader as Partial<SizedReader>).size;
+    this.sizer = typeof size === "function" ? (oid) => size.call(reader, oid) : null;
+  }
+
+  /** The object's size when the reader can say without reading it; null when it cannot. */
+  size(oid: ObjectId): Promise<number | null> {
+    return this.sizer ? this.sizer(oid) : Promise.resolve(null);
+  }
+
+  /** True when the reader knows, before any read, that a blob is over the text limit. */
+  async overTextLimit(oid: ObjectId, limit = this.limits.maxTextBytes): Promise<boolean> {
+    if (!this.sizer) return false;
+    const size = await this.sizer(oid);
+    return size !== null && size > limit;
   }
 
   read(oid: ObjectId): Promise<GitObject | null> {
@@ -189,9 +233,13 @@ export class ObjectCache implements ObjectReader {
   }
 
   async node(oid: ObjectId): Promise<CommitNode> {
-    const known = this.nodes.get(oid);
+    const known = this.graph ? this.graph.get(oid) : this.nodes.get(oid);
     if (known) return known;
     const node = parseCommitNode(oid, await readObjectOfType(this, oid, "commit"));
+    if (this.graph) {
+      this.graph.set(node);
+      return node;
+    }
     if (this.nodes.size >= this.limits.commitCacheEntries) {
       // Dropping the oldest half at once is cheaper than tracking recency on every hit.
       let drop = this.nodes.size >> 1;

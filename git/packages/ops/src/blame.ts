@@ -122,7 +122,6 @@ export async function blame(
   if (entry === null || entry.mode === "040000" || entry.mode === "160000") {
     throw new GitError("missing-object", `no file at ${JSON.stringify(cleanPath)} in ${commit}`);
   }
-  const data = await cache.blob(entry.oid);
   const none = (flags: { binary?: boolean; tooLarge?: boolean }): BlameResult => ({
     ranges: [],
     lineCount: 0,
@@ -131,6 +130,8 @@ export async function blame(
     complete: true,
     walked: 0,
   });
+  if (await cache.overTextLimit(entry.oid)) return none({ tooLarge: true });
+  const data = await cache.blob(entry.oid);
   if (data.length > cache.limits.maxTextBytes) return none({ tooLarge: true });
   if (isBinary(data)) return none({ binary: true });
   const lineCount = splitLines(data).count;
@@ -224,6 +225,7 @@ export async function blame(
       // Two parents with the same content would only repeat the same diff.
       if (tried.has(origin.blob)) continue;
       tried.add(origin.blob);
+      if (await cache.overTextLimit(origin.blob)) continue;
       const parentData = await cache.blob(origin.blob);
       if (parentData.length > cache.limits.maxTextBytes || isBinary(parentData)) continue;
       mine ??= splitLines(await cache.blob(current.blob));

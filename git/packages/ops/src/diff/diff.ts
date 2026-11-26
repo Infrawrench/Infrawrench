@@ -101,6 +101,12 @@ export async function diffFile(
   if (change.old !== null && change.new !== null && change.old.oid === change.new.oid) {
     return empty({});
   }
+  // Asked of the index first, where storage can answer: a file over the limit is never read.
+  for (const side of [change.old, change.new]) {
+    if (side !== null && side.mode !== "160000" && (await cache.overTextLimit(side.oid))) {
+      return empty({ tooLarge: true });
+    }
+  }
   const oldData = await contentOf(cache, change.old);
   const newData = await contentOf(cache, change.new);
   const limit = cache.limits.maxTextBytes;

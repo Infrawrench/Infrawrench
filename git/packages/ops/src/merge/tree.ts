@@ -138,11 +138,22 @@ async function mergeFileEntries(
   else if (baseFile?.oid === theirs.oid) oid = ours.oid;
   else {
     const { cache, sink, options } = state;
-    const baseData = baseFile ? await cache.blob(baseFile.oid) : new Uint8Array(0);
-    const oursData = await cache.blob(ours.oid);
-    const theirsData = await cache.blob(theirs.oid);
+    // Where storage can say a size from its index, a file over the limit is refused unread.
+    let oversized = false;
+    for (const side of [baseFile, ours, theirs]) {
+      if (side !== null && (await cache.overTextLimit(side.oid))) oversized = true;
+    }
+    const none = new Uint8Array(0);
+    const baseData = baseFile && !oversized ? await cache.blob(baseFile.oid) : none;
+    const oursData = oversized ? none : await cache.blob(ours.oid);
+    const theirsData = oversized ? none : await cache.blob(theirs.oid);
     const limit = cache.limits.maxTextBytes;
-    if (baseData.length > limit || oursData.length > limit || theirsData.length > limit) {
+    if (
+      oversized ||
+      baseData.length > limit ||
+      oursData.length > limit ||
+      theirsData.length > limit
+    ) {
       oid = ours.oid;
       kind = "too-large";
     } else if (isBinary(baseData) || isBinary(oursData) || isBinary(theirsData)) {

@@ -61,7 +61,7 @@ Operations with their own budgets: `lastCommitsForEntries` (`maxCommits` default
 
 Memory: a history walk holds a few numbers and a tree id per commit visited, never the commit; a diff holds the two files and one `Int32Array` per side; rename detection holds a fingerprint per candidate (about 8 bytes per line), not the blobs; an archive holds one blob at a time (and for zip, its compressed copy).
 
-**What the bounds do not cover.** `ObjectReader.read` returns a whole object and has no way to ask for a size, so a file that turns out to be over `maxTextBytes` or `maxRenameBytes` has already been read into memory before it is refused. If storage can answer "how big is this object" from the object index (it has the size), a `size(oid)` on the reader would let these checks happen before the read. Until then the largest blob the repository accepts is the real ceiling for a diff or a merge that touches it.
+**Sizes before reads.** A reader may also implement `size(oid)` (`SizedReader`, `objects.ts`): how big an object is, answered without reading it. Where it does, a blob over `maxTextBytes` is refused before it is read by `diffFile`, `blame` and the text merge of `mergeTrees` (a `too-large` conflict), and a blob over `maxRenameBytes` is never read for inexact rename detection. `ObjectCache.size` and `overTextLimit` are the two calls; a reader without `size` behaves as before, the limit enforced after the read, so then the largest blob the repository accepts is the ceiling for a diff or a merge that touches it. The worker's storage answers from the pack entry's header (git-worker's notes, "The reader"). `MemoryObjectStore` has no `size`.
 
 ## History
 
@@ -180,7 +180,11 @@ Apple M4, Node 24, single thread, objects in memory, on a machine doing other wo
 | `lastCommitsForEntries`, a directory of 8 files          | 1.2 ms | 750 ms             |
 | `blame` of a file through 5 000 commits (4 290 examined) | 45 ms  | 1 000 ms           |
 
-These are CPU figures with every object already in memory. In the worker, an object read is a lookup in the repository's index and, for a miss, a range read from R2, and that will dominate: walking 5 000 commits is 5 000 commit reads plus the trees along one path. A commit-graph (parents, tree and date per commit, kept by the Durable Object) would take the commit reads out of every walk here; `ObjectCache.node` is the one place to plug it in.
+These are CPU figures with every object already in memory. In the worker, an object read is a lookup in the repository's index and, for a miss, a range read from R2, and that dominates: walking 5 000 commits is 5 000 commit reads plus the trees along one path.
+
+**The commit graph is the caller's to keep.** `new ObjectCache(reader, limits, { graph })` takes a `CommitGraphSource` (`get(oid)`, `set(node)`): `ObjectCache.node` reads through it and fills it, and then holds no nodes of its own (`commitCacheEntries` does not apply; the source bounds itself). One source shared by every request's cache takes the commit reads out of every walk after the first. The worker keeps one per Durable Object, in memory.
+
+**`lastCommitsForEntries` takes answers the caller already has** (`known(commit)`): a finished answer for the same directory at an older commit. A walk that reaches such a commit settles every name it still holds from that answer and goes no further down that line. It is exact, because a name is only ever handed to a commit in which its entry is unchanged, so what the older answer says of the name is what the walk would have found. With the answer for yesterday's head kept, today's file table costs the commits pushed since.
 
 ## Tests
 
@@ -188,10 +192,10 @@ These are CPU figures with every object already in memory. In the worker, an obj
 
 ## Not done
 
-- No commit-graph or generation numbers (see History).
+- No generation numbers (see History). A commit graph can be plugged in (`CommitGraphSource`), but `paintSides` still orders by commit date.
 - Directory rename detection in merges; merge drivers and attributes of any kind.
 - Blame `-M`/`-C` (moved and copied lines), `-L` ranges, ignoring revisions.
 - Binary patches (`git diff --binary`); word diffs; function-context hunks (`-W`); per-language section headings (git's `diff=` drivers; the default heading rule is implemented).
 - `export-ignore`/`export-subst` in archives.
 - Octopus merges.
-- `ObjectReader` has no size query, so size limits are enforced after a read (see Bounds).
+- Sizes are asked before reads only of a reader that has `size` (see Bounds); binary detection still needs the read.

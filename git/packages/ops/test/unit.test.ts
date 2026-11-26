@@ -8,18 +8,25 @@ import {
   serializeCommit,
 } from "@infrawrench/git-core";
 import {
+  type CommitNode,
   Heap,
   type IgnoreWhitespace,
+  ObjectCache,
+  type SizedReader,
   aheadBehind,
+  blame,
+  diffFile,
   diffLines,
   fingerprint,
   formatMailDate,
   formatStat,
   isAncestor,
   isBinary,
+  lastCommitsForEntries,
   lineBytes,
   log,
   mergeBases,
+  mergeCommits,
   mergeText,
   normalizeMessage,
   parseCommitNode,
@@ -284,4 +291,157 @@ it("pops a heap in order", () => {
   while (heap.size > 0) out.push(heap.pop()!);
   expect(out).toEqual(values.sort((a, b) => a - b));
   expect(heap.pop()).toBeUndefined();
+});
+
+/** A linear history of one file, `a.txt`, with the given versions, oldest first. */
+function linear(versions: readonly string[]): { store: MemoryObjectStore; commits: string[] } {
+  const store = new MemoryObjectStore();
+  const who = { name: "T", email: "t@example.com", timestamp: 0, timezoneOffset: 0 };
+  const commits: string[] = [];
+  versions.forEach((content, index) => {
+    const blob = store.write("blob", encodeText(content));
+    const tree = store.write(
+      "tree",
+      buildTree([
+        { mode: "100644", name: "a.txt", oid: blob },
+        { mode: "100644", name: "fixed.txt", oid: store.write("blob", encodeText("same\n")) },
+      ]),
+    );
+    commits.push(
+      store.write(
+        "commit",
+        serializeCommit({
+          tree,
+          parents: commits.length > 0 ? [commits.at(-1)!] : [],
+          author: { ...who, timestamp: 1000 + index },
+          committer: { ...who, timestamp: 1000 + index },
+          message: `c${index}\n`,
+          extraHeaders: [],
+        }),
+      ),
+    );
+  });
+  return { store, commits };
+}
+
+it("asks a reader that knows sizes before reading, and never reads a file over the limit", async () => {
+  const big = "x".repeat(3000);
+  const { store, commits } = linear([`${big}\nold\n`, `${big}\nnew\n`]);
+  const read: string[] = [];
+  const sized: SizedReader = {
+    read: async (oid) => {
+      read.push(oid);
+      return store.read(oid);
+    },
+    has: (oid) => store.has(oid),
+    size: async (oid) => (await store.read(oid))?.data.length ?? null,
+  };
+  const limits = { maxTextBytes: 1000 };
+  const cache = new ObjectCache(sized, limits);
+  const [older, newer] = [await cache.node(commits[0]!), await cache.node(commits[1]!)];
+  const oldEntry = (await cache.entryAt(older.tree, ["a.txt"]))!;
+  const newEntry = (await cache.entryAt(newer.tree, ["a.txt"]))!;
+  read.length = 0;
+  const change = {
+    status: "modified" as const,
+    oldPath: "a.txt",
+    newPath: "a.txt",
+    old: oldEntry,
+    new: newEntry,
+  };
+  expect((await diffFile(cache, change)).tooLarge).toBe(true);
+  expect((await blame(cache, commits[1]!, "a.txt")).tooLarge).toBe(true);
+  expect(read).not.toContain(oldEntry.oid);
+  expect(read).not.toContain(newEntry.oid);
+
+  // Without the hook the answer is the same, found out after the read.
+  const plain = new ObjectCache(store, limits);
+  expect((await diffFile(plain, change)).tooLarge).toBe(true);
+  expect(await plain.size(newEntry.oid)).toBeNull();
+  expect(await cache.size(newEntry.oid)).toBe(3005);
+
+  // A merge of two sides that both changed an oversized file is a conflict, with nothing read.
+  const fork = linear([`${big}\nold\n`]);
+  const who = { name: "T", email: "t@example.com", timestamp: 5000, timezoneOffset: 0 };
+  const side = (content: string): string =>
+    fork.store.write(
+      "commit",
+      serializeCommit({
+        tree: fork.store.write(
+          "tree",
+          buildTree([
+            { mode: "100644", name: "a.txt", oid: fork.store.write("blob", encodeText(content)) },
+          ]),
+        ),
+        parents: [fork.commits[0]!],
+        author: who,
+        committer: who,
+        message: "side\n",
+        extraHeaders: [],
+      }),
+    );
+  const ours = side(`${big}\nours\n`);
+  const theirs = side(`${big}\ntheirs\n`);
+  const blobsRead: number[] = [];
+  const sizedFork: SizedReader = {
+    read: async (oid) => {
+      const object = await fork.store.read(oid);
+      if (object?.type === "blob") blobsRead.push(object.data.length);
+      return object;
+    },
+    has: (oid) => fork.store.has(oid),
+    size: async (oid) => (await fork.store.read(oid))?.data.length ?? null,
+  };
+  const merged = await mergeCommits(new ObjectCache(sizedFork, limits), ours, theirs);
+  expect(merged.conflicts.map((conflict) => conflict.kind)).toEqual(["too-large"]);
+  expect(blobsRead).toEqual([]);
+});
+
+it("reads commits through a graph the caller keeps, and fills it", async () => {
+  const { store, commits } = linear(["1\n", "2\n", "3\n", "4\n"]);
+  const nodes = new Map<string, CommitNode>();
+  const graph = {
+    get: (oid: string) => nodes.get(oid),
+    set: (node: CommitNode) => void nodes.set(node.oid, node),
+  };
+  const first = new ObjectCache(store, undefined, { graph });
+  expect((await log(first, commits[3]!, { limit: 10 })).entries).toHaveLength(4);
+  expect(nodes.size).toBe(4);
+  // A second request's cache walks without reading a commit for the graph again.
+  let commitReads = 0;
+  const second = new ObjectCache(
+    {
+      read: async (oid) => {
+        const object = await store.read(oid);
+        if (object?.type === "commit") commitReads++;
+        return object;
+      },
+      has: (oid) => store.has(oid),
+    },
+    undefined,
+    { graph },
+  );
+  expect(await aheadBehind(second, commits[3]!, commits[0]!)).toEqual({ ahead: 3, behind: 0 });
+  expect(await isAncestor(second, commits[1]!, commits[3]!)).toBe(true);
+  expect(commitReads).toBe(0);
+});
+
+it("settles last commits from answers the caller already has for an older commit", async () => {
+  const { store, commits } = linear(["1\n", "2\n", "3\n", "4\n"]);
+  const names = ["a.txt", "fixed.txt"];
+  const whole = await lastCommitsForEntries(store, commits[3]!, "", names);
+  expect(Object.fromEntries(whole.resolved)).toEqual({
+    "a.txt": commits[3],
+    "fixed.txt": commits[0],
+  });
+  expect(whole.walked).toBe(4);
+
+  // Known at the third commit: the walk from the fourth stops there.
+  const earlier = await lastCommitsForEntries(store, commits[2]!, "", names);
+  const seeded = await lastCommitsForEntries(store, commits[3]!, "", names, {
+    known: (commit) => (commit === commits[2] ? earlier.resolved : undefined),
+  });
+  expect(Object.fromEntries(seeded.resolved)).toEqual(Object.fromEntries(whole.resolved));
+  expect(seeded.walked).toBe(1);
+  expect(seeded.continuation).toBeUndefined();
 });

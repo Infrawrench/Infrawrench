@@ -19,6 +19,14 @@ export interface LastCommitsBudget {
   readonly maxCommits?: number;
   /** Stop after this long, checked between commits. */
   readonly maxMillis?: number;
+  /**
+   * Answers already worked out for this directory at some commit (a cache
+   * the caller keeps): name to the commit that last changed it. A walk that
+   * reaches such a commit settles every name it holds from the answer and
+   * goes no further down that line, which is exact, because a name is only
+   * handed to a commit in which its entry is unchanged.
+   */
+  readonly known?: (commit: ObjectId) => ReadonlyMap<string, ObjectId> | undefined;
   readonly limits?: Partial<Limits>;
 }
 
@@ -95,6 +103,14 @@ export async function lastCommitsForEntries(
     const node = queue.pop()!;
     const names = held.get(node.oid)!;
     held.delete(node.oid);
+    const answers = budget.known?.(node.oid);
+    if (answers) {
+      for (const name of names) {
+        const last = answers.get(name);
+        if (last !== undefined) resolved.set(name, last);
+      }
+      continue;
+    }
     walked++;
 
     const hereTree = await directory(cache, node.tree, parts);

@@ -169,6 +169,10 @@ export async function matchRenames(
   const print = async (entry: EntryRef): Promise<Fingerprint | null> => {
     const known = prints.get(entry.oid);
     if (known !== undefined) return known;
+    if (await cache.overTextLimit(entry.oid, cache.limits.maxRenameBytes)) {
+      prints.set(entry.oid, null);
+      return null;
+    }
     const data = await cache.blob(entry.oid);
     // Not held: only the fingerprint is kept, so a wide diff does not pin every blob it compared.
     const made = data.length > cache.limits.maxRenameBytes ? null : fingerprint(data);
