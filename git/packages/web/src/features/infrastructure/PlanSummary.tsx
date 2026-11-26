@@ -27,6 +27,7 @@ const STATUS: Record<TerraformRunStatus, { label: string; glyph: CiGlyphStatus; 
     errored: { label: "Errored", glyph: "failed", tone: "danger" },
     cancelled: { label: "Cancelled", glyph: "cancelled", tone: "neutral" },
     discarded: { label: "Discarded", glyph: "skipped", tone: "neutral" },
+    skipped: { label: "Skipped", glyph: "skipped", tone: "neutral" },
   };
 
 export const terraformStatusLabel = (status: TerraformRunStatus): string => STATUS[status].label;
