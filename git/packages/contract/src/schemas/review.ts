@@ -618,6 +618,9 @@ export type StartWork = typeof StartWork.Type;
 // ---------------------------------------------------------------------------
 
 export const T3_ENVIRONMENT_STATUSES = ["pending", "connected", "error"] as const;
+/** How an environment is added: through T3 Connect, or by an address a person types. */
+export const T3_ENVIRONMENT_VIAS = ["t3-connect", "address"] as const;
+export type T3EnvironmentVia = (typeof T3_ENVIRONMENT_VIAS)[number];
 
 /** One of the viewer's T3 Code environments. Its tokens are never sent. */
 export const T3Environment = Schema.Struct({
@@ -639,8 +642,15 @@ export type T3Environment = typeof T3Environment.Type;
 export const T3EnvironmentCreate = Schema.Struct({
   label: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)),
   baseUrl: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2048)).annotate({
-    description: "The environment's address, `https://`.",
+    description:
+      "The environment's address, `https://`. With `via: t3-connect`, its T3 Connect address or the MCP URL T3 Code copies.",
   }),
+  via: Schema.optionalKey(
+    Schema.Literals(T3_ENVIRONMENT_VIAS).annotate({
+      description:
+        "`t3-connect`: the address has to be a T3 Connect tunnel's. `address` (the default): any public `https` address.",
+    }),
+  ),
 }).annotate({ identifier: "T3EnvironmentCreate" });
 export type T3EnvironmentCreate = typeof T3EnvironmentCreate.Type;
 
