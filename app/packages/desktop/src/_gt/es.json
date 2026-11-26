@@ -23901,5 +23901,8 @@
   "0b24fda6ab9c162a": "Gestionado por",
   "23a0c77472f8b19b": "{address} en el espacio de trabajo {workspace}",
   "e725c75ba8039aba": "{repository} (raíz del repositorio)",
-  "ccc0004b5a8a002f": "{repository} ({root})"
+  "ccc0004b5a8a002f": "{repository} ({root})",
+  "fc85aaa8ca92a306": "Un kubeconfig de este clúster en /root/.kube, con el nombre de la conexión y con KUBECONFIG y KUBE_CONFIG_PATH apuntando a él: kubectl lee la primera y los proveedores de Kubernetes y Helm de Terraform, la segunda. Un token de cuenta de servicio se cambia por uno de corta duración cuando el clúster lo permite.",
+  "c0c0172dc78f8dbd": "La cadena de conexión como DATABASE_URL, su contraseña como MYSQL_PASSWORD y un grupo de opciones con su nombre en ~/.my.cnf que MYSQL_GROUP_SUFFIX selecciona, para que mysql se conecte sin argumentos. El proveedor de MySQL de Terraform lee MYSQL_ENDPOINT y MYSQL_USERNAME además de la contraseña, y MYSQL_TLS_CA_CERT indica el certificado de CA de la conexión cuando tiene uno.",
+  "8d23e64b5fa8def4": "El token de acceso de la conexión como VERCEL_TOKEN, que lee la CLI de Vercel, y como VERCEL_API_TOKEN, que lee el proveedor de Vercel de Terraform. El job indica su proyecto como siempre (.vercel/project.json, VERCEL_ORG_ID con VERCEL_PROJECT_ID, o --scope)."
 }

@@ -81,7 +81,7 @@ export const manifest = {
   // CI jobs can be lent the access token (ci-credential.ts).
   ciCredential: {
     description:
-      "The connection's access token as VERCEL_TOKEN, which the Vercel CLI reads. The job names its project as usual (.vercel/project.json, VERCEL_ORG_ID with VERCEL_PROJECT_ID, or --scope).",
+      "The connection's access token as VERCEL_TOKEN, which the Vercel CLI reads, and as VERCEL_API_TOKEN, which Terraform's Vercel provider reads. The job names its project as usual (.vercel/project.json, VERCEL_ORG_ID with VERCEL_PROJECT_ID, or --scope).",
     shortLived: false,
   },
 } satisfies PluginManifest;

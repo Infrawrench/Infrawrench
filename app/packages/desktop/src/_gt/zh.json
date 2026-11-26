@@ -23885,5 +23885,8 @@
   "0b24fda6ab9c162a": "管理方",
   "23a0c77472f8b19b": "工作区 {workspace} 中的 {address}",
   "e725c75ba8039aba": "{repository}（仓库根目录）",
-  "ccc0004b5a8a002f": "{repository}（{root}）"
+  "ccc0004b5a8a002f": "{repository}（{root}）",
+  "fc85aaa8ca92a306": "在 /root/.kube 中为此集群生成以连接命名的 kubeconfig，并让 KUBECONFIG 和 KUBE_CONFIG_PATH 指向它：kubectl 读取前者，Terraform 的 Kubernetes 和 Helm 提供程序读取后者。如果集群允许，服务账号令牌会被替换为短期令牌。",
+  "c0c0172dc78f8dbd": "连接字符串作为 DATABASE_URL，其密码作为 MYSQL_PASSWORD，并在 ~/.my.cnf 中写入以它命名、由 MYSQL_GROUP_SUFFIX 选择的选项组，因此 mysql 无需参数即可连接。除密码外，Terraform 的 MySQL 提供程序还会读取 MYSQL_ENDPOINT 和 MYSQL_USERNAME；连接带有 CA 证书时，MYSQL_TLS_CA_CERT 指向该证书。",
+  "8d23e64b5fa8def4": "连接的访问令牌作为 Vercel CLI 读取的 VERCEL_TOKEN，以及 Terraform 的 Vercel 提供程序读取的 VERCEL_API_TOKEN。作业照常指定其项目（.vercel/project.json、VERCEL_ORG_ID 与 VERCEL_PROJECT_ID，或 --scope）。"
 }

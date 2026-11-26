@@ -32,7 +32,7 @@ import type {
 
 export const MYSQL_CI_CREDENTIAL: CiCredentialDeclaration = {
   description:
-    "The connection string as DATABASE_URL, its password as MYSQL_PASSWORD, and an option group named after it in ~/.my.cnf that MYSQL_GROUP_SUFFIX selects, so mysql connects with no arguments.",
+    "The connection string as DATABASE_URL, its password as MYSQL_PASSWORD, and an option group named after it in ~/.my.cnf that MYSQL_GROUP_SUFFIX selects, so mysql connects with no arguments. Terraform's MySQL provider reads MYSQL_ENDPOINT and MYSQL_USERNAME beside the password, and MYSQL_TLS_CA_CERT names the connection's CA certificate when it has one.",
   shortLived: false,
 };
 

@@ -191,7 +191,7 @@ export const manifest = {
   ciExecutor: KUBERNETES_CI_EXECUTOR,
   ciCredential: {
     description:
-      "A kubeconfig for this cluster in /root/.kube, named after the connection, with KUBECONFIG pointing at it. A service account token is swapped for a short-lived one where the cluster allows it.",
+      "A kubeconfig for this cluster in /root/.kube, named after the connection, with KUBECONFIG and KUBE_CONFIG_PATH pointing at it: kubectl reads the first, Terraform's Kubernetes and Helm providers the second. A service account token is swapped for a short-lived one where the cluster allows it.",
     shortLived: false,
     namespaces: true,
     tools: [KUBECTL],
