@@ -121,7 +121,7 @@ export default {
   },
 
   /**
-   * The cron triggers (`wrangler.jsonc`). Hourly: versions whose thirty days
+   * The cron triggers (`wrangler.jsonc`). Hourly: the refs of versions whose thirty days
    * are up and traces no push claimed (`review/prune.ts`), and review runs nothing finished
    * (`review/queue.ts`). Every two minutes: instructions still waiting for an
    * agent the forge can tell itself (`review/instructions.ts`).
