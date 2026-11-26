@@ -2,7 +2,8 @@
  * Source text with line numbers. Each number is an anchor (`#L12`); a click
  * selects the line and a shift-click extends the selection, which the owner
  * keeps (usually in the URL hash). An optional gutter column sits to the left
- * of the numbers, for blame.
+ * of the numbers, for blame, and an optional narrow one to their right, for a
+ * mark on a line.
  */
 import { memo, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { bidiName, hasBidiControls, splitBidi } from "../lib/bidi";
@@ -77,6 +78,8 @@ export interface CodeViewProps {
   readonly onSelectLine?: (line: number, extend: boolean) => void;
   /** A cell to the left of each line number. Return null for a line that continues the cell above. */
   readonly gutter?: (line: number) => ReactNode;
+  /** What marks a line, in a narrow column between its number and its text. Null for no mark. */
+  readonly marker?: ((line: number) => ReactNode) | undefined;
   /** A name for the table, read to screen readers. */
   readonly label: string;
   readonly wrap?: boolean;
@@ -88,6 +91,7 @@ export function CodeView({
   selected = null,
   onSelectLine,
   gutter,
+  marker,
   label,
   wrap = false,
 }: CodeViewProps) {
@@ -122,6 +126,7 @@ export function CodeView({
                     {number}
                   </a>
                 </td>
+                {marker ? <td className="w-4 min-w-4 p-0 align-top">{marker(number)}</td> : null}
                 <td
                   className={`p-0 pr-4 align-top text-on-surface ${
                     wrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"

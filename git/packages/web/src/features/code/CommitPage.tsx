@@ -15,7 +15,9 @@ import { shortOid } from "../../lib/format";
 import { paths } from "../../lib/paths";
 import { usePageTitle } from "../../lib/title";
 import { useRepoRef } from "../../layout/RepoLayout";
+import { optional } from "../review/optional";
 import { DiffSection } from "./DiffSection";
+import { CommitReviewSection } from "./ReviewHistory";
 import { showBidi } from "../../lib/bidi";
 
 function Person({
@@ -43,6 +45,12 @@ export function CommitPage({ sha }: { sha: string }) {
     detail.data && `${detail.data.commit.summary} · ${detail.data.commit.oid.slice(0, 7)}`,
     `${repo.owner}/${repo.repo}`,
   );
+  // The branch page this commit was merged as, when it is one: asked by the whole id, after the commit.
+  const oid = detail.data?.commit.oid;
+  const review = useQuery({
+    ...optional(queries.contents.commitReview({ params: { ...repo, sha: oid ?? sha } })),
+    enabled: oid !== undefined,
+  });
   return (
     <Page>
       <QueryView query={detail} shape="code">
@@ -150,6 +158,10 @@ export function CommitPage({ sha }: { sha: string }) {
                   </dl>
                 </div>
               </Panel>
+
+              {review.data !== undefined && review.data.review !== null ? (
+                <CommitReviewSection repo={repo} review={review.data.review} />
+              ) : null}
 
               <DiffSection
                 repo={repo}

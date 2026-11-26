@@ -20,7 +20,9 @@ import { downloadUrl } from "../../lib/raw";
 import { resolveRelative } from "../../lib/refs";
 import { usePageTitle } from "../../lib/title";
 import { useRepoRef } from "../../layout/RepoLayout";
+import { optional } from "../review/optional";
 import { CodePageSkeleton } from "./CodePageSkeleton";
+import { ReviewHistory } from "./ReviewHistory";
 import { blobQuery, latestCommitQuery } from "./requests";
 import { RenderedMarkdown, isMarkdownPath } from "./ReadmePanel";
 import { CodeRefPicker, CommitStrip, PathBreadcrumbs } from "./shared";
@@ -92,6 +94,11 @@ function BlobView({ repo, blob }: { repo: RepoRef; blob: FileBlob }) {
   // The file shows first; the commit that last changed it follows.
   const latest = useQuery(latestCommitQuery(repo, blob.ref.commitOid, blob.path));
   const lastCommit = blob.lastCommit ?? latest.data?.commit ?? null;
+  // What merged branch pages' reviews left on this path: one read, by the path's index.
+  const history = useQuery(
+    optional(queries.contents.pathReview({ params: repo, query: { path: blob.path } })),
+  );
+  const [historyOpen, setHistoryOpen] = useState(false);
   const historyLink = (
     <AppLink
       href={paths.commits(repo, refName, blob.path)}
@@ -196,6 +203,13 @@ function BlobView({ repo, blob }: { repo: RepoRef; blob: FileBlob }) {
           {symlink ? <Badge tone="outline">Symbolic link</Badge> : null}
           {blob.lfs !== null ? <Badge tone="outline">Git LFS</Badge> : null}
         </PanelHeader>
+        <ReviewHistory
+          repo={repo}
+          pages={history.data?.pages ?? []}
+          more={history.data?.more ?? false}
+          open={historyOpen}
+          onToggle={setHistoryOpen}
+        />
         <BlobBody
           repo={repo}
           blob={blob}
