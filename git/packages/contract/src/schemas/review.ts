@@ -2,15 +2,15 @@
  * Reviewing work a branch at a time: the versions of a branch, what the
  * agent that wrote them recorded (traces), what review agents found
  * (findings), what reviewers sent back (instructions), and the agent behind
- * the branch. A branch's page is its pull request shown another way, so
- * every shape here hangs off a pull request's number.
+ * the branch. A branch's page is its branch page shown another way, so
+ * every shape here hangs off a branch page's number.
  *
  * Lists that only ever grow on the server (`reviewerKind`, an agent's
  * `kind` where a client wrote it, `deliveredVia`) are strings with their
  * known values documented, so an older client reads a newer server.
  */
 import { Schema } from "effect";
-import { IsoDateTime, Oid, Page } from "./common";
+import { BranchKey, IsoDateTime, Oid, Page } from "./common";
 import { Diff, DiffStats, StatusState } from "./git";
 import { UserRef } from "./people";
 import { RepositoryRef } from "./repository";
@@ -35,19 +35,6 @@ export type VersionNumber = typeof VersionNumber.Type;
 // Preferences and settings
 // ---------------------------------------------------------------------------
 
-export const REVIEW_MODES = ["agent", "classic"] as const;
-export const ReviewMode = Schema.Literals(REVIEW_MODES).annotate({
-  identifier: "ReviewMode",
-  description:
-    "`agent`: a branch opens as its versioned branch page. `classic`: as the pull request. Both read the same data.",
-});
-export type ReviewMode = typeof ReviewMode.Type;
-
-export const ReviewModePreference = Schema.Struct({ mode: ReviewMode }).annotate({
-  identifier: "ReviewModePreference",
-});
-export type ReviewModePreference = typeof ReviewModePreference.Type;
-
 /** The reviewers the forge runs itself. */
 export const REVIEWER_KINDS = ["general", "security", "tests", "terraform", "intent"] as const;
 export type ReviewerKind = (typeof REVIEWER_KINDS)[number];
@@ -59,10 +46,6 @@ const ReviewerKindName = Schema.String.check(
 });
 
 export const ReviewSettings = Schema.Struct({
-  autoOpenBranchPages: Schema.Boolean.annotate({
-    description:
-      "Open a draft pull request the first time a branch is pushed, so every branch has a page.",
-  }),
   reviewAgentsEnabled: Schema.Boolean,
   reviewerKinds: Schema.Array(ReviewerKindName).annotate({
     description: "The reviewers that run on each version.",
@@ -77,7 +60,6 @@ export const ReviewSettings = Schema.Struct({
 export type ReviewSettings = typeof ReviewSettings.Type;
 
 export const ReviewSettingsUpdate = Schema.Struct({
-  autoOpenBranchPages: Schema.optionalKey(Schema.Boolean),
   reviewAgentsEnabled: Schema.optionalKey(Schema.Boolean),
   reviewerKinds: Schema.optionalKey(Schema.Array(ReviewerKindName).check(Schema.isMaxLength(16))),
   mustFixBlocksMerge: Schema.optionalKey(Schema.Boolean),
@@ -119,7 +101,7 @@ const ExternalRefs = Schema.Record(Schema.String, Schema.String).annotate({
     "What names the agent where it runs: `threadId` and `projectId` for T3 Code, `sessionId` and `organizationId` for an Infrawrench agent, or whatever an MCP client gave.",
 });
 
-/** The agent that writes a pull request's branch. */
+/** The agent that writes a branch page's branch. */
 export const AgentLink = Schema.Struct({
   kind: AgentKind,
   displayName: Schema.String,
@@ -565,6 +547,7 @@ export type BranchPageState = typeof BranchPageState.Type;
 /** A branch waiting on the viewer. */
 export const ReviewInboxItem = Schema.Struct({
   repository: RepositoryRef,
+  key: BranchKey,
   number: Schema.Int,
   title: Schema.String,
   branch: Schema.String,
@@ -594,7 +577,7 @@ export type ReviewInbox = typeof ReviewInbox.Type;
 
 export const StartWork = Schema.Struct({
   ask: NonEmptyMarkdown.annotate({
-    description: "What is being asked for. It becomes the pull request's body.",
+    description: "What is being asked for. It becomes the branch page's body.",
   }),
   title: Schema.optionalKey(
     Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(256)).annotate({

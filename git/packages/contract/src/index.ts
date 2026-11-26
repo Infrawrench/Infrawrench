@@ -30,7 +30,7 @@ export * from "./groups/namespaces";
 export * from "./groups/repositories";
 export * from "./groups/contents";
 export * from "./groups/issues";
-export * from "./groups/pulls";
+export * from "./groups/branches";
 export * from "./groups/review";
 export * from "./groups/workspace";
 export * from "./groups/settings";

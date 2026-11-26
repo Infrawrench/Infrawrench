@@ -5,7 +5,7 @@
  * **Pagination is a cursor.** A list takes `?cursor=&limit=` and answers
  * `{ items, nextCursor }`; `nextCursor` is null on the last page and is
  * otherwise opaque (send it back as it came). Lists a person pages through by
- * count (issues, pull requests) also answer the counts their tabs show.
+ * count (issues, branch pages) also answer the counts their tabs show.
  */
 import { Schema } from "effect";
 
@@ -63,14 +63,33 @@ export type RepositoryName = typeof RepositoryName.Type;
 /** `:owner/:repo`, the start of every repository path. */
 export const RepoParams = { owner: NamespaceSlug, repo: RepositoryName } as const;
 
-/** An issue or pull request number; the two share one sequence per repository. */
+/** An issue or branch page number; the two share one sequence per repository. */
 export const ThreadNumber = Schema.NumberFromString.check(
   Schema.isInt(),
   Schema.isGreaterThanOrEqualTo(1),
-).annotate({ description: "Issue or pull request number." });
+).annotate({ description: "Issue or branch page number." });
 export type ThreadNumber = typeof ThreadNumber.Type;
 
 export const NumberParams = { ...RepoParams, number: ThreadNumber } as const;
+
+/**
+ * What names a branch's page in a path and in a link: the branch's name
+ * (`feature/a`), `owner/name:branch` for a fork's branch proposed to this
+ * repository, and either with `~2`, `~3`... for an earlier page of a name
+ * that was used again (the bare name is the open page, or the newest). A
+ * branch name holds neither `:` nor `~`, so nothing is escaped inside it;
+ * in a path it is one segment, percent-encoded (`feature%2Fa`).
+ */
+export const BranchKey = Schema.String.check(
+  Schema.isMinLength(1),
+  Schema.isMaxLength(600),
+).annotate({
+  description:
+    "A branch's name, `owner/name:branch` for a fork's branch proposed here, either with `~n` for an earlier page of a reused name. One path segment, percent-encoded.",
+});
+export type BranchKey = typeof BranchKey.Type;
+
+export const BranchParams = { ...RepoParams, branch: BranchKey } as const;
 
 export const MAX_PAGE_SIZE = 100;
 export const DEFAULT_PAGE_SIZE = 30;

@@ -33,8 +33,8 @@ export const ProtectedBranch = Schema.Struct({
     description:
       "A branch name or glob: `*` matches within a path segment, `**` across them (`main`, `release/*`).",
   }),
-  requirePullRequest: Schema.Boolean.annotate({
-    description: "Changes arrive by pull request only: direct pushes are refused.",
+  requireBranchPage: Schema.Boolean.annotate({
+    description: "Changes arrive by branch page only: direct pushes are refused.",
   }),
   requiredApprovals: Schema.Int.annotate({
     description: "Approving reviews of the current head a merge needs. 0 for none.",
@@ -63,7 +63,7 @@ export const ProtectedBranch = Schema.Struct({
 export type ProtectedBranch = typeof ProtectedBranch.Type;
 
 const protectionFields = {
-  requirePullRequest: Schema.Boolean,
+  requireBranchPage: Schema.Boolean,
   requiredApprovals: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 10 })),
   dismissStaleApprovals: Schema.Boolean,
   requiredStatusContexts: Schema.Array(Schema.String).check(Schema.isMaxLength(50)),
@@ -76,7 +76,7 @@ const protectionFields = {
 
 export const ProtectedBranchCreate = Schema.Struct({
   pattern: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255)),
-  requirePullRequest: Schema.optionalKey(protectionFields.requirePullRequest),
+  requireBranchPage: Schema.optionalKey(protectionFields.requireBranchPage),
   requiredApprovals: Schema.optionalKey(protectionFields.requiredApprovals),
   dismissStaleApprovals: Schema.optionalKey(protectionFields.dismissStaleApprovals),
   requiredStatusContexts: Schema.optionalKey(protectionFields.requiredStatusContexts),
@@ -90,7 +90,7 @@ export type ProtectedBranchCreate = typeof ProtectedBranchCreate.Type;
 
 export const ProtectedBranchUpdate = Schema.Struct({
   pattern: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(255))),
-  requirePullRequest: Schema.optionalKey(protectionFields.requirePullRequest),
+  requireBranchPage: Schema.optionalKey(protectionFields.requireBranchPage),
   requiredApprovals: Schema.optionalKey(protectionFields.requiredApprovals),
   dismissStaleApprovals: Schema.optionalKey(protectionFields.dismissStaleApprovals),
   requiredStatusContexts: Schema.optionalKey(protectionFields.requiredStatusContexts),

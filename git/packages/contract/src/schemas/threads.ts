@@ -1,12 +1,12 @@
 /**
- * Issues and pull requests. The two share one number sequence per repository
+ * Issues and branch pages. The two share one number sequence per repository
  * and everything a conversation has (title, body, labels, assignees,
- * milestone, comments, timeline, lock), so a pull request is an issue's
+ * milestone, comments, timeline, lock), so a branch page is an issue's
  * fields plus its own: `/issues/:number/comments` and `/issues/:number/timeline`
  * serve both.
  */
 import { Schema } from "effect";
-import { IsoDateTime, Oid } from "./common";
+import { BranchKey, IsoDateTime, Oid } from "./common";
 import { CommitStatus, CommitSummary, DiffHunk, DiffStats, StatusState } from "./git";
 import { UserRef } from "./people";
 import { MergeMethod, RepositoryRef } from "./repository";
@@ -48,7 +48,7 @@ export const Milestone = Schema.Struct({
   description: Schema.NullOr(Schema.String),
   state: MilestoneState,
   dueOn: Schema.NullOr(Schema.String.annotate({ format: "date" })),
-  openCount: Schema.Int.annotate({ description: "Open issues and pull requests in it." }),
+  openCount: Schema.Int.annotate({ description: "Open issues and branch pages in it." }),
   closedCount: Schema.Int,
   createdAt: IsoDateTime,
   closedAt: Schema.NullOr(IsoDateTime),
@@ -93,7 +93,7 @@ export const IssueStateReason = Schema.Literals(["completed", "not_planned"]).an
 });
 export type IssueStateReason = typeof IssueStateReason.Type;
 
-/** The fields an issue and a pull request share. */
+/** The fields an issue and a branch page share. */
 const threadFields = {
   id: Schema.String,
   number: Schema.Int,
@@ -207,14 +207,14 @@ export const CommentWrite = Schema.Struct({
 export type CommentWrite = typeof CommentWrite.Type;
 
 // ---------------------------------------------------------------------------
-// Pull requests
+// Branch pages
 // ---------------------------------------------------------------------------
 
-export const PULL_REQUEST_STATES = ["open", "closed", "merged"] as const;
-export const PullRequestState = Schema.Literals(PULL_REQUEST_STATES).annotate({
-  identifier: "PullRequestState",
+export const PAGE_STATES = ["open", "closed", "merged"] as const;
+export const PageState = Schema.Literals(PAGE_STATES).annotate({
+  identifier: "PageState",
 });
-export type PullRequestState = typeof PullRequestState.Type;
+export type PageState = typeof PageState.Type;
 
 export const ReviewDecision = Schema.Literals([
   "approved",
@@ -227,9 +227,12 @@ export const ReviewDecision = Schema.Literals([
 });
 export type ReviewDecision = typeof ReviewDecision.Type;
 
-export const PullRequestSummary = Schema.Struct({
+export const BranchPageSummary = Schema.Struct({
   ...threadFields,
-  state: PullRequestState,
+  key: BranchKey.annotate({
+    description: "What names this page in a path: `branches.get` takes it as `:branch`.",
+  }),
+  state: PageState,
   draft: Schema.Boolean,
   baseRef: Schema.String.annotate({ description: "The branch it merges into." }),
   headRef: Schema.String.annotate({ description: "The branch it merges from." }),
@@ -247,8 +250,8 @@ export const PullRequestSummary = Schema.Struct({
         "The newest version of its head branch (`versions.list`). Null before the first push is recorded.",
     }),
   ),
-}).annotate({ identifier: "PullRequestSummary" });
-export type PullRequestSummary = typeof PullRequestSummary.Type;
+}).annotate({ identifier: "BranchPageSummary" });
+export type BranchPageSummary = typeof BranchPageSummary.Type;
 
 export const MERGE_BLOCKERS = [
   "merged",
@@ -268,7 +271,7 @@ export const MERGE_BLOCKERS = [
 ] as const;
 
 /**
- * Whether a pull request can merge, and everything that says why not. The
+ * Whether a branch page can merge, and everything that says why not. The
  * merge box renders this and nothing else.
  */
 export const Mergeability = Schema.Struct({
@@ -340,8 +343,8 @@ export const Mergeability = Schema.Struct({
 }).annotate({ identifier: "Mergeability" });
 export type Mergeability = typeof Mergeability.Type;
 
-export const PullRequest = Schema.Struct({
-  ...PullRequestSummary.fields,
+export const BranchPage = Schema.Struct({
+  ...BranchPageSummary.fields,
   body: Schema.String,
   bodyEditedAt: Schema.NullOr(IsoDateTime),
   closedBy: Schema.NullOr(UserRef),
@@ -368,14 +371,20 @@ export const PullRequest = Schema.Struct({
     }),
     canDeleteHeadBranch: Schema.Boolean,
   }),
-}).annotate({ identifier: "PullRequest" });
-export type PullRequest = typeof PullRequest.Type;
+}).annotate({ identifier: "BranchPage" });
+export type BranchPage = typeof BranchPage.Type;
 
-export const PullRequestCreate = Schema.Struct({
-  title: Title,
+export const BranchPagePropose = Schema.Struct({
+  title: Schema.optionalKey(
+    Title.annotate({ description: "The branch's name as words when omitted." }),
+  ),
   body: Schema.optionalKey(Body),
-  base: Schema.String.annotate({ description: "A branch of this repository." }),
-  head: Schema.String.annotate({ description: "The branch to merge from." }),
+  base: Schema.optionalKey(
+    Schema.String.annotate({
+      description: "A branch of this repository. Its default branch when omitted.",
+    }),
+  ),
+  head: Schema.String.annotate({ description: "The branch whose page this is." }),
   headRepository: Schema.optionalKey(
     Schema.String.annotate({
       description: "`owner/name` of the fork `head` is in. This repository when omitted.",
@@ -385,10 +394,10 @@ export const PullRequestCreate = Schema.Struct({
   labels: Schema.optionalKey(Schema.Array(Schema.String)),
   assignees: Schema.optionalKey(Schema.Array(Schema.String)),
   milestone: Schema.optionalKey(Schema.NullOr(Schema.Int)),
-}).annotate({ identifier: "PullRequestCreate" });
-export type PullRequestCreate = typeof PullRequestCreate.Type;
+}).annotate({ identifier: "BranchPagePropose" });
+export type BranchPagePropose = typeof BranchPagePropose.Type;
 
-export const PullRequestUpdate = Schema.Struct({
+export const BranchPageUpdate = Schema.Struct({
   title: Schema.optionalKey(Title),
   body: Schema.optionalKey(Body),
   base: Schema.optionalKey(
@@ -397,8 +406,8 @@ export const PullRequestUpdate = Schema.Struct({
   labels: Schema.optionalKey(Schema.Array(Schema.String)),
   assignees: Schema.optionalKey(Schema.Array(Schema.String)),
   milestone: Schema.optionalKey(Schema.NullOr(Schema.Int)),
-}).annotate({ identifier: "PullRequestUpdate" });
-export type PullRequestUpdate = typeof PullRequestUpdate.Type;
+}).annotate({ identifier: "BranchPageUpdate" });
+export type BranchPageUpdate = typeof BranchPageUpdate.Type;
 
 export const MergeRequest = Schema.Struct({
   method: MergeMethod,
@@ -619,8 +628,10 @@ const ThreadMention = Schema.Struct({
   repository: Schema.Struct({ owner: Schema.String, name: Schema.String }),
   number: Schema.Int,
   title: Schema.String,
-  isPullRequest: Schema.Boolean,
-  state: PullRequestState,
+  branch: Schema.NullOr(BranchKey).annotate({
+    description: "The page's key when the thread is a branch's page. Null for an issue.",
+  }),
+  state: PageState,
 }).annotate({ identifier: "ThreadMention" });
 
 export const TIMELINE_EVENT_TYPES = [
@@ -703,7 +714,7 @@ export const TimelineItem = Schema.Union([
     operation: Schema.Literals(["plan", "apply"]),
     outcome: Schema.Literals(["planned", "no_changes", "applied", "failed", "skipped"]).annotate({
       description:
-        "What the run reported: a plan with changes, a plan with none, an apply, a failure, or a run that was never started (a fork's pull request).",
+        "What the run reported: a plan with changes, a plan with none, an apply, a failure, or a run that was never started (a fork's branch page).",
     }),
     add: Schema.NullOr(Schema.Int),
     change: Schema.NullOr(Schema.Int),

@@ -6,7 +6,7 @@
  * are matched to the organisation's Infrawrench resources.
  */
 import { Schema } from "effect";
-import { IsoDateTime, Oid } from "./common";
+import { BranchKey, IsoDateTime, Oid } from "./common";
 import { UserRef } from "./people";
 
 /** An amount in a currency. Costs are monthly unless a field says otherwise. */
@@ -32,12 +32,12 @@ export const TERRAFORM_RUN_STATUSES = [
 export const TerraformRunStatus = Schema.Literals(TERRAFORM_RUN_STATUSES).annotate({
   identifier: "TerraformRunStatus",
   description:
-    "`planned`: a plan with changes, nothing applied (a pull request's plan ends here). `no_changes`: the plan was empty. `awaiting_approval`: an apply waiting for someone to approve it. `discarded`: a plan nobody applied before a newer one replaced it. `skipped`: never run, on purpose (a pull request from a fork is never planned); `statusReason` says why, and it is not a failure.",
+    "`planned`: a plan with changes, nothing applied (a branch page's plan ends here). `no_changes`: the plan was empty. `awaiting_approval`: an apply waiting for someone to approve it. `discarded`: a plan nobody applied before a newer one replaced it. `skipped`: never run, on purpose (a branch page from a fork is never planned); `statusReason` says why, and it is not a failure.",
 });
 export type TerraformRunStatus = typeof TerraformRunStatus.Type;
 
 export const TERRAFORM_RUN_OPERATIONS = ["plan", "apply", "destroy"] as const;
-export const TERRAFORM_RUN_TRIGGERS = ["pull_request", "merge", "manual", "drift"] as const;
+export const TERRAFORM_RUN_TRIGGERS = ["branch", "merge", "manual", "drift"] as const;
 
 export const TERRAFORM_ACTIONS = [
   "create",
@@ -82,7 +82,7 @@ export const TerraformPlanSummary = Schema.Struct({
 }).annotate({ identifier: "TerraformPlanSummary" });
 export type TerraformPlanSummary = typeof TerraformPlanSummary.Type;
 
-/** The monthly cost change a plan would cause, from the app's pull request cost analysis. */
+/** The monthly cost change a plan would cause, from the app's branch page cost analysis. */
 export const TerraformCostDelta = Schema.Struct({
   currency: Schema.String,
   monthlyBefore: Schema.NullOr(Schema.Finite).annotate({
@@ -115,7 +115,9 @@ export const TerraformRun = Schema.Struct({
   statusReason: Schema.NullOr(Schema.String),
   commitOid: Oid,
   ref: Schema.String,
-  pullNumber: Schema.NullOr(Schema.Int),
+  branchPage: Schema.NullOr(BranchKey).annotate({
+    description: "The key of the branch page the run plans, when it is one's.",
+  }),
   actor: Schema.NullOr(UserRef),
   approvedBy: Schema.NullOr(UserRef),
   createdAt: IsoDateTime,
@@ -200,7 +202,7 @@ export const TerraformWorkspace = Schema.Struct({
   terraformVersion: Schema.NullOr(Schema.String).annotate({
     description: "A version or constraint. Null: read from `required_version`, else the latest.",
   }),
-  planOnPullRequest: Schema.Boolean,
+  planOnBranch: Schema.Boolean,
   applyOnMerge: Schema.Boolean,
   applyRequiresApproval: Schema.Boolean,
   accounts: Schema.Array(TerraformAccount),
@@ -233,7 +235,7 @@ export const TerraformWorkspaceCreate = Schema.Struct({
   rootPath: Schema.String,
   branch: Schema.optionalKey(Schema.String),
   terraformVersion: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  planOnPullRequest: Schema.optionalKey(Schema.Boolean),
+  planOnBranch: Schema.optionalKey(Schema.Boolean),
   applyOnMerge: Schema.optionalKey(Schema.Boolean),
   applyRequiresApproval: Schema.optionalKey(Schema.Boolean),
   accountIds: Schema.optionalKey(Schema.Array(Schema.String)),
@@ -244,7 +246,7 @@ export const TerraformWorkspaceSettings = Schema.Struct({
   name: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[a-z0-9][a-z0-9_-]{0,62}$/))),
   branch: Schema.optionalKey(Schema.String),
   terraformVersion: Schema.optionalKey(Schema.NullOr(Schema.String)),
-  planOnPullRequest: Schema.optionalKey(Schema.Boolean),
+  planOnBranch: Schema.optionalKey(Schema.Boolean),
   applyOnMerge: Schema.optionalKey(Schema.Boolean),
   applyRequiresApproval: Schema.optionalKey(Schema.Boolean),
   accountIds: Schema.optionalKey(

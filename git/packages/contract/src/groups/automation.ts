@@ -13,7 +13,7 @@ import {
 } from "../http/annotations";
 import { Authentication, RepositoryAccess } from "../http/auth";
 import { BadRequest, Conflict, NotFound, UnprocessableEntity } from "../http/errors";
-import { CommitSha, Ok, Page, PageQuery, RefQuery, RepoParams } from "../schemas/common";
+import { BranchKey, CommitSha, Ok, Page, PageQuery, RefQuery, RepoParams } from "../schemas/common";
 import {
   CiEvent,
   CiRepositorySettings,
@@ -107,10 +107,8 @@ export class CiGroup extends HttpApiGroup.make("ci")
           Schema.String.annotate({ description: "Runs of this commit (a full id)." }),
         ),
         ref: Schema.optionalKey(Schema.String.annotate({ description: "Runs on this branch." })),
-        pull: Schema.optionalKey(
-          Schema.NumberFromString.check(Schema.isInt()).annotate({
-            description: "Runs of this pull request.",
-          }),
+        page: Schema.optionalKey(
+          BranchKey.annotate({ description: "Runs of this branch's page (its key)." }),
         ),
         status: Schema.optionalKey(CiRunStatus),
         event: Schema.optionalKey(CiEvent),
@@ -118,7 +116,7 @@ export class CiGroup extends HttpApiGroup.make("ci")
       success: Page(CiRun),
     })
       .annotate(RequiredAccess, "read")
-      .annotate(OpenApi.Summary, "CI runs of a repository, a commit or a pull request")
+      .annotate(OpenApi.Summary, "CI runs of a repository, a commit or a branch page")
       .annotate(
         OpenApi.Description,
         "Newest first. `skipped` runs are left out unless `status=skipped` asks for them.",
@@ -244,16 +242,16 @@ export class TerraformGroup extends HttpApiGroup.make("terraform")
       query: {
         ...PageQuery,
         workspace: Schema.optionalKey(Schema.String),
-        pull: Schema.optionalKey(Schema.NumberFromString.check(Schema.isInt())),
+        page: Schema.optionalKey(BranchKey),
         status: Schema.optionalKey(TerraformRunStatus),
       },
       success: Page(TerraformRun),
     })
       .annotate(RequiredAccess, "read")
-      .annotate(OpenApi.Summary, "Terraform runs of a repository, a workspace or a pull request")
+      .annotate(OpenApi.Summary, "Terraform runs of a repository, a workspace or a branch page")
       .annotate(
         OpenApi.Description,
-        "Newest first. With `pull`, the newest plan per workspace comes first: what the pull request's Infrastructure box shows.",
+        "Newest first. With `page`, the newest plan per workspace comes first: what the branch page's Infrastructure box shows.",
       )
       .annotate(SuccessDescription, "Runs, each with its plan summary and cost change"),
     HttpApiEndpoint.get("getRun", "/terraform/runs/:runId", {
