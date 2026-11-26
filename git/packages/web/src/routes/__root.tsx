@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { Outlet, createRootRoute, useLocation } from "@tanstack/react-router";
 import { useGo } from "../components/AppLink";
 import { useReviewMode } from "../features/review/mode";
-import { AgentShell } from "../layout/AgentShell";
+import { SidebarShell } from "../layout/SidebarShell";
 import { AppShell } from "../layout/AppShell";
 import { paths } from "../lib/paths";
 import { useDocumentTitle } from "../lib/title";
@@ -33,12 +33,12 @@ function Root() {
   const user = session.data?.user ?? null;
   // Not one frame and then the other: nothing is drawn until the mode is known.
   if (mode === undefined) return <div className="min-h-screen bg-surface" />;
-  // The sidebar is the frame of someone in agent mode who has a name to work under.
-  if (session.data !== undefined && user !== null && mode === "agent" && !needsUsername) {
+  // The sidebar is the frame of anyone signed in who has a name to work under: what it holds follows their mode.
+  if (session.data !== undefined && user !== null && !needsUsername) {
     return (
-      <AgentShell user={user} appUrl={session.data.appUrl}>
+      <SidebarShell user={user} appUrl={session.data.appUrl} mode={mode}>
         <Outlet />
-      </AgentShell>
+      </SidebarShell>
     );
   }
   return (

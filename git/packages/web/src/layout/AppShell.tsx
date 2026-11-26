@@ -1,6 +1,7 @@
 /**
- * The frame every page sits in: the top bar (brand, search, the signed-in
- * menu or a sign-in link) and the page below it.
+ * The frame of a signed-out reader, and of someone still choosing a
+ * username: the top bar (brand, search, the signed-in menu or a sign-in
+ * link) and the page below it. Everyone else has `SidebarShell`.
  */
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { useLocation } from "@tanstack/react-router";
@@ -37,7 +38,7 @@ export function BrandMark({ size = 20 }: { size?: number }) {
   );
 }
 
-function TopSearch() {
+export function TopSearch() {
   const go = useGo();
   const location = useLocation();
   const onExplore = location.pathname === "/explore";

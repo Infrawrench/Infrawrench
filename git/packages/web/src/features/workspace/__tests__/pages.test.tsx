@@ -1,8 +1,9 @@
 /**
  * The sidebar shell and the pages of someone's work against the dev mock,
  * through the real router: home, Changes and its filters, Mentions, a
- * repository inside the shell, the mode switch in both account menus, and
- * who keeps the top-nav shell.
+ * repository inside the shell, the sidebar of each mode with the mode switch
+ * in its account menu, the classic lists of pull requests and issues, and who
+ * keeps the top-nav shell.
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -226,7 +227,19 @@ describe("the sidebar", () => {
     expect(screen.queryByText(/wants to merge/)).toBeNull();
   });
 
-  it("switches to classic from the account menu, and back from the top bar's", async () => {
+  it("marks the repositories an agent is working in", async () => {
+    open("/");
+    await screen.findByRole("heading", { name: /active branches/ }, wait);
+    const nav = sidebar();
+    await waitFor(() => {
+      const marked = nav
+        .getAllByRole("link")
+        .filter((link) => link.querySelector("[data-agent-working]") !== null);
+      expect(marked.length).toBeGreaterThan(0);
+    }, wait);
+  });
+
+  it("switches to classic from the account menu, and back: the sidebar stays, what it holds changes", async () => {
     open("/");
     await screen.findByRole("heading", { name: /active branches/ }, wait);
     fireEvent.click(screen.getByRole("button", { name: "Account menu for Mara Lindqvist" }));
@@ -237,15 +250,51 @@ describe("the sidebar", () => {
     ).toBe("true");
     fireEvent.click(classic);
 
-    // The top-nav shell and the home page as it was.
-    expect(await screen.findByRole("navigation", { name: "Site" }, wait)).toBeTruthy();
+    // The classic sidebar and the home page as it was.
+    const site = within(await screen.findByRole("navigation", { name: "Site" }, wait));
     expect(await screen.findByRole("heading", { name: "Recent pushes" }, wait)).toBeTruthy();
     expect(screen.queryByRole("navigation", { name: "Workspace" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Workspace:/ })).toBeNull();
     expect((await api.review.mode()).mode).toBe("classic");
+    for (const [group, name, href] of [
+      ["Pull requests", "Created", "/pulls"],
+      ["Pull requests", "Review requested", "/pulls?view=review"],
+      ["Pull requests", "Assigned", "/pulls?view=assigned"],
+      ["Issues", "Assigned", "/issues"],
+      ["Issues", "Created", "/issues?view=created"],
+      ["Issues", "Mentioned", "/issues?view=mentioned"],
+    ]) {
+      const panel = document.getElementById(
+        site.getByRole("button", { name: group! }).getAttribute("aria-controls")!,
+      )!;
+      expect(within(panel).getByRole("link", { name: name! }).getAttribute("href")).toBe(href);
+    }
+    expect(site.getByRole("link", { name: "Explore" }).getAttribute("href")).toBe("/explore");
+    expect(site.queryByRole("link", { name: "Changes" })).toBeNull();
+    // A namespace's group says how many it holds and adds one.
+    expect(site.getByRole("button", { name: "Acme" }).textContent).toMatch(/Acme\s*5/);
+    expect(site.getByRole("link", { name: "New repository in Acme" }).getAttribute("href")).toBe(
+      "/new?owner=acme",
+    );
+    expect(site.getByRole("link", { name: "infra" }).getAttribute("href")).toBe("/acme/infra");
 
     fireEvent.click(screen.getByRole("button", { name: "Account menu for Mara Lindqvist" }));
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "Branch page" }));
     expect(await screen.findByRole("navigation", { name: "Workspace" }, wait)).toBeTruthy();
+  });
+
+  it("keeps a repository's own header and tabs in classic, inside the sidebar", async () => {
+    await api.review.setMode({ payload: { mode: "classic" } });
+    open("/acme/infra");
+    const tabs = within(await screen.findByRole("navigation", { name: "Repository" }, wait));
+    expect(tabs.getByRole("link", { name: /Pull requests/ }).getAttribute("href")).toBe(
+      "/acme/infra/pulls",
+    );
+    expect(within(screen.getByRole("main")).getByRole("button", { name: "Starred" })).toBeTruthy();
+    expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
+    const site = within(screen.getByRole("navigation", { name: "Site" }));
+    expect(site.getByRole("link", { name: "infra" }).getAttribute("aria-current")).toBe("page");
+    expect(within(screen.getByRole("banner")).getByRole("search")).toBeTruthy();
   });
 
   it("is not for a signed-out reader", async () => {
@@ -313,7 +362,60 @@ describe("the lists", () => {
     ).toBe("/acme/infra/issues/15");
   });
 
-  it("keeps the lists for someone in classic mode, under the top bar", async () => {
+  it("lists the reader's pull requests and issues across repositories, by their part in them", async () => {
+    await api.review.setMode({ payload: { mode: "classic" } });
+    open("/pulls");
+    const pulls = within(await screen.findByRole("list", { name: "Pull requests" }, wait));
+    expect(
+      pulls
+        .getByRole("link", { name: "Skip upstreams that fail their health check" })
+        .getAttribute("href"),
+    ).toBe("/acme/edge-router/pulls/4");
+    expect(pulls.getByRole("link", { name: "acme/edge-router" })).toBeTruthy();
+    const site = within(screen.getByRole("navigation", { name: "Site" }));
+    const created = site
+      .getAllByRole("link", { name: "Created" })
+      .find((link) => link.getAttribute("href") === "/pulls")!;
+    expect(created.getAttribute("aria-current")).toBe("page");
+
+    // The ones waiting on their review are the review inbox.
+    fireEvent.click(
+      within(screen.getByRole("navigation", { name: "Pull requests views" })).getByRole("link", {
+        name: "Review requested",
+      }),
+    );
+    await waitFor(() => {
+      const waiting = within(screen.getByRole("list", { name: "Pull requests" }));
+      expect(
+        waiting
+          .getByRole("link", { name: "Peer with the shared services VPC" })
+          .getAttribute("href"),
+      ).toBe("/acme/infra/pulls/12");
+    }, wait);
+
+    cleanup();
+    queryClient.clear();
+    open("/issues?view=created");
+    const issues = within(await screen.findByRole("list", { name: "Issues" }, wait));
+    expect(
+      issues
+        .getByRole("link", { name: "Database backups are kept for one day" })
+        .getAttribute("href"),
+    ).toBe("/acme/infra/issues/6");
+    // Closed ones are a filter away, in the address.
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "State" })).getByRole("button", { name: "All" }),
+    );
+    await waitFor(
+      () =>
+        expect(
+          within(screen.getByRole("list", { name: "Issues" })).getAllByRole("listitem").length,
+        ).toBeGreaterThan(7),
+      wait,
+    );
+  });
+
+  it("keeps the lists for someone in classic mode, in the same sidebar", async () => {
     await api.review.setMode({ payload: { mode: "classic" } });
     open("/changes");
     expect(await screen.findByRole("list", { name: "Changes" }, wait)).toBeTruthy();
