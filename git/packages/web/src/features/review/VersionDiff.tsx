@@ -114,22 +114,57 @@ function lineElement(section: HTMLElement, range: FocusRange): Element | null {
   return null;
 }
 
+/** How long a jump waits for its line: a closed file fetches its patch, and the first one the renderer. */
+const JUMP_WAIT_MS = 10_000;
+/** How long after reaching it a jump keeps it in place while the page above settles. */
+const JUMP_SETTLE_MS = 1_200;
+const JUMP_POLL_MS = 60;
+
+/** The jump under way, so a newer one, or the reader scrolling, ends it. */
+let jumpGeneration = 0;
+
 /**
- * Scrolls to something that may not be drawn yet: a file just opened draws
- * its lines a moment later. Looks for it for a second and a half, then
- * settles for the file.
+ * Scrolls to something that may not be drawn yet: a file just opened fetches
+ * and draws its lines a moment later. Goes to the file at once, looks for the
+ * line for up to ten seconds, then keeps it centred while what is drawn above
+ * it changes height. The reader scrolling, or another jump, ends it.
  */
 function scrollWhenDrawn(find: () => Element | null, fallback: () => Element | null): void {
-  let tries = 0;
+  const generation = ++jumpGeneration;
+  let stopped = false;
+  const stop = (): void => {
+    stopped = true;
+    for (const name of ["wheel", "touchmove", "keydown", "mousedown"] as const) {
+      window.removeEventListener(name, stop, true);
+    }
+  };
+  for (const name of ["wheel", "touchmove", "keydown", "mousedown"] as const) {
+    window.addEventListener(name, stop, { capture: true, passive: true });
+  }
+  const live = (): boolean => !stopped && generation === jumpGeneration;
+  const started = Date.now();
+  let reached: number | null = null;
+  let lastTop: number | null = null;
   const look = (): void => {
+    if (!live()) return stop();
     const target = find();
-    if (target !== null) {
-      target.scrollIntoView?.({ block: "center" });
+    if (target === null) {
+      if (Date.now() - started < JUMP_WAIT_MS) window.setTimeout(look, JUMP_POLL_MS);
+      else stop();
       return;
     }
-    if (++tries < 25) window.setTimeout(look, 60);
-    else fallback()?.scrollIntoView?.({ block: "start" });
+    const top = target.getBoundingClientRect?.().top ?? null;
+    // Reached, or moved since: what was drawn above it changed height.
+    if (reached === null || (top !== null && lastTop !== null && Math.abs(top - lastTop) > 2)) {
+      target.scrollIntoView?.({ block: "center" });
+      reached ??= Date.now();
+    }
+    lastTop = target.getBoundingClientRect?.().top ?? null;
+    if (Date.now() - reached < JUMP_SETTLE_MS) window.setTimeout(look, JUMP_POLL_MS);
+    else stop();
   };
+  // The file first, so the click is answered while its lines load.
+  if (find() === null) fallback()?.scrollIntoView?.({ block: "start" });
   look();
 }
 
