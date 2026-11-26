@@ -4,7 +4,7 @@ import { ANONYMOUS, type Principal } from "../../auth/principal";
 import type { Env } from "../../env";
 import { type GitDirectory, parseRepositoryPath } from "../directory";
 import { contentDisposition, rawHeaders } from "../http/raw-headers";
-import { gitHttp, matchGitRoute } from "../http/routes";
+import { archiveCommit, gitHttp, matchGitRoute } from "../http/routes";
 import { parseCommand, unquote } from "../ssh/command";
 import { type CacheLike, addressKey, cacheFailureLimiter } from "../ssh/rate-limit";
 
@@ -146,13 +146,28 @@ describe("git routes", () => {
     });
     expect(matchGitRoute("GET", `/alice/demo/archive/${SHA}.tar.gz`)).toMatchObject({
       kind: "archive",
-      sha: SHA,
+      ref: SHA,
+      format: "tar.gz",
     });
+    // The UI's download links (the contract's `archivePath`) name a branch or a tag, in either format.
+    expect(matchGitRoute("GET", "/alice/demo/archive/main.zip")).toMatchObject({
+      kind: "archive",
+      ref: "main",
+      format: "zip",
+    });
+    expect(matchGitRoute("GET", "/alice/demo/archive/feature/a%20b.tar.gz")).toMatchObject({
+      kind: "archive",
+      ref: "feature/a b",
+      format: "tar.gz",
+    });
+    expect(matchGitRoute("GET", "/alice/demo/archive/v1.0.zip")).toMatchObject({ ref: "v1.0" });
     for (const [method, path] of [
       ["GET", "/alice/demo"],
       ["GET", "/alice/demo/tree/main"],
       ["GET", "/alice/demo/raw/main/README.md"],
-      ["GET", `/alice/demo/archive/${SHA}.zip`],
+      ["GET", "/alice/demo/archive/main"],
+      ["GET", "/alice/demo/archive/.zip"],
+      ["GET", "/alice/demo/archive/main.rar"],
       ["GET", "/alice/demo/git-upload-pack"],
       ["POST", "/alice/demo/info/refs"],
       ["POST", "/alice/demo/git-upload-archive"],
@@ -283,6 +298,39 @@ describe("git routes", () => {
       dir,
     );
     expect(seen).toEqual([null]);
+  });
+
+  it("resolves a download link's branch or tag to its commit, and takes a job's token for a commit only", async () => {
+    const refs = [
+      { name: "refs/heads/main", oid: "1".repeat(40) },
+      { name: "refs/heads/v1", oid: "2".repeat(40) },
+      { name: "refs/tags/v1", oid: "3".repeat(40), peeled: "4".repeat(40) },
+      { name: "refs/tags/v2", oid: "5".repeat(40), peeled: "6".repeat(40) },
+      { name: "refs/pull/1/head", oid: "7".repeat(40) },
+    ];
+    expect(archiveCommit(refs, "main")).toBe("1".repeat(40));
+    expect(archiveCommit(refs, "v1")).toBe("2".repeat(40));
+    expect(archiveCommit(refs, "v2")).toBe("6".repeat(40));
+    expect(archiveCommit(refs, "pull/1/head")).toBeNull();
+    expect(archiveCommit(refs, "missing")).toBeNull();
+
+    const asked: string[] = [];
+    const dir: GitDirectory = {
+      ...directory({ "alice/private": { access: "none" } }, ANONYMOUS),
+      authenticateArchiveToken: async (_token, sha) => {
+        asked.push(sha);
+        return null;
+      },
+    };
+    expect((await get("/alice/private/archive/main.zip?token=iwj_x", dir))?.status).toBe(401);
+    expect(asked).toEqual([]);
+    expect((await get(`/alice/private/archive/${SHA}.tar.gz?token=iwj_x`, dir))?.status).toBe(401);
+    expect(asked).toEqual([SHA]);
+    // By name as by commit, a repository the caller cannot read is not there.
+    const signedIn = directory({ "alice/private": { access: "none" } }, user);
+    for (const path of ["/alice/private/archive/main.zip", "/alice/missing/archive/main.zip"]) {
+      expect((await get(path, signedIn))?.status).toBe(404);
+    }
   });
 
   it("refuses a body in an encoding it does not take", async () => {

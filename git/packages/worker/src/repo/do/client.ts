@@ -54,8 +54,8 @@ export interface RepoClient {
     input: ReadableStream<Uint8Array> | null,
     signal?: AbortSignal,
   ): Promise<Response>;
-  /** The commit as a gzipped tar under one directory. 404 when the commit is not there. */
-  archive(commit: ObjectId, prefix: string): Promise<Response>;
+  /** The commit as a gzipped tar (or a zip) under one directory. 404 when the commit is not there. */
+  archive(commit: ObjectId, prefix: string, format?: "tar.gz" | "zip"): Promise<Response>;
 }
 
 type Rpc = {
@@ -94,7 +94,12 @@ export function repoClient(env: Pick<Env, "REPO">, repoId: string): RepoClient {
         ...(input ? { body: input, duplex: "half" } : {}),
         ...(signal ? { signal } : {}),
       } as RequestInit),
-    archive: (commit, prefix) =>
-      send(ARCHIVE_URL, { repoId, commit, prefix } satisfies ArchiveCall),
+    archive: (commit, prefix, format) =>
+      send(ARCHIVE_URL, {
+        repoId,
+        commit,
+        prefix,
+        ...(format ? { format } : {}),
+      } satisfies ArchiveCall),
   };
 }

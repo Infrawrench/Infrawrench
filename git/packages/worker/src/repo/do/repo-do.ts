@@ -36,6 +36,7 @@ import {
   newServeStats,
   serve,
 } from "@infrawrench/git-protocol";
+import { zipArchive } from "@infrawrench/git-ops";
 import type { Env } from "../../env";
 import { describeError } from "../../http/log";
 import { tarArchive } from "./archive";
@@ -322,6 +323,18 @@ export class RepoDO extends DurableObject<Env> {
         return new Response("not found", { status: 404 });
       }
       const reader = repository.backend();
+      if (call.format === "zip") {
+        const peeled = await peelTags(reader, call.commit);
+        const commit = peeled.type === "commit" ? await reader.read(peeled.oid) : null;
+        if (!commit) return new Response("not found", { status: 404 });
+        const parsed = parseCommit(commit.data);
+        const zip = zipArchive(reader, parsed.tree, {
+          prefix: `${call.prefix}/`,
+          time: parsed.committer.timestamp,
+          commit: peeled.oid,
+        });
+        return new Response(zip as never, { headers: { "Content-Type": "application/zip" } });
+      }
       const tar = streamOf(tarArchive(reader, call.commit, call.prefix));
       return new Response(tar.pipeThrough(new CompressionStream("gzip") as never), {
         headers: { "Content-Type": "application/gzip" },

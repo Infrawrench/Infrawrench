@@ -6,7 +6,7 @@
  *   POST /<owner>/<repo>[.git]/git-upload-pack
  *   POST /<owner>/<repo>[.git]/git-receive-pack
  *   GET  /<owner>/<repo>/raw/<sha>/<path>
- *   GET  /<owner>/<repo>/archive/<sha>.tar.gz
+ *   GET  /<owner>/<repo>/archive/<sha|branch|tag>.tar.gz|.zip   (the UI's download links name a ref)
  *
  * `gitHttp` answers null for any other request, so the router can try it
  * first and fall through.
@@ -60,7 +60,9 @@ export type GitRoute =
       readonly kind: "archive";
       readonly owner: string;
       readonly name: string;
-      readonly sha: string;
+      /** A full commit id (what CI asks for) or a branch or tag name (the UI's download links). */
+      readonly ref: string;
+      readonly format: "tar.gz" | "zip";
     };
 
 const SHA = /^[0-9a-f]{40}$/;
@@ -85,14 +87,39 @@ export function matchGitRoute(method: string, pathname: string): GitRoute | null
       }
       return { kind: "raw", ...repo, sha: rest[1]!, path };
     }
-    if (rest[0] === "archive" && rest.length === 2 && rest[1]!.endsWith(".tar.gz")) {
-      const sha = rest[1]!.slice(0, -".tar.gz".length);
-      if (SHA.test(sha)) return { kind: "archive", ...repo, sha };
+    if (rest[0] === "archive" && rest.length >= 2) {
+      // A ref name has slashes of its own (`archive/feature/x.zip`).
+      let named: string;
+      try {
+        named = rest.slice(1).map(decodeURIComponent).join("/");
+      } catch {
+        return null;
+      }
+      const format = (["tar.gz", "zip"] as const).find((suffix) => named.endsWith(`.${suffix}`));
+      if (!format) return null;
+      const ref = named.slice(0, -(format.length + 1));
+      if (ref === "") return null;
+      return { kind: "archive", ...repo, ref, format };
     }
     return null;
   }
   if (method === "POST" && rest.length === 1 && isGitService(rest[0])) {
     return { kind: "service", ...repo, service: rest[0] };
+  }
+  return null;
+}
+
+/**
+ * The commit a download link's branch or tag names: a branch first, as git
+ * resolves a short name, and a tag by the commit it points at.
+ */
+export function archiveCommit(
+  refs: ReadonlyArray<{ readonly name: string; readonly oid: string; readonly peeled?: string }>,
+  named: string,
+): string | null {
+  for (const full of [`refs/heads/${named}`, `refs/tags/${named}`]) {
+    const ref = refs.find((candidate) => candidate.name === full);
+    if (ref) return ref.peeled ?? ref.oid;
   }
   return null;
 }
@@ -211,9 +238,12 @@ export async function gitHttp(
   if (route.kind === "archive") {
     // The one route that takes its token in the query: the app redirects a machine here.
     const token = url.searchParams.get("token");
+    const named = SHA.test(route.ref) ? null : route.ref;
     let principal: Principal;
     if (token !== null) {
-      const job = await directory.authenticateArchiveToken(token, route.sha);
+      // A job's token names its commit, so it opens that commit and never a ref.
+      const job =
+        named === null ? await directory.authenticateArchiveToken(token, route.ref) : null;
       if (!job) return unauthorized();
       principal = job;
     } else {
@@ -226,17 +256,20 @@ export async function gitHttp(
     const allowed = await gate(directory, principal, route.owner, route.name, "read");
     if (!allowed.ok) return allowed.response;
     const { repository } = allowed;
-    const archive = await repoClient(env, repository.id).archive(
-      route.sha,
-      `${repository.name}-${route.sha}`,
-    );
+    const client = repoClient(env, repository.id);
+    const commit =
+      named === null ? route.ref : archiveCommit((await client.listRefs()).refs, named);
+    if (commit === null) return text(404, "No such branch or tag.\n");
+    // As the contract's `archivePath` says: `<repo>-<ref>`, the ref's slashes as dashes.
+    const label = named === null ? route.ref : named.replaceAll("/", "-");
+    const archive = await client.archive(commit, `${repository.name}-${label}`, route.format);
     if (!archive.ok) return text(404, "No such commit.\n");
     return new Response(archive.body, {
       headers: {
-        "Content-Type": "application/gzip",
+        "Content-Type": route.format === "zip" ? "application/zip" : "application/gzip",
         "Content-Disposition": contentDisposition(
           "attachment",
-          `${repository.name}-${route.sha.slice(0, 12)}.tar.gz`,
+          `${repository.name}-${named === null ? route.ref.slice(0, 12) : label}.${route.format}`,
         ),
         "X-Content-Type-Options": "nosniff",
         "Cross-Origin-Resource-Policy": "same-origin",

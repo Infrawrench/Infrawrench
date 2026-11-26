@@ -26,6 +26,8 @@ export interface ArchiveCall {
   readonly commit: string;
   /** The archive's one top-level directory. */
   readonly prefix: string;
+  /** Absent means a gzipped tar, which is what CI's machines unpack. */
+  readonly format?: "tar.gz" | "zip";
 }
 
 /** Paths of the internal `fetch`. The host is never resolved. */
