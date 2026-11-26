@@ -276,7 +276,8 @@ describe("the sidebar", () => {
     const repository = await nav.findByRole("link", { name: "edge-router" }, wait);
     expect(repository.getAttribute("href")).toBe("/acme/edge-router");
     expect(repository.getAttribute("aria-current")).toBe("page");
-    expect(nav.getByRole("link", { name: "acme" }).getAttribute("href")).toBe("/acme");
+    // The owner is reached from the breadcrumb, not a row of its own.
+    expect(nav.queryByRole("link", { name: "acme" })).toBeNull();
     // The same page as a member sees: the sections in the bar, no header of its own.
     expect(await screen.findByRole("navigation", { name: "Repository" }, wait)).toBeTruthy();
     expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeTruthy();
