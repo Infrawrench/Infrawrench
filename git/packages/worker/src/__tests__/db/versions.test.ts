@@ -16,7 +16,7 @@ import { VERSION_RETENTION_MS } from "../../db/review";
 import type { GitPushEvent } from "../../env";
 import { handlePush } from "../../events/consumer";
 import { pruneVersions } from "../../review/prune";
-import { type Person, type World, configured, makeWorld } from "./world";
+import { type Person, type World, configured, makeWorld, pagePath } from "./world";
 
 vi.mock("../../events/ci", () => ({
   announcePush: vi.fn(async () => {}),
@@ -98,16 +98,17 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
       .where(and(eq(gitBranchVersions.repositoryId, id), eq(gitBranchVersions.branch, branch)))
       .orderBy(gitBranchVersions.lineage, gitBranchVersions.number);
   const pullsOf = async (branch: string) =>
-    (await world.call("GET", `${repo}/pulls?state=all&head=${branch}`, { as: alice })).body
+    (await world.call("GET", `${repo}/branch-pages?state=all&head=${branch}`, { as: alice })).body
       .items as Array<Record<string, any>>;
-  const versionsOf = async (number: number, as: Person = alice) =>
-    (await world.call("GET", `${repo}/pulls/${number}/versions`, { as })).body;
+  const versionsOf = async (key: string, as: Person = alice) =>
+    (await world.call("GET", `${pagePath(repo, key)}/versions`, { as })).body;
 
   it("copies each push once and opens the branch's page at the first", async () => {
     const main = world.storage.repository(id).branches.get("main")!;
     const one = await push("feature", { message: "Add rate limits\n\nWith a body." });
     const [page] = await pullsOf("feature");
     expect(page).toMatchObject({
+      key: "feature",
       title: "Add rate limits",
       draft: true,
       state: "open",
@@ -125,7 +126,7 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     expect(await rows("main")).toEqual([]);
     expect(await rows("feature")).toHaveLength(2);
 
-    const listed = await versionsOf(page!["number"]);
+    const listed = await versionsOf(page!["key"]);
     expect(listed).toMatchObject({ branch: "feature", latest: 2, viewerReviewed: null });
     expect(listed.versions).toMatchObject([
       {
@@ -150,9 +151,9 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
       bob.username,
     ]);
     expect(
-      (await world.call("GET", `${repo}/pulls/${page!["number"]}/versions/latest`)).body,
+      (await world.call("GET", `${pagePath(repo, page!["key"])}/versions/latest`)).body,
     ).toMatchObject({ number: 2 });
-    expect((await world.call("GET", `${repo}/pulls/${page!["number"]}/versions/9`)).status).toBe(
+    expect((await world.call("GET", `${pagePath(repo, page!["key"])}/versions/9`)).status).toBe(
       404,
     );
   });
@@ -171,54 +172,83 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     expect(copied[2]).toMatchObject({ tipOid: seen.newOid, pusherUserId: bob.id });
     // All three are the page's, which was opened at the push that was heard.
     const [page] = await pullsOf("feature");
-    expect((await versionsOf(page!["number"])).versions).toHaveLength(3);
+    expect((await versionsOf(page!["key"])).versions).toHaveLength(3);
   });
 
-  it("opens no page where the repository has that off, a second time, or for nothing new", async () => {
+  it("opens no page a second time, and opens one when a branch without a page is read", async () => {
     expect((await world.call("GET", `${repo}/review-settings`, { as: bob })).status).toBe(403);
     expect((await world.call("GET", `${repo}/review-settings`, { as: alice })).body).toEqual({
-      autoOpenBranchPages: true,
       reviewAgentsEnabled: false,
       reviewerKinds: ["general"],
       mustFixBlocksMerge: true,
       availableReviewerKinds: ["general", "security", "tests", "terraform", "intent"],
     });
+    const changed = await world.call("PATCH", `${repo}/review-settings`, {
+      as: alice,
+      body: { reviewerKinds: ["general", "security", "general"] },
+    });
+    expect(changed.body).toMatchObject({ reviewerKinds: ["general", "security"] });
+    expect(changed.body).not.toHaveProperty("autoOpenBranchPages");
 
     // Closed by hand: the next push does not open another.
     await push("closed");
     const [first] = await pullsOf("closed");
-    await world.call("POST", `${repo}/pulls/${first!["number"]}/close`, { as: alice });
+    await world.call("POST", `${pagePath(repo, first!["key"])}/close`, { as: alice });
     await push("closed");
     expect(await pullsOf("closed")).toHaveLength(1);
     expect(await rows("closed")).toHaveLength(2);
 
-    const off = await world.call("PATCH", `${repo}/review-settings`, {
-      as: alice,
-      body: { autoOpenBranchPages: false, reviewerKinds: ["general", "security", "general"] },
-    });
-    expect(off.body).toMatchObject({
-      autoOpenBranchPages: false,
-      reviewerKinds: ["general", "security"],
-    });
-    await push("quiet");
-    await push("quiet");
+    // Pushed while no event arrived (as before every branch had a page): it has none.
+    await push("quiet", { deliver: false });
+    await push("quiet", { deliver: false });
     expect(await pullsOf("quiet")).toEqual([]);
-    // Versions are recorded whichever way the setting is, and a pull request opened by hand gets them.
-    expect(await rows("quiet")).toHaveLength(2);
-    const opened = await world.call("POST", `${repo}/pulls`, {
-      as: bob,
-      body: { title: "By hand", base: "main", head: "quiet" },
+    // Nothing of its own: reading it opens nothing.
+    world.storage
+      .repository(id)
+      .branches.set("level", world.storage.repository(id).branches.get("main")!);
+    expect((await world.call("GET", pagePath(repo, "level"), { as: bob })).status).toBe(404);
+    expect((await world.call("GET", pagePath(repo, "nowhere"), { as: bob })).status).toBe(404);
+    expect((await world.call("GET", pagePath(repo, "main"), { as: bob })).status).toBe(404);
+    expect(await pullsOf("level")).toEqual([]);
+    // Reading a branch with commits of its own opens its page, as a draft by the reader.
+    const read = await world.call("GET", pagePath(repo, "quiet"), { as: bob });
+    expect(read).toMatchObject({
+      status: 200,
+      body: { key: "quiet", draft: true, state: "open", baseRef: "main", headRef: "quiet" },
     });
-    expect(opened.body).toMatchObject({ draft: false, latestVersion: 2 });
-    expect((await versionsOf(opened.body.number)).versions.map((v: any) => v.number)).toEqual([
-      1, 2,
+    expect(read.body.author.username).toBe(bob.username);
+    expect(await pullsOf("quiet")).toHaveLength(1);
+    // Read again, it is the same page; proposing it now is a 409.
+    expect((await world.call("GET", pagePath(repo, "quiet"), { as: alice })).body.number).toBe(
+      read.body.number,
+    );
+    expect(
+      await world.call("POST", `${repo}/branch-pages`, { as: bob, body: { head: "quiet" } }),
+    ).toMatchObject({ status: 409, body: { code: "branch_page_exists" } });
+    // A branch that had a page and has none open is not opened again by reading it.
+    await world.call("POST", `${pagePath(repo, "quiet")}/close`, { as: alice });
+    expect((await world.call("GET", pagePath(repo, "quiet"), { as: bob })).body.state).toBe(
+      "closed",
+    );
+    expect(await pullsOf("quiet")).toHaveLength(1);
+
+    // Versions are recorded whether or not an event was heard, and a page opened later gets them.
+    await push("by-hand", { deliver: false });
+    await push("by-hand", { deliver: false });
+    expect(await rows("by-hand")).toHaveLength(0);
+    await push("by-hand");
+    expect(await rows("by-hand")).toHaveLength(3);
+    const [byHand] = await pullsOf("by-hand");
+    expect(byHand).toMatchObject({ draft: true, latestVersion: 3 });
+    expect((await versionsOf(byHand!["key"])).versions.map((v: any) => v.number)).toEqual([
+      1, 2, 3,
     ]);
   });
 
   it("carries a comment to the next version, or says which version answered it", async () => {
     await push("feature");
     const [page] = await pullsOf("feature");
-    const pull = `${repo}/pulls/${page!["number"]}`;
+    const pull = `${pagePath(repo, page!["key"])}`;
     const comment = async (line: number, startLine?: number) =>
       (
         await world.call("POST", `${pull}/comments`, {
@@ -275,16 +305,16 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     after = await threads();
     expect(after[stands["id"]]).toMatchObject({ line: 12, commitOid: three.newOid, version: 1 });
     expect(after[answered["id"]]).toMatchObject({ outdated: true, answeredInVersion: 2 });
-    expect((await versionsOf(page!["number"])).versions.map((v: any) => v.counts.comments)).toEqual(
-      [2, 1, 0],
-    );
+    expect((await versionsOf(page!["key"])).versions.map((v: any) => v.counts.comments)).toEqual([
+      2, 1, 0,
+    ]);
   });
 
   it("serves the diffs between versions, and remembers how far each person has reviewed", async () => {
     const one = await push("feature");
     const two = await push("feature");
     const [page] = await pullsOf("feature");
-    const pull = `${repo}/pulls/${page!["number"]}`;
+    const pull = `${pagePath(repo, page!["key"])}`;
     const diff = async (version: string, from?: string, as: Person = bob) =>
       world.call(
         "GET",
@@ -341,7 +371,7 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     const marked = await world.call("PUT", `${pull}/versions/1/reviewed`, { as: bob });
     expect(marked.body).toMatchObject({ version: 1 });
     expect((await world.call("PUT", `${pull}/versions/1/reviewed`)).status).toBe(401);
-    expect((await versionsOf(page!["number"], bob)).viewerReviewed).toBe(1);
+    expect((await versionsOf(page!["key"], bob)).viewerReviewed).toBe(1);
     expect((await diff("latest", "reviewed")).body).toMatchObject({
       kind: "interdiff",
       from: 1,
@@ -385,7 +415,7 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
   it("holds a merge on an open must-fix finding until it is overridden", async () => {
     await push("feature");
     const [page] = await pullsOf("feature");
-    const pull = `${repo}/pulls/${page!["number"]}`;
+    const pull = `${pagePath(repo, page!["key"])}`;
     await world.call("PUT", `${pull}/draft`, { as: alice, body: { draft: false } });
     const blockers = async () =>
       (
@@ -488,7 +518,7 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     ]);
   });
 
-  it("starts work from an ask: a branch, a draft pull request and the agent behind it", async () => {
+  it("starts work from an ask: a branch, its draft page and the agent behind it", async () => {
     const main = world.storage.repository(id).branches.get("main")!;
     const ask = "Add rate limits to the API\n\nPer token, with a 429 and `Retry-After`.";
     expect((await world.call("POST", `${repo}/work`, { body: { ask } })).status).toBe(401);
@@ -499,7 +529,8 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     expect(started.status).toBe(200);
     expect(started.body).toMatchObject({
       branch: "work/add-rate-limits-to-the-api",
-      pullRequest: {
+      page: {
+        key: "work/add-rate-limits-to-the-api",
         title: "Add rate limits to the API",
         body: ask,
         draft: true,
@@ -512,11 +543,11 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
       agent: { kind: "mcp", displayName: "Claude Code", externalRefs: {} },
     });
     expect(started.body.agent.connectedBy.username).toBe(bob.username);
-    const { number } = started.body.pullRequest;
+    const { number, key } = started.body.page;
     const branch: string = started.body.branch;
     expect(world.storage.repository(id).branches.get(branch)).toBe(main);
     expect(world.storage.repository(id).pullRefs.get(number)).toBe(main);
-    expect(await versionsOf(number)).toMatchObject({ versions: [], latest: null });
+    expect(await versionsOf(key)).toMatchObject({ versions: [], latest: null });
 
     // The same ask again takes the next free name; a name asked for and taken is a 409.
     const again = await world.call("POST", `${repo}/work`, { as: bob, body: { ask } });
@@ -528,10 +559,10 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
       await world.call("POST", `${repo}/work`, { as: bob, body: { ask, base: "nowhere" } }),
     ).toMatchObject({ status: 422, body: { code: "ref_not_found" } });
 
-    // The agent's first push is version 1 of that pull request, and names the agent.
+    // The agent's first push is version 1 of that page, and names the agent.
     await push(branch, { by: bob });
     expect(await pullsOf(branch)).toHaveLength(1);
-    expect((await versionsOf(number)).versions).toMatchObject([
+    expect((await versionsOf(key)).versions).toMatchObject([
       {
         number: 1,
         previousOid: main,
@@ -540,10 +571,10 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     ]);
     // Pushed with bob's credential, but by the agent: it is his to review.
     expect(
-      (await world.call("GET", `${repo}/pulls/${number}/branch-state`, { as: bob })).body,
+      (await world.call("GET", `${pagePath(repo, key)}/branch-state`, { as: bob })).body,
     ).toMatchObject({ state: "needs_your_review", agent: { kind: "mcp" } });
 
-    const agent = `${repo}/pulls/${number}/agent`;
+    const agent = `${pagePath(repo, key)}/agent`;
     expect(
       (
         await world.call("PUT", agent, {
@@ -568,27 +599,13 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     expect((await world.call("GET", agent)).body).toEqual({ agent: null });
   });
 
-  it("keeps a person's review mode, and answers what is not built yet as such", async () => {
-    expect((await world.call("GET", "/api/review/mode")).status).toBe(401);
-    expect((await world.call("GET", "/api/review/mode", { as: bob })).body).toEqual({
-      mode: "agent",
-    });
-    expect(
-      (await world.call("PUT", "/api/review/mode", { as: bob, body: { mode: "classic" } })).body,
-    ).toEqual({ mode: "classic" });
-    expect((await world.call("GET", "/api/review/mode", { as: bob })).body).toEqual({
-      mode: "classic",
-    });
-    expect((await world.call("GET", "/api/review/mode", { as: alice })).body).toEqual({
-      mode: "agent",
-    });
-    expect(
-      (await world.call("PUT", "/api/review/mode", { as: bob, body: { mode: "other" } })).status,
-    ).toBe(400);
+  it("has no review mode any more, and keeps its gates first", async () => {
+    // One way to read a branch: the mode a person once chose is gone from the API.
+    expect((await world.call("GET", "/api/review/mode", { as: bob })).status).toBe(404);
 
     await push("feature");
     const [page] = await pullsOf("feature");
-    const pull = `${repo}/pulls/${page!["number"]}`;
+    const pull = `${pagePath(repo, page!["key"])}`;
     // The gates come first: only an administrator overrides, and a token never reaches T3 Code.
     expect(
       (

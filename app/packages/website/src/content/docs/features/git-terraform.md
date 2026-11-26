@@ -1,6 +1,6 @@
 ---
 title: Terraform on git.infrawrench.com
-description: Keep Terraform state on git.infrawrench.com, plan every pull request and apply on merge with your connected accounts, and see on each resource which repository manages it.
+description: Keep Terraform state on git.infrawrench.com, plan every branch and apply on merge with your connected accounts, and see on each resource which repository manages it.
 ---
 
 A repository on git.infrawrench.com that holds Terraform (or OpenTofu) gets an **Infrastructure** tab. From there the forge is your state backend, runs your plans and applies on [Infrawrench CI](./ci.md) with the accounts you have already connected, and tells the app which repository and directory manage each of your resources.
@@ -13,19 +13,19 @@ A **workspace** is one Terraform root directory with one state. Open **Infrastru
 
 Each workspace has:
 
-| Setting                  | What it does                                                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
-| **Name**                 | Lowercase letters, digits, `-` and `_`. It is part of the state address.                                                 |
-| **Directory**            | The root module, from the top of the repository.                                                                         |
-| **Branch**               | The branch whose merges apply, and that pull requests are planned against. The default branch unless you choose another. |
-| **Version**              | The Terraform or OpenTofu release its runs use. Leave it empty for the default.                                          |
-| **Accounts**             | The connected Infrawrench accounts whose credentials its runs get. Nothing is written to the repository.                 |
-| **Plan on pull request** | Plan every pull request into the branch that touches this workspace.                                                     |
-| **Apply on merge**       | With **Apply requires approval** off, a merge applies at once. Otherwise the apply waits for someone to approve it.      |
+| Setting              | What it does                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **Name**             | Lowercase letters, digits, `-` and `_`. It is part of the state address.                                            |
+| **Directory**        | The root module, from the top of the repository.                                                                    |
+| **Branch**           | The branch whose merges apply, and that branches are planned against. The default branch unless you choose another. |
+| **Version**          | The Terraform or OpenTofu release its runs use. Leave it empty for the default.                                     |
+| **Accounts**         | The connected Infrawrench accounts whose credentials its runs get. Nothing is written to the repository.            |
+| **Plan on branches** | Plan every branch that merges into the workspace's branch and touches this workspace.                               |
+| **Apply on merge**   | With **Apply requires approval** off, a merge applies at once. Otherwise the apply waits for someone to approve it. |
 
 <insert [The Add workspace dialog: the directory picker listing detected Terraform roots, the name field, and the connected accounts picker with two accounts ticked] here>
 
-Linking an account is what lends it: a workspace's runs get short-lived credentials for the accounts linked here, and only those. That includes the plan of every pull request opened from a branch of the repository, which runs that branch's Terraform code, so link accounts with the people who can push to the repository in mind. Linking takes admin access to the repository and `accounts:read` in the organization, and every lend is in the [audit log](../team-and-billing/audit-log.md).
+Linking an account is what lends it: a workspace's runs get short-lived credentials for the accounts linked here, and only those. That includes the plan of every branch of the repository, which runs that branch's Terraform code, so link accounts with the people who can push to the repository in mind. Linking takes admin access to the repository and `accounts:read` in the organization, and every lend is in the [audit log](../team-and-billing/audit-log.md).
 
 ## State
 
@@ -71,23 +71,23 @@ The backend takes tokens only. A personal access token never deletes the state o
 
 A run's job gets a token of its own. It works for that workspace's state and that run's plan until the run ends, and for nothing else: it cannot clone the repository, push to it or call the API. A plan's token reads the state and takes the lock; only an apply's writes.
 
-## Plans on pull requests
+## Plans on branches
 
-When a pull request is opened or gets new commits, the forge plans each workspace the change touches: files under the workspace's directory, or under a local module it uses. The pull request shows each plan's result as a check named `Infrawrench Terraform / <workspace>` and an entry in its timeline:
+When a branch's page is opened or the branch gets new commits, the forge plans each workspace the change touches: files under the workspace's directory, or under a local module it uses. The branch's page shows each plan's result as a check named `Infrawrench Terraform / <workspace>` and an entry in its timeline:
 
 ```
 Plan: 2 to add, 1 to change, 0 to destroy.
 ```
 
-The run's page lists the resources that change and which attributes differ. **Values are never stored**: the plan is read once for its summary and thrown away, so nothing sensitive in it ends up on the pull request.
+The run's page lists the resources that change and which attributes differ. **Values are never stored**: the plan is read once for its summary and thrown away, so nothing sensitive in it ends up on the branch's page.
 
-<insert [A pull request's Infrastructure box showing the prod workspace's plan: 2 to add, 1 to change, 0 to destroy, the list of changed resources, and the estimated monthly cost change of +$48.20] here>
+<insert [A branch page's Infrastructure box showing the prod workspace's plan: 2 to add, 1 to change, 0 to destroy, the list of changed resources, and the estimated monthly cost change of +$48.20] here>
 
 The **monthly cost change** is priced from the plan itself, through the accounts the workspace links, with the same estimator the app's create forms use. A change that cannot be priced is counted as unpriced and never as zero. You need `costs:read` in the organization to see it.
 
 To require a plan before merging, add `Infrawrench Terraform / <workspace>` to the branch's required checks.
 
-**Pull requests from forks are never planned.** A plan runs the pull request's code with your cloud credentials, so the run is recorded as skipped with that reason instead.
+**Branches proposed from forks are never planned.** A plan runs the branch's code with your cloud credentials, so the run is recorded as skipped with that reason instead.
 
 ## Applies
 

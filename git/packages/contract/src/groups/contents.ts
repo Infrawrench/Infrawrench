@@ -283,7 +283,7 @@ export class ContentsGroup extends HttpApiGroup.make("contents")
       .annotate(OpenApi.Summary, "Compare two refs: `base...head`")
       .annotate(
         OpenApi.Description,
-        "What `head` has that `base` does not, from their merge base: the commits and the changed files. The page a pull request is opened from.",
+        "What `head` has that `base` does not, from their merge base: the commits and the changed files. The page a branch page is opened from.",
       )
       .annotate(SuccessDescription, "The comparison"),
     HttpApiEndpoint.get("compareDiff", "/compare/diff", {

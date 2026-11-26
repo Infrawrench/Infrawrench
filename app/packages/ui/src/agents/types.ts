@@ -231,20 +231,20 @@ export interface AgentCreateBody {
    */
   nibbletsLink?: { scopes: string[] };
   /**
-   * Terminal sessions only: work on this pull request of the organization's
-   * repository on git.infrawrench.com, on its head branch, starting from its
-   * title and body. `repo` is then ignored.
+   * Terminal sessions only: work on this branch of the organization's
+   * repository on git.infrawrench.com, starting from its page's title and
+   * description. `repo` is then ignored.
    */
   gitWork?: AgentGitWorkRequest;
 }
 
-/** A pull request on git.infrawrench.com for a new agent session to work on. */
+/** A branch on git.infrawrench.com for a new agent session to work on. */
 export interface AgentGitWorkRequest {
   /** The repository's namespace and name on the forge. */
   owner: string;
   repo: string;
-  /** The pull request's number. */
-  pull: number;
+  /** The branch page's key (client-core's `git-branch-key.ts`), e.g. `work/fix-login`. */
+  branch: string;
 }
 
 export interface AgentClient {

@@ -179,7 +179,6 @@ describe("GitApi", () => {
       "versions.markReviewed",
       "versions.branchState",
       "review.inbox",
-      "review.setMode",
       "traces.record",
       "findings.dismiss",
       "findings.override",
@@ -207,7 +206,7 @@ describe("GitApi", () => {
   it("builds an OpenAPI document", () => {
     const spec = OpenApi.fromApi(GitApi);
     expect(Object.keys(spec.paths).length).toBeGreaterThan(60);
-    expect(spec.paths["/api/repos/{owner}/{repo}/pulls/{number}/merge"]?.post).toBeDefined();
+    expect(spec.paths["/api/repos/{owner}/{repo}/branches/{branch}/merge"]?.post).toBeDefined();
   });
 });
 

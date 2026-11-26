@@ -188,14 +188,6 @@ const glyphs = {
       <path d="M12 12v3" />
     </>
   ),
-  gitPullRequest: (
-    <>
-      <circle cx="18" cy="18" r="3" />
-      <circle cx="6" cy="6" r="3" />
-      <path d="M13 6h3a2 2 0 0 1 2 2v7" />
-      <path d="M6 9v12" />
-    </>
-  ),
   globe: (
     <>
       <circle cx="12" cy="12" r="10" />
@@ -348,25 +340,6 @@ const glyphs = {
       <circle cx="18" cy="18" r="3" />
       <circle cx="6" cy="6" r="3" />
       <path d="M6 21V9a9 9 0 0 0 9 9" />
-    </>
-  ),
-  gitPullRequestClosed: (
-    <>
-      <circle cx="6" cy="6" r="3" />
-      <path d="M6 9v12" />
-      <path d="m21 3-6 6" />
-      <path d="m21 9-6-6" />
-      <path d="M18 11.5V15" />
-      <circle cx="18" cy="18" r="3" />
-    </>
-  ),
-  gitPullRequestDraft: (
-    <>
-      <circle cx="18" cy="18" r="3" />
-      <circle cx="6" cy="6" r="3" />
-      <path d="M18 6V5" />
-      <path d="M18 11v-1" />
-      <path d="M6 9v12" />
     </>
   ),
   key: (

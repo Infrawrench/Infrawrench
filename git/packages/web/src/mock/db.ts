@@ -21,6 +21,7 @@ import {
 } from "@infrawrench/git-contract";
 import { mockError, notFound, unauthorized, type Mutable } from "./define";
 import { FIXTURE_PEOPLE, fixtureInstance, type FixtureName, type GitFixture } from "./git";
+import { commitTexts, textAt } from "./git-write";
 
 export type MockScenario = "signed-in" | "signed-out" | "new-user";
 
@@ -262,7 +263,7 @@ interface Seed {
   hasCi?: boolean;
   hasTerraform?: boolean;
   issues?: number;
-  pulls?: number;
+  pages?: number;
   starredByMe?: boolean;
 }
 
@@ -280,7 +281,8 @@ const seeds: Seed[] = [
     hasCi: true,
     hasTerraform: true,
     issues: 6,
-    pulls: 2,
+    // Open pages: #12, #14 and #18 (`threads-data.ts`).
+    pages: 3,
     starredByMe: true,
   },
   {
@@ -295,7 +297,8 @@ const seeds: Seed[] = [
     forks: 9,
     hasCi: true,
     issues: 3,
-    pulls: 1,
+    // Open pages: #4, and #6 from a fork.
+    pages: 2,
   },
   {
     owner: "acme",
@@ -406,7 +409,7 @@ function makeRecord(seed: Seed): RepositoryRecord {
     starCount: stars.size,
     forkCount: seed.forks ?? 0,
     openIssueCount: seed.issues ?? 0,
-    openPullRequestCount: seed.pulls ?? 0,
+    openBranchCount: seed.pages ?? 0,
     sizeBytes: fixture ? Object.values(fixture.blobs).reduce((sum, blob) => sum + blob.size, 0) : 0,
     pushedAt: head?.committer.when ?? null,
     createdAt: daysAgo(seed.fixture === "infra" ? 51 : 36),
@@ -415,7 +418,7 @@ function makeRecord(seed: Seed): RepositoryRecord {
     isEmpty: fixture === null,
     httpCloneUrl: httpCloneUrl(ref),
     sshCloneUrl: sshCloneUrl(ref),
-    features: { issues: true, pullRequests: true },
+    features: { issues: true },
     merge: {
       allowMergeCommit: true,
       allowSquash: true,
@@ -446,6 +449,64 @@ for (const seed of seeds) {
     visibility: parent.visibility,
   };
 }
+
+/**
+ * Branches the mock writes beside the scripted histories, before anything
+ * reads them: one whose name has two slashes in `acme/infra`, one in a fork
+ * of `acme/edge-router` that is proposed there, and one in `mara/infra` that
+ * nobody has proposed yet.
+ */
+function seedBranches(): void {
+  const named = (owner: string, name: string) =>
+    repositories.find((repo) => repo.owner.slug === owner && repo.name === name)!;
+  const jonas = FIXTURE_PEOPLE["jonas@acme.example"]!;
+  const infra = fixtureInstance(named("acme", "infra").id, "infra");
+  const main = infra.branches[infra.defaultBranch]!;
+  const budget = "environments/staging/budget.tf";
+  infra.branches["feature/budgets/staging-alarm"] = commitTexts(
+    infra,
+    main,
+    {
+      [budget]: textAt(infra, main, budget).replace(
+        '  time_unit    = "MONTHLY"\n}',
+        '  time_unit    = "MONTHLY"\n\n  notification {\n    comparison_operator        = "GREATER_THAN"\n    threshold                  = 80\n    threshold_type             = "PERCENTAGE"\n    notification_type          = "ACTUAL"\n    subscriber_email_addresses = ["infrastructure@acme.example"]\n  }\n}',
+      ),
+    },
+    "staging: alarm at 80 percent of the budget",
+    me,
+  );
+
+  const fork = fixtureInstance(named("jonas", "edge-router").id, "edge-router");
+  const forkMain = fork.branches[fork.defaultBranch]!;
+  const router = "src/router.ts";
+  fork.branches["fix/lowercase-hosts"] = commitTexts(
+    fork,
+    forkMain,
+    {
+      [router]: textAt(fork, forkMain, router).replaceAll(
+        "route.host !== url.host",
+        "route.host.toLowerCase() !== url.host.toLowerCase()",
+      ),
+    },
+    "Match hosts case-insensitively",
+    jonas,
+  );
+
+  const maraInfra = fixtureInstance(named("mara", "infra").id, "infra");
+  const maraMain = maraInfra.branches[maraInfra.defaultBranch]!;
+  maraInfra.branches["docs/peering-notes"] = commitTexts(
+    maraInfra,
+    maraMain,
+    {
+      "docs/peering-notes.md":
+        "# Peering notes\n\nEach environment's VPC peers with shared services. One route per private route table points at the peering connection.\n",
+    },
+    "docs: peering notes",
+    me,
+  );
+}
+
+seedBranches();
 
 /** The viewer's access, as `repoAccess` would answer it. */
 export function accessTo(repo: RepositoryRecord): "none" | "read" | "write" | "admin" {
@@ -514,7 +575,7 @@ export function toSummary(repo: RepositoryRecord): RepositorySummary {
     starCount: repo.stars.size,
     forkCount: repo.forkCount,
     openIssueCount: repo.openIssueCount,
-    openPullRequestCount: repo.openPullRequestCount,
+    openBranchCount: repo.openBranchCount,
     sizeBytes: repo.sizeBytes,
     pushedAt: repo.pushedAt,
     createdAt: repo.createdAt,

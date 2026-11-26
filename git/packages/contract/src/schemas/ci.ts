@@ -5,7 +5,7 @@
  * package imports only `effect`; a status added there is added here.
  */
 import { Schema } from "effect";
-import { IsoDateTime, Oid } from "./common";
+import { BranchKey, IsoDateTime, Oid } from "./common";
 import { UserRef } from "./people";
 
 export const CI_RUN_STATUSES = [
@@ -23,7 +23,7 @@ export const CI_RUN_STATUSES = [
 export const CiRunStatus = Schema.Literals(CI_RUN_STATUSES).annotate({
   identifier: "CiRunStatus",
   description:
-    "`awaiting_approval`: a fork's pull request waiting for someone with `ci:approve`. `pending`: waiting for its concurrency group. `skipped`: no pipeline runs on this push or pull request.",
+    "`awaiting_approval`: a fork's branch page waiting for someone with `ci:approve`. `pending`: waiting for its concurrency group. `skipped`: no pipeline runs on this push or branch page.",
 });
 export type CiRunStatus = typeof CiRunStatus.Type;
 
@@ -62,7 +62,9 @@ export const CiRun = Schema.Struct({
   event: CiEvent,
   headRef: Schema.String,
   sha: Oid,
-  pullNumber: Schema.NullOr(Schema.Int),
+  branchPage: Schema.NullOr(BranchKey).annotate({
+    description: "The key of the branch page the run is of, when it is one's.",
+  }),
   fromFork: Schema.Boolean,
   actor: Schema.NullOr(UserRef).annotate({ description: "Who pushed or started it." }),
   status: CiRunStatus,

@@ -82,7 +82,7 @@ export function MilestoneForm({
     onSuccess: () => {
       void invalidate("milestones");
       void invalidate("issues");
-      void invalidate("pulls");
+      void invalidate("branches");
       onDone();
     },
   });
@@ -159,7 +159,7 @@ export function MilestoneActions({
   const refresh = () => {
     void invalidate("milestones");
     void invalidate("issues");
-    void invalidate("pulls");
+    void invalidate("branches");
   };
   const toggle = useMutation({
     mutationFn: () =>
@@ -198,7 +198,7 @@ export function MilestoneActions({
         onConfirm={() => remove.mutate()}
       >
         <p>
-          The issues and pull requests in <span className="font-medium">{milestone.title}</span>{" "}
+          The issues and branch pages in <span className="font-medium">{milestone.title}</span>{" "}
           stay, without a milestone.
         </p>
         <InlineError error={remove.error} />

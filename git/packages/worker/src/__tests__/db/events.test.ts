@@ -10,7 +10,7 @@ import { db } from "../../db/client";
 import type { GitPushEvent } from "../../env";
 import { announcePullRequest, announcePush } from "../../events/ci";
 import { handlePush } from "../../events/consumer";
-import { type Person, type World, configured, makeWorld } from "./world";
+import { type Person, type World, configured, makeWorld, pagePath } from "./world";
 
 vi.mock("../../events/ci", () => ({
   announcePush: vi.fn(async () => {}),
@@ -93,7 +93,7 @@ describe.skipIf(!configured)("the push consumer, against a real Postgres", () =>
   it("synchronises a pull request whose head moved, once", async () => {
     await push("feature");
     const pull = (
-      await world.call("POST", `${repo}/pulls`, {
+      await world.call("POST", `${repo}/branch-pages`, {
         as: bob,
         body: { title: "Feature", base: "main", head: "feature" },
       })
@@ -102,17 +102,17 @@ describe.skipIf(!configured)("the push consumer, against a real Postgres", () =>
       as: alice,
       body: { pattern: "main", requiredApprovals: 1, dismissStaleApprovals: true },
     });
-    await world.call("POST", `${repo}/pulls/${pull.number}/reviews`, {
+    await world.call("POST", `${pagePath(repo, pull.key)}/reviews`, {
       as: alice,
       body: { event: "approve" },
     });
-    expect((await world.call("GET", `${repo}/pulls/${pull.number}`)).body.reviewDecision).toBe(
+    expect((await world.call("GET", `${pagePath(repo, pull.key)}`)).body.reviewDecision).toBe(
       "approved",
     );
     vi.mocked(announcePullRequest).mockClear();
 
     const moved = await push("feature", { messages: ["One", "Two"], by: bob });
-    const synced = (await world.call("GET", `${repo}/pulls/${pull.number}`)).body;
+    const synced = (await world.call("GET", `${pagePath(repo, pull.key)}`)).body;
     expect(synced.headOid).toBe(moved.newOid);
     // The approval was of the older head, and the rule dismisses those.
     expect(synced.reviewDecision).toBe("review_required");
@@ -138,7 +138,7 @@ describe.skipIf(!configured)("the push consumer, against a real Postgres", () =>
     ]);
 
     await push("feature", { delete: true });
-    const gone = (await world.call("GET", `${repo}/pulls/${pull.number}`, { as: bob })).body;
+    const gone = (await world.call("GET", `${pagePath(repo, pull.key)}`, { as: bob })).body;
     expect(gone.headRefExists).toBe(false);
     expect(gone.mergeability.blockers.map((b: { code: string }) => b.code)).toContain(
       "head_missing",
@@ -190,7 +190,7 @@ describe.skipIf(!configured)("the push consumer, against a real Postgres", () =>
       name: "prod",
       rootPath: "infra",
       branch: "main",
-      planOnPullRequest: true,
+      planOnBranch: true,
       applyOnMerge: true,
       applyRequiresApproval: true,
       stateAddress: `https://git.example.test/${alice.username}/pushed/terraform/prod/state`,
@@ -213,7 +213,7 @@ describe.skipIf(!configured)("the push consumer, against a real Postgres", () =>
     // A personal namespace has the state backend only: a pull request and a
     // merge record no run (`terraform.test.ts` has an organisation's).
     await push("plan-me");
-    await world.call("POST", `${repo}/pulls`, {
+    await world.call("POST", `${repo}/branch-pages`, {
       as: bob,
       body: { title: "Infra", base: "main", head: "plan-me" },
     });

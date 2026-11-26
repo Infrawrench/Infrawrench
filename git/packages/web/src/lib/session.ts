@@ -7,6 +7,9 @@ import { queries } from "../api/queries";
 export const IS_MOCK = import.meta.env.VITE_GIT_MOCK === "1";
 
 /** The session. `data.user` is null for a signed-out browser; it is never an error. */
+/** What the session answers once known. */
+export type SessionData = NonNullable<ReturnType<typeof useSession>["data"]>;
+
 export function useSession() {
   return useQuery({ ...queries.session.me(), staleTime: 5 * 60_000 });
 }

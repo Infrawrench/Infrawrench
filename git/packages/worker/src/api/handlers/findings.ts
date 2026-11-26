@@ -29,7 +29,7 @@ import {
   reopenFinding,
   updateExternalRun,
 } from "../../db/findings";
-import { type PullRequestWithThread, getPullRequest } from "../../db/pulls";
+import type { PullRequestWithThread } from "../../db/pulls";
 import {
   type VersionRow,
   findingsCount,
@@ -42,6 +42,7 @@ import { isForgeReviewer, recordFindings } from "../../review/findings";
 import { maskOptional } from "../../review/masking";
 import { reviewAvailability } from "../../review/policy";
 import { enqueueReviewRun } from "../../review/queue";
+import { pageOr404 } from "../branch-page";
 import { type RepoCx, repoOp } from "../context";
 import {
   findingView,
@@ -52,16 +53,10 @@ import {
   reviewRunViews,
 } from "../views/findings";
 
-const pullOr404 = async (cx: RepoCx, number: number): Promise<PullRequestWithThread> => {
-  const found = await getPullRequest(cx.repo.repository.id, number);
-  if (!found) throw notFound("No such pull request");
-  return found;
-};
-
-const openPullOr422 = async (cx: RepoCx, number: number): Promise<PullRequestWithThread> => {
-  const found = await pullOr404(cx, number);
+const openPageOr422 = async (cx: RepoCx, key: string): Promise<PullRequestWithThread> => {
+  const found = await pageOr404(cx, key);
   if (found.thread.state !== "open") {
-    throw unprocessable("The pull request is not open");
+    throw unprocessable("The branch page is not open");
   }
   return found;
 };
@@ -89,7 +84,7 @@ const versionOr422 = (
   if (!latest) throw unprocessable("The branch has no version yet");
   const version =
     number === undefined ? latest : versions.find((candidate) => candidate.number === number);
-  if (!version) throw unprocessable("The pull request has no such version");
+  if (!version) throw unprocessable("The branch has no such version");
   return { version, latest };
 };
 
@@ -100,7 +95,7 @@ export const FindingsHandlers = HttpApiBuilder.group(GitApi, "findings", (handle
     .handle(
       "list",
       repoOp(async (cx, { params, query }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const [rows, tally] = await Promise.all([
           listFindings(found.pull.issueId, { version: query.version, status: query.status }),
           findingsCount(found.pull.issueId),
@@ -111,7 +106,7 @@ export const FindingsHandlers = HttpApiBuilder.group(GitApi, "findings", (handle
     .handle(
       "report",
       repoOp(async (cx, { params, payload }) => {
-        const found = await openPullOr422(cx, params.number);
+        const found = await openPageOr422(cx, params.branch);
         const { pull } = found;
         if (isForgeReviewer(payload.reviewerKind)) {
           throw unprocessable(
@@ -121,7 +116,7 @@ export const FindingsHandlers = HttpApiBuilder.group(GitApi, "findings", (handle
         const { version } = versionOr422(await versionsForPull(pull), payload.version);
         if (payload.runId !== undefined) {
           const run = await getReviewRun(pull.issueId, payload.runId);
-          if (!run) throw unprocessable("The pull request has no such review run");
+          if (!run) throw unprocessable("The branch page has no such review run");
           if (run.reviewerKinds.some(isForgeReviewer)) {
             throw unprocessable("That run is the forge's own");
           }
@@ -153,7 +148,7 @@ export const FindingsHandlers = HttpApiBuilder.group(GitApi, "findings", (handle
       "dismiss",
       repoOp(async (cx, { params, payload }) => {
         if (!mayDismiss(cx)) throw forbidden("A CI job's token does not dismiss findings");
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const finding = await findingOr404(found, params.findingId);
         const reason = payload.reason.trim();
         if (reason === "") throw unprocessable("Say why the finding is dismissed");
@@ -172,7 +167,7 @@ export const FindingsHandlers = HttpApiBuilder.group(GitApi, "findings", (handle
       "reopen",
       repoOp(async (cx, { params }) => {
         if (!mayDismiss(cx)) throw forbidden("A CI job's token does not reopen findings");
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const finding = await findingOr404(found, params.findingId);
         const reopened = await reopenFinding(finding.id);
         if (!reopened) throw unprocessable("The finding is not dismissed");
@@ -184,7 +179,7 @@ export const FindingsHandlers = HttpApiBuilder.group(GitApi, "findings", (handle
       repoOp(async (cx, { params, payload }) => {
         // Recorded with who: a person, never a key or a job.
         if (cx.userId === null) throw forbidden("This needs a signed-in person");
-        const found = await openPullOr422(cx, params.number);
+        const found = await openPageOr422(cx, params.branch);
         const { pull } = found;
         const reason = payload.reason.trim();
         if (reason === "") throw unprocessable("Say why the merge may go ahead");
@@ -203,7 +198,7 @@ export const FindingsHandlers = HttpApiBuilder.group(GitApi, "findings", (handle
           findingIds = unique(payload.findingIds);
           const known = new Set(mustFix.map((finding) => finding.id));
           if (findingIds.length === 0 || findingIds.some((id) => !known.has(id))) {
-            throw unprocessable("An override names open must-fix findings of this pull request");
+            throw unprocessable("An override names open must-fix findings of this branch page");
           }
         }
         return mergeOverrideView(
@@ -221,14 +216,14 @@ export const FindingsHandlers = HttpApiBuilder.group(GitApi, "findings", (handle
     .handle(
       "listRuns",
       repoOp(async (cx, { params }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         return { runs: await reviewRunViews(await listReviewRuns(found.pull.issueId)) };
       }),
     )
     .handle(
       "getRun",
       repoOp(async (cx, { params }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const run = await getReviewRun(found.pull.issueId, params.runId);
         if (!run) throw notFound("No such review run");
         return reviewRunView(run);
@@ -238,7 +233,7 @@ export const FindingsHandlers = HttpApiBuilder.group(GitApi, "findings", (handle
       "requestRun",
       repoOp(async (cx, { params, payload }) => {
         refuseJob(cx, "ask for a review run");
-        const found = await openPullOr422(cx, params.number);
+        const found = await openPageOr422(cx, params.branch);
         const { pull } = found;
         const settings = await getReviewSettings(cx.repo.repository.id);
         const kinds = unique(payload.reviewerKinds ?? settings.reviewerKinds);
@@ -287,7 +282,7 @@ export const FindingsHandlers = HttpApiBuilder.group(GitApi, "findings", (handle
     .handle(
       "updateRun",
       repoOp(async (cx, { params, payload }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const run = await getReviewRun(found.pull.issueId, params.runId);
         if (!run) throw notFound("No such review run");
         if (run.reviewerKinds.some(isForgeReviewer)) {

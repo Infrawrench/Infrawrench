@@ -135,12 +135,12 @@ export function SettingsTab() {
 
       <SettingsSection title="Runs">
         <Panel className="divide-y divide-border">
-          <SettingsRow title="Plan on pull requests">
+          <SettingsRow title="Plan every branch">
             <Checkbox
-              label={<span className="sr-only">Plan on pull requests</span>}
-              checked={workspace.planOnPullRequest}
+              label={<span className="sr-only">Plan every branch</span>}
+              checked={workspace.planOnBranch}
               disabled={update.isPending}
-              onChange={(event) => update.mutate({ planOnPullRequest: event.target.checked })}
+              onChange={(event) => update.mutate({ planOnBranch: event.target.checked })}
             />
           </SettingsRow>
           <SettingsRow title={`Apply when ${workspace.branch} changes`}>

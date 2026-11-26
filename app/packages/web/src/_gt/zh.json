@@ -24082,5 +24082,10 @@
   "379192c9c065f94b": "为 {name} 关闭 Git",
   "2312882473a3e78b": "为 {name} 开启 Git",
   "a48c84d56863a173": "{repository} 中的拉取请求 #{number}",
-  "b0cfba65df36ff3a": "在终端会话中运行"
+  "b0cfba65df36ff3a": "在终端会话中运行",
+  "2508a75dcb29332b": "{repository} 中的分支 {branch}",
+  "fe878c98b0edb6e7": "分支 {branch} 的页面",
+  "841a1e8baa49bf07": "此分支来自复刻。只有在维护者批准此提交后 CI 才会运行，且运行时不会获得你的密钥。",
+  "795c16e01f8abc54": "触发：分支 {branch} 的页面",
+  "04dbb16d9b692feb": "未关闭的分支"
 }

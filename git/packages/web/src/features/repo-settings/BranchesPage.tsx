@@ -18,7 +18,7 @@ import type { ProtectedBranch } from "@infrawrench/git-contract";
 
 interface RuleDraft {
   pattern: string;
-  requirePullRequest: boolean;
+  requireBranchPage: boolean;
   requiredApprovals: number;
   dismissStaleApprovals: boolean;
   requiredStatusContexts: string[];
@@ -31,7 +31,7 @@ interface RuleDraft {
 
 const BLANK: RuleDraft = {
   pattern: "",
-  requirePullRequest: true,
+  requireBranchPage: true,
   requiredApprovals: 1,
   dismissStaleApprovals: false,
   requiredStatusContexts: [],
@@ -44,7 +44,7 @@ const BLANK: RuleDraft = {
 
 const draftOf = (rule: ProtectedBranch): RuleDraft => ({
   pattern: rule.pattern,
-  requirePullRequest: rule.requirePullRequest,
+  requireBranchPage: rule.requireBranchPage,
   requiredApprovals: rule.requiredApprovals,
   dismissStaleApprovals: rule.dismissStaleApprovals,
   requiredStatusContexts: [...rule.requiredStatusContexts],
@@ -73,7 +73,7 @@ function RuleForm({ rule, onDone }: { rule?: ProtectedBranch; onDone: () => void
     },
     onSuccess: () => {
       void invalidate("protectedBranches");
-      void invalidate("pulls");
+      void invalidate("branches");
       onDone();
     },
   });
@@ -103,12 +103,12 @@ function RuleForm({ rule, onDone }: { rule?: ProtectedBranch; onDone: () => void
 
       <fieldset className="space-y-2">
         <legend className="mb-1 text-xs font-semibold text-on-surface-secondary">
-          Pull requests
+          Branch pages
         </legend>
         <Checkbox
-          label="Changes arrive by pull request only"
-          checked={draft.requirePullRequest}
-          onChange={(event) => set("requirePullRequest", event.target.checked)}
+          label="Changes arrive through a branch page only"
+          checked={draft.requireBranchPage}
+          onChange={(event) => set("requireBranchPage", event.target.checked)}
         />
         <Field label="Required approvals" hint="0 to 10">
           {(control) => (
@@ -259,7 +259,7 @@ function RuleForm({ rule, onDone }: { rule?: ProtectedBranch; onDone: () => void
 /** A rule as one line of what it asks for. */
 function summary(rule: ProtectedBranch): string[] {
   const parts: string[] = [];
-  if (rule.requirePullRequest) parts.push("Pull request required");
+  if (rule.requireBranchPage) parts.push("Branch page required");
   if (rule.requiredApprovals > 0) parts.push(plural(rule.requiredApprovals, "approval"));
   if (rule.requiredStatusContexts.length > 0) {
     parts.push(plural(rule.requiredStatusContexts.length, "required check"));
@@ -284,7 +284,7 @@ export function BranchesPage() {
     onSuccess: () => {
       setRemoving(null);
       void invalidate("protectedBranches");
-      void invalidate("pulls");
+      void invalidate("branches");
     },
   });
   return (

@@ -8,7 +8,7 @@
  * and no trailing newline.
  */
 import { Schema } from "effect";
-import { IsoDateTime, Oid } from "./common";
+import { BranchKey, IsoDateTime, Oid } from "./common";
 import { UserRef } from "./people";
 
 /** The name a commit or tag was written with. */
@@ -228,8 +228,8 @@ export const CommitDetail = Schema.Struct({
     description: "Branches whose head is this commit.",
   }),
   tags: Schema.Array(Schema.String).annotate({ description: "Tags that point at this commit." }),
-  pullRequests: Schema.Array(Schema.Struct({ number: Schema.Int, title: Schema.String })).annotate({
-    description: "Pull requests this commit is the merge of, or part of.",
+  branchPages: Schema.Array(Schema.Struct({ key: BranchKey, title: Schema.String })).annotate({
+    description: "Branch pages this commit is the merge of, or part of.",
   }),
 }).annotate({ identifier: "CommitDetail" });
 export type CommitDetail = typeof CommitDetail.Type;
@@ -367,13 +367,13 @@ export const Blame = Schema.Struct({
 }).annotate({ identifier: "Blame" });
 export type Blame = typeof Blame.Type;
 
-export const PullRequestBadge = Schema.Struct({
-  number: Schema.Int,
+export const BranchPageBadge = Schema.Struct({
+  key: BranchKey,
   title: Schema.String,
   state: Schema.Literals(["open", "closed", "merged"]),
   draft: Schema.Boolean,
-}).annotate({ identifier: "PullRequestBadge" });
-export type PullRequestBadge = typeof PullRequestBadge.Type;
+}).annotate({ identifier: "BranchPageBadge" });
+export type BranchPageBadge = typeof BranchPageBadge.Type;
 
 export const Branch = Schema.Struct({
   name: Schema.String,
@@ -386,8 +386,8 @@ export const Branch = Schema.Struct({
   behind: Schema.NullOr(Schema.Int).annotate({
     description: "Commits the default branch has that it does not.",
   }),
-  pullRequest: Schema.NullOr(PullRequestBadge).annotate({
-    description: "The newest pull request from this branch.",
+  page: Schema.NullOr(BranchPageBadge).annotate({
+    description: "The branch's page: the open one, or the newest.",
   }),
   viewerCanDelete: Schema.Boolean,
 }).annotate({ identifier: "Branch" });
@@ -433,8 +433,8 @@ export const Comparison = Schema.Struct({
   mergeable: Schema.NullOr(Schema.Boolean).annotate({
     description: "Whether `head` merges into `base` without conflicts. Null when not checked.",
   }),
-  pullRequest: Schema.NullOr(PullRequestBadge).annotate({
-    description: "The open pull request for exactly this base and head, when there is one.",
+  page: Schema.NullOr(BranchPageBadge).annotate({
+    description: "The head branch's open page, when it has one.",
   }),
 }).annotate({ identifier: "Comparison" });
 export type Comparison = typeof Comparison.Type;

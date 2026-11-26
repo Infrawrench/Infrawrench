@@ -460,7 +460,7 @@ export const gitReviewSettings = pgTable("git_review_settings", {
   repositoryId: text("repository_id")
     .primaryKey()
     .references(() => gitRepositories.id, { onDelete: "cascade" }),
-  /** Open a draft pull request the first time a branch is pushed, so every branch has a page. */
+  /** No longer read: every branch gets a page on its first push, always. Kept, unread, in storage. */
   autoOpenBranchPages: boolean("auto_open_branch_pages").notNull().default(true),
   reviewAgentsEnabled: boolean("review_agents_enabled").notNull().default(false),
   reviewerKinds: jsonb("reviewer_kinds").$type<string[]>().notNull().default(["general"]),

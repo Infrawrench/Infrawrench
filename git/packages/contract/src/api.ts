@@ -8,7 +8,7 @@ import { CiGroup, StatusesGroup, TerraformGroup } from "./groups/automation";
 import { ContentsGroup } from "./groups/contents";
 import { IssuesGroup, LabelsGroup, MilestonesGroup } from "./groups/issues";
 import { NamespacesGroup } from "./groups/namespaces";
-import { PullsGroup } from "./groups/pulls";
+import { BranchesGroup } from "./groups/branches";
 import { RepositoriesGroup, RepositoryListsGroup } from "./groups/repositories";
 import {
   AgentsGroup,
@@ -37,7 +37,7 @@ export const GIT_API_GROUPS = [
   RepositoriesGroup,
   ContentsGroup,
   IssuesGroup,
-  PullsGroup,
+  BranchesGroup,
   VersionsGroup,
   TracesGroup,
   FindingsGroup,
@@ -67,7 +67,7 @@ export class GitApi extends withApiDefaults(
     .add(RepositoriesGroup)
     .add(ContentsGroup)
     .add(IssuesGroup)
-    .add(PullsGroup)
+    .add(BranchesGroup)
     .add(VersionsGroup)
     .add(TracesGroup)
     .add(FindingsGroup)
@@ -99,7 +99,7 @@ export class ContentsApi extends withApiDefaults(HttpApi.make("git-contents").ad
 export class IssuesApi extends withApiDefaults(
   HttpApi.make("git-issues").add(IssuesGroup).add(LabelsGroup).add(MilestonesGroup),
 ) {}
-export class PullsApi extends withApiDefaults(HttpApi.make("git-pulls").add(PullsGroup)) {}
+export class BranchesApi extends withApiDefaults(HttpApi.make("git-branches").add(BranchesGroup)) {}
 /** Versions, traces, findings, instructions, agents and what configures them. */
 export class ReviewApi extends withApiDefaults(
   HttpApi.make("git-review")

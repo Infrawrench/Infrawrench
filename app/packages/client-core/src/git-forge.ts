@@ -105,7 +105,8 @@ export interface GitForgeRepository {
   defaultBranch: string;
   /** Null until something is pushed. */
   pushedAt: string | null;
-  openPullRequests: number;
+  /** The repository's open branch pages: its branches under review, and the ones forks propose to it. */
+  openBranches: number;
   openIssues: number;
   sizeBytes: number;
   /** The latest CI run of the default branch, or null when CI has not run there. */

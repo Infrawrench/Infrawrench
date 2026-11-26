@@ -1,33 +1,53 @@
 /**
- * The frame of someone signed in: a sidebar the height of the window beside
- * the page, which has a bar of its own. What the sidebar holds follows the
- * reader's mode.
+ * The frame of every page: a sidebar the height of the window beside the
+ * page, which has a bar of its own.
  *
- * - Agent mode: the workspace, Home, their work (Changes, Reviews,
- *   Mentions), each namespace's repositories with a mark on the ones an
- *   agent is working in, and themselves at the foot.
- * - Classic: Home, their pull requests and issues by the part they have in
- *   them, Explore, each namespace's repositories with how many there are and
- *   a way to add one, and themselves at the foot.
- *
- * Signed-out readers keep `AppShell`.
+ * - Someone signed in with a username: the workspace, Home, their work
+ *   (Changes, Reviews, Mentions), each namespace's repositories with a mark
+ *   on the ones an agent is working in, and themselves at the foot.
+ * - Anyone else (signed out, or still choosing a username): the site's name,
+ *   Explore, the repository being read and its namespace, and Sign in (or
+ *   the account menu) at the foot.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import { useLocation } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import type { ReviewMode, SessionUser } from "@infrawrench/git-contract";
+import type { SessionUser } from "@infrawrench/git-contract";
 import { api } from "../api/client";
+import { queries } from "../api/queries";
 import { AppLink } from "../components/AppLink";
-import { ButtonLink } from "../components/Button";
+import { buttonClass } from "../components/Button";
 import { Icon, type IconName } from "../components/icons";
 import { Menu } from "../components/Menu";
 import { Avatar } from "../components/people";
 import { paths } from "../lib/paths";
-import { SidebarShellContext } from "../lib/shell";
-import { BrandMark, TopSearch } from "./AppShell";
+import { signInHref, type SessionData } from "../lib/session";
 import { accountName, useAccountMenuItems } from "./account-menu";
 import { BarTitle, useBarSlot } from "./TopBar";
 import { type Workspace, useStoredFlag, useWorkspaces } from "./workspace";
+
+/** The Infrawrench mark (`brand/mark.svg`), drawn in the text colour. */
+export function BrandMark({ size = 20 }: { size?: number }) {
+  const mask = useId();
+  return (
+    <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden="true" className="shrink-0">
+      <defs>
+        <mask id={mask} maskUnits="userSpaceOnUse" x="-300" y="-300" width="600" height="600">
+          <rect x="-300" y="-300" width="600" height="600" fill="#fff" />
+          <path d="M-34 -240H34V-112Q34 -98 20 -98H-20Q-34 -98 -34 -112Z" fill="#000" />
+          <circle cx="0" cy="128" r="22" fill="#000" />
+        </mask>
+      </defs>
+      <g transform="translate(256 256) rotate(45) translate(0 16)">
+        <g mask={`url(#${mask})`} fill="currentColor">
+          <circle cx="0" cy="-114" r="88" />
+          <path d="M-34 100V20C-34 -10 -44 -34 -64 -60H64C44 -34 34 -10 34 20V100Z" />
+          <circle cx="0" cy="128" r="48" />
+        </g>
+      </g>
+    </svg>
+  );
+}
 
 const itemClass = (active: boolean): string =>
   `flex h-8 items-center gap-2.5 rounded-md px-2 text-sm ${
@@ -67,17 +87,11 @@ function Group({
   title,
   initiallyOpen,
   holdsCurrent = false,
-  count,
-  action,
   children,
 }: {
   id: string;
   title: string;
   initiallyOpen: boolean;
-  /** How many it holds, said beside its title. */
-  count?: number;
-  /** A control at the end of its title row. */
-  action?: ReactNode;
   /** The page shown is in it: it is open whatever was remembered. */
   holdsCurrent?: boolean;
   children: ReactNode;
@@ -87,29 +101,67 @@ function Group({
   const panel = `sidebar-${id}`;
   return (
     <div className="mt-5">
-      <div className="flex items-center">
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls={panel}
-          aria-label={title}
-          onClick={() => setOpen(!open)}
-          className="flex h-7 min-w-0 flex-1 items-center gap-1 rounded-md px-2 text-xs text-on-surface-muted hover:text-on-surface"
-        >
-          <span className="truncate">{title}</span>
-          {count !== undefined ? (
-            <span className="text-on-surface-faint tabular-nums">{count}</span>
-          ) : null}
-          <Icon name={open ? "chevronDown" : "chevronRight"} size={13} />
-        </button>
-        {action}
-      </div>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panel}
+        aria-label={title}
+        onClick={() => setOpen(!open)}
+        className="flex h-7 w-full min-w-0 items-center gap-1 rounded-md px-2 text-xs text-on-surface-muted hover:text-on-surface"
+      >
+        <span className="truncate">{title}</span>
+        <Icon name={open ? "chevronDown" : "chevronRight"} size={13} />
+      </button>
       {open ? (
         <ul id={panel} className="mt-0.5 space-y-px">
           {children}
         </ul>
       ) : null}
     </div>
+  );
+}
+
+/** A repository in the sidebar: its name, a mark while an agent works in it, a lock when private. */
+function RepositoryItem({
+  owner,
+  name,
+  visibility,
+  active,
+  working = false,
+}: {
+  owner: string;
+  name: string;
+  visibility: "public" | "private";
+  active: boolean;
+  working?: boolean;
+}) {
+  return (
+    <li>
+      <AppLink
+        href={paths.repo({ owner, repo: name })}
+        aria-current={active ? "page" : undefined}
+        className={itemClass(active)}
+      >
+        <Avatar name={name} size={18} square />
+        <span className="truncate">{name}</span>
+        <span className="ml-auto flex shrink-0 items-center gap-1.5">
+          {working ? (
+            // Beside the name, not part of it: the link is still named by the repository.
+            <span
+              aria-hidden="true"
+              data-agent-working
+              title="An agent is working"
+              className="inline-flex text-notice"
+            >
+              <Icon name="bot" size={12} />
+            </span>
+          ) : null}
+          {visibility === "private" ? (
+            <Icon name="lock" size={11} className="text-on-surface-faint" />
+          ) : null}
+        </span>
+      </AppLink>
+    </li>
   );
 }
 
@@ -211,11 +263,10 @@ function AccountButton({ user, appUrl }: { user: SessionUser; appUrl: string }) 
  * The repositories an agent is working in now, by id: the open branches in
  * `agent_working`. Asked again every half minute while the sidebar is shown.
  */
-function useAgentRepositories(enabled: boolean): ReadonlySet<string> {
+function useAgentRepositories(): ReadonlySet<string> {
   const open = useQuery({
     queryKey: ["workspace", "changes", "sidebar-agents"],
     queryFn: () => api.workspace.changes({ query: { state: "open", limit: 100 } }),
-    enabled,
     staleTime: 30_000,
     refetchInterval: 30_000,
     retry: false,
@@ -227,19 +278,40 @@ function useAgentRepositories(enabled: boolean): ReadonlySet<string> {
   );
 }
 
-function Sidebar({ user, appUrl, mode }: { user: SessionUser; appUrl: string; mode: ReviewMode }) {
+/** The first two segments of a page under a repository, or null for a page of the site. */
+const NOT_A_NAMESPACE = new Set(["settings", "onboarding"]);
+function repositoryOf(pathname: string): { owner: string; repo: string } | null {
+  const [owner, repo] = pathname.split("/").filter(Boolean).map(decodeURIComponent);
+  if (owner === undefined || repo === undefined || NOT_A_NAMESPACE.has(owner)) return null;
+  return { owner, repo };
+}
+
+const isIn = (pathname: string, owner: string, name: string): boolean => {
+  const here = repositoryOf(pathname);
+  return (
+    here !== null &&
+    here.owner.toLowerCase() === owner.toLowerCase() &&
+    here.repo.toLowerCase() === name.toLowerCase()
+  );
+};
+
+function SearchLink() {
+  return (
+    <AppLink
+      href={paths.explore()}
+      aria-label="Search repositories"
+      className="flex size-8 shrink-0 items-center justify-center rounded-md text-on-surface-muted hover:bg-surface-sunken hover:text-on-surface"
+    >
+      <Icon name="search" size={16} />
+    </AppLink>
+  );
+}
+
+/** The sidebar of someone signed in with a name to work under. */
+function MemberSidebar({ user, appUrl }: { user: SessionUser; appUrl: string }) {
   const pathname = useLocation({ select: (location) => location.pathname });
-  const searchStr = useLocation({ select: (location) => location.searchStr });
-  const view = new URLSearchParams(searchStr).get("view");
   const { workspaces, current, select } = useWorkspaces();
-  const agent = mode === "agent";
-  const working = useAgentRepositories(agent);
-  const inRepository = (owner: string, name: string) => {
-    const [first, second] = pathname.split("/").filter(Boolean).map(decodeURIComponent);
-    return (
-      first?.toLowerCase() === owner.toLowerCase() && second?.toLowerCase() === name.toLowerCase()
-    );
-  };
+  const working = useAgentRepositories();
   // The current workspace's repositories first, open; the others folded.
   const ordered = [...(workspaces ?? [])].sort(
     (a, b) => Number(b.slug === current?.slug) - Number(a.slug === current?.slug),
@@ -247,102 +319,26 @@ function Sidebar({ user, appUrl, mode }: { user: SessionUser; appUrl: string; mo
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-2.5">
-        {agent ? (
-          <WorkspaceSwitcher workspaces={workspaces ?? []} current={current} select={select} />
-        ) : (
-          <AppLink
-            href={paths.home()}
-            aria-label="Infrawrench Git, home"
-            className="flex h-8 items-center gap-2 rounded-md px-1.5 text-sm font-semibold text-on-surface hover:bg-surface-sunken"
-          >
-            <BrandMark size={20} />
-            <span>Git</span>
-          </AppLink>
-        )}
-        <AppLink
-          href={paths.explore()}
-          aria-label="Search repositories"
-          className="flex size-8 shrink-0 items-center justify-center rounded-md text-on-surface-muted hover:bg-surface-sunken hover:text-on-surface"
-        >
-          <Icon name="search" size={16} />
-        </AppLink>
+        <WorkspaceSwitcher workspaces={workspaces ?? []} current={current} select={select} />
+        <SearchLink />
       </div>
-      <nav
-        aria-label={agent ? "Workspace" : "Site"}
-        className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4"
-      >
+      <nav aria-label="Workspace" className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
         <ul className="mt-1">
           <NavItem href={paths.home()} icon="home" active={pathname === "/"}>
             Home
           </NavItem>
         </ul>
-        {agent ? (
-          <Group id="work" title="Your work" initiallyOpen>
-            <NavItem href={paths.changes()} icon="fileDiff" active={pathname === "/changes"}>
-              Changes
-            </NavItem>
-            <NavItem href={paths.reviews()} icon="messageCircle" active={pathname === "/reviews"}>
-              Reviews
-            </NavItem>
-            <NavItem href={paths.mentions()} icon="atSign" active={pathname === "/mentions"}>
-              Mentions
-            </NavItem>
-          </Group>
-        ) : (
-          <>
-            <Group id="pulls" title="Pull requests" initiallyOpen>
-              <NavItem
-                href={paths.myPulls()}
-                icon="gitPullRequest"
-                active={pathname === "/pulls" && (view === null || view === "created")}
-              >
-                Created
-              </NavItem>
-              <NavItem
-                href={paths.myPulls({ view: "review" })}
-                icon="eye"
-                active={pathname === "/pulls" && view === "review"}
-              >
-                Review requested
-              </NavItem>
-              <NavItem
-                href={paths.myPulls({ view: "assigned" })}
-                icon="user"
-                active={pathname === "/pulls" && view === "assigned"}
-              >
-                Assigned
-              </NavItem>
-            </Group>
-            <Group id="issues" title="Issues" initiallyOpen>
-              <NavItem
-                href={paths.myIssues()}
-                icon="user"
-                active={pathname === "/issues" && (view === null || view === "assigned")}
-              >
-                Assigned
-              </NavItem>
-              <NavItem
-                href={paths.myIssues({ view: "created" })}
-                icon="circleDot"
-                active={pathname === "/issues" && view === "created"}
-              >
-                Created
-              </NavItem>
-              <NavItem
-                href={paths.myIssues({ view: "mentioned" })}
-                icon="atSign"
-                active={pathname === "/issues" && view === "mentioned"}
-              >
-                Mentioned
-              </NavItem>
-            </Group>
-            <ul className="mt-5">
-              <NavItem href={paths.explore()} icon="globe" active={pathname === "/explore"}>
-                Explore
-              </NavItem>
-            </ul>
-          </>
-        )}
+        <Group id="work" title="Your work" initiallyOpen>
+          <NavItem href={paths.changes()} icon="fileDiff" active={pathname === "/changes"}>
+            Changes
+          </NavItem>
+          <NavItem href={paths.reviews()} icon="messageCircle" active={pathname === "/reviews"}>
+            Reviews
+          </NavItem>
+          <NavItem href={paths.mentions()} icon="atSign" active={pathname === "/mentions"}>
+            Mentions
+          </NavItem>
+        </Group>
         {ordered.map((workspace) => (
           <Group
             key={workspace.slug}
@@ -350,58 +346,22 @@ function Sidebar({ user, appUrl, mode }: { user: SessionUser; appUrl: string; mo
             title={workspace.name}
             initiallyOpen={workspace.slug === current?.slug}
             holdsCurrent={workspace.repositories.some((repository) =>
-              inRepository(repository.owner.slug, repository.name),
+              isIn(pathname, repository.owner.slug, repository.name),
             )}
-            {...(agent
-              ? {}
-              : {
-                  count: workspace.repositories.length,
-                  action: (
-                    <AppLink
-                      href={paths.newRepository(workspace.slug)}
-                      aria-label={`New repository in ${workspace.name}`}
-                      title="New repository"
-                      className="flex size-7 shrink-0 items-center justify-center rounded-md text-on-surface-muted hover:bg-surface-sunken hover:text-on-surface"
-                    >
-                      <Icon name="plus" size={13} />
-                    </AppLink>
-                  ),
-                })}
           >
             {workspace.repositories.length === 0 ? (
               <li className="px-2 py-1 text-xs text-on-surface-muted">No repositories</li>
             ) : (
-              workspace.repositories.map((repository) => {
-                const active = inRepository(repository.owner.slug, repository.name);
-                return (
-                  <li key={repository.id}>
-                    <AppLink
-                      href={paths.repo({ owner: repository.owner.slug, repo: repository.name })}
-                      aria-current={active ? "page" : undefined}
-                      className={itemClass(active)}
-                    >
-                      <Avatar name={repository.name} size={18} square />
-                      <span className="truncate">{repository.name}</span>
-                      <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                        {working.has(repository.id) ? (
-                          // Beside the name, not part of it: the link is still named by the repository.
-                          <span
-                            aria-hidden="true"
-                            data-agent-working
-                            title="An agent is working"
-                            className="inline-flex text-notice"
-                          >
-                            <Icon name="bot" size={12} />
-                          </span>
-                        ) : null}
-                        {repository.visibility === "private" ? (
-                          <Icon name="lock" size={11} className="text-on-surface-faint" />
-                        ) : null}
-                      </span>
-                    </AppLink>
-                  </li>
-                );
-              })
+              workspace.repositories.map((repository) => (
+                <RepositoryItem
+                  key={repository.id}
+                  owner={repository.owner.slug}
+                  name={repository.name}
+                  visibility={repository.visibility}
+                  active={isIn(pathname, repository.owner.slug, repository.name)}
+                  working={working.has(repository.id)}
+                />
+              ))
             )}
           </Group>
         ))}
@@ -414,35 +374,84 @@ function Sidebar({ user, appUrl, mode }: { user: SessionUser; appUrl: string; mo
 }
 
 /**
- * What the bar says on a page that does not say it itself: where the page
- * is. In classic a repository's page says that in its own header, so the bar
- * there is the search and the way to a new repository.
+ * The sidebar of a reader with nothing of their own here: the site, Explore,
+ * the repository they are reading and its namespace, and the way in.
  */
-function DefaultBar({ mode }: { mode: ReviewMode }) {
-  const place = <Place classic={mode === "classic"} />;
-  if (mode === "agent") return place;
+function VisitorSidebar({ user, appUrl }: { user: SessionUser | null; appUrl: string }) {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const here = repositoryOf(pathname);
+  // The repository's layout asks for the same thing: this is its answer from the cache.
+  const repository = useQuery({
+    ...queries.repositories.get({ params: here ?? { owner: "", repo: "" } }),
+    enabled: here !== null,
+    retry: false,
+  });
+  const shown = here !== null ? repository.data : undefined;
   return (
-    <>
-      {place}
-      <div className="flex-1" />
-      <TopSearch />
-      <ButtonLink href={paths.newRepository()} aria-label="New repository">
-        <Icon name="plus" />
-        <span className="hidden sm:inline">New</span>
-      </ButtonLink>
-    </>
+    <div className="flex h-full flex-col">
+      <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-2.5">
+        <AppLink
+          href={paths.home()}
+          aria-label="Infrawrench Git, home"
+          className="flex h-8 items-center gap-2 rounded-md px-1.5 text-sm font-semibold text-on-surface hover:bg-surface-sunken"
+        >
+          <BrandMark size={20} />
+          <span>Git</span>
+        </AppLink>
+        <SearchLink />
+      </div>
+      <nav aria-label="Site" className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
+        <ul className="mt-1">
+          <NavItem href={paths.explore()} icon="globe" active={pathname === "/explore"}>
+            Explore
+          </NavItem>
+        </ul>
+        {shown !== undefined ? (
+          <Group
+            id={`visit:${shown.owner.slug}`}
+            title={shown.owner.displayName ?? shown.owner.slug}
+            initiallyOpen
+            holdsCurrent
+          >
+            <NavItem
+              href={paths.namespace(shown.owner.slug)}
+              icon={shown.owner.kind === "org" ? "building" : "user"}
+              active={false}
+            >
+              {shown.owner.slug}
+            </NavItem>
+            <RepositoryItem
+              owner={shown.owner.slug}
+              name={shown.name}
+              visibility={shown.visibility}
+              active
+            />
+          </Group>
+        ) : null}
+      </nav>
+      <div className="shrink-0 px-2.5 py-2">
+        {user === null ? (
+          <a href={signInHref()} className={`${buttonClass("primary")} w-full justify-center`}>
+            Sign in
+          </a>
+        ) : (
+          <AccountButton user={user} appUrl={appUrl} />
+        )}
+      </div>
+    </div>
   );
 }
 
-function Place({ classic }: { classic: boolean }) {
+/** What the bar says on a page that does not say it itself: where the page is. */
+function Place() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const [first, second] = pathname.split("/").filter(Boolean).map(decodeURIComponent);
   if (first === undefined) return <BarTitle>Home</BarTitle>;
   if (first === "settings") return <BarTitle>Settings</BarTitle>;
   if (first === "explore") return <BarTitle>Explore</BarTitle>;
   if (first === "new") return <BarTitle>New repository</BarTitle>;
+  if (first === "onboarding") return <BarTitle>Choose a username</BarTitle>;
   if (second === undefined) return <BarTitle>{first}</BarTitle>;
-  if (classic) return null;
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
       <AppLink href={paths.namespace(first)} className="text-on-surface-muted hover:underline">
@@ -461,27 +470,16 @@ function Place({ classic }: { classic: boolean }) {
   );
 }
 
-export function SidebarShell({
-  user,
-  appUrl,
-  mode,
-  children,
-}: {
-  user: SessionUser;
-  appUrl: string;
-  /** What the sidebar holds, and how the pages beside it are drawn. */
-  mode: ReviewMode;
-  children: ReactNode;
-}) {
+export function SidebarShell({ session, children }: { session: SessionData; children: ReactNode }) {
   const bar = useBarSlot();
   const pathname = useLocation({ select: (location) => location.pathname });
   // On a narrow window the sidebar is a drawer; going somewhere closes it.
   const [drawer, setDrawer] = useState(false);
   useEffect(() => setDrawer(false), [pathname]);
+  const user = session.user;
+  const member = user !== null && user.username !== null;
   return (
-    <div
-      className={`flex min-h-screen text-on-surface ${mode === "agent" ? "bg-surface-raised" : "bg-surface"}`}
-    >
+    <div className="flex min-h-screen bg-surface-raised text-on-surface">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-surface-raised focus:px-3 focus:py-1.5 focus:text-xs"
@@ -501,14 +499,14 @@ export function SidebarShell({
           drawer ? "block" : "hidden md:block"
         }`}
       >
-        <Sidebar user={user} appUrl={appUrl} mode={mode} />
+        {member ? (
+          <MemberSidebar user={user} appUrl={session.appUrl} />
+        ) : (
+          <VisitorSidebar user={user} appUrl={session.appUrl} />
+        )}
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header
-          className={`sticky top-0 z-30 flex h-12 shrink-0 items-center gap-3 border-b border-border px-4 md:px-10 ${
-            mode === "agent" ? "bg-surface-raised" : "bg-surface"
-          }`}
-        >
+        <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface-raised px-4 md:px-10">
           <button
             type="button"
             aria-label="Open the sidebar"
@@ -519,13 +517,10 @@ export function SidebarShell({
             <Icon name="menu" size={16} />
           </button>
           <div ref={bar.mount} className="contents" />
-          {bar.claimed ? null : <DefaultBar mode={mode} />}
+          {bar.claimed ? null : <Place />}
         </header>
         <main id="main" className="min-w-0 flex-1">
-          {/* Classic pages are drawn as they are under the top nav: only agent mode's take the shell's chrome. */}
-          <SidebarShellContext.Provider value={mode === "agent"}>
-            {bar.provider(children)}
-          </SidebarShellContext.Provider>
+          {bar.provider(children)}
         </main>
       </div>
     </div>

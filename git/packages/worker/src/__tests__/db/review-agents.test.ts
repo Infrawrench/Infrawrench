@@ -29,7 +29,7 @@ import type { ReviewModel } from "../../review/model";
 import { REVIEW_LIMITS } from "../../review/policy";
 import { sweepReviewRuns } from "../../review/queue";
 import { SPEND_CAP_REACHED, reviewUsageSource, runReview } from "../../review/runner";
-import { type Person, type World, configured, makeWorld } from "./world";
+import { type Person, type World, configured, makeWorld, pagePath } from "./world";
 
 vi.mock("../../events/ci", () => ({
   announcePush: vi.fn(async () => {}),
@@ -160,9 +160,9 @@ describe.skipIf(!configured)("review agents, against a real Postgres", () => {
 
   const pullOf = async (branch: string, path = repo) => {
     const [page] = (
-      await world.call("GET", `${path}/pulls?state=all&head=${branch}`, { as: alice })
+      await world.call("GET", `${path}/branch-pages?state=all&head=${branch}`, { as: alice })
     ).body.items as Array<Record<string, any>>;
-    return { id: page!["id"] as string, path: `${path}/pulls/${page!["number"]}` };
+    return { id: page!["id"] as string, path: `${pagePath(path, page!["key"])}` };
   };
   const runsOf = (pullRequestId: string) =>
     db
@@ -309,7 +309,7 @@ describe.skipIf(!configured)("review agents, against a real Postgres", () => {
       expect(await review(run.id, script.model)).toBe("done");
 
       const results = script.toolResults();
-      expect(results[0]).toBe("Nothing has been found on this pull request yet.");
+      expect(results[0]).toBe("Nothing has been found on this branch yet.");
       expect(results[1]).toContain("The whole change at version 1");
       expect(results[2]).toContain("1\tone\n2\ttwo\n3\tthree");
       expect(results[3]).toContain("cannot contain `..`");
@@ -321,9 +321,7 @@ describe.skipIf(!configured)("review agents, against a real Postgres", () => {
       expect(script.requests[0]!.system).toEqual(script.requests[2]!.system);
       expect(JSON.stringify(script.requests[0]!.system)).toContain("cache_control");
       // The description is the author's, fenced as such.
-      expect(JSON.stringify(script.requests[0]!.messages[0])).toContain(
-        "<pull_request_description>",
-      );
+      expect(JSON.stringify(script.requests[0]!.messages[0])).toContain("<branch_description>");
 
       const { findings, tally } = await findingsOf(pull.path, carol);
       expect(findings).toHaveLength(2);
@@ -558,7 +556,7 @@ describe.skipIf(!configured)("review agents, against a real Postgres", () => {
       expect(results[0]).toContain("[evidence] Ran the tests: all green");
       expect(results[0]).toContain("says it ran: pnpm test");
       expect(results[1]).toContain("ci/test: failure (3 tests failed)");
-      expect(results[2]).toBe("No Terraform plan has been made for this pull request.");
+      expect(results[2]).toBe("No Terraform plan has been made for this branch.");
       expect(results[4]).toContain("no tool called no_such_tool");
       expect(JSON.stringify(script.requests[0]!.messages[0])).toContain("recorded a trace");
     });
@@ -881,7 +879,7 @@ describe.skipIf(!configured)("review agents, against a real Postgres", () => {
       const third = await report({ reviewerKind: "licenses", findings: [finding], complete: true });
       expect(third.body.findings[0]).toMatchObject({ status: "dismissed", startLine: 3 });
       expect(await blockers(pull.path)).not.toContain("must_fix_findings");
-      // Another pull request's finding is not found here.
+      // Another branch's finding is not found here.
       expect(
         (await world.call("PUT", `${pull.path}/findings/${newId()}/reopen`, { as: bob })).status,
       ).toBe(404);

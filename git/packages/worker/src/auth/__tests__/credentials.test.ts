@@ -489,13 +489,19 @@ describe("authenticateRequest before any credential is looked up", () => {
     });
     // The API takes it on the trace and instructions paths, never on statuses.
     expect(apiAcceptsRefTokens("/api/repos/acme/infra/traces")).toBe(true);
-    expect(apiAcceptsRefTokens("/api/repos/acme/infra/pulls/4/instructions")).toBe(true);
-    expect(apiAcceptsRefTokens("/api/repos/acme/infra/pulls/4/instructions/i_1/answered")).toBe(
-      true,
-    );
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/branches/work%2Fa/instructions")).toBe(true);
+    expect(
+      apiAcceptsRefTokens("/api/repos/acme/infra/branches/work%2Fa/instructions/i_1/answered"),
+    ).toBe(true);
     expect(apiAcceptsRefTokens(`/api/repos/acme/infra/statuses/${"c".repeat(40)}`)).toBe(false);
-    expect(apiAcceptsRefTokens("/api/repos/acme/infra/pulls/4/merge")).toBe(false);
-    expect(apiAcceptsRefTokens("/api/repos/acme/infra/pulls/4/instructionsx")).toBe(false);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/branches/work%2Fa/merge")).toBe(false);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/branches/work%2Fa/instructionsx")).toBe(
+      false,
+    );
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/branches/work%2Fa/findings")).toBe(false);
+    // The key is one segment: a path that spreads it over several is no instructions path.
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/branches/work/a/instructions")).toBe(false);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/branches")).toBe(false);
     expect(apiAcceptsRefTokens("/api/repos/acme/infra/ci/runs")).toBe(false);
   });
 });

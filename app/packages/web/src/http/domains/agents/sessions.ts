@@ -284,9 +284,9 @@ export interface CreateSessionInput {
   /** The approved ceiling of the Nibblets link to create, or null for none. */
   readonly linkScopes: string[] | null;
   /**
-   * A forge pull request the session works on, resolved, or null. Its head
-   * branch is the session's branch, and the session is recorded as the pull
-   * request's agent before setup starts (setup finds the work from that).
+   * A forge branch page the session works on, resolved, or null. Its branch
+   * is the session's branch, and the session is recorded as the page's agent
+   * before setup starts (setup finds the work from that).
    */
   readonly work?: GitWork | null;
 }
@@ -317,9 +317,7 @@ export async function createAgentSession(input: CreateSessionInput): Promise<Cre
         ? "T3 Code server session created."
         : "Agent session created.",
     ...(work
-      ? [
-          `Working on pull request #${work.pull} of ${work.owner}/${work.repo}, branch ${work.branch}.`,
-        ]
+      ? [`Working on the branch ${work.branch} of ${work.owner}/${work.repo}: ${work.pageUrl}`]
       : []),
     "Setup policy: conservative detection.",
     ...setupPlanLogLines(setupPlan),
@@ -427,25 +425,25 @@ export async function createAgentSession(input: CreateSessionInput): Promise<Cre
     t3Policy: policyColumn(t3Policy),
     agentLinkId,
     // Kept non-empty for T3 Code servers too: nothing checks it out, but a
-    // blank branch reads as data loss in the session row. Work on a pull
-    // request happens on its head branch, the one its token may push.
+    // blank branch reads as data loss in the session row. Work on a forge
+    // branch happens on that branch, the one its token may push.
     branchName: work ? work.branch : branchName(id),
     status: initialStatus,
     vmResourceId: resource.id,
     logs: updatedLogs,
     setupPlanJson: JSON.stringify(setupPlan),
   });
-  // Before setup starts: setup finds the pull request (and mints the VM's
+  // Before setup starts: setup finds the branch page (and mints the VM's
   // branch token) from this link.
   if (work) {
     await recordAgentLink({ work, sessionId: id, userId }).catch(async (error: unknown) => {
-      console.error(`[agents] Could not record ${id} as the agent of its pull request:`, error);
+      console.error(`[agents] Could not record ${id} as the agent of its branch page:`, error);
       await db
         .update(agentSessions)
         .set({
           logs: [
             ...updatedLogs,
-            "Warning: the pull request could not be linked to this session, so the VM gets no credential to push with.",
+            "Warning: the branch page could not be linked to this session, so the VM gets no credential to push with.",
           ],
         })
         .where(eq(agentSessions.id, id));

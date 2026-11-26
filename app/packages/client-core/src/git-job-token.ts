@@ -64,8 +64,8 @@ export interface GitJobTokenClaims {
   workspace?: string;
   /**
    * Set on a token that pushes one branch only (a full ref name,
-   * `refs/heads/<branch>`): what an agent session that works on a pull
-   * request holds. It reads the whole repository like any job token, and the
+   * `refs/heads/<branch>`): what an agent session that works on a branch
+   * holds. It reads the whole repository like any job token, and the
    * forge lets it create or update that branch and nothing else: no other
    * branch, no tag, and never a deletion. A verifier that does not say it
    * enforces that (`expect.ref`) refuses such a token, so it opens no

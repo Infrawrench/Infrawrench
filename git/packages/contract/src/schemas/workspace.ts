@@ -5,7 +5,7 @@
  * the ones they collaborate on), or one namespace's share of them.
  */
 import { Schema } from "effect";
-import { IsoDateTime, Page } from "./common";
+import { BranchKey, IsoDateTime, Page } from "./common";
 import { NamespaceRef, UserRef } from "./people";
 import { RepositoryRef } from "./repository";
 import { AgentKind } from "./review";
@@ -27,6 +27,7 @@ export type ChangeState = typeof ChangeState.Type;
 
 const changeFields = {
   repository: RepositoryRef,
+  key: BranchKey,
   number: Schema.Int,
   title: Schema.String,
   branch: Schema.String,
@@ -48,7 +49,7 @@ const changeFields = {
   updatedAt: IsoDateTime,
 } as const;
 
-/** A branch (a pull request) in a list of work. */
+/** A branch in a list of work. */
 export const ChangeSummary = Schema.Struct(changeFields).annotate({ identifier: "ChangeSummary" });
 export type ChangeSummary = typeof ChangeSummary.Type;
 
@@ -89,7 +90,7 @@ export const ActivityEvent = Schema.Struct({
   id: Schema.String,
   type: Schema.Literals(ACTIVITY_TYPES).annotate({
     description:
-      "`pushed`: a version was pushed. `approved`, `changes_requested`, `commented`: a review was submitted. `findings`: a review run finished with findings. `merged`: the pull request was merged.",
+      "`pushed`: a version was pushed. `approved`, `changes_requested`, `commented`: a review was submitted. `findings`: a review run finished with findings. `merged`: the branch page was merged.",
   }),
   at: IsoDateTime,
   actor: Schema.NullOr(UserRef).annotate({ description: "Null for a review run." }),
@@ -97,6 +98,7 @@ export const ActivityEvent = Schema.Struct({
     description: "The agent that pushed, by name, when one did.",
   }),
   repository: RepositoryRef,
+  key: BranchKey,
   number: Schema.Int,
   title: Schema.String,
   version: Schema.NullOr(Schema.Int),
@@ -122,7 +124,7 @@ export const WorkspaceHome = Schema.Struct({
     description:
       "Other people work here too: an organisation's namespace, or anyone else's open branch.",
   }),
-  activeBranches: Schema.Int.annotate({ description: "Open pull requests." }),
+  activeBranches: Schema.Int.annotate({ description: "Open branch pages." }),
   agentsWorking: Schema.Int.annotate({ description: "Of those, the ones in `agent_working`." }),
   pushed: Schema.Struct({
     days: Schema.Int,
@@ -150,33 +152,14 @@ export const Mention = Schema.Struct({
   repository: RepositoryRef,
   number: Schema.Int,
   title: Schema.String,
-  isPullRequest: Schema.Boolean,
+  branch: Schema.NullOr(BranchKey).annotate({
+    description: "The page's key when the comment is on a branch's page. Null for an issue's.",
+  }),
   author: Schema.NullOr(UserRef),
   excerpt: Schema.String.annotate({ description: "The line that names them, shortened." }),
   createdAt: IsoDateTime,
 }).annotate({ identifier: "Mention" });
 export type Mention = typeof Mention.Type;
-
-/** An issue or a pull request in a list across repositories. */
-export const WorkThread = Schema.Struct({
-  id: Schema.String,
-  repository: RepositoryRef,
-  number: Schema.Int,
-  title: Schema.String,
-  isPullRequest: Schema.Boolean,
-  state: Schema.Literals(["open", "closed", "merged"]).annotate({
-    description: "`merged` is a pull request's alone.",
-  }),
-  draft: Schema.Boolean.annotate({ description: "False for an issue." }),
-  author: Schema.NullOr(UserRef),
-  commentCount: Schema.Int,
-  createdAt: IsoDateTime,
-  updatedAt: IsoDateTime,
-}).annotate({ identifier: "WorkThread" });
-export type WorkThread = typeof WorkThread.Type;
-
-export const WorkThreadList = Page(WorkThread).annotate({ identifier: "WorkThreadList" });
-export type WorkThreadList = typeof WorkThreadList.Type;
 
 export const MentionList = Page(Mention).annotate({ identifier: "MentionList" });
 export type MentionList = typeof MentionList.Type;

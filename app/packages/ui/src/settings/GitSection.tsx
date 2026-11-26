@@ -475,7 +475,7 @@ function RepositoriesCard({
                   {gt("CI")}
                 </th>
                 <th scope="col" className="text-right px-4 py-2 font-medium">
-                  {gt("Open pull requests")}
+                  {gt("Open branches")}
                 </th>
                 <th scope="col" className="text-left px-4 py-2 font-medium">
                   {gt("Last push")}
@@ -520,7 +520,7 @@ function RepositoriesCard({
                     )}
                   </td>
                   <td className="px-4 py-2 text-right text-xs tabular-nums text-on-surface-tertiary">
-                    {repository.openPullRequests}
+                    {repository.openBranches}
                   </td>
                   <td className="px-4 py-2 text-xs text-on-surface-muted">
                     {repository.pushedAt

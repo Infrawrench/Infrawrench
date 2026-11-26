@@ -23,7 +23,7 @@ import {
   versionsForPull,
 } from "../../db/review";
 import type { RepoCx } from "../context";
-import { mergeabilityDetail } from "./pulls";
+import { mergeabilityDetail } from "./branch-pages";
 import { iso, peopleById } from "./repositories";
 
 export const versionViews = async (

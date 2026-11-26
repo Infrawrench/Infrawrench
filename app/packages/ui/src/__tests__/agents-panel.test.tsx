@@ -811,7 +811,7 @@ describe("AgentsPanel", () => {
     });
   });
 
-  it("starts work on a forge pull request in place of the repository controls", async () => {
+  it("starts work on a forge branch in place of the repository controls", async () => {
     const account: AgentVmAccount = {
       accountId: "acct-1",
       accountName: "Workspace",
@@ -828,22 +828,22 @@ describe("AgentsPanel", () => {
     render(
       <AgentsPanel
         client={client}
-        gitWork={{ owner: "acme", repo: "infra", pull: 7 }}
+        gitWork={{ owner: "acme", repo: "infra", branch: "work/fix-login" }}
         onGitWorkDone={onGitWorkDone}
       />,
     );
 
     await screen.findByText("Workspace (DigitalOcean)");
-    expect(screen.getByText("Pull request #7 in acme/infra")).toBeInTheDocument();
+    expect(screen.getByText("Branch work/fix-login in acme/infra")).toBeInTheDocument();
     expect(screen.queryByPlaceholderText("https://github.com/org/repo.git")).toBeNull();
-    // Named after the pull request until the person types another name.
-    expect(screen.getByPlaceholderText("Agent name")).toHaveValue("infra-7");
+    // Named after the branch until the person types another name.
+    expect(screen.getByPlaceholderText("Agent name")).toHaveValue("infra-work-fix-login");
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() => expect(client.createSession).toHaveBeenCalledTimes(1));
     expect(client.createSession).toHaveBeenCalledWith({
       repo: "",
-      projectName: "infra-7",
+      projectName: "infra-work-fix-login",
       workspaceName: "infra",
       settings: {
         accountId: "acct-1",
@@ -853,7 +853,7 @@ describe("AgentsPanel", () => {
         surface: "terminal",
         fields: {},
       },
-      gitWork: { owner: "acme", repo: "infra", pull: 7 },
+      gitWork: { owner: "acme", repo: "infra", branch: "work/fix-login" },
     });
     await waitFor(() => expect(onGitWorkDone).toHaveBeenCalledTimes(1));
   });

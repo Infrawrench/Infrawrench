@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApi } from "@/http/testing";
 
 /**
- * An agent session started from a pull request on git.infrawrench.com
+ * An agent session started from a branch page on git.infrawrench.com
  * (`gitWork`): who may start one, what refuses it before a VM exists, and
  * what reaches the session when it is allowed.
  */
@@ -13,22 +13,22 @@ process.env["WORKOS_CLIENT_ID"] = "test_workos_client_id";
 
 class GitWorkUnavailable extends Error {
   constructor() {
-    super("There is no open pull request to work on at that address.");
+    super("There is no open branch page to work on at that address.");
   }
 }
 const work = {
   organizationId: "org-1",
   repositoryId: "repo-1",
-  pullRequestId: "issue-1",
+  pageId: "issue-1",
   owner: "acme",
   repo: "infra",
-  pull: 7,
+  key: "work/fix-login",
   branch: "work/fix-login",
   ref: "refs/heads/work/fix-login",
   title: "Fix the login redirect",
   body: "Users land on / after signing in.",
   cloneUrl: "https://git.example.test/acme/infra.git",
-  pullUrl: "https://git.example.test/acme/infra/pull/7",
+  pageUrl: "https://git.example.test/acme/infra/branches/work/fix-login",
   forgeOrigin: "https://git.example.test",
 };
 const resolveGitWork = vi.fn(async (): Promise<typeof work> => work);
@@ -80,7 +80,10 @@ function app(permissions: string[] = ["*"]) {
   });
 }
 
-const create = (surface: string, gitWork: unknown = { owner: "acme", repo: "infra", pull: 7 }) => ({
+const create = (
+  surface: string,
+  gitWork: unknown = { owner: "acme", repo: "infra", branch: "work/fix-login" },
+) => ({
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({
@@ -121,10 +124,15 @@ describe("POST /sessions with gitWork", () => {
 
   it("refuses a malformed address before looking anything up", async () => {
     for (const gitWork of [
-      { owner: "acme", repo: "infra", pull: 0 },
-      { owner: "", repo: "infra", pull: 1 },
-      { owner: "acme", repo: "x".repeat(101), pull: 1 },
-      { owner: "acme", repo: "infra", pull: 1.5 },
+      { owner: "acme", repo: "infra", branch: "" },
+      { owner: "", repo: "infra", branch: "main" },
+      { owner: "acme", repo: "x".repeat(101), branch: "main" },
+      { owner: "acme", repo: "infra", branch: "a:b:c" },
+      { owner: "acme", repo: "infra", branch: "main~0" },
+      { owner: "acme", repo: "infra", branch: "x".repeat(513) },
+      { owner: "acme", repo: "infra", branch: 7 },
+      // The old shape.
+      { owner: "acme", repo: "infra", pull: 7 },
     ]) {
       const res = await app().request("/sessions", create("terminal", gitWork));
       expect(res.status, JSON.stringify(gitWork)).toBe(400);
@@ -132,7 +140,7 @@ describe("POST /sessions with gitWork", () => {
     expect(resolveGitWork).not.toHaveBeenCalled();
   });
 
-  it("gives one refusal for a pull request it cannot work on, before any VM", async () => {
+  it("gives one refusal for a branch page it cannot work on, before any VM", async () => {
     resolveGitWork.mockRejectedValueOnce(new GitWorkUnavailable());
     const res = await app(["resources:write", "git:write"]).request(
       "/sessions",
@@ -140,13 +148,17 @@ describe("POST /sessions with gitWork", () => {
     );
     expect(res.status).toBe(400);
     expect((await res.json()).error).toBe(
-      "There is no open pull request to work on at that address.",
+      "There is no open branch page to work on at that address.",
     );
-    expect(resolveGitWork).toHaveBeenCalledWith("org-1", { owner: "acme", repo: "infra", pull: 7 });
+    expect(resolveGitWork).toHaveBeenCalledWith("org-1", {
+      owner: "acme",
+      repo: "infra",
+      branch: "work/fix-login",
+    });
     expect(createAgentSession).not.toHaveBeenCalled();
   });
 
-  it("starts the session on the forge's repository with the pull request's work", async () => {
+  it("starts the session on the forge's repository with the branch page's work", async () => {
     const res = await app(["resources:write", "git:admin"]).request(
       "/sessions",
       create("terminal"),

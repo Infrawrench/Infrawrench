@@ -27,7 +27,7 @@ const join = (...parts: ReadonlyArray<string | null | undefined>): string =>
 /** What a repository's sections are called in a title. */
 const SECTIONS: Record<string, string> = {
   issues: "Issues",
-  pulls: "Pull requests",
+  start: "Start work",
   ci: "CI",
   infrastructure: "Infrastructure",
   settings: "Settings",
@@ -50,8 +50,6 @@ export function titleForPath(pathname: string): string {
   if (second === undefined && first === "changes") return join("Changes");
   if (second === undefined && first === "reviews") return join("Reviews");
   if (second === undefined && first === "mentions") return join("Mentions");
-  if (second === undefined && first === "pulls") return join("Pull requests");
-  if (second === undefined && first === "issues") return join("Issues");
   if (first === "new") return join("New repository");
   if (first === "onboarding") return join("Choose a username");
   if (first === "settings") {
@@ -60,8 +58,8 @@ export function titleForPath(pathname: string): string {
         ? "SSH keys"
         : second === "tokens"
           ? "Access tokens"
-          : second === "review"
-            ? "Review"
+          : second === "t3"
+            ? "T3 Code"
             : null;
     return join(page, "Settings");
   }
@@ -76,11 +74,8 @@ export function titleForPath(pathname: string): string {
     if (fourth === "milestones") return join(fifth ? `Milestone ${fifth}` : "Milestones", repo);
     if (fourth !== undefined) return join(`Issue #${fourth}`, repo);
   }
-  if (third === "pulls") {
-    if (fourth === "new") return join("New pull request", repo);
-    if (fourth === "start") return join("Start work", repo);
-    if (fourth !== undefined) return join(`Pull request #${fourth}`, repo);
-  }
+  // A branch's page names itself (`usePageTitle`); until it has loaded, its branch does.
+  if (third === "branches" && fourth !== undefined) return join(parts.slice(3).join("/"), repo);
   if (third === "ci" && fourth === "runs" && fifth !== undefined) return join("CI run", repo);
   if (third === "commit" && fourth !== undefined) return join(`Commit ${fourth.slice(0, 7)}`, repo);
   if (third === "infrastructure" && fourth !== undefined)

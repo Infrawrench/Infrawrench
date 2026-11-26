@@ -227,7 +227,8 @@ interface RunSeed {
   event: CiRun["event"];
   headRef: string;
   sha: string;
-  pullNumber?: number;
+  /** The key of the branch page the run is of. */
+  branchPage?: string;
   actor: UserRef | null;
   status: CiRunStatus;
   statusReason?: string;
@@ -253,7 +254,7 @@ function makeRun(repo: RepositoryRecord, fx: GitFixture, seed: RunSeed): RunReco
       event: seed.event,
       headRef: seed.headRef,
       sha: seed.sha,
-      pullNumber: seed.pullNumber ?? null,
+      branchPage: seed.branchPage ?? null,
       fromFork: seed.fromFork ?? false,
       actor: seed.actor,
       status: seed.status,
@@ -314,7 +315,7 @@ function seedRuns(repo: RepositoryRecord): RunRecord[] {
         event: "pull-request",
         headRef: "feature/vpc-peering",
         sha: peering,
-        pullNumber: 12,
+        branchPage: "feature/vpc-peering",
         actor: person("jonas"),
         status: "passed",
         minutesAgo: 60 * 30,
@@ -324,7 +325,7 @@ function seedRuns(repo: RepositoryRecord): RunRecord[] {
         event: "pull-request",
         headRef: "feature/vpc-peering",
         sha: earlier,
-        pullNumber: 12,
+        branchPage: "feature/vpc-peering",
         actor: person("jonas"),
         status: "cancelled",
         statusReason: "A newer push replaced it",
@@ -335,7 +336,7 @@ function seedRuns(repo: RepositoryRecord): RunRecord[] {
         event: "pull-request",
         headRef: "fix/database-backups",
         sha: backups,
-        pullNumber: 14,
+        branchPage: "fix/database-backups",
         actor: person("priya"),
         status: "failed",
         minutesAgo: 60 * 21,
@@ -362,7 +363,7 @@ function seedRuns(repo: RepositoryRecord): RunRecord[] {
           avatarUrl: null,
         },
         status: "awaiting_approval",
-        statusReason: "A pull request from a fork runs once someone approves it",
+        statusReason: "A branch from a fork runs once someone approves it",
         minutesAgo: 95,
         jobs: terraformJobs("passed"),
         fromFork: true,
@@ -375,7 +376,7 @@ function seedRuns(repo: RepositoryRecord): RunRecord[] {
         event: "pull-request",
         headRef: "feature/health-checks",
         sha: health,
-        pullNumber: 4,
+        branchPage: "feature/health-checks",
         actor: person("mara"),
         status: "passed",
         minutesAgo: 60 * 5,
@@ -403,10 +404,10 @@ export function registerRun(repo: RepositoryRecord, seed: RunSeed): RunRecord {
   return record;
 }
 
-/** A run that starts now and passes in about a minute: what a push to a pull request sets off. */
+/** A run that starts now and passes in about a minute: what a push to a branch sets off. */
 export function startRun(
   repo: RepositoryRecord,
-  seed: { headRef: string; sha: string; pullNumber: number; actor: UserRef | null },
+  seed: { headRef: string; sha: string; branchPage: string; actor: UserRef | null },
 ): RunRecord {
   return registerRun(repo, {
     ...seed,

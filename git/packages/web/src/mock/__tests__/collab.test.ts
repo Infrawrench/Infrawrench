@@ -1,6 +1,6 @@
 /**
- * The mock's issues, pull requests, CI and Terraform answer what the pages
- * are built against: the fixtures hang together (a pull request's checks are
+ * The mock's issues, branch pages, CI and Terraform answer what the pages
+ * are built against: the fixtures hang together (a branch page's checks are
  * its runs, its plan is its workspace's run) and the writes do what the API
  * says they do.
  */
@@ -8,24 +8,26 @@ import { describe, expect, it } from "vitest";
 import { FORGE_LIMITS, privateRepositoryRefusal } from "@infrawrench/git-contract";
 import { ApiError } from "../../api/client";
 import { parseSse, reduceFrames } from "../../features/ci/live";
-import { deriveMergeBox } from "../../features/pulls/merge-box";
-import { indexThreads } from "../../features/pulls/review-threads";
+import { deriveMergeBox } from "../../features/branch-page/merge-box";
+import { indexThreads } from "../../features/branch-page/review-threads";
+import branchHandlers from "../handlers/branches";
 import ci from "../handlers/ci";
 import contents from "../handlers/contents";
 import infrastructure from "../handlers/infrastructure";
 import issues from "../handlers/issues";
 import labels from "../handlers/labels";
 import milestones from "../handlers/milestones";
-import pulls from "../handlers/pulls";
 import repositories from "../handlers/repositories";
 import repoSettings from "../handlers/repo-settings";
 import review from "../handlers/review";
 import sessionHandlers from "../handlers/session";
 import settings from "../handlers/settings";
+import { findRepository } from "../db";
+import { findPage, pageKeyOf } from "../threads-data";
 
 const repo = { owner: "acme", repo: "infra" };
 const I = issues.issues!;
-const P = pulls.pulls!;
+const P = branchHandlers.branches!;
 const C = ci.ci!;
 const T = infrastructure.terraform!;
 const R = repositories.repositoryLists!;
@@ -63,9 +65,13 @@ describe("issues", () => {
     expect(await numbers({ sort: "comments", state: "open" })).toEqual([2, 13, 15, 8, 6, 11]);
   });
 
-  it("answers 404 for a pull request's number, and the reverse", async () => {
+  it("answers 404 for a branch page's number, and locates no page for an issue's", async () => {
     expect((await failure(() => I.get!({ params: { ...repo, number: 12 } }))).status).toBe(404);
-    expect((await failure(() => P.get!({ params: { ...repo, number: 13 } }))).status).toBe(404);
+    expect(await P.locate!({ params: { ...repo, number: 12 } })).toEqual({
+      key: "feature/vpc-peering",
+    });
+    expect((await failure(() => P.locate!({ params: { ...repo, number: 13 } }))).status).toBe(404);
+    expect((await failure(() => P.locate!({ params: { ...repo, number: 99 } }))).status).toBe(404);
   });
 
   it("serves a timeline in order, events between comments", async () => {
@@ -85,7 +91,7 @@ describe("issues", () => {
       params: repo,
       payload: { title: "A new one", labels: ["bug"], assignees: ["jonas"], milestone: 1 },
     });
-    expect(created.number).toBe(17);
+    expect(created.number).toBe(19);
     expect(created.labels.map((label) => label.name)).toEqual(["bug"]);
     const params = { ...repo, number: created.number };
     await I.update!({ params, payload: { title: "Renamed", labels: ["cost"], milestone: null } });
@@ -132,7 +138,7 @@ describe("labels and milestones", () => {
   it("counts a milestone's open and closed threads", async () => {
     const M = milestones.milestones!;
     const cost = await M.get!({ params: { ...repo, milestone: 1 } });
-    // #2 (open issue), #12 (open pull request), #10 (closed issue).
+    // #2 (open issue), #12 (open branch page), #10 (closed issue).
     expect(cost).toMatchObject({ title: "Cost review Q4", openCount: 2, closedCount: 1 });
     expect((await M.list!({ params: repo, query: {} })).milestones.map((m) => m.number)).toEqual([
       1, 2,
@@ -140,48 +146,57 @@ describe("labels and milestones", () => {
   });
 });
 
-describe("pull requests", () => {
+describe("branch pages", () => {
   it("lists them with the head's status and the review decision", async () => {
     const page = await P.list!({ params: repo, query: {} });
     expect(
-      page.items.map((pull) => [pull.number, pull.status, pull.reviewDecision, pull.draft]),
+      page.items.map((page) => [page.number, page.status, page.reviewDecision, page.draft]),
     ).toEqual([
+      [18, null, "review_required", false],
       [14, "failure", "review_required", false],
       [12, "success", "approved", false],
     ]);
-    expect(page.counts).toEqual({ open: 2, closed: 1 });
+    expect(page.items.map((item) => item.key)).toEqual([
+      "feature/budgets/staging-alarm",
+      "fix/database-backups",
+      "feature/vpc-peering",
+    ]);
+    expect(page.counts).toEqual({ open: 3, closed: 2 });
     const merged = await P.list!({ params: repo, query: { state: "merged" } });
-    expect(merged.items.map((pull) => [pull.number, pull.state])).toEqual([[7, "merged"]]);
+    expect(merged.items.map((page) => [page.number, page.state])).toEqual([[7, "merged"]]);
   });
 
-  it("computes a pull request from its branches", async () => {
-    const pull = await P.get!({ params: { ...repo, number: 12 } });
-    expect(pull).toMatchObject({
+  it("computes a page from its branches", async () => {
+    const page = await P.get!({ params: { ...repo, branch: "feature/vpc-peering" } });
+    expect(page).toMatchObject({
       baseRef: "main",
       headRef: "feature/vpc-peering",
       commitCount: 3,
       headRefExists: true,
     });
-    expect(pull.stats.filesChanged).toBe(5);
-    const commits = await P.commits!({ params: { ...repo, number: 12 }, query: {} });
+    expect(page.stats.filesChanged).toBe(5);
+    const commits = await P.commits!({
+      params: { ...repo, branch: "feature/vpc-peering" },
+      query: {},
+    });
     expect(commits.items.map((commit) => commit.summary)).toEqual([
       "network: peer with the shared services VPC",
       "staging: peer with shared services",
       "docs: how the peering routes are laid out",
     ]);
-    const files = await P.files!({ params: { ...repo, number: 12 }, query: {} });
+    const files = await P.files!({ params: { ...repo, branch: "feature/vpc-peering" }, query: {} });
     expect(files.files.map((file) => file.path)).toContain("docs/peering.md");
-    expect(files.baseOid).toBe(pull.mergeBaseOid);
+    expect(files.baseOid).toBe(page.mergeBaseOid);
   });
 
-  it("keeps a merged pull request's commits and diff as they were", async () => {
-    const pull = await P.get!({ params: { ...repo, number: 7 } });
-    expect(pull).toMatchObject({ state: "merged", commitCount: 2, mergeMethod: "merge" });
-    expect(deriveMergeBox(pull.mergeability, pull.baseRef).action).toEqual({ mode: "none" });
+  it("keeps a merged page's commits and diff as they were", async () => {
+    const page = await P.get!({ params: { ...repo, branch: "feature/flow-logs" } });
+    expect(page).toMatchObject({ state: "merged", commitCount: 2, mergeMethod: "merge" });
+    expect(deriveMergeBox(page.mergeability, page.baseRef).action).toEqual({ mode: "none" });
   });
 
   it("anchors review threads on lines of the diff, with the lines they were written on", async () => {
-    const params = { ...repo, number: 12 };
+    const params = { ...repo, branch: "feature/vpc-peering" };
     const { threads } = await P.listThreads!({ params });
     expect(threads.map((thread) => [thread.path, thread.line, thread.outdated])).toEqual([
       ["docs/peering.md", 3, false],
@@ -211,31 +226,33 @@ describe("pull requests", () => {
   });
 
   it("shows the viewer their own pending review and nobody else's", async () => {
-    const params = { ...repo, number: 12 };
-    const pull = await P.get!({ params });
-    expect(pull.viewer.pendingReviewId).not.toBeNull();
+    const params = { ...repo, branch: "feature/vpc-peering" };
+    const page = await P.get!({ params });
+    expect(page.viewer.pendingReviewId).not.toBeNull();
     const { reviews } = await P.listReviews!({ params });
     expect(reviews.map((review) => [review.author?.username, review.state, review.stale])).toEqual([
       ["priya", "changes_requested", true],
       ["priya", "approved", false],
       ["mara", "pending", false],
     ]);
-    const { items } = await I.timeline!({ params, query: {} });
+    const { items } = await I.timeline!({ params: { ...repo, number: 12 }, query: {} });
     const inTimeline = items.flatMap((item) => (item.type === "review" ? [item.review.state] : []));
     expect(inTimeline).toEqual(["changes_requested", "approved"]);
   });
 
   it("is mergeable when approved and green, and names what blocks the other", async () => {
     // A review agent's must-fix finding holds it until an administrator merges past it.
-    const held = (await P.get!({ params: { ...repo, number: 12 } })).mergeability;
+    const held = (await P.get!({ params: { ...repo, branch: "feature/vpc-peering" } }))
+      .mergeability;
     expect(held.blockers.map((blocker) => blocker.code)).toEqual(["must_fix_findings"]);
     expect(held.findings).toEqual({ mustFixOpen: 1, blocks: true, canOverride: true });
     expect(deriveMergeBox(held, "main").action.mode).toBe("blocked");
     await review.findings!.override!({
-      params: { ...repo, number: 12 },
+      params: { ...repo, branch: "feature/vpc-peering" },
       payload: { reason: "The shared services account accepts on its side" },
     });
-    const ready = (await P.get!({ params: { ...repo, number: 12 } })).mergeability;
+    const ready = (await P.get!({ params: { ...repo, branch: "feature/vpc-peering" } }))
+      .mergeability;
     expect(ready).toMatchObject({ state: "clean", behindBy: 3, canMerge: true, blockers: [] });
     expect(ready.checks.required).toEqual([
       { context: "Infrawrench CI / fmt", state: "success" },
@@ -243,20 +260,24 @@ describe("pull requests", () => {
     ]);
     expect(ready.canUpdateBranch).toBe(true);
 
-    const stuck = (await P.get!({ params: { ...repo, number: 14 } })).mergeability;
+    const stuck = (await P.get!({ params: { ...repo, branch: "fix/database-backups" } }))
+      .mergeability;
     expect(stuck.blockers.map((blocker) => blocker.code)).toEqual([
       "checks_failed",
       "approvals_required",
     ]);
     expect(deriveMergeBox(stuck, "main").action.mode).toBe("bypass");
     const refused = await failure(() =>
-      P.merge!({ params: { ...repo, number: 14 }, payload: { method: "merge" } }),
+      P.merge!({
+        params: { ...repo, branch: "fix/database-backups" },
+        payload: { method: "merge" },
+      }),
     );
     expect([refused.status, refused.code]).toEqual([422, "checks_required"]);
   });
 
   it("submits a pending review, threads a reply, and resolves", async () => {
-    const params = { ...repo, number: 14 };
+    const params = { ...repo, branch: "fix/database-backups" };
     const started = await P.createReviewComment!({
       params,
       payload: {
@@ -303,10 +324,10 @@ describe("pull requests", () => {
     expect(mergeability.blockers.map((blocker) => blocker.code)).toEqual(["checks_failed"]);
   });
 
-  it("does not let an author approve their own pull request", async () => {
+  it("does not let an author approve their own branch", async () => {
     const error = await failure(() =>
       P.createReview!({
-        params: { owner: "acme", repo: "edge-router", number: 4 },
+        params: { owner: "acme", repo: "edge-router", branch: "feature/health-checks" },
         payload: { event: "approve" },
       }),
     );
@@ -314,7 +335,7 @@ describe("pull requests", () => {
   });
 
   it("updates a branch, waits for its checks, then merges and deletes it", async () => {
-    const params = { ...repo, number: 12 };
+    const params = { ...repo, branch: "feature/vpc-peering" };
     const before = await P.get!({ params });
     const mainFiles = (await P.files!({ params, query: {} })).files.map((file) => file.path);
 
@@ -352,28 +373,72 @@ describe("pull requests", () => {
       mergeCommitOid: merged.commitOid,
       commitCount: before.commitCount + 1,
     });
-    const { items } = await I.timeline!({ params, query: {} });
+    const { items } = await I.timeline!({ params: { ...repo, number: 12 }, query: {} });
     expect(items.slice(-2).map((item) => item.type)).toEqual(["merged", "head_branch_deleted"]);
     const restored = await P.restoreBranch!({ params });
     expect(restored).toEqual({ ref: "feature/vpc-peering", oid: headOid });
   });
 
-  it("opens a pull request only between branches that differ", async () => {
+  it("opens a page only for a branch with commits of its own, and only one at a time", async () => {
     const same = await failure(() =>
-      P.create!({ params: repo, payload: { title: "x", base: "main", head: "feature/flow-logs" } }),
+      P.propose!({ params: repo, payload: { head: "feature/flow-logs" } }),
     );
     expect(same.code).toBe("no_commits_between");
     const exists = await failure(() =>
-      P.create!({
-        params: repo,
-        payload: { title: "x", base: "main", head: "fix/database-backups" },
-      }),
+      P.propose!({ params: repo, payload: { head: "fix/database-backups", base: "main" } }),
     );
-    expect([exists.status, exists.code]).toEqual([409, "pull_request_exists"]);
+    expect([exists.status, exists.code]).toEqual([409, "branch_page_exists"]);
+  });
+
+  it("names a page by its branch, its fork and which page of the name it is", async () => {
+    const infra = findRepository("acme", "infra");
+    const second = findPage(infra, "feature/budgets/staging-alarm");
+    expect(second.number).toBe(18);
+    expect(pageKeyOf(infra, second)).toBe("feature/budgets/staging-alarm");
+    expect(findPage(infra, "feature/budgets/staging-alarm~2")).toBe(second);
+    const first = findPage(infra, "feature/budgets/staging-alarm~1");
+    expect(first.number).toBe(17);
+    expect(pageKeyOf(infra, first)).toBe("feature/budgets/staging-alarm~1");
+    expect(() => findPage(infra, "feature/budgets/staging-alarm~3")).toThrow();
+    expect(() => findPage(infra, "feature/budgets")).toThrow();
+
+    const edge = findRepository("acme", "edge-router");
+    const forked = findPage(edge, "jonas/edge-router:fix/lowercase-hosts");
+    expect(pageKeyOf(edge, forked)).toBe("jonas/edge-router:fix/lowercase-hosts");
+    expect(() => findPage(edge, "fix/lowercase-hosts")).toThrow();
+    const page = await P.get!({
+      params: {
+        owner: "acme",
+        repo: "edge-router",
+        branch: "jonas/edge-router:fix/lowercase-hosts",
+      },
+    });
+    expect(page).toMatchObject({
+      key: "jonas/edge-router:fix/lowercase-hosts",
+      crossRepository: true,
+      headRepository: { owner: "jonas", name: "edge-router" },
+      commitCount: 1,
+      body: "Closes #5.",
+    });
+    expect(page.stats.filesChanged).toBe(1);
+    const closed = await P.get!({
+      params: { ...repo, branch: "feature/budgets/staging-alarm~1" },
+    });
+    expect(closed).toMatchObject({ state: "closed", key: "feature/budgets/staging-alarm~1" });
+  });
+
+  it("opens the page of a branch pushed without one when it is asked for", async () => {
+    const page = await P.get!({ params: { ...repo, branch: "release/2026.11" } });
+    expect(page).toMatchObject({ key: "release/2026.11", state: "open", baseRef: "main" });
+    expect(page.title).toBe("2026.11");
+    expect((await failure(() => P.get!({ params: { ...repo, branch: "main" } }))).status).toBe(404);
+    expect(
+      (await failure(() => P.get!({ params: { ...repo, branch: "no/such-branch" } }))).status,
+    ).toBe(404);
   });
 });
 
-describe("a fork's pull request", () => {
+describe("a fork's branch", () => {
   const base = { owner: "acme", repo: "edge-router" };
   const fork = "jonas/edge-router";
   const K = contents.contents!;
@@ -403,21 +468,34 @@ describe("a fork's pull request", () => {
     expect(refused.status).toBe(422);
   });
 
-  it("opens from the fork into the parent, as a cross-repository pull request", async () => {
-    const pull = await P.create!({
-      params: base,
-      payload: {
-        title: "Health checks from the fork",
-        base: "main",
-        head: "feature/health-checks",
-        headRepository: fork,
-      },
+  it("is proposed to the parent, and only once while its page is open", async () => {
+    const page = await P.propose!({
+      params: repo,
+      payload: { head: "docs/peering-notes", headRepository: "mara/infra" },
     });
-    expect(pull.crossRepository).toBe(true);
-    expect(pull.headRepository).toMatchObject({ owner: "jonas", name: "edge-router" });
-    expect(pull.headRef).toBe("feature/health-checks");
-    const again = await P.get!({ params: { ...base, number: pull.number } });
-    expect(again.crossRepository).toBe(true);
+    expect(page).toMatchObject({
+      key: "mara/infra:docs/peering-notes",
+      crossRepository: true,
+      headRepository: { owner: "mara", name: "infra" },
+      headRef: "docs/peering-notes",
+      baseRef: "main",
+      title: "Peering notes",
+      commitCount: 1,
+    });
+    const again = await P.get!({ params: { ...repo, branch: page.key } });
+    expect(again.number).toBe(page.number);
+    const twice = await failure(() =>
+      P.propose!({
+        params: repo,
+        payload: { head: "docs/peering-notes", headRepository: "mara/infra", title: "Again" },
+      }),
+    );
+    expect([twice.status, twice.code]).toEqual([409, "branch_page_exists"]);
+    const comparison = await K.compare!({
+      params: repo,
+      query: { base: "main", head: "docs/peering-notes", headRepository: "mara/infra" },
+    });
+    expect(comparison.page?.key).toBe("mara/infra:docs/peering-notes");
   });
 
   it("forks into a namespace the caller picks, under the name they give", async () => {
@@ -529,8 +607,8 @@ describe("Terraform", () => {
     expect(nat.items).toHaveLength(3);
   });
 
-  it("puts a pull request's newest plan per workspace first", async () => {
-    const { items } = await T.listRuns!({ params: repo, query: { pull: 12 } });
+  it("puts a branch page's newest plan per workspace first", async () => {
+    const { items } = await T.listRuns!({ params: repo, query: { page: "feature/vpc-peering" } });
     const first = new Map<string, (typeof items)[number]>();
     for (const run of items) if (!first.has(run.workspace.name)) first.set(run.workspace.name, run);
     expect(first.get("staging")).toMatchObject({ status: "planned" });
@@ -581,7 +659,7 @@ describe("Terraform", () => {
     ).toBe(true);
   });
 
-  it("names a pull request's plans in its timeline, and not the one a newer plan replaced", async () => {
+  it("names a branch page's plans in its timeline, and not the one a newer plan replaced", async () => {
     const { items } = await I.timeline!({ params: { ...repo, number: 12 }, query: { limit: 100 } });
     const runs = items.flatMap((item) => (item.type === "terraform_run" ? [item] : []));
     expect(runs.map((item) => [item.workspace, item.outcome]).sort()).toEqual([
@@ -590,7 +668,9 @@ describe("Terraform", () => {
     ]);
     const staging = runs.find((item) => item.workspace === "staging")!;
     expect([staging.add, staging.change, staging.destroy]).toEqual([4, 0, 0]);
-    expect((await T.getRun!({ params: { ...repo, runId: staging.runId } })).pullNumber).toBe(12);
+    expect((await T.getRun!({ params: { ...repo, runId: staging.runId } })).branchPage).toBe(
+      "feature/vpc-peering",
+    );
   });
 
   it("lists the organisation's accounts for the picker, and none in a personal namespace", async () => {

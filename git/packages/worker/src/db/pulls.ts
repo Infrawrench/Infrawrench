@@ -1,7 +1,8 @@
 /**
- * Pull requests: the `git_pull_requests` row beside a thread, its reviews and
- * its review comments. The thread itself (title, state, comments, timeline)
- * is `db/threads.ts`.
+ * Branch pages: the `git_pull_requests` row beside a thread (the storage
+ * keeps the name it was given), its reviews and its review comments. The
+ * thread itself (title, state, comments, timeline) is `db/threads.ts`; what
+ * names a page (its key) is `db/branch-pages.ts`.
  */
 import { and, asc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import {
@@ -40,30 +41,36 @@ export interface NewPullRequest extends Omit<NewThread, "isPullRequest"> {
   readonly changedFiles: number;
 }
 
-/** Open a pull request: the thread and its pull request row, with one number. */
+/** Open a branch page: the thread and its page row, with one number. */
 export const createPullRequest = (input: NewPullRequest): Promise<PullRequestWithThread> =>
-  db.transaction(async (tx) => {
-    const thread = await insertThread(tx, { ...input, isPullRequest: true });
-    const [pull] = await tx
-      .insert(gitPullRequests)
-      .values({
-        issueId: thread.id,
-        repositoryId: input.repositoryId,
-        baseRef: input.baseRef,
-        headRepositoryId: input.headRepositoryId,
-        headRef: input.headRef,
-        headOid: input.headOid,
-        baseOid: input.baseOid,
-        mergeBaseOid: input.mergeBaseOid,
-        draft: input.draft,
-        commitsCount: input.commitsCount,
-        additions: input.additions,
-        deletions: input.deletions,
-        changedFiles: input.changedFiles,
-      })
-      .returning();
-    return { thread, pull: pull! };
-  });
+  db.transaction((tx) => createPullRequestIn(tx, input));
+
+/** {@link createPullRequest} inside a transaction the caller holds. */
+export const createPullRequestIn = async (
+  tx: Tx,
+  input: NewPullRequest,
+): Promise<PullRequestWithThread> => {
+  const thread = await insertThread(tx, { ...input, isPullRequest: true });
+  const [pull] = await tx
+    .insert(gitPullRequests)
+    .values({
+      issueId: thread.id,
+      repositoryId: input.repositoryId,
+      baseRef: input.baseRef,
+      headRepositoryId: input.headRepositoryId,
+      headRef: input.headRef,
+      headOid: input.headOid,
+      baseOid: input.baseOid,
+      mergeBaseOid: input.mergeBaseOid,
+      draft: input.draft,
+      commitsCount: input.commitsCount,
+      additions: input.additions,
+      deletions: input.deletions,
+      changedFiles: input.changedFiles,
+    })
+    .returning();
+  return { thread, pull: pull! };
+};
 
 /** `#number` as a pull request, or null when it is an issue or nothing. */
 export const getPullRequest = async (
@@ -115,30 +122,6 @@ export const openPullRequestsForBranch = (
         ),
       ),
     );
-
-/** The open pull request for exactly this base and head, when there is one. */
-export const findOpenPullRequest = async (
-  repositoryId: string,
-  baseRef: string,
-  headRepositoryId: string,
-  headRef: string,
-): Promise<PullRequestWithThread | null> => {
-  const [row] = await db
-    .select({ thread: gitIssues, pull: gitPullRequests })
-    .from(gitPullRequests)
-    .innerJoin(gitIssues, eq(gitIssues.id, gitPullRequests.issueId))
-    .where(
-      and(
-        eq(gitPullRequests.repositoryId, repositoryId),
-        eq(gitPullRequests.baseRef, baseRef),
-        eq(gitPullRequests.headRepositoryId, headRepositoryId),
-        eq(gitPullRequests.headRef, headRef),
-        eq(gitIssues.state, "open"),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
-};
 
 /** What a push to the head or the base changes. Mergeability goes back to `unknown` until rechecked. */
 export const syncPullRequest = async (
@@ -635,36 +618,41 @@ export const reanchorThread = async (
 // Lookups the content pages make
 // ---------------------------------------------------------------------------
 
-/** The newest pull request from each of these branches of a repository, by branch name. */
-export const newestPullRequestsForBranches = async (
-  headRepositoryId: string,
+/**
+ * The page each of these branches of a repository has there, by branch name:
+ * the open one, or the newest. A branch of a fork proposed to its parent has
+ * its page in the parent, so it is not one of these.
+ */
+export const currentPagesForBranches = async (
+  repositoryId: string,
   branches: readonly string[],
 ): Promise<Map<string, PullRequestWithThread>> => {
-  const newest = new Map<string, PullRequestWithThread>();
-  if (branches.length === 0) return newest;
+  const current = new Map<string, PullRequestWithThread>();
+  if (branches.length === 0) return current;
   const rows = await db
     .select({ thread: gitIssues, pull: gitPullRequests })
     .from(gitPullRequests)
     .innerJoin(gitIssues, eq(gitIssues.id, gitPullRequests.issueId))
     .where(
       and(
-        eq(gitPullRequests.headRepositoryId, headRepositoryId),
+        eq(gitPullRequests.repositoryId, repositoryId),
+        eq(gitPullRequests.headRepositoryId, repositoryId),
         inArray(gitPullRequests.headRef, [...branches]),
       ),
     )
-    .orderBy(asc(gitIssues.createdAt));
-  // Oldest first, so the newest wins.
-  for (const row of rows) newest.set(row.pull.headRef, row);
-  return newest;
+    // Closed ones first, each kind oldest first, so the open one (else the newest) wins.
+    .orderBy(sql`(${gitIssues.state} = 'open') asc`, asc(gitIssues.number));
+  for (const row of rows) current.set(row.pull.headRef, row);
+  return current;
 };
 
-/** Pull requests a commit is the head or the merge of, in a repository. */
-export const pullRequestsForCommit = (
+/** Pages a commit is the head or the merge of, in a repository. */
+export const pagesForCommit = (
   repositoryId: string,
   oid: string,
-): Promise<Array<{ number: number; title: string }>> =>
+): Promise<Array<{ issueId: string; number: number; title: string }>> =>
   db
-    .select({ number: gitIssues.number, title: gitIssues.title })
+    .select({ issueId: gitPullRequests.issueId, number: gitIssues.number, title: gitIssues.title })
     .from(gitPullRequests)
     .innerJoin(gitIssues, eq(gitIssues.id, gitPullRequests.issueId))
     .where(

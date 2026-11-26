@@ -87,6 +87,8 @@ import {
   cloneToken,
   cloneUrl,
   commitUrl,
+  gitBranchPageUrl,
+  gitRunPageKey,
   isGitSource,
   pullUrl,
   sourceKind,
@@ -1566,9 +1568,14 @@ async function newestRetries(organizationId: string, ids: string[]): Promise<Map
 }
 
 export function toWire(row: CiRunRow, retriedAsRunId: string | null = null): CiRun {
-  // The pull request, or the commit, on the forge the repository is on.
+  // The pull request (GitHub) or the branch page (git.infrawrench.com), or
+  // the commit, on the forge the repository is on.
   const sourceUrl =
-    row.pullNumber !== null ? pullUrl(row, row.pullNumber) : commitUrl(row, row.sha);
+    row.pullNumber === null
+      ? commitUrl(row, row.sha)
+      : isGitSource(row)
+        ? gitBranchPageUrl(row.repoFullName, gitRunPageKey(row))
+        : pullUrl(row, row.pullNumber);
   return {
     id: row.id,
     repoFullName: row.repoFullName,

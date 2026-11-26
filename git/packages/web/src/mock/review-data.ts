@@ -1,8 +1,8 @@
 /**
  * The mock's agent work review: a branch's versions, what the agent that
  * wrote them recorded, what review agents found, what reviewers sent back,
- * and the agent behind the branch. Kept per pull request, beside the pull
- * request's own state in `threads-data.ts`, which reads only the merge gate
+ * and the agent behind the branch. Kept per branch page, beside the page
+ * thread's own state in `threads-data.ts`, which reads only the merge gate
  * from here (so this file never imports that one).
  *
  * `acme/infra` #12 has three versions (the second a forced push), a trace
@@ -16,7 +16,6 @@ import type {
   Instruction,
   MergeOverride,
   ReviewFinding,
-  ReviewMode,
   ReviewRun,
   ReviewSettings,
   T3Environment,
@@ -537,7 +536,7 @@ function seedFor(repo: RepositoryRecord, number: number): ReviewState | null {
   return null;
 }
 
-/** A pull request's review state when it has any: the seeded ones, and any a page has opened. */
+/** A branch page's review state when it has any: the seeded ones, and any a page has opened. */
 export function peekReview(repo: RepositoryRecord, number: number): ReviewState | null {
   const key = keyOf(repo, number);
   const known = states.get(key);
@@ -615,7 +614,7 @@ export function presentFinding(
   };
 }
 
-// --- Settings, the viewer's mode and their T3 Code environments -------------
+// --- Settings and the viewer's T3 Code environments ------------------------
 
 const settings = new Map<string, Mutable<Omit<ReviewSettings, "availableReviewerKinds">>>();
 
@@ -623,7 +622,6 @@ export function reviewSettingsOf(repo: RepositoryRecord) {
   let found = settings.get(repo.id);
   if (!found) {
     found = {
-      autoOpenBranchPages: true,
       reviewAgentsEnabled: `${repo.owner.slug}/${repo.name}` === "acme/infra",
       reviewerKinds: ["general", "security", "terraform", "intent"],
       mustFixBlocksMerge: true,
@@ -639,7 +637,7 @@ export const presentSettings = (repo: RepositoryRecord): ReviewSettings => ({
 });
 
 /**
- * What a merge is held on, for `mergeabilityOf`. Null for a pull request
+ * What a merge is held on, for `mergeabilityOf`. Null for a branch page
  * nothing has been found on, whose mergeability then reads as it always did.
  */
 export function findingsGate(
@@ -652,27 +650,6 @@ export function findingsGate(
     mustFixOpen: tallyOf(state).mustFixOpen,
     blocks: reviewSettingsOf(repo).mustFixBlocksMerge,
   };
-}
-
-const MODE_KEY = "git-mock-review-mode";
-
-function readMode(): ReviewMode {
-  try {
-    return sessionStorage.getItem(MODE_KEY) === "classic" ? "classic" : "agent";
-  } catch {
-    return "agent";
-  }
-}
-
-let mode: ReviewMode = readMode();
-export const reviewMode = (): ReviewMode => mode;
-export function setReviewMode(next: ReviewMode): void {
-  mode = next;
-  try {
-    sessionStorage.setItem(MODE_KEY, next);
-  } catch {
-    // Kept for this page load only.
-  }
 }
 
 export const t3Environments: Array<Mutable<T3Environment>> = [

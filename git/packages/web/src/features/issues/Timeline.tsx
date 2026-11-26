@@ -1,7 +1,7 @@
 /**
  * A thread's timeline, oldest first: comments, the events between them, and
- * for a pull request the commits pushed to it and its reviews (drawn by the
- * pull request page through `renderReview`).
+ * for a branch's page the commits pushed to it and its reviews (drawn by the
+ * branch page through `renderReview`).
  */
 import type { ReactNode } from "react";
 import type { TimelineItem } from "@infrawrench/git-contract";
@@ -13,7 +13,7 @@ import { Icon, type IconName } from "../../components/icons";
 import { LabelChip } from "../../components/LabelChip";
 import { RelativeTime, UserLink } from "../../components/people";
 import { ErrorState, Loading, LoadMore } from "../../components/states";
-import { ThreadStateIcon, pullKind } from "../../components/StatusIcons";
+import { ThreadStateIcon, pageKind } from "../../components/StatusIcons";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { shortOid } from "../../lib/format";
 import { paths, type RepoRef } from "../../lib/paths";
@@ -44,7 +44,7 @@ function CommitLink({ repo, oid }: { repo: RepoRef; oid: string }) {
 function describe(
   item: EventItem,
   repo: RepoRef,
-  kind: "issues" | "pulls",
+  kind: "issues" | "branches",
 ): { icon: IconName; tone?: string; text: ReactNode } | null {
   const sameActor = (user: { id: string } | null) =>
     user !== null && item.actor !== null && user.id === item.actor.id;
@@ -157,20 +157,20 @@ function describe(
           <>
             mentioned this in{" "}
             <span className="inline-flex items-center gap-1 align-middle">
-              {source.isPullRequest ? (
-                <ThreadStateIcon kind={pullKind(source.state, false)} size={12} />
+              {source.branch !== null ? (
+                <ThreadStateIcon kind={pageKind(source.state, false)} size={12} />
               ) : null}
               <AppLink
                 href={
-                  source.isPullRequest
-                    ? paths.pull(target, source.number)
+                  source.branch !== null
+                    ? paths.branchPage(target, source.branch)
                     : paths.issue(target, source.number)
                 }
                 className="font-medium text-on-surface hover:underline"
               >
                 {source.title}
               </AppLink>
-              <span>#{source.number}</span>
+              {source.branch !== null ? null : <span>#{source.number}</span>}
             </span>
           </>
         ),
@@ -221,7 +221,7 @@ function describe(
     case "ready_for_review":
       return { icon: "eye", text: "marked this as ready for review" };
     case "converted_to_draft":
-      return { icon: "gitPullRequestDraft", text: "marked this as a draft" };
+      return { icon: "circleDashed", text: "marked this as a draft" };
     case "review_dismissed":
       return {
         icon: "x",
@@ -263,7 +263,7 @@ export function TimelineRow({
   );
 }
 
-function EventRow({ item, kind }: { item: EventItem; kind: "issues" | "pulls" }) {
+function EventRow({ item, kind }: { item: EventItem; kind: "issues" | "branches" }) {
   const repo = useRepoRef();
   const described = describe(item, repo, kind);
   if (described === null) return null;
@@ -281,7 +281,7 @@ const TERRAFORM_TONE = {
   neutral: "text-on-surface-muted",
 } as const;
 
-/** A Terraform run of the pull request: the workspace, linked to the run, and what it reported. */
+/** A Terraform run of the branch: the workspace, linked to the run, and what it reported. */
 function TerraformRunRow({ item }: { item: TerraformRunItem }) {
   const repo = useRepoRef();
   const { text, tone } = terraformEventSentence(item);
@@ -332,7 +332,7 @@ export function Timeline({
   renderReview,
 }: {
   number: number;
-  kind: "issues" | "pulls";
+  kind: "issues" | "branches";
   renderReview?: (item: ReviewItem) => ReactNode;
 }) {
   const repo = useRepoRef();

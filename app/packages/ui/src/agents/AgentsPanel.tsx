@@ -51,7 +51,7 @@ interface AgentsPanelProps {
    */
   gitIntegration?: GitIntegration;
   /**
-   * A pull request on git.infrawrench.com to start the next session on (the
+   * A branch on git.infrawrench.com to start the next session on (the
    * forge's "Start work with Infrawrench" links here). Replaces the
    * repository controls until the session is created or the work is
    * dismissed, when `onGitWorkDone` is called.
@@ -330,16 +330,17 @@ export function AgentsPanel({
   const needsRepo = agentSurfaceRequiresRepo(selectedSurface);
   const nibblets = isNibbletsSurface(selectedSurface);
   const linkNibblets = nibblets && linkToOrg && Array.isArray(linkableScopes);
-  // Work on a forge pull request: its repository and branch come from the
-  // pull request, so the repository controls give way to it. Only a terminal
+  // Work on a forge branch: its repository and branch come from the forge,
+  // so the repository controls give way to them. Only a terminal
   // session can take it (the one surface that clones a repository).
   const workRepo = gitWork ? `${gitWork.owner}/${gitWork.repo}` : "";
   const repoReady = gitWork ? needsRepo : !needsRepo || !!repo.trim();
 
-  // Name the agent after the pull request, unless a name was already typed.
+  // Name the agent after the branch, unless a name was already typed.
   useEffect(() => {
     if (!gitWork) return;
-    setAgentName((current) => current || `${gitWork.repo}-${gitWork.pull}`);
+    const branch = gitWork.branch.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+    setAgentName((current) => current || (branch ? `${gitWork.repo}-${branch}` : gitWork.repo));
   }, [gitWork]);
 
   async function updateAccount(value: string) {
@@ -476,7 +477,7 @@ export function AgentsPanel({
         settings,
         ...(linkNibblets ? { nibbletsLink: { scopes: [...linkScopes] } } : {}),
         ...(gitWork
-          ? { gitWork: { owner: gitWork.owner, repo: gitWork.repo, pull: gitWork.pull } }
+          ? { gitWork: { owner: gitWork.owner, repo: gitWork.repo, branch: gitWork.branch } }
           : {}),
       });
       if (sessionHasVm(created)) {
@@ -809,8 +810,8 @@ export function AgentsPanel({
                 {gitWork && (
                   <div className="flex flex-wrap items-center gap-2 rounded border border-border bg-surface px-2 py-1.5 text-sm">
                     <span className="min-w-0 flex-1 truncate">
-                      {gt("Pull request #{number} in {repository}", {
-                        number: gitWork.pull,
+                      {gt("Branch {branch} in {repository}", {
+                        branch: gitWork.branch,
                         repository: workRepo,
                       })}
                     </span>

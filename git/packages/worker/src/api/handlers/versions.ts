@@ -1,7 +1,6 @@
 /**
  * A branch's versions and the diffs between them, the branch page's state,
- * and what has no repository in its path: the review inbox and the viewer's
- * review mode.
+ * and what has no repository in its path: the review inbox.
  *
  * Versions are recorded by the repository's Durable Object and copied to
  * Postgres by the queue consumer (`events/versions.ts`); everything here
@@ -9,29 +8,23 @@
  */
 import { HttpApiBuilder } from "effect/http-api";
 import { GitApi, notFound, unprocessable } from "@infrawrench/git-contract";
+import { pageKeys } from "../../db/branch-pages";
 import { decodeCursor, pageSize } from "../../db/cursor";
-import { type PullRequestWithThread, getPullRequest } from "../../db/pulls";
+import type { PullRequestWithThread } from "../../db/pulls";
 import {
   type VersionRow,
   changesSince,
-  getReviewMode,
   getReviewedMark,
   reviewInbox,
-  setReviewMode,
   setReviewedMark,
   versionsForPull,
 } from "../../db/review";
 import type { RepoReader, VersionSide } from "../../repo/reader";
+import { pageOr404 } from "../branch-page";
 import { type RepoCx, locatorOf, op, repoOp } from "../context";
 import { headRepositoryOf, mayProposeTo } from "../repos";
 import { iso, isoOrNull, peopleById } from "../views/repositories";
 import { branchPageState, versionViews } from "../views/review";
-
-const pullOr404 = async (cx: RepoCx, number: number): Promise<PullRequestWithThread> => {
-  const found = await getPullRequest(cx.repo.repository.id, number);
-  if (!found) throw notFound("No such pull request");
-  return found;
-};
 
 /** The version a path names: a number, or `latest`. */
 const versionOr404 = (versions: readonly VersionRow[], selector: string): VersionRow => {
@@ -49,7 +42,7 @@ const sideOf = (version: VersionRow): VersionSide => ({
 });
 
 /**
- * Where a pull request's versions are read: its head repository, which has
+ * Where a page's versions are read: its head repository, which has
  * every version's commit (kept by the version's ref) and each one's base (an
  * ancestor of it). A fork that is gone, or that the base's readers may no
  * longer be shown, leaves the base repository, which has the heads it was
@@ -65,7 +58,7 @@ export const VersionsHandlers = HttpApiBuilder.group(GitApi, "versions", (handle
     .handle(
       "list",
       repoOp(async (cx, { params }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const [versions, mark] = await Promise.all([
           versionsForPull(found.pull),
           cx.userId ? getReviewedMark(found.pull.issueId, cx.userId) : null,
@@ -83,7 +76,7 @@ export const VersionsHandlers = HttpApiBuilder.group(GitApi, "versions", (handle
     .handle(
       "get",
       repoOp(async (cx, { params }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const versions = await versionsForPull(found.pull);
         const wanted = versionOr404(versions, params.version);
         // All of them, so `rebased` has the version before to compare with.
@@ -94,7 +87,7 @@ export const VersionsHandlers = HttpApiBuilder.group(GitApi, "versions", (handle
     .handle(
       "diff",
       repoOp(async (cx, { params, query }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const versions = await versionsForPull(found.pull);
         const to = versionOr404(versions, params.version);
         const selector = query.from ?? "base";
@@ -140,7 +133,7 @@ export const VersionsHandlers = HttpApiBuilder.group(GitApi, "versions", (handle
     .handle(
       "markReviewed",
       repoOp(async (cx, { params }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const version = versionOr404(await versionsForPull(found.pull), params.version);
         const mark = await setReviewedMark(found.pull.issueId, cx.userId!, version);
         return { version: mark.versionNumber, reviewedAt: iso(mark.reviewedAt) };
@@ -148,69 +141,59 @@ export const VersionsHandlers = HttpApiBuilder.group(GitApi, "versions", (handle
     )
     .handle(
       "branchState",
-      repoOp(async (cx, { params }) => branchPageState(cx, await pullOr404(cx, params.number))),
+      repoOp(async (cx, { params }) => branchPageState(cx, await pageOr404(cx, params.branch))),
     ),
 );
 
 export const ReviewHandlers = HttpApiBuilder.group(GitApi, "review", (handlers) =>
-  handlers
-    .handle(
-      "inbox",
-      op(async (cx, { query }) => {
-        const viewer = await cx.viewer();
-        const page = await reviewInbox(
-          { ...viewer, userId: cx.userId! },
-          { cursor: decodeCursor(query.cursor), limit: pageSize(query.limit) },
-        );
-        const [person, changes] = await Promise.all([
-          peopleById(page.items.map((row) => row.authorUserId)),
-          changesSince(
-            page.items.map((row) => ({ pullRequestId: row.pullRequestId, at: row.reviewedAt })),
-          ),
-        ]);
-        return {
-          items: page.items.map((row) => {
-            const since = changes.get(row.pullRequestId);
-            return {
-              repository: {
-                id: row.repositoryId,
-                owner: row.owner,
-                name: row.repositoryName,
-                visibility: row.visibility,
-              },
-              number: row.number,
-              title: row.title,
-              branch: row.branch,
-              draft: row.draft,
-              author: person(row.authorUserId),
-              agent:
-                row.agentKind && row.agentName
-                  ? { kind: row.agentKind, displayName: row.agentName }
-                  : null,
-              latestVersion: row.latestVersion,
-              reviewedVersion: row.reviewedVersion,
-              waitingSince: isoOrNull(new Date(row.waitingSince))!,
-              changes: {
-                versions: row.versions,
-                comments: since?.comments ?? 0,
-                findings: since?.findings ?? 0,
-              },
-              mustFixOpen: since?.mustFixOpen ?? 0,
-            };
-          }),
-          nextCursor: page.nextCursor,
-        };
-      }),
-    )
-    .handle(
-      "mode",
-      op(async (cx) => ({ mode: await getReviewMode(cx.userId!) })),
-    )
-    .handle(
-      "setMode",
-      op(async (cx, { payload }) => {
-        await setReviewMode(cx.userId!, payload.mode);
-        return { mode: payload.mode };
-      }),
-    ),
+  handlers.handle(
+    "inbox",
+    op(async (cx, { query }) => {
+      const viewer = await cx.viewer();
+      const page = await reviewInbox(
+        { ...viewer, userId: cx.userId! },
+        { cursor: decodeCursor(query.cursor), limit: pageSize(query.limit) },
+      );
+      const [person, changes, keys] = await Promise.all([
+        peopleById(page.items.map((row) => row.authorUserId)),
+        changesSince(
+          page.items.map((row) => ({ pullRequestId: row.pullRequestId, at: row.reviewedAt })),
+        ),
+        pageKeys(page.items.map((row) => ({ issueId: row.pullRequestId }))),
+      ]);
+      return {
+        items: page.items.map((row) => {
+          const since = changes.get(row.pullRequestId);
+          return {
+            repository: {
+              id: row.repositoryId,
+              owner: row.owner,
+              name: row.repositoryName,
+              visibility: row.visibility,
+            },
+            key: keys.get(row.pullRequestId)!,
+            number: row.number,
+            title: row.title,
+            branch: row.branch,
+            draft: row.draft,
+            author: person(row.authorUserId),
+            agent:
+              row.agentKind && row.agentName
+                ? { kind: row.agentKind, displayName: row.agentName }
+                : null,
+            latestVersion: row.latestVersion,
+            reviewedVersion: row.reviewedVersion,
+            waitingSince: isoOrNull(new Date(row.waitingSince))!,
+            changes: {
+              versions: row.versions,
+              comments: since?.comments ?? 0,
+              findings: since?.findings ?? 0,
+            },
+            mustFixOpen: since?.mustFixOpen ?? 0,
+          };
+        }),
+        nextCursor: page.nextCursor,
+      };
+    }),
+  ),
 );

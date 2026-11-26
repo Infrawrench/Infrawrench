@@ -74,7 +74,9 @@ const apiOf =
     return body instanceof Response ? body : Response.json(body);
   };
 
-const PULLS = { items: [{ number: 7 }], nextCursor: null };
+/** `branches.get` for the branch `feature`: what every branch tool reads first. */
+const PAGE_PATH = `${REPO}/branches/feature`;
+const PAGE = { key: "feature", number: 7, title: "Add rate limits", headRef: "feature" };
 const textOf = (result: { content?: unknown }): string =>
   ((result.content as Array<{ text?: string }> | undefined) ?? [])
     .map((part) => part.text ?? "")
@@ -178,6 +180,8 @@ describe.each(["legacy", "modern"] as const)("the %s protocol era", (era) => {
     const client = await connect(site, `Bearer ${token}`, era);
     expect(client.getServerVersion()).toMatchObject({ name: MCP_SERVER_NAME });
     expect(client.getInstructions()).toContain("record_trace");
+    // Everything is a branch: no tool, input or description speaks of pull requests.
+    expect(client.getInstructions()).not.toMatch(/pull/i);
 
     const { tools } = await client.listTools();
     expect(tools.map((tool) => tool.name)).toEqual([
@@ -199,6 +203,7 @@ describe.each(["legacy", "modern"] as const)("the %s protocol era", (era) => {
       expect(tool.inputSchema).toMatchObject({ type: "object", additionalProperties: false });
       expect(tool.outputSchema).toMatchObject({ type: "object" });
       expect(tool.annotations).toMatchObject({ destructiveHint: false, openWorldHint: false });
+      expect(JSON.stringify(tool)).not.toMatch(/pull/i);
     }
     const readOnly = tools.filter((tool) => tool.annotations?.readOnlyHint).map((t) => t.name);
     expect(readOnly).toEqual([
@@ -376,7 +381,7 @@ describe("the tools", () => {
 
   it("list_my_branches reads the inbox", async () => {
     const inbox = {
-      items: [{ repository: { owner: "acme", name: "infra" }, number: 7, branch: "feature" }],
+      items: [{ repository: { owner: "acme", name: "infra" }, key: "feature", branch: "feature" }],
       nextCursor: "next",
     };
     const { call, sent } = await setup({ "GET /api/review/inbox": inbox });
@@ -385,10 +390,10 @@ describe("the tools", () => {
     expect(sent()).toEqual(["GET /api/review/inbox?limit=5&cursor=abc"]);
   });
 
-  it("get_branch finds the branch's pull request and reads its page", async () => {
+  it("get_branch reads the branch's page, its state and its versions", async () => {
     const { call, sent } = await setup({
-      [`GET ${REPO}/pulls`]: PULLS,
-      [`GET ${REPO}/pulls/7`]: {
+      [`GET ${PAGE_PATH}`]: {
+        key: "feature",
         number: 7,
         title: "Add rate limits",
         body: "The ask",
@@ -400,8 +405,8 @@ describe("the tools", () => {
         mergeability: { state: "clean", blockers: [] },
         viewer: { canMerge: true },
       },
-      [`GET ${REPO}/pulls/7/branch-state`]: { state: "agent_working", openInstructions: 2 },
-      [`GET ${REPO}/pulls/7/versions`]: {
+      [`GET ${PAGE_PATH}/branch-state`]: { state: "agent_working", openInstructions: 2 },
+      [`GET ${PAGE_PATH}/versions`]: {
         branch: "feature",
         versions: [{ number: 1 }, { number: 2 }],
         latest: 2,
@@ -409,10 +414,11 @@ describe("the tools", () => {
     });
     const result = await call("get_branch", { repository: "acme/infra", branch: "feature" });
     expect(result.structuredContent).toEqual({
-      url: `${ORIGIN}/acme/infra/pulls/7`,
-      // What an agent needs of the pull request, not the page's whole view.
-      pullRequest: {
-        number: 7,
+      url: `${ORIGIN}/acme/infra/branches/feature`,
+      key: "feature",
+      // What an agent needs of the page, not its whole view.
+      page: {
+        key: "feature",
         title: "Add rate limits",
         body: "The ask",
         state: "open",
@@ -425,49 +431,60 @@ describe("the tools", () => {
       versions: [{ number: 1 }, { number: 2 }],
       latestVersion: 2,
     });
-    expect(sent()[0]).toBe(`GET ${REPO}/pulls?head=feature&state=open&limit=1`);
+    expect(sent()[0]).toBe(`GET ${PAGE_PATH}`);
     expect(sent().slice(1).sort()).toEqual([
-      `GET ${REPO}/pulls/7`,
-      `GET ${REPO}/pulls/7/branch-state`,
-      `GET ${REPO}/pulls/7/versions`,
+      `GET ${PAGE_PATH}/branch-state`,
+      `GET ${PAGE_PATH}/versions`,
     ]);
+    expect(JSON.stringify(result)).not.toMatch(/pull/i);
   });
 
-  it("looks a merged branch up too, and says so when there is no page yet", async () => {
-    const merged = await setup({
-      [`GET ${REPO}/pulls`]: (request: Request) =>
-        new URL(request.url).searchParams.get("state") === "all" ? PULLS : { items: [] },
-      [`GET ${REPO}/pulls/7/findings`]: { findings: [], tally: { open: 0 } },
+  it("goes on by the page's own key, and says so when a branch has no page", async () => {
+    // A fork's branch proposed here: the key is one segment of the path, its slashes encoded.
+    const fork = await setup({
+      [`GET ${REPO}/branches/bob%2Finfra%3Afeature%2Fa`]: {
+        key: "bob/infra:feature/a",
+        headRef: "feature/a",
+      },
+      [`GET ${REPO}/branches/bob%2Finfra%3Afeature%2Fa/findings`]: {
+        findings: [],
+        tally: { open: 0 },
+      },
     });
-    const found = await merged.call("list_findings", {
+    const found = await fork.call("list_findings", {
       repository: "acme/infra",
-      branch: "feature",
+      branch: "bob/infra:feature/a",
     });
-    expect(found.structuredContent).toMatchObject({ pull_request: 7 });
+    expect(found.structuredContent).toMatchObject({ branch: "bob/infra:feature/a" });
+    expect(fork.sent()).toEqual([
+      `GET ${REPO}/branches/bob%2Finfra%3Afeature%2Fa`,
+      `GET ${REPO}/branches/bob%2Finfra%3Afeature%2Fa/findings`,
+    ]);
 
-    const none = await setup({ [`GET ${REPO}/pulls`]: { items: [] } });
+    const none = await setup({});
     const missing = await none.call("get_branch", { repository: "acme/infra", branch: "feature" });
     expect(missing.isError).toBe(true);
-    expect(textOf(missing)).toContain("has no pull request yet");
+    expect(textOf(missing)).toContain("has no page");
     expect(textOf(missing)).toContain("start_work");
     const neither = await none.call("get_branch", { repository: "acme/infra" });
-    expect(textOf(neither)).toContain("Give `pull_request` or `branch`");
+    expect(neither.isError).toBe(true);
   });
 
   it("get_version_diff maps its modes onto the diff's `from`", async () => {
     const diff = { files: [], nextCursor: null, exact: true };
     const { call, sent } = await setup({
-      [`GET ${REPO}/pulls/7/versions/latest/diff`]: diff,
-      [`GET ${REPO}/pulls/7/versions/3/diff`]: diff,
+      [`GET ${PAGE_PATH}`]: PAGE,
+      [`GET ${PAGE_PATH}/versions/latest/diff`]: diff,
+      [`GET ${PAGE_PATH}/versions/3/diff`]: diff,
     });
-    const base = { repository: "acme/infra", pull_request: 7 };
+    const base = { repository: "acme/infra", branch: "feature" };
     expect((await call("get_version_diff", base)).structuredContent).toEqual(diff);
     await call("get_version_diff", { ...base, version: 3, mode: "step", path: "src/a.ts" });
     await call("get_version_diff", { ...base, version: 3, mode: "since", since_version: 1 });
-    expect(sent()).toEqual([
-      `GET ${REPO}/pulls/7/versions/latest/diff?from=base`,
-      `GET ${REPO}/pulls/7/versions/3/diff?from=previous&path=src%2Fa.ts`,
-      `GET ${REPO}/pulls/7/versions/3/diff?from=1`,
+    expect(sent().filter((line) => line !== `GET ${PAGE_PATH}`)).toEqual([
+      `GET ${PAGE_PATH}/versions/latest/diff?from=base`,
+      `GET ${PAGE_PATH}/versions/3/diff?from=previous&path=src%2Fa.ts`,
+      `GET ${PAGE_PATH}/versions/3/diff?from=1`,
     ]);
     const incomplete = await call("get_version_diff", { ...base, mode: "since" });
     expect(textOf(incomplete)).toContain("since_version");
@@ -545,19 +562,20 @@ describe("the tools", () => {
       return { id: "i1", status: "delivered" };
     };
     const { call, sent } = await setup({
-      [`GET ${REPO}/pulls/7/instructions`]: { instructions },
-      [`PUT ${REPO}/pulls/7/instructions/i1/delivered`]: marked,
-      [`PUT ${REPO}/pulls/7/instructions/i1/answered`]: marked,
+      [`GET ${PAGE_PATH}`]: PAGE,
+      [`GET ${PAGE_PATH}/instructions`]: { instructions },
+      [`PUT ${PAGE_PATH}/instructions/i1/delivered`]: marked,
+      [`PUT ${PAGE_PATH}/instructions/i1/answered`]: marked,
     });
-    const base = { repository: "acme/infra", pull_request: 7 };
+    const base = { repository: "acme/infra", branch: "feature" };
     const open = await call("list_instructions", base);
     expect(open.structuredContent).toEqual({
-      pull_request: 7,
+      branch: "feature",
       instructions: instructions.slice(0, 2),
     });
     expect((await call("list_instructions", { ...base, status: "all" })).structuredContent).toEqual(
       {
-        pull_request: 7,
+        branch: "feature",
         instructions,
       },
     );
@@ -568,13 +586,13 @@ describe("the tools", () => {
     ).toEqual({ instruction: { id: "i1", status: "delivered" } });
     await call("mark_instruction_answered", { ...base, instruction_id: "i1" });
     await call("mark_instruction_answered", { ...base, instruction_id: "i1", version: 4 });
-    expect(sent()).toEqual([
-      `GET ${REPO}/pulls/7/instructions`,
-      `GET ${REPO}/pulls/7/instructions`,
-      `GET ${REPO}/pulls/7/instructions?status=answered`,
-      `PUT ${REPO}/pulls/7/instructions/i1/delivered`,
-      `PUT ${REPO}/pulls/7/instructions/i1/answered`,
-      `PUT ${REPO}/pulls/7/instructions/i1/answered`,
+    expect(sent().filter((line) => line !== `GET ${PAGE_PATH}`)).toEqual([
+      `GET ${PAGE_PATH}/instructions`,
+      `GET ${PAGE_PATH}/instructions`,
+      `GET ${PAGE_PATH}/instructions?status=answered`,
+      `PUT ${PAGE_PATH}/instructions/i1/delivered`,
+      `PUT ${PAGE_PATH}/instructions/i1/answered`,
+      `PUT ${PAGE_PATH}/instructions/i1/answered`,
     ]);
     expect(bodies).toEqual([{ via: "mcp" }, {}, { version: 4 }]);
   });
@@ -583,19 +601,20 @@ describe("the tools", () => {
     let reported: any;
     const finding = { id: "f1", severity: "must_fix", title: "Unbounded read" };
     const { call, sent } = await setup({
-      [`GET ${REPO}/pulls/7/findings`]: {
+      [`GET ${PAGE_PATH}`]: PAGE,
+      [`GET ${PAGE_PATH}/findings`]: {
         findings: [finding],
         tally: { found: 1, mustFixOpen: 1 },
       },
-      [`POST ${REPO}/pulls/7/findings`]: async (request: Request) => {
+      [`POST ${PAGE_PATH}/findings`]: async (request: Request) => {
         reported = await request.json();
         return { findings: [finding] };
       },
     });
-    const base = { repository: "acme/infra", pull_request: 7 };
+    const base = { repository: "acme/infra", branch: "feature" };
     expect(
       (await call("list_findings", { ...base, status: "open", version: 2 })).structuredContent,
-    ).toEqual({ pull_request: 7, findings: [finding], tally: { found: 1, mustFixOpen: 1 } });
+    ).toEqual({ branch: "feature", findings: [finding], tally: { found: 1, mustFixOpen: 1 } });
     const result = await call("report_finding", {
       ...base,
       reviewer: "security",
@@ -613,7 +632,7 @@ describe("the tools", () => {
         },
       ],
     });
-    expect(result.structuredContent).toEqual({ pull_request: 7, findings: [finding] });
+    expect(result.structuredContent).toEqual({ branch: "feature", findings: [finding] });
     expect(reported).toEqual({
       reviewerKind: "security",
       version: 2,
@@ -630,9 +649,9 @@ describe("the tools", () => {
         },
       ],
     });
-    expect(sent()).toEqual([
-      `GET ${REPO}/pulls/7/findings?status=open&version=2`,
-      `POST ${REPO}/pulls/7/findings`,
+    expect(sent().filter((line) => line !== `GET ${PAGE_PATH}`)).toEqual([
+      `GET ${PAGE_PATH}/findings?status=open&version=2`,
+      `POST ${PAGE_PATH}/findings`,
     ]);
   });
 
@@ -641,7 +660,11 @@ describe("the tools", () => {
     const { call } = await setup({
       [`POST ${REPO}/work`]: async (request: Request) => {
         asked = await request.json();
-        return { pullRequest: { number: 12 }, branch: "add-rate-limits", agent: { kind: "mcp" } };
+        return {
+          page: { key: "work/add-rate-limits", number: 12, title: "Add rate limits" },
+          branch: "work/add-rate-limits",
+          agent: { kind: "mcp" },
+        };
       },
     });
     const result = await call("start_work", {
@@ -656,11 +679,12 @@ describe("the tools", () => {
       agent: { kind: "mcp", displayName: "test-agent", externalRefs: { session: "thread-42" } },
     });
     expect(result.structuredContent).toMatchObject({
-      branch: "add-rate-limits",
-      pull_request: 12,
-      url: `${ORIGIN}/acme/infra/pulls/12`,
+      branch: "work/add-rate-limits",
+      key: "work/add-rate-limits",
+      url: `${ORIGIN}/acme/infra/branches/work/add-rate-limits`,
+      page: { key: "work/add-rate-limits", title: "Add rate limits" },
     });
-    expect((result.structuredContent as any).next).toContain("git switch add-rate-limits");
+    expect((result.structuredContent as any).next).toContain("git switch work/add-rate-limits");
   });
 
   it("says so when a part of the forge is not built on this server", async () => {
@@ -669,10 +693,11 @@ describe("the tools", () => {
       { status: 503 },
     );
     const { call } = await setup({
-      [`GET ${REPO}/pulls/7/instructions`]: () => unbuilt.clone(),
-      [`POST ${REPO}/pulls/7/findings`]: () => unbuilt.clone(),
+      [`GET ${PAGE_PATH}`]: PAGE,
+      [`GET ${PAGE_PATH}/instructions`]: () => unbuilt.clone(),
+      [`POST ${PAGE_PATH}/findings`]: () => unbuilt.clone(),
     });
-    const base = { repository: "acme/infra", pull_request: 7 };
+    const base = { repository: "acme/infra", branch: "feature" };
     for (const result of [
       await call("list_instructions", base),
       await call("report_finding", { ...base, reviewer: "general", findings: [] }),
@@ -693,8 +718,9 @@ describe("the tools", () => {
       [`POST ${REPO}/traces`]: refusal(403, {
         error: "Recording a trace needs write access to the repository",
       }),
-      [`GET ${REPO}/pulls/7/findings`]: refusal(404, { error: "Repository not found" }),
-      [`GET ${REPO}/pulls/7/instructions`]: refusal(
+      [`GET ${PAGE_PATH}`]: PAGE,
+      [`GET ${PAGE_PATH}/findings`]: refusal(404, { error: "Repository not found" }),
+      [`GET ${PAGE_PATH}/instructions`]: refusal(
         429,
         { error: "Too many requests" },
         { "retry-after": "17" },
@@ -704,10 +730,10 @@ describe("the tools", () => {
         code: "ref_exists",
       }),
       [`GET /api/review/inbox`]: refusal(401, { error: "That credential was not accepted" }),
-      [`GET ${REPO}/pulls/7/versions/latest/diff`]: () =>
+      [`GET ${PAGE_PATH}/versions/latest/diff`]: () =>
         new Response("upstream fell over", { status: 500 }),
     });
-    const base = { repository: "acme/infra", pull_request: 7 };
+    const base = { repository: "acme/infra", branch: "feature" };
     const cases: Array<[string, Record<string, unknown>, string]> = [
       [
         "record_trace",
@@ -725,7 +751,7 @@ describe("the tools", () => {
       expect([name, result.isError]).toEqual([name, true]);
       expect(textOf(result)).toContain(expected);
     }
-    const bad = await call("get_branch", { repository: "not-a-repository", pull_request: 1 });
+    const bad = await call("get_branch", { repository: "not-a-repository", branch: "feature" });
     expect(textOf(bad)).toContain("owner/name");
   });
 
@@ -736,7 +762,7 @@ describe("the tools", () => {
       "acme/infra.git",
       `${ORIGIN}/acme/infra`,
       `${ORIGIN}/acme/infra.git`,
-      "https://git.infrawrench.com/acme/infra/pulls/7",
+      "https://git.infrawrench.com/acme/infra/branches/feature",
       "git@git.infrawrench.com:acme/infra.git",
     ]) {
       expect([value, repositoryPath(value, ORIGIN)]).toEqual([value, REPO]);

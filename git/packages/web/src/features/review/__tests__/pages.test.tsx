@@ -1,14 +1,22 @@
 /**
- * The review pages against the dev mock, through the real router: the branch
- * page and its modes, the version rail, dismissing a finding, switching to
- * classic and back, starting work, the inbox, and a server that does not
- * serve traces, findings and instructions yet.
+ * The branch pages against the dev mock, through the real router: a page by
+ * its key (slashes, a fork's, an earlier page of a name), the version rail,
+ * dismissing a finding, the old numbered addresses, proposing a fork's
+ * branch, starting work, the inbox, and a server that does not serve
+ * traces, findings and instructions yet.
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createMemoryHistory, createRouter } from "@tanstack/react-router";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { ApiError, api, setTransport, type Transport } from "../../../api/client";
+import {
+  ApiError,
+  api,
+  fillPath,
+  setTransport,
+  type ApiCall,
+  type Transport,
+} from "../../../api/client";
 import { queryClient } from "../../../api/queries";
 import { routeTree } from "../../../routeTree.gen";
 
@@ -59,13 +67,17 @@ beforeAll(() => {
   vi.stubGlobal("IntersectionObserver", NoLayoutObserver);
 });
 
+/** The URLs the client would have asked for, filled as `httpTransport` fills them. */
+let asked: string[] = [];
+
 /** Every call goes to the mock, unless `refuse` names its group: a server that does not serve it yet. */
 function serve(refuse: ReadonlyArray<string> = []) {
-  setTransport((call) =>
-    refuse.includes(call.group)
+  setTransport((call: ApiCall) => {
+    asked.push(fillPath(call.path, call.request.params ?? {}));
+    return refuse.includes(call.group)
       ? Promise.reject(new ApiError(503, "Not available yet", "not_implemented"))
-      : mock(call),
-  );
+      : mock(call);
+  });
 }
 
 function open(path: string) {
@@ -81,46 +93,22 @@ function open(path: string) {
   return router;
 }
 
-afterEach(async () => {
+afterEach(() => {
   cleanup();
   queryClient.clear();
-  // Each test starts in the default mode.
+  asked = [];
   serve();
-  await api.review.setMode({ payload: { mode: "agent" } });
 });
 
 const wait = { timeout: 5000 };
+const PEERING = "/acme/infra/branches/feature/vpc-peering";
+const pathOf = (router: ReturnType<typeof open>) =>
+  decodeURIComponent(router.state.location.pathname);
 
-describe("classic mode", () => {
-  it("is the pull request as it was, one switch away and back", async () => {
+// Before the branch page's tests: one of them marks the peering branch reviewed, which takes it out of the inbox.
+describe("the inbox", () => {
+  it("lists what waits on the reader, each opening on what is new", async () => {
     serve();
-    open("/acme/infra/pulls/12");
-    await screen.findByRole("navigation", { name: "Versions" }, wait);
-    const group = screen.getByRole("group", { name: "Open pull requests as" });
-    fireEvent.click(within(group).getByRole("button", { name: "Classic" }));
-    expect(await screen.findByRole("link", { name: /Files changed/ }, wait)).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Conversation/ })).toBeTruthy();
-    expect(screen.queryByRole("navigation", { name: "Versions" })).toBeNull();
-    expect((await api.review.mode()).mode).toBe("classic");
-
-    fireEvent.click(
-      within(screen.getByRole("group", { name: "Open pull requests as" })).getByRole("button", {
-        name: "Branch page",
-      }),
-    );
-    expect(await screen.findByRole("navigation", { name: "Versions" }, wait)).toBeTruthy();
-  });
-
-  it("keeps the home page as it was, and agent mode lists what waits on the reader", async () => {
-    serve();
-    await api.review.setMode({ payload: { mode: "classic" } });
-    open("/");
-    expect(await screen.findByRole("heading", { name: "Recent pushes" }, wait)).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Suggested for your review" })).toBeNull();
-    cleanup();
-    queryClient.clear();
-
-    await api.review.setMode({ payload: { mode: "agent" } });
     open("/reviews");
     const list = await screen.findByRole("list", { name: "Reviews" }, wait);
     const first = within(list).getAllByRole("listitem")[0]!;
@@ -130,14 +118,104 @@ describe("classic mode", () => {
       within(first)
         .getByRole("link", { name: /Peer with/ })
         .getAttribute("href"),
-    ).toMatch(/^\/acme\/infra\/pulls\/12\?v=\d+&diff=since$/);
+    ).toMatch(/^\/acme\/infra\/branches\/feature\/vpc-peering\?v=\d+&diff=since$/);
+  });
+});
+
+describe("a branch page's address", () => {
+  it("is the branch, slashes and all, one encoded segment to the API", async () => {
+    serve();
+    const router = open("/acme/infra/branches/feature/budgets/staging-alarm");
+    expect(
+      await screen.findByRole("heading", { name: "Staging budget alarm at 80 percent" }, wait),
+    ).toBeTruthy();
+    expect(asked).toContain("/api/repos/acme/infra/branches/feature%2Fbudgets%2Fstaging-alarm");
+    expect(pathOf(router)).toBe("/acme/infra/branches/feature/budgets/staging-alarm");
+    // The page is named by its branch: no number on it or in the window's title.
+    expect(within(screen.getByRole("main")).queryByText(/#1[78]\b/)).toBeNull();
+    await waitFor(() => expect(document.title).not.toMatch(/#\d/), wait);
+    expect(document.title).toContain("Staging budget alarm at 80 percent");
+    // Its tabs are in the query: a splat has no room for a suffix.
+    expect(screen.getByRole("link", { name: /^Commits/ }).getAttribute("href")).toBe(
+      "/acme/infra/branches/feature/budgets/staging-alarm?tab=commits",
+    );
+  });
+
+  it("names an earlier page of a reused name with ~n, and settles a longer key on the page's own", async () => {
+    serve();
+    const router = open("/acme/infra/branches/feature/budgets/staging-alarm~1");
+    expect(
+      await screen.findByRole("heading", { name: "Budget alarm for staging" }, wait),
+    ).toBeTruthy();
+    expect(pathOf(router)).toBe("/acme/infra/branches/feature/budgets/staging-alarm~1");
+    expect(asked).toContain("/api/repos/acme/infra/branches/feature%2Fbudgets%2Fstaging-alarm~1");
+    cleanup();
+    queryClient.clear();
+
+    // `~2` is the open page, whose own key is the bare name.
+    const second = open("/acme/infra/branches/feature/budgets/staging-alarm~2?tab=commits");
+    expect(
+      await screen.findByRole("heading", { name: "Staging budget alarm at 80 percent" }, wait),
+    ).toBeTruthy();
+    await waitFor(
+      () => expect(pathOf(second)).toBe("/acme/infra/branches/feature/budgets/staging-alarm"),
+      wait,
+    );
+    expect(second.state.location.search).toEqual({ tab: "commits" });
+  });
+
+  it("names a fork's branch by the fork, and marks it in the list", async () => {
+    serve();
+    open("/acme/edge-router/branches/jonas/edge-router:fix/lowercase-hosts");
+    expect(
+      await screen.findByRole("heading", { name: "Match hosts case-insensitively" }, wait),
+    ).toBeTruthy();
+    expect(asked).toContain(
+      "/api/repos/acme/edge-router/branches/jonas%2Fedge-router%3Afix%2Flowercase-hosts",
+    );
+    expect(screen.getAllByText("jonas/edge-router:fix/lowercase-hosts").length).toBeGreaterThan(0);
+    cleanup();
+    queryClient.clear();
+
+    open("/acme/edge-router/branches");
+    const list = within(await screen.findByRole("list", { name: "Branches" }, wait));
+    const row = list
+      .getByRole("link", { name: "Match hosts case-insensitively" })
+      .closest("li") as HTMLElement;
+    expect(decodeURIComponent(within(row).getAllByRole("link")[0]!.getAttribute("href")!)).toBe(
+      "/acme/edge-router/branches/jonas/edge-router:fix/lowercase-hosts",
+    );
+    expect(row.textContent).toContain("from fork");
+  });
+
+  it("moves every old numbered address to the page, its tab and anchor kept", async () => {
+    serve();
+    const cases: Array<[string, string, string]> = [
+      ["/acme/infra/pulls/12", PEERING, ""],
+      ["/acme/infra/pulls/12/commits", PEERING, "?tab=commits"],
+      ["/acme/infra/pulls/12/checks", PEERING, "?tab=checks"],
+      ["/acme/infra/pulls/12/files#diff-main.tf", PEERING, ""],
+      ["/acme/infra/issues/12", PEERING, ""],
+      ["/acme/infra/pulls/6", "/acme/infra/issues/6", ""],
+      ["/acme/infra/pulls/start", "/acme/infra/start", ""],
+      ["/acme/infra/pulls/new", "/acme/infra/branches", ""],
+      ["/acme/infra/pulls?q=is%3Aclosed", "/acme/infra/branches", "?q=is%3Aclosed"],
+    ];
+    for (const [from, to, query] of cases) {
+      const router = open(from);
+      await waitFor(() => expect(pathOf(router)).toBe(to), wait);
+      expect(router.state.location.searchStr).toBe(query);
+      if (from.includes("#")) expect(router.state.location.hash).toBe("diff-main.tf");
+      cleanup();
+      queryClient.clear();
+    }
   });
 });
 
 describe("the branch page", () => {
-  it("replaces the pull request for someone in agent mode: the rail, the ask, the trace, the merge block", async () => {
+  it("is the rail, the ask, the trace and the merge block", async () => {
     serve();
-    open("/acme/infra/pulls/12");
+    open(PEERING);
     const rail = await screen.findByRole("navigation", { name: "Versions" }, wait);
     expect(
       within(rail)
@@ -154,10 +232,9 @@ describe("the branch page", () => {
     expect(screen.getByText("1 must-fix finding to settle")).toBeTruthy();
     // The page's own link, not the sidebar's Reviews.
     const page = within(screen.getByRole("main"));
-    expect(page.getByRole("link", { name: /Review/ }).getAttribute("href")).toBe(
-      "/acme/infra/pulls/12",
-    );
+    expect(page.getByRole("link", { name: /^Review/ }).getAttribute("href")).toBe(PEERING);
     expect(screen.queryByRole("link", { name: /Files changed/ })).toBeNull();
+    expect(page.queryByText("#12")).toBeNull();
     // It opens on what changed since v2, with v3's trace above its lines.
     expect(await screen.findByText("v2 to v3", { exact: false }, wait)).toBeTruthy();
     expect(await screen.findByText("and the diagram redrawn", { exact: false }, wait)).toBeTruthy();
@@ -165,7 +242,7 @@ describe("the branch page", () => {
     const merge = screen.getByRole("region", { name: "Merge" });
     expect(within(merge).getByText("1 must-fix finding open")).toBeTruthy();
     expect(within(merge).getByRole("button", { name: "Override" })).toBeTruthy();
-    expect(within(merge).queryByRole("button", { name: /Merge pull request/ })).toBeNull();
+    expect(within(merge).queryByRole("button", { name: /^Merge$/ })).toBeNull();
     expect(within(merge).getByRole("list", { name: "Blocked by" }).textContent).toContain(
       "1 must-fix finding is open",
     );
@@ -178,7 +255,7 @@ describe("the branch page", () => {
 
   it("shows one step, the whole change, and says when a diff is not exact", async () => {
     serve();
-    const router = open("/acme/infra/pulls/12?v=2&diff=step");
+    const router = open(`${PEERING}?v=2&diff=step`);
     expect(await screen.findByText("v1 to v2", { exact: false }, wait)).toBeTruthy();
     expect(await screen.findByRole("note", {}, wait)).toHaveProperty(
       "textContent",
@@ -200,13 +277,31 @@ describe("the branch page", () => {
     // Marking it reviewed moves the mark and leaves nothing new.
     fireEvent.click(await screen.findByRole("button", { name: "Mark v3 reviewed" }, wait));
     expect(await screen.findByText("Reviewed up to v3", {}, wait)).toBeTruthy();
-    const list = await api.versions.list({ params: { owner: "acme", repo: "infra", number: 12 } });
+    const list = await api.versions.list({
+      params: { owner: "acme", repo: "infra", branch: "feature/vpc-peering" },
+    });
     expect(list.viewerReviewed).toBe(3);
+  });
+
+  it("has its commits and checks as tabs in the query", async () => {
+    serve();
+    open(`${PEERING}?tab=commits`);
+    expect(await screen.findByText(/^Commits on /, {}, wait)).toBeTruthy();
+    expect(
+      within(screen.getByRole("navigation", { name: "Branch" }))
+        .getByRole("link", { name: /^Commits/ })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(screen.queryByRole("navigation", { name: "Versions" })).toBeNull();
+    cleanup();
+    queryClient.clear();
+    open(`${PEERING}?tab=checks`);
+    expect(await screen.findByText("Statuses", {}, wait)).toBeTruthy();
   });
 
   it("dismisses a finding with a reason, and reopens it", async () => {
     serve();
-    open("/acme/infra/pulls/12?v=3&diff=whole");
+    open(`${PEERING}?v=3&diff=whole`);
     const panel = (await screen.findByRole("heading", { name: "Findings" }, wait)).closest(
       "#findings",
     ) as HTMLElement;
@@ -243,7 +338,7 @@ describe("the branch page", () => {
 
   it("leaves out what the server does not serve yet instead of failing", async () => {
     serve(["traces", "findings", "instructions", "t3"]);
-    open("/acme/infra/pulls/12?v=3&diff=whole");
+    open(`${PEERING}?v=3&diff=whole`);
     expect(await screen.findByRole("navigation", { name: "Versions" }, wait)).toBeTruthy();
     expect(await screen.findByText("v3 against its base", { exact: false }, wait)).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Findings" })).toBeNull();
@@ -253,10 +348,38 @@ describe("the branch page", () => {
   });
 });
 
+describe("proposing a fork's branch", () => {
+  it("opens its page in the parent and goes there; again goes to the same page", async () => {
+    serve();
+    const router = open("/mara/infra/branches?view=all");
+    const cell = await screen.findByRole("link", { name: "docs/peering-notes" }, wait);
+    const row = cell.closest("tr") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Propose to acme/infra" }));
+    await waitFor(
+      () => expect(pathOf(router)).toBe("/acme/infra/branches/mara/infra:docs/peering-notes"),
+      wait,
+    );
+    expect(await screen.findByRole("heading", { name: "Peering notes" }, wait)).toBeTruthy();
+    cleanup();
+    queryClient.clear();
+
+    // Proposed already: the same button lands on the page it has.
+    const again = open("/mara/infra/branches?view=all");
+    const second = (await screen.findByRole("link", { name: "docs/peering-notes" }, wait)).closest(
+      "tr",
+    ) as HTMLElement;
+    fireEvent.click(within(second).getByRole("button", { name: "Propose to acme/infra" }));
+    await waitFor(
+      () => expect(pathOf(again)).toBe("/acme/infra/branches/mara/infra:docs/peering-notes"),
+      wait,
+    );
+  });
+});
+
 describe("start work", () => {
   it("names the branch from the ask, offers the agents, and goes to the new branch's page", async () => {
     serve();
-    const router = open("/acme/infra/pulls/start");
+    const router = open("/acme/infra/start");
     const ask = await screen.findByPlaceholderText("What should change", {}, wait);
     const agents = screen.getAllByRole("radio").map((radio) => (radio as HTMLInputElement).value);
     expect(agents).toEqual(["infrawrench", "t3", "mcp"]);
@@ -280,14 +403,15 @@ describe("start work", () => {
     expect(branch.value).toBe("work/tag-every-subnet-with-its-tier");
     fireEvent.click(screen.getByRole("button", { name: "Start work" }));
     await waitFor(
-      () => expect(router.state.location.pathname).toMatch(/^\/acme\/infra\/pulls\/\d+$/),
+      () => expect(pathOf(router)).toBe("/acme/infra/branches/work/tag-every-subnet-with-its-tier"),
       wait,
     );
     expect(
       await screen.findByText("The agent is working on v1", { exact: false }, wait),
     ).toBeTruthy();
-    const number = Number(router.state.location.pathname.split("/").pop());
-    const made = await api.pulls.get({ params: { owner: "acme", repo: "infra", number } });
+    const made = await api.branches.get({
+      params: { owner: "acme", repo: "infra", branch: "work/tag-every-subnet-with-its-tier" },
+    });
     expect(made).toMatchObject({
       draft: true,
       headRef: "work/tag-every-subnet-with-its-tier",
@@ -302,6 +426,7 @@ describe("repository review settings", () => {
     open("/acme/infra/settings/review");
     const tests = (await screen.findByLabelText("Tests", {}, wait)) as HTMLInputElement;
     expect(tests.checked).toBe(false);
+    expect(screen.queryByRole("button", { name: /Branch pages/ })).toBeNull();
     fireEvent.click(tests);
     await waitFor(
       () => expect((screen.getByLabelText("Tests") as HTMLInputElement).checked).toBe(true),

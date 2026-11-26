@@ -17,7 +17,7 @@ import {
   deliverInstructions,
   sweepInstructions,
 } from "../../review/instructions";
-import { type Person, type World, configured, makeWorld } from "./world";
+import { type Person, type World, configured, makeWorld, pagePath } from "./world";
 
 vi.mock("../../events/ci", () => ({
   announcePush: vi.fn(async () => {}),
@@ -81,9 +81,10 @@ describe.skipIf(!configured)("instructions, against a real Postgres", () => {
     world.storage.changedLines.clear();
     world.storage.lineShift = 0;
     await push("feature");
-    const [page] = (await world.call("GET", `${repo}/pulls?state=all&head=feature`, { as: alice }))
-      .body.items as Array<Record<string, any>>;
-    pull = `${repo}/pulls/${page!["number"]}`;
+    const [page] = (
+      await world.call("GET", `${repo}/branch-pages?state=all&head=feature`, { as: alice })
+    ).body.items as Array<Record<string, any>>;
+    pull = `${pagePath(repo, page!["key"])}`;
     pullRequestId = page!["id"];
   });
 
@@ -198,7 +199,7 @@ describe.skipIf(!configured)("instructions, against a real Postgres", () => {
       ).status,
     ).toBe(403);
     expect((await world.call("GET", `${pull}/instructions`, { as: carol })).status).toBe(200);
-    // A token bound to a branch answers for that branch's pull request only.
+    // A token bound to a branch answers for that branch's page only.
     const [only] = await listed();
     const bound = (ref: string) => ({ job: { repositoryId: id, write: true, ref }, body: {} });
     for (const mark of ["delivered", "answered"]) {
@@ -226,7 +227,12 @@ describe.skipIf(!configured)("instructions, against a real Postgres", () => {
         .body.instructions,
     ).toHaveLength(1);
     expect(
-      (await world.call("POST", `${repo}/pulls/9999/instructions`, { as: bob, body })).status,
+      (
+        await world.call("POST", `${pagePath(repo, "no-such-branch")}/instructions`, {
+          as: bob,
+          body,
+        })
+      ).status,
     ).toBe(404);
   });
 
@@ -505,7 +511,7 @@ describe.skipIf(!configured)("instructions, against a real Postgres", () => {
       expect((await listed())[0]).toMatchObject({ status: "delivered", deliveredVia: "t3" });
     });
 
-    it("tells nobody about a pull request that is closed", async () => {
+    it("tells nobody about a branch page that is closed", async () => {
       await text("Too late.");
       await link("t3");
       expect((await world.call("POST", `${pull}/close`, { as: alice, body: {} })).status).toBe(200);

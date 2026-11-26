@@ -1,11 +1,9 @@
 /**
- * The branch page: a pull request read as a record of versions, laid out as
- * a document to read from the top. The ask, the versions in a strip, the
- * picked version's diff the width of the page with its files beside it and
- * its trace on its lines, then what review agents found, the merge box and
- * the conversation, with the agent and the people beside those. It is the
- * pull request's own data, so everything the pull request page does is here
- * too.
+ * A branch's page, read as a record of versions, laid out as a document to
+ * read from the top. The ask, the versions in a strip, the picked version's
+ * diff the width of the page with its files beside it and its trace on its
+ * lines, then what review agents found, the merge box and the conversation,
+ * with the agent and the people beside those.
  */
 import { useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -22,12 +20,12 @@ import { paths } from "../../lib/paths";
 import { CommentForm } from "../issues/CommentForm";
 import { LockControl, TriageFields } from "../issues/ThreadSidebar";
 import { Timeline } from "../issues/Timeline";
-import { ReviewEntry, Reviewers } from "../pulls/ConversationTab";
-import { InfrastructureBox } from "../pulls/InfrastructureBox";
-import { MergeBox } from "../pulls/MergeBox";
-import { refreshPull, usePull } from "../pulls/PullLayout";
-import { ReviewButton } from "../pulls/ReviewForm";
-import { countThreads } from "../pulls/review-threads";
+import { ReviewEntry, Reviewers } from "../branch-page/Reviews";
+import { InfrastructureBox } from "../branch-page/InfrastructureBox";
+import { MergeBox } from "../branch-page/MergeBox";
+import { refreshBranchPage, useBranchPage } from "../branch-page/BranchLayout";
+import { ReviewButton } from "../branch-page/ReviewForm";
+import { countThreads } from "../branch-page/review-threads";
 import { AgentPanel } from "./Agent";
 import { Ask } from "./Ask";
 import { DIFF_MODES, defaultSelection, isLive, type DiffMode } from "./branch";
@@ -61,22 +59,22 @@ export function BranchPage({
 }) {
   const repo = useRepoRef();
   const repository = useRepository();
-  const pull = usePull();
+  const page = useBranchPage();
   const go = useGo();
-  const { number } = pull;
-  const params = { ...repo, number };
+  const { number, key } = page;
+  const params = { ...repo, branch: key };
 
-  const state = useBranchState(number);
+  const state = useBranchState(key);
   const live = isLive(state.data);
   const versions = useQuery(queries.versions.list({ params }));
   const traces = useQuery({
-    ...optional(queries.traces.list({ params: repo, query: { pull: number, limit: 100 } })),
+    ...optional(queries.traces.list({ params: repo, query: { branch: page.headRef, limit: 100 } })),
     refetchInterval: live ? LIVE_MS : false,
   });
   const findings = useQuery(optional(queries.findings.list({ params })));
   const instructions = useQuery(optional(queries.instructions.list({ params })));
-  const reviews = useQuery(queries.pulls.listReviews({ params }));
-  const threads = useQuery(queries.pulls.listThreads({ params }));
+  const reviews = useQuery(queries.branches.listReviews({ params }));
+  const threads = useQuery(queries.branches.listThreads({ params }));
   const allThreads = useMemo(() => threads.data?.threads ?? [], [threads.data]);
   const counts = countThreads(allThreads);
 
@@ -89,23 +87,27 @@ export function BranchPage({
       void invalidate("traces");
       void invalidate("findings");
       void invalidate("instructions");
-      refreshPull();
+      refreshBranchPage();
     }
     before.current = mark;
   }, [mark]);
 
   const update = useMutation({
-    mutationFn: (payload: Parameters<typeof api.pulls.update>[0]["payload"]) =>
-      api.pulls.update({ params, payload }),
-    onSuccess: refreshPull,
+    mutationFn: (payload: Parameters<typeof api.branches.update>[0]["payload"]) =>
+      api.branches.update({ params, payload }),
+    onSuccess: refreshBranchPage,
   });
   const close = useMutation({
-    mutationFn: () => api.pulls.close({ params }),
-    onSuccess: refreshPull,
+    mutationFn: () => api.branches.close({ params }),
+    onSuccess: refreshBranchPage,
   });
   const reopen = useMutation({
-    mutationFn: () => api.pulls.reopen({ params }),
-    onSuccess: refreshPull,
+    mutationFn: () => api.branches.reopen({ params }),
+    onSuccess: refreshBranchPage,
+  });
+  const toDraft = useMutation({
+    mutationFn: () => api.branches.setDraft({ params, payload: { draft: true } }),
+    onSuccess: refreshBranchPage,
   });
   const reviewed = useMutation({
     mutationFn: (version: number) =>
@@ -114,7 +116,7 @@ export function BranchPage({
       void invalidate("versions");
       void invalidate("review", "inbox");
       // "Since you last looked" is now empty: show the version itself.
-      go(paths.branchPage(repo, number, { v: version, diff: "whole" }), { replace: true });
+      go(paths.branchPage(repo, key, { v: version, diff: "whole" }), { replace: true });
     },
   });
 
@@ -126,7 +128,7 @@ export function BranchPage({
   const mode: DiffMode = diff ?? (v === undefined ? start.mode : "whole");
   const pick = (next: { v?: number; diff?: DiffMode }) =>
     go(
-      paths.branchPage(repo, number, {
+      paths.branchPage(repo, key, {
         ...(selected === null ? {} : { v: selected.number }),
         diff: mode,
         ...next,
@@ -139,7 +141,7 @@ export function BranchPage({
     selected !== null &&
     lastReviewed !== null &&
     lastReviewed >= selected.number;
-  const canSend = repository.viewer.canPush && pull.state === "open";
+  const canSend = repository.viewer.canPush && page.state === "open";
   const pending = (traces.data?.items ?? []).filter((entry) => entry.version === null);
 
   // The strip above the diff: what to compare at its start, the reviewed mark at its end.
@@ -156,7 +158,7 @@ export function BranchPage({
     selected === null ? null : (
       <>
         <InlineError error={reviewed.error} />
-        {pull.viewer.canReview || lastReviewed !== null ? (
+        {page.viewer.canReview || lastReviewed !== null ? (
           (lastReviewed ?? 0) >= selected.number ? (
             <span className="inline-flex items-center gap-1 text-xs text-on-surface-muted">
               <Icon name="check" size={12} className="text-success" />
@@ -180,7 +182,7 @@ export function BranchPage({
   return (
     <InstructionsProvider
       value={{
-        number,
+        branchKey: key,
         instructions: isUnavailable(instructions.error)
           ? null
           : (instructions.data?.instructions ?? []),
@@ -190,11 +192,11 @@ export function BranchPage({
       {/* Read from the top: the ask, the versions, the change, then what settles it. */}
       <div className="space-y-8">
         <Ask
-          author={pull.author}
-          createdAt={pull.createdAt}
-          body={pull.body}
-          edited={pull.bodyEditedAt !== null}
-          canEdit={pull.viewer.canEdit}
+          author={page.author}
+          createdAt={page.createdAt}
+          body={page.body}
+          edited={page.bodyEditedAt !== null}
+          canEdit={page.viewer.canEdit}
           onSave={(body) => update.mutateAsync({ body })}
         />
 
@@ -250,15 +252,15 @@ export function BranchPage({
             {findings.data !== undefined && state.data?.settings.reviewAgentsEnabled !== false ? (
               <FindingsPanel
                 findings={findings.data.findings}
-                number={number}
+                branchKey={key}
                 version={list.latest}
                 run={state.data?.reviewRun ?? null}
                 canRun={canSend}
               />
             ) : null}
 
-            <InfrastructureBox number={number} flush />
-            <MergeBox pull={pull} tally={findings.data?.tally ?? null} flush />
+            <InfrastructureBox branchKey={key} />
+            <MergeBox page={page} tally={findings.data?.tally ?? null} />
 
             <section aria-labelledby="branch-conversation" className="space-y-3 pt-4">
               <h2 id="branch-conversation" className="text-base font-semibold text-on-surface">
@@ -266,28 +268,28 @@ export function BranchPage({
               </h2>
               <Timeline
                 number={number}
-                kind="pulls"
-                renderReview={(item) => <ReviewEntry item={item} branch />}
+                kind="branches"
+                renderReview={(item) => <ReviewEntry item={item} />}
               />
               <CommentForm
                 number={number}
-                canComment={pull.viewer.canComment}
-                locked={pull.locked}
+                canComment={page.viewer.canComment}
+                locked={page.locked}
                 stateActions={({ body, post }) =>
-                  pull.state === "merged" || !pull.viewer.canClose ? null : pull.state ===
+                  page.state === "merged" || !page.viewer.canClose ? null : page.state ===
                     "open" ? (
                     <Button
                       busy={close.isPending}
                       onClick={() => void post().then(() => close.mutate())}
                     >
-                      <Icon name="gitPullRequestClosed" size={13} className="text-danger" />
+                      <Icon name="circleSlash" size={13} className="text-danger" />
                       {body.trim() === "" ? "Close" : "Close with comment"}
                     </Button>
                   ) : (
                     <Button
                       busy={reopen.isPending}
-                      disabled={!pull.headRefExists}
-                      title={pull.headRefExists ? undefined : "Restore the branch first"}
+                      disabled={!page.headRefExists}
+                      title={page.headRefExists ? undefined : "Restore the branch first"}
                       onClick={() => void post().then(() => reopen.mutate())}
                     >
                       Reopen
@@ -301,7 +303,7 @@ export function BranchPage({
 
           <aside aria-label="Details">
             {state.data !== undefined ? (
-              <AgentPanel state={state.data} number={number} canEdit={canSend} />
+              <AgentPanel state={state.data} branchKey={key} canEdit={canSend} />
             ) : null}
             <InstructionsPanel />
             <div className="flex flex-wrap items-center gap-2 py-3">
@@ -315,13 +317,13 @@ export function BranchPage({
             <Reviewers reviews={reviews.data?.reviews ?? []} />
             <div className="pt-3">
               <TriageFields
-                kind="pulls"
-                canTriage={pull.viewer.canTriage}
-                shown={pull}
+                kind="branches"
+                canTriage={page.viewer.canTriage}
+                shown={page}
                 value={{
-                  labels: pull.labels.map((label) => label.name),
-                  assignees: pull.assignees.flatMap((user) => user.username ?? []),
-                  milestone: pull.milestone?.number ?? null,
+                  labels: page.labels.map((label) => label.name),
+                  assignees: page.assignees.flatMap((user) => user.username ?? []),
+                  milestone: page.milestone?.number ?? null,
                 }}
                 onChange={(next) =>
                   update.mutate({
@@ -332,9 +334,23 @@ export function BranchPage({
                 }
               />
             </div>
-            {pull.viewer.canTriage ? (
+            {page.state === "open" && !page.draft && page.viewer.canEdit ? (
+              <section className="border-t border-border py-3">
+                <button
+                  type="button"
+                  disabled={toDraft.isPending}
+                  onClick={() => toDraft.mutate()}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-on-surface-secondary hover:text-on-surface disabled:opacity-60"
+                >
+                  <Icon name="circleDashed" size={13} />
+                  Convert to draft
+                </button>
+                <InlineError error={toDraft.error} />
+              </section>
+            ) : null}
+            {page.viewer.canTriage ? (
               <div className="border-t border-border">
-                <LockControl number={number} locked={pull.locked} />
+                <LockControl number={number} locked={page.locked} />
               </div>
             ) : null}
           </aside>

@@ -1,11 +1,11 @@
 /**
- * Reviewing work a branch at a time. A branch's page is its pull request
+ * Reviewing work a branch at a time. A branch's page is its branch page
  * shown another way, so most of this is under
- * `/api/repos/:owner/:repo/pulls/:number`: the versions a branch has been
+ * `/api/repos/:owner/:repo/branches/:branch`: the versions a branch has been
  * through and the diffs between them, what review agents found, what
  * reviewers sent back to the agent, and the agent itself. Traces are written
- * to a branch (it may not have a pull request, or exist, yet). The inbox,
- * the viewer's review mode and their T3 Code environments have no
+ * to a branch (it may not have a branch page, or exist, yet). The inbox
+ * and the viewer's T3 Code environments have no
  * repository in the path.
  *
  * Who writes what:
@@ -26,7 +26,7 @@ import {
 } from "../http/annotations";
 import { Authentication, RepositoryAccess } from "../http/auth";
 import { BadRequest, Conflict, UnprocessableEntity } from "../http/errors";
-import { NumberParams, Ok, Page, PageQuery, RepoParams } from "../schemas/common";
+import { BranchParams, Ok, Page, PageQuery, RepoParams } from "../schemas/common";
 import { DiffQuery } from "../schemas/git";
 import {
   AgentLink,
@@ -43,7 +43,6 @@ import {
   MergeOverride,
   ReviewFinding,
   ReviewInbox,
-  ReviewModePreference,
   ReviewRun,
   ReviewRunRequest,
   ReviewRunUpdate,
@@ -60,39 +59,39 @@ import {
   VersionNumber,
   VersionReviewMark,
 } from "../schemas/review";
-import { PullRequest } from "../schemas/threads";
+import { BranchPage } from "../schemas/threads";
 
 /** A version in a path: its number, or `latest`. */
 const VersionSelector = Schema.String.check(
   Schema.isPattern(/^(latest|[1-9][0-9]{0,8})$/),
 ).annotate({ description: "A version's number, or `latest`." });
-const VersionParams = { ...NumberParams, version: VersionSelector } as const;
-const FindingParams = { ...NumberParams, findingId: Schema.String } as const;
-const RunParams = { ...NumberParams, runId: Schema.String } as const;
-const InstructionParams = { ...NumberParams, instructionId: Schema.String } as const;
+const VersionParams = { ...BranchParams, version: VersionSelector } as const;
+const FindingParams = { ...BranchParams, findingId: Schema.String } as const;
+const RunParams = { ...BranchParams, runId: Schema.String } as const;
+const InstructionParams = { ...BranchParams, instructionId: Schema.String } as const;
 const EnvironmentParams = { environmentId: Schema.String } as const;
 
 export class VersionsGroup extends HttpApiGroup.make("versions")
   .add(
-    HttpApiEndpoint.get("list", "/:number/versions", {
-      params: NumberParams,
+    HttpApiEndpoint.get("list", "/:branch/versions", {
+      params: BranchParams,
       success: BranchVersionList,
     })
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "A branch's versions")
       .annotate(
         OpenApi.Description,
-        "One per push to the pull request's head branch, forced pushes included, oldest first.",
+        "One per push to the branch page's head branch, forced pushes included, oldest first.",
       )
       .annotate(SuccessDescription, "Versions"),
-    HttpApiEndpoint.get("get", "/:number/versions/:version", {
+    HttpApiEndpoint.get("get", "/:branch/versions/:version", {
       params: VersionParams,
       success: BranchVersion,
     })
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "One version")
       .annotate(SuccessDescription, "The version"),
-    HttpApiEndpoint.get("diff", "/:number/versions/:version/diff", {
+    HttpApiEndpoint.get("diff", "/:branch/versions/:version/diff", {
       params: VersionParams,
       query: {
         ...PageQuery,
@@ -112,7 +111,7 @@ export class VersionsGroup extends HttpApiGroup.make("versions")
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "A diff of a version, with hunks")
       .annotate(SuccessDescription, "The diff, paged by file"),
-    HttpApiEndpoint.put("markReviewed", "/:number/versions/:version/reviewed", {
+    HttpApiEndpoint.put("markReviewed", "/:branch/versions/:version/reviewed", {
       params: VersionParams,
       success: VersionReviewMark,
     })
@@ -124,8 +123,8 @@ export class VersionsGroup extends HttpApiGroup.make("versions")
         'Where "since you last looked" starts for the viewer. It never moves backwards.',
       )
       .annotate(SuccessDescription, "The mark"),
-    HttpApiEndpoint.get("branchState", "/:number/branch-state", {
-      params: NumberParams,
+    HttpApiEndpoint.get("branchState", "/:branch/branch-state", {
+      params: BranchParams,
       success: BranchPageState,
     })
       .annotate(RequiredAccess, "read")
@@ -136,7 +135,7 @@ export class VersionsGroup extends HttpApiGroup.make("versions")
       )
       .annotate(SuccessDescription, "The branch page's state"),
   )
-  .prefix("/api/repos/:owner/:repo/pulls")
+  .prefix("/api/repos/:owner/:repo/branches")
   .middleware(RepositoryAccess)
   .middleware(Authentication)
   .annotate(OpenApi.Title, "Branch versions") {}
@@ -160,10 +159,9 @@ export class TracesGroup extends HttpApiGroup.make("traces")
       params: RepoParams,
       query: {
         ...PageQuery,
-        pull: Schema.optionalKey(
-          VersionNumber.annotate({ description: "A pull request's number: its branch's entries." }),
-        ),
-        branch: Schema.optionalKey(Schema.String),
+        branch: Schema.String.annotate({
+          description: "A branch's name. It need not have a page, or exist, yet.",
+        }),
         version: Schema.optionalKey(
           Schema.String.check(Schema.isPattern(/^(pending|[1-9][0-9]{0,8})$/)).annotate({
             description:
@@ -176,7 +174,7 @@ export class TracesGroup extends HttpApiGroup.make("traces")
     })
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "An agent's trace")
-      .annotate(OpenApi.Description, "Oldest first. One of `pull` and `branch` is needed.")
+      .annotate(OpenApi.Description, "Oldest first.")
       .annotate(SuccessDescription, "Trace entries"),
   )
   .prefix("/api/repos/:owner/:repo/traces")
@@ -186,8 +184,8 @@ export class TracesGroup extends HttpApiGroup.make("traces")
 
 export class FindingsGroup extends HttpApiGroup.make("findings")
   .add(
-    HttpApiEndpoint.get("list", "/:number/findings", {
-      params: NumberParams,
+    HttpApiEndpoint.get("list", "/:branch/findings", {
+      params: BranchParams,
       query: {
         version: Schema.optionalKey(
           VersionNumber.annotate({ description: "Only findings seen on this version." }),
@@ -199,8 +197,8 @@ export class FindingsGroup extends HttpApiGroup.make("findings")
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "What review agents found")
       .annotate(SuccessDescription, "Findings, in file then line order, and their tally"),
-    HttpApiEndpoint.post("report", "/:number/findings", {
-      params: NumberParams,
+    HttpApiEndpoint.post("report", "/:branch/findings", {
+      params: BranchParams,
       payload: FindingReport,
       success: Schema.Struct({ findings: Schema.Array(ReviewFinding) }),
       error: [BadRequest, UnprocessableEntity],
@@ -212,7 +210,7 @@ export class FindingsGroup extends HttpApiGroup.make("findings")
         "For a review agent that runs outside the forge. A finding with the fingerprint of one already known updates it, and one that was dismissed stays dismissed.",
       )
       .annotate(SuccessDescription, "The findings as stored"),
-    HttpApiEndpoint.put("dismiss", "/:number/findings/:findingId/dismiss", {
+    HttpApiEndpoint.put("dismiss", "/:branch/findings/:findingId/dismiss", {
       params: FindingParams,
       payload: Schema.Struct({
         reason: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1000)),
@@ -223,7 +221,7 @@ export class FindingsGroup extends HttpApiGroup.make("findings")
       .annotate(RequiredAccess, "triage")
       .annotate(OpenApi.Summary, "Dismiss a finding")
       .annotate(SuccessDescription, "The finding, dismissed"),
-    HttpApiEndpoint.put("reopen", "/:number/findings/:findingId/reopen", {
+    HttpApiEndpoint.put("reopen", "/:branch/findings/:findingId/reopen", {
       params: FindingParams,
       success: ReviewFinding,
       error: UnprocessableEntity,
@@ -231,8 +229,8 @@ export class FindingsGroup extends HttpApiGroup.make("findings")
       .annotate(RequiredAccess, "triage")
       .annotate(OpenApi.Summary, "Reopen a dismissed finding")
       .annotate(SuccessDescription, "The finding, open"),
-    HttpApiEndpoint.post("override", "/:number/findings/override", {
-      params: NumberParams,
+    HttpApiEndpoint.post("override", "/:branch/findings/override", {
+      params: BranchParams,
       payload: Schema.Struct({
         reason: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(2000)),
         findingIds: Schema.optionalKey(
@@ -245,28 +243,28 @@ export class FindingsGroup extends HttpApiGroup.make("findings")
       error: [BadRequest, UnprocessableEntity],
     })
       .annotate(RequiredAccess, "admin")
-      .annotate(OpenApi.Summary, "Let a pull request merge past its open must-fix findings")
+      .annotate(OpenApi.Summary, "Let a branch page merge past its open must-fix findings")
       .annotate(
         OpenApi.Description,
         "Recorded with who and why. It covers the findings named and no finding raised afterwards.",
       )
       .annotate(SuccessDescription, "The override"),
-    HttpApiEndpoint.get("listRuns", "/:number/review-runs", {
-      params: NumberParams,
+    HttpApiEndpoint.get("listRuns", "/:branch/review-runs", {
+      params: BranchParams,
       success: Schema.Struct({ runs: Schema.Array(ReviewRun) }),
     })
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "Review runs")
       .annotate(SuccessDescription, "Runs, newest first"),
-    HttpApiEndpoint.get("getRun", "/:number/review-runs/:runId", {
+    HttpApiEndpoint.get("getRun", "/:branch/review-runs/:runId", {
       params: RunParams,
       success: ReviewRun,
     })
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "A review run")
       .annotate(SuccessDescription, "The run"),
-    HttpApiEndpoint.post("requestRun", "/:number/review-runs", {
-      params: NumberParams,
+    HttpApiEndpoint.post("requestRun", "/:branch/review-runs", {
+      params: BranchParams,
       payload: ReviewRunRequest,
       success: ReviewRun,
       error: [BadRequest, Conflict, UnprocessableEntity],
@@ -278,7 +276,7 @@ export class FindingsGroup extends HttpApiGroup.make("findings")
         "409 when a run of the same version is already queued or running.",
       )
       .annotate(SuccessDescription, "The run, queued"),
-    HttpApiEndpoint.patch("updateRun", "/:number/review-runs/:runId", {
+    HttpApiEndpoint.patch("updateRun", "/:branch/review-runs/:runId", {
       params: RunParams,
       payload: ReviewRunUpdate,
       success: ReviewRun,
@@ -288,15 +286,15 @@ export class FindingsGroup extends HttpApiGroup.make("findings")
       .annotate(OpenApi.Summary, "Report a review run's progress and usage")
       .annotate(SuccessDescription, "The run"),
   )
-  .prefix("/api/repos/:owner/:repo/pulls")
+  .prefix("/api/repos/:owner/:repo/branches")
   .middleware(RepositoryAccess)
   .middleware(Authentication)
   .annotate(OpenApi.Title, "Review findings") {}
 
 export class InstructionsGroup extends HttpApiGroup.make("instructions")
   .add(
-    HttpApiEndpoint.post("send", "/:number/instructions", {
-      params: NumberParams,
+    HttpApiEndpoint.post("send", "/:branch/instructions", {
+      params: BranchParams,
       payload: InstructionCreate,
       success: Instruction,
       error: [BadRequest, UnprocessableEntity],
@@ -304,15 +302,15 @@ export class InstructionsGroup extends HttpApiGroup.make("instructions")
       .annotate(RequiredAccess, "write")
       .annotate(OpenApi.Summary, "Send a comment, a finding or a note to the authoring agent")
       .annotate(SuccessDescription, "The instruction, queued"),
-    HttpApiEndpoint.get("list", "/:number/instructions", {
-      params: NumberParams,
+    HttpApiEndpoint.get("list", "/:branch/instructions", {
+      params: BranchParams,
       query: { status: Schema.optionalKey(InstructionStatus) },
       success: Schema.Struct({ instructions: Schema.Array(Instruction) }),
     })
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "A branch's instructions")
       .annotate(SuccessDescription, "Instructions, oldest first"),
-    HttpApiEndpoint.put("markDelivered", "/:number/instructions/:instructionId/delivered", {
+    HttpApiEndpoint.put("markDelivered", "/:branch/instructions/:instructionId/delivered", {
       params: InstructionParams,
       payload: Schema.Struct({
         via: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(64))),
@@ -323,7 +321,7 @@ export class InstructionsGroup extends HttpApiGroup.make("instructions")
       .annotate(RequiredAccess, "write")
       .annotate(OpenApi.Summary, "Say an instruction reached the agent")
       .annotate(SuccessDescription, "The instruction"),
-    HttpApiEndpoint.put("markAnswered", "/:number/instructions/:instructionId/answered", {
+    HttpApiEndpoint.put("markAnswered", "/:branch/instructions/:instructionId/answered", {
       params: InstructionParams,
       payload: Schema.Struct({
         version: Schema.optionalKey(
@@ -339,7 +337,7 @@ export class InstructionsGroup extends HttpApiGroup.make("instructions")
       .annotate(RequiredAccess, "write")
       .annotate(OpenApi.Summary, "Say which version answers an instruction")
       .annotate(SuccessDescription, "The instruction"),
-    HttpApiEndpoint.put("dismiss", "/:number/instructions/:instructionId/dismiss", {
+    HttpApiEndpoint.put("dismiss", "/:branch/instructions/:instructionId/dismiss", {
       params: InstructionParams,
       success: Instruction,
       error: UnprocessableEntity,
@@ -348,22 +346,22 @@ export class InstructionsGroup extends HttpApiGroup.make("instructions")
       .annotate(OpenApi.Summary, "Withdraw an instruction")
       .annotate(SuccessDescription, "The instruction, dismissed"),
   )
-  .prefix("/api/repos/:owner/:repo/pulls")
+  .prefix("/api/repos/:owner/:repo/branches")
   .middleware(RepositoryAccess)
   .middleware(Authentication)
   .annotate(OpenApi.Title, "Instructions") {}
 
 export class AgentsGroup extends HttpApiGroup.make("agents")
   .add(
-    HttpApiEndpoint.get("get", "/pulls/:number/agent", {
-      params: NumberParams,
+    HttpApiEndpoint.get("get", "/branches/:branch/agent", {
+      params: BranchParams,
       success: Schema.Struct({ agent: Schema.NullOr(AgentLink) }),
     })
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "The agent that writes a branch")
       .annotate(SuccessDescription, "The agent, or null"),
-    HttpApiEndpoint.put("set", "/pulls/:number/agent", {
-      params: NumberParams,
+    HttpApiEndpoint.put("set", "/branches/:branch/agent", {
+      params: BranchParams,
       payload: AgentLinkSet,
       success: Schema.Struct({ agent: AgentLink }),
       error: [BadRequest, UnprocessableEntity],
@@ -371,8 +369,8 @@ export class AgentsGroup extends HttpApiGroup.make("agents")
       .annotate(RequiredAccess, "write")
       .annotate(OpenApi.Summary, "Name the agent that writes a branch")
       .annotate(SuccessDescription, "The agent"),
-    HttpApiEndpoint.delete("remove", "/pulls/:number/agent", {
-      params: NumberParams,
+    HttpApiEndpoint.delete("remove", "/branches/:branch/agent", {
+      params: BranchParams,
       success: Ok,
     })
       .annotate(RequiredAccess, "write")
@@ -382,7 +380,7 @@ export class AgentsGroup extends HttpApiGroup.make("agents")
       params: RepoParams,
       payload: StartWork,
       success: Schema.Struct({
-        pullRequest: PullRequest,
+        page: BranchPage,
         branch: Schema.String,
         agent: Schema.NullOr(AgentLink),
       }),
@@ -393,9 +391,9 @@ export class AgentsGroup extends HttpApiGroup.make("agents")
       .annotate(OpenApi.Summary, "Start work from an ask")
       .annotate(
         OpenApi.Description,
-        "Creates the branch at the base's commit and opens a draft pull request whose body is the ask. 409 `ref_exists` when the branch name is taken; 422 `ref_not_found` for a base that is not a branch.",
+        "Creates the branch at the base's commit and opens a draft branch page whose body is the ask. 409 `ref_exists` when the branch name is taken; 422 `ref_not_found` for a base that is not a branch.",
       )
-      .annotate(SuccessDescription, "The branch and its pull request"),
+      .annotate(SuccessDescription, "The branch and its branch page"),
   )
   .prefix("/api/repos/:owner/:repo")
   .middleware(RepositoryAccess)
@@ -431,21 +429,9 @@ export class ReviewGroup extends HttpApiGroup.make("review")
       .annotate(OpenApi.Summary, "Branches waiting on the viewer")
       .annotate(
         OpenApi.Description,
-        "Open pull requests the viewer wrote, is assigned, has reviewed or connected an agent to, with a version they have not reviewed. The longest wait first.",
+        "Open branch pages the viewer wrote, is assigned, has reviewed or connected an agent to, with a version they have not reviewed. The longest wait first.",
       )
       .annotate(SuccessDescription, "The inbox"),
-    HttpApiEndpoint.get("mode", "/mode", { success: ReviewModePreference })
-      .annotate(RequiresUser, true)
-      .annotate(OpenApi.Summary, "How the viewer reads a branch")
-      .annotate(SuccessDescription, "The mode"),
-    HttpApiEndpoint.put("setMode", "/mode", {
-      payload: ReviewModePreference,
-      success: ReviewModePreference,
-      error: BadRequest,
-    })
-      .annotate(RequiresUser, true)
-      .annotate(OpenApi.Summary, "Switch between the branch page and the pull request page")
-      .annotate(SuccessDescription, "The mode"),
   )
   .prefix("/api/review")
   .middleware(Authentication)

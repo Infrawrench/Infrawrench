@@ -16,7 +16,8 @@ export function ThreadHeader({
   large = false,
 }: {
   title: string;
-  number: number;
+  /** An issue's number. A branch page has none to show. */
+  number?: number;
   kind: ThreadKind;
   canEdit: boolean;
   onRename: (title: string) => Promise<unknown>;
@@ -25,7 +26,7 @@ export function ThreadHeader({
   actions?: ReactNode;
   /**
    * The title as a page's headline, with the line above it: the branch page.
-   * The line is then the caller's whole, state and number included.
+   * The line is then the caller's whole, state included.
    */
   large?: boolean;
 }) {
@@ -82,7 +83,7 @@ export function ThreadHeader({
             }`}
           >
             {title}
-            {large ? null : (
+            {large || number === undefined ? null : (
               <>
                 {" "}
                 <span className="font-normal text-on-surface-muted">#{number}</span>

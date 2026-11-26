@@ -13,7 +13,7 @@ import { sweepInstructions } from "../../review/instructions";
 import { handleT3Callback } from "../../t3/callback";
 import { LOCALHOST_REFUSAL } from "../../t3/http";
 import { type FakeT3, fakeT3 } from "../helpers/fake-t3";
-import { type Person, type World, configured, makeWorld } from "./world";
+import { type Person, type World, configured, makeWorld, pagePath } from "./world";
 
 vi.mock("../../events/ci", () => ({
   announcePush: vi.fn(async () => {}),
@@ -397,12 +397,12 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
           startFromOrigin: true,
         },
       });
-      expect(launch["clientRequestId"]).toBe(`infrawrench-git:work:${started.body.pullRequest.id}`);
+      expect(launch["clientRequestId"]).toBe(`infrawrench-git:work:${started.body.page.id}`);
       const message = String(launch["message"]);
       expect(message).toContain("Per key, 100 a minute.");
       expect(message).toContain("git push -u origin work/add-rate-limits-to-the-api");
       expect(message).toContain(
-        `https://git.example.test/${name}/pulls/${started.body.pullRequest.number}`,
+        `https://git.example.test/${name}/branches/${started.body.page.key}`,
       );
       expect(message).toContain(
         "claude mcp add --transport http infrawrench-git https://git.example.test/mcp",
@@ -428,13 +428,9 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
       });
 
       // The agent, asked for, says what its thread is doing.
-      const agent = await world.call(
-        "GET",
-        `${repo}/pulls/${started.body.pullRequest.number}/agent`,
-        {
-          as: alice,
-        },
-      );
+      const agent = await world.call("GET", `${pagePath(repo, started.body.page.key)}/agent`, {
+        as: alice,
+      });
       expect(agent.body.agent.externalRefs).toMatchObject({ threadStatus: "running" });
 
       // The environment has the repository now: the next ask clones nothing.
@@ -451,7 +447,8 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
 
     it("refuses before making a branch when the environment will not take the work", async () => {
       const branches = async () =>
-        (await world.call("GET", `${repo}/pulls?state=all`, { as: alice })).body.items.length;
+        (await world.call("GET", `${repo}/branch-pages?state=all`, { as: alice })).body.items
+          .length;
       // Somebody else's environment.
       expect(
         (await start(bob, { kind: "t3", displayName: "T3 Code", t3EnvironmentId: environmentId }))
@@ -485,7 +482,7 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
       expect(await branches()).toBe(0);
     });
 
-    it("keeps the pull request when the launch fails, and starts the thread when asked again", async () => {
+    it("keeps the page when the launch fails, and starts the thread when asked again", async () => {
       t3.failNext["t3_thread_launch"] =
         "Pass modelSelection: the project has no default model. orchestrator_capabilities lists providers and models.";
       const started = await start(alice, {
@@ -500,20 +497,16 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
       expect(started.body.agent.externalRefs.threadId).toBeUndefined();
       expect(t3.threads).toHaveLength(0);
 
-      const again = await world.call(
-        "PUT",
-        `${repo}/pulls/${started.body.pullRequest.number}/agent`,
-        {
-          as: alice,
-          body: {
-            kind: "t3",
-            displayName: "T3 Code",
-            t3EnvironmentId: environmentId,
-            // What a client echoes back is not what the forge believes.
-            externalRefs: { launchError: "stale", startUrl: "https://evil.example.org" },
-          },
+      const again = await world.call("PUT", `${pagePath(repo, started.body.page.key)}/agent`, {
+        as: alice,
+        body: {
+          kind: "t3",
+          displayName: "T3 Code",
+          t3EnvironmentId: environmentId,
+          // What a client echoes back is not what the forge believes.
+          externalRefs: { launchError: "stale", startUrl: "https://evil.example.org" },
         },
-      );
+      });
       expect(again.body.agent.externalRefs).toEqual({
         threadId: t3.threads[0]!.threadId,
         projectId: t3.projects[0]!.id,
@@ -525,19 +518,15 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
     it("names an existing thread without starting one", async () => {
       const started = await world.call("POST", `${repo}/work`, { as: alice, body: { ask } });
       t3.calls.length = 0;
-      const set = await world.call(
-        "PUT",
-        `${repo}/pulls/${started.body.pullRequest.number}/agent`,
-        {
-          as: alice,
-          body: {
-            kind: "t3",
-            displayName: "T3 Code",
-            t3EnvironmentId: environmentId,
-            externalRefs: { threadId: "t-existing" },
-          },
+      const set = await world.call("PUT", `${pagePath(repo, started.body.page.key)}/agent`, {
+        as: alice,
+        body: {
+          kind: "t3",
+          displayName: "T3 Code",
+          t3EnvironmentId: environmentId,
+          externalRefs: { threadId: "t-existing" },
         },
-      );
+      });
       expect(set.body.agent.externalRefs).toEqual({ threadId: "t-existing" });
       expect(t3.calls).toEqual([]);
     });
@@ -548,7 +537,7 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
         displayName: "T3 Code",
         t3EnvironmentId: environmentId,
       });
-      const pull = `${repo}/pulls/${started.body.pullRequest.number}`;
+      const pull = `${pagePath(repo, started.body.page.key)}`;
       const thread = t3.threads[0]!;
       const sent = await world.call("POST", `${pull}/instructions`, {
         as: alice,
@@ -601,7 +590,7 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
         displayName: "T3 Code",
         t3EnvironmentId: environmentId,
       });
-      const pull = `${repo}/pulls/${started.body.pullRequest.number}`;
+      const pull = `${pagePath(repo, started.body.page.key)}`;
       expect(
         (await world.call("DELETE", `/api/t3/environments/${environmentId}`, { as: alice })).status,
       ).toBe(200);
@@ -651,7 +640,7 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
         organizationId: org.id,
         startUrl: `https://app.example.test/org/${org.id}/agents?git=${encodeURIComponent(
           `${org.slug}/infra`,
-        )}&pull=${started.body.pullRequest.number}`,
+        )}&branch=${encodeURIComponent(started.body.page.key)}`,
       },
     });
     // Nothing was asked of any environment.

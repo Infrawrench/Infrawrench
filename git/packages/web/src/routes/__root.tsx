@@ -1,15 +1,14 @@
 import { useEffect } from "react";
 import { Outlet, createRootRoute, useLocation } from "@tanstack/react-router";
 import { useGo } from "../components/AppLink";
-import { useReviewMode } from "../features/review/mode";
+import { ErrorState } from "../components/states";
 import { SidebarShell } from "../layout/SidebarShell";
-import { AppShell } from "../layout/AppShell";
 import { paths } from "../lib/paths";
 import { useDocumentTitle } from "../lib/title";
 import { useSession } from "../lib/session";
 
 /** Someone signed in without a username is sent to pick one, and comes back afterwards. */
-function useUsernameOnboarding(): boolean {
+function useUsernameOnboarding(): void {
   const session = useSession();
   const go = useGo();
   const location = useLocation();
@@ -22,29 +21,26 @@ function useUsernameOnboarding(): boolean {
   useEffect(() => {
     if (needsUsername && !onPage) go(paths.onboardingUsername(here), { replace: true });
   }, [needsUsername, onPage, here, go]);
-  return needsUsername;
 }
 
 function Root() {
-  const needsUsername = useUsernameOnboarding();
+  useUsernameOnboarding();
   useDocumentTitle();
   const session = useSession();
-  const { mode } = useReviewMode();
-  const user = session.data?.user ?? null;
-  // Not one frame and then the other: nothing is drawn until the mode is known.
-  if (mode === undefined) return <div className="min-h-screen bg-surface" />;
-  // The sidebar is the frame of anyone signed in who has a name to work under: what it holds follows their mode.
-  if (session.data !== undefined && user !== null && !needsUsername) {
+  // Not one sidebar and then the other: nothing is drawn until the reader is known.
+  if (session.data === undefined) {
     return (
-      <SidebarShell user={user} appUrl={session.data.appUrl} mode={mode}>
-        <Outlet />
-      </SidebarShell>
+      <div className="min-h-screen bg-surface">
+        {session.error ? (
+          <ErrorState error={session.error} onRetry={() => void session.refetch()} />
+        ) : null}
+      </div>
     );
   }
   return (
-    <AppShell>
+    <SidebarShell session={session.data}>
       <Outlet />
-    </AppShell>
+    </SidebarShell>
   );
 }
 

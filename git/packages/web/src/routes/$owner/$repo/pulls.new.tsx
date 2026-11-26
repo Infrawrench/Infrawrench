@@ -1,15 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { NewPullPage } from "../../../features/pulls/NewPullPage";
+import { MovedRedirect } from "../../../features/branch-page/redirects";
 
-function NewPullPageRoute() {
-  const { base, head } = Route.useSearch();
-  return <NewPullPage base={base} head={head} />;
-}
-
+/** The old form to open a page: every branch has one now, so the Branches tab. */
 export const Route = createFileRoute("/$owner/$repo/pulls/new")({
-  component: NewPullPageRoute,
-  validateSearch: (search: Record<string, unknown>) => ({
-    base: search.base === undefined ? undefined : String(search.base),
-    head: search.head === undefined ? undefined : String(search.head),
-  }),
+  component: () => <MovedRedirect to="branches" />,
 });

@@ -19,7 +19,7 @@ import { useRepoRef } from "../../layout/RepoLayout";
 import { INSTRUCTION_STATUS } from "./branch";
 
 export interface InstructionsState {
-  readonly number: number;
+  readonly branchKey: string;
   /** Null when the server does not serve instructions yet. */
   readonly instructions: ReadonlyArray<Instruction> | null;
   /** The viewer may send one. */
@@ -67,7 +67,7 @@ export function SendToAgentButton({ from }: { from: Source }) {
   const send = useMutation({
     mutationFn: () =>
       api.instructions.send({
-        params: { ...repo, number: state!.number },
+        params: { ...repo, branch: state!.branchKey },
         payload: { ...from, ...(note.trim() === "" ? {} : { body: note.trim() }) },
       }),
     onSuccess: () => {
@@ -112,12 +112,20 @@ export function SendToAgentButton({ from }: { from: Source }) {
   );
 }
 
-function InstructionRow({ instruction, number }: { instruction: Instruction; number: number }) {
+function InstructionRow({
+  instruction,
+  branchKey,
+}: {
+  instruction: Instruction;
+  branchKey: string;
+}) {
   const repo = useRepoRef();
   const state = useInstructions();
   const withdraw = useMutation({
     mutationFn: () =>
-      api.instructions.dismiss({ params: { ...repo, number, instructionId: instruction.id } }),
+      api.instructions.dismiss({
+        params: { ...repo, branch: branchKey, instructionId: instruction.id },
+      }),
     onSuccess: refreshInstructions,
   });
   const open = instruction.status === "queued" || instruction.status === "delivered";
@@ -154,7 +162,7 @@ export function InstructionsPanel() {
   const send = useMutation({
     mutationFn: () =>
       api.instructions.send({
-        params: { ...repo, number: state!.number },
+        params: { ...repo, branch: state!.branchKey },
         payload: { source: "text", body: body.trim() },
       }),
     onSuccess: () => {
@@ -200,7 +208,11 @@ export function InstructionsPanel() {
       ) : (
         <ul className="divide-y divide-border">
           {shown.map((instruction) => (
-            <InstructionRow key={instruction.id} instruction={instruction} number={state.number} />
+            <InstructionRow
+              key={instruction.id}
+              instruction={instruction}
+              branchKey={state.branchKey}
+            />
           ))}
         </ul>
       )}

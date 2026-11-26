@@ -55,9 +55,23 @@ describe("a run's source", () => {
     expect(source.cloneUrl({ repoFullName: "acme/web" })).toBe("https://github.com/acme/web.git");
   });
 
-  it("links to the commit and the pull request on the right forge", () => {
+  it("links to the commit, the pull request and the branch page on the right forge", () => {
     expect(source.commitUrl(gitRun, A)).toBe(`https://git.infrawrench.com/Acme/web/commit/${A}`);
-    expect(source.pullUrl(gitRun, 7)).toBe("https://git.infrawrench.com/Acme/web/pull/7");
+    // The forge's numbered address of a page, which it redirects to the page.
+    expect(source.pullUrl(gitRun, 7)).toBe("https://git.infrawrench.com/Acme/web/pulls/7");
+    expect(source.pullUrl({ repoFullName: "a/b" }, 7)).toBe("https://github.com/a/b/pull/7");
+    expect(source.gitBranchPageUrl("Acme/web", "feature/a~2")).toBe(
+      "https://git.infrawrench.com/Acme/web/branches/feature/a~2",
+    );
+    expect(
+      source.gitRunPageKey({ headRef: "feature/a", headRepoFullName: "Acme/web", fromFork: false }),
+    ).toBe("feature/a");
+    expect(
+      source.gitRunPageKey({ headRef: "main", headRepoFullName: "bob/web", fromFork: true }),
+    ).toBe("bob/web:main");
+    expect(source.gitRunPageKey({ headRef: "main", headRepoFullName: null, fromFork: true })).toBe(
+      "-:main",
+    );
     expect(source.commitUrl({ repoFullName: "acme/web" }, A)).toBe(
       `https://github.com/acme/web/commit/${A}`,
     );
@@ -223,9 +237,17 @@ describe("toWire", () => {
     expect(wire.githubUrl).toBe(url);
   });
 
-  it("links a forge pull request's run to the pull request", () => {
-    const wire = toWire({ ...row, pullNumber: 7 });
-    expect(wire.sourceUrl).toBe("https://git.infrawrench.com/Acme/web/pull/7");
+  it("links a forge branch page's run to the branch page", () => {
+    const wire = toWire({ ...row, pullNumber: 7, headRef: "feature/login" });
+    expect(wire.sourceUrl).toBe("https://git.infrawrench.com/Acme/web/branches/feature/login");
+    const forked = toWire({
+      ...row,
+      pullNumber: 8,
+      headRef: "main",
+      fromFork: true,
+      headRepoFullName: "bob/web",
+    });
+    expect(forked.sourceUrl).toBe("https://git.infrawrench.com/Acme/web/branches/bob/web%3Amain");
   });
 
   it("answers a GitHub run as before, and says it is GitHub's", () => {

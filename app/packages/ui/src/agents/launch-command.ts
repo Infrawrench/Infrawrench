@@ -632,7 +632,7 @@ fi
 # root unless it knows it runs inside a sandbox. detachproc propagates the
 # child's exit status and its client prints it, so startup failures stay
 # visible in the terminal.
-# A session working on a forge pull request (git-work.ts) has a token file,
+# A session working on a forge branch (git-work.ts) has a token file,
 # exported to the tool as ${GIT_WORK_TOKEN_ENV}, and a first prompt, which the
 # tool starts with once: it is renamed as it is sent, so a restart or a
 # reattach never sends it again. The prompt is one argument read from a file,
@@ -825,8 +825,8 @@ fi
 
 if [ "$REPO_CLONEABLE" = "1" ] && [ -d "$PROJECT_DIR/.git" ]; then
   cd "$PROJECT_DIR"
-  # A branch that already exists (a pull request's head, which a session
-  # started from one works on) is checked out as it is, never reset to the
+  # A branch that already exists (a forge branch, which a session started
+  # from its page works on) is checked out as it is, never reset to the
   # default branch; a new one starts from the clone's HEAD.
   if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
     git checkout "$BRANCH_NAME" || true

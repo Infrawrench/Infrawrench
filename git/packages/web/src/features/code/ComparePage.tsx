@@ -1,4 +1,4 @@
-/** `base...head`: what head has that base does not, as commits and a diff, and the way into a pull request. */
+/** `base...head`: what head has that base does not, as commits and a diff, and the head's page. */
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { queries } from "../../api/queries";
@@ -126,27 +126,10 @@ export function ComparePage({ base, head }: { base: string | null; head: string 
                       <Badge tone="danger">Conflicts</Badge>
                     ) : null}
                   </div>
-                  {data.pullRequest !== null ? (
-                    <ButtonLink href={paths.pull(repo, data.pullRequest.number)}>
-                      <Icon name="gitPullRequest" />
-                      View pull request #{data.pullRequest.number}
-                    </ButtonLink>
-                  ) : data.ahead > 0 &&
-                    repository.features.pullRequests &&
-                    data.head.kind === "branch" &&
-                    data.base.kind === "branch" ? (
-                    <ButtonLink
-                      variant="primary"
-                      href={paths.newPull(repo, {
-                        base: data.base.name,
-                        head: formatHead(repo, {
-                          repository: parsed.repository,
-                          ref: data.head.name,
-                        }),
-                      })}
-                    >
-                      <Icon name="gitPullRequest" />
-                      Create pull request
+                  {data.page !== null ? (
+                    <ButtonLink href={paths.branchPage(repo, data.page.key)}>
+                      <Icon name="fileDiff" />
+                      Branch page
                     </ButtonLink>
                   ) : null}
                 </div>

@@ -135,7 +135,7 @@ export default defineMockHandlers({
       const rule = {
         id: newId("rule"),
         pattern: payload.pattern,
-        requirePullRequest: payload.requirePullRequest ?? false,
+        requireBranchPage: payload.requireBranchPage ?? false,
         requiredApprovals: payload.requiredApprovals ?? 0,
         dismissStaleApprovals: payload.dismissStaleApprovals ?? false,
         requiredStatusContexts: [...(payload.requiredStatusContexts ?? [])],

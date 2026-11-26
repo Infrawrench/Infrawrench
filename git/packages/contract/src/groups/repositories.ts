@@ -111,7 +111,7 @@ export class RepositoryListsGroup extends HttpApiGroup.make("repositoryLists")
         access: Schema.optionalKey(
           Schema.Literals(["read", "write", "admin"]).annotate({
             description:
-              "Only repositories the caller has at least this access to (`write` for a pull request's head picker). Default `read`.",
+              "Only repositories the caller has at least this access to (`write` for a branch page's head picker). Default `read`.",
           }),
         ),
       },

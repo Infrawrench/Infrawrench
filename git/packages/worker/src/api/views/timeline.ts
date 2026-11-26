@@ -1,8 +1,9 @@
 /**
- * A thread's timeline: its comments, its events and, for a pull request, its
+ * A thread's timeline: its comments, its events and, for a branch page, its
  * reviews, interleaved oldest first and paged by one `(time, id)` cursor.
  */
 import type { CommitSummary, TimelineItem } from "@infrawrench/git-contract";
+import { pageKeys } from "../../db/branch-pages";
 import { decodeCursor, encodeCursor, pageSize } from "../../db/cursor";
 import {
   type PullRequestWithThread,
@@ -23,7 +24,7 @@ import type { ReviewRow } from "../../db/pulls";
 import { RepoReaderError } from "../../repo/reader";
 import type { RepoCx } from "../context";
 import { commitDecorator } from "./commits";
-import { reviewThreadViews, reviewViews } from "./pulls";
+import { reviewThreadViews, reviewViews } from "./branch-pages";
 import { iso, peopleById } from "./repositories";
 import { commentViews } from "./threads";
 
@@ -144,6 +145,13 @@ export const timelinePage = async (
       });
     }
   }
+  // Keys only for the sources shown: one in a repository the reader is not shown names nothing.
+  const sourceKeys = await pageKeys(
+    [...sourcePulls.values()].filter((row) => {
+      const source = sources.get(row.issueId);
+      return source !== undefined && sourceRepositories.has(source.repositoryId);
+    }),
+  );
 
   const eventItem = (row: TimelineEventRow): TimelineItem | null => {
     const base = { id: row.id, actor: person(row.actorUserId), createdAt: iso(row.createdAt) };
@@ -200,7 +208,7 @@ export const timelinePage = async (
             repository,
             number: source.number,
             title: source.title,
-            isPullRequest: source.isPullRequest,
+            branch: sourcePull ? (sourceKeys.get(sourcePull.issueId) ?? null) : null,
             state: sourcePull?.mergedAt ? "merged" : source.state,
           },
         };

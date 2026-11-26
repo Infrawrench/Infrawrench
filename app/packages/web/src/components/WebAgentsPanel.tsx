@@ -61,7 +61,7 @@ export function WebAgentsPanel({
       .catch(() => undefined);
   }, [orgId]);
 
-  // A pull request git.infrawrench.com sent the person here to work on.
+  // A branch git.infrawrench.com sent the person here to work on.
   const gitWork = usePendingAgentGitWork(orgId);
 
   return (

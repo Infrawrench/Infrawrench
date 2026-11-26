@@ -1,17 +1,17 @@
 /**
- * Issues and pull requests against a real Postgres: one number sequence
+ * Issues and branch pages against a real Postgres: one number sequence
  * that holds under concurrency, the counters that move with the rows, the
  * filters the lists serve, and a timeline entry for every change.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { type Person, type World, configured, makeWorld } from "./world";
+import { type Person, type World, configured, makeWorld, pagePath } from "./world";
 
 vi.mock("../../events/ci", () => ({
   announcePush: vi.fn(async () => {}),
   announcePullRequest: vi.fn(async () => {}),
 }));
 
-describe.skipIf(!configured)("issues and pull requests, against a real Postgres", () => {
+describe.skipIf(!configured)("issues and branch pages, against a real Postgres", () => {
   let world: World;
   let alice: Person, bob: Person, carol: Person;
   let repo: string;
@@ -37,7 +37,7 @@ describe.skipIf(!configured)("issues and pull requests, against a real Postgres"
       await world.call("GET", `${repo}/issues/${number}/timeline?limit=100`, { as: who })
     ).body.items.map((item: { type: string }) => item.type);
 
-  it("gives issues and pull requests opened at once consecutive numbers from one sequence", async () => {
+  it("gives issues and branch pages opened at once consecutive numbers from one sequence", async () => {
     const storage = world.storage.repository(repositoryId);
     const pulls = 6;
     for (let i = 0; i < pulls; i++) storage.branches.set(`feature-${i}`, world.storage.nextOid());
@@ -49,9 +49,9 @@ describe.skipIf(!configured)("issues and pull requests, against a real Postgres"
         }),
       ),
       ...Array.from({ length: pulls }, (_, i) =>
-        world.call("POST", `${repo}/pulls`, {
+        world.call("POST", `${repo}/branch-pages`, {
           as: bob,
-          body: { title: `Pull ${i}`, base: "main", head: `feature-${i}` },
+          body: { title: `Page ${i}`, base: "main", head: `feature-${i}` },
         }),
       ),
     ]);
@@ -61,24 +61,35 @@ describe.skipIf(!configured)("issues and pull requests, against a real Postgres"
 
     // The counters moved with the rows, and each kind answers only as its own.
     const repository = (await world.call("GET", repo)).body;
-    expect(repository).toMatchObject({ openIssueCount: 12, openPullRequestCount: 6 });
-    const pullNumber = opened[12]!.body.number as number;
-    expect((await world.call("GET", `${repo}/issues/${pullNumber}`)).status).toBe(404);
-    expect((await world.call("GET", `${repo}/pulls/${pullNumber}`)).status).toBe(200);
-    expect((await world.call("GET", `${repo}/pulls/${opened[0]!.body.number}`)).status).toBe(404);
-    // CI can fetch every pull request's head from the base repository.
-    expect(storage.pullRefs.size).toBe(pulls);
-    // And the same branches cannot be proposed twice.
-    const again = await world.call("POST", `${repo}/pulls`, {
-      as: bob,
-      body: { title: "Again", base: "main", head: "feature-0" },
+    expect(repository).toMatchObject({ openIssueCount: 12, openBranchCount: 6 });
+    const page = opened[12]!.body;
+    expect(page.key).toBe(page.headRef);
+    expect((await world.call("GET", `${repo}/issues/${page.number}`)).status).toBe(404);
+    expect((await world.call("GET", pagePath(repo, page.key))).status).toBe(200);
+    // A page's number finds its key; an issue's finds nothing.
+    expect(await world.call("GET", `${repo}/branch-pages/${page.number}`)).toMatchObject({
+      status: 200,
+      body: { key: page.key },
     });
-    expect(again).toMatchObject({ status: 409, body: { code: "pull_request_exists" } });
+    expect((await world.call("GET", `${repo}/branch-pages/${opened[0]!.body.number}`)).status).toBe(
+      404,
+    );
+    // CI can fetch every page's head from the base repository.
+    expect(storage.pullRefs.size).toBe(pulls);
+    // And a branch with an open page gets no second one, whatever it would merge into.
+    storage.branches.set("next", world.storage.nextOid());
+    for (const base of ["main", "next", undefined]) {
+      const again = await world.call("POST", `${repo}/branch-pages`, {
+        as: bob,
+        body: { head: "feature-0", ...(base ? { base } : {}) },
+      });
+      expect(again).toMatchObject({ status: 409, body: { code: "branch_page_exists" } });
+    }
   });
 
-  it("refuses a pull request with nothing to merge, or from a branch that is not there", async () => {
+  it("refuses a page with nothing to merge, or for a branch that is not there", async () => {
     const open = (head: string, base = "main") =>
-      world.call("POST", `${repo}/pulls`, { as: bob, body: { title: "x", base, head } });
+      world.call("POST", `${repo}/branch-pages`, { as: bob, body: { title: "x", base, head } });
     expect(await open("main")).toMatchObject({ status: 422, body: { code: "no_commits_between" } });
     expect(await open("nowhere")).toMatchObject({ status: 422, body: { code: "ref_not_found" } });
     expect(await open("feature-1", "nowhere")).toMatchObject({
@@ -210,10 +221,10 @@ describe.skipIf(!configured)("issues and pull requests, against a real Postgres"
       expect(seen, sort).toHaveLength(13);
     }
 
-    const pulls = (await world.call("GET", `${repo}/pulls?limit=100&head=feature-2`)).body;
+    const pulls = (await world.call("GET", `${repo}/branch-pages?limit=100&head=feature-2`)).body;
     expect(pulls.items.map((item: { headRef: string }) => item.headRef)).toEqual(["feature-2"]);
     expect(pulls.counts).toEqual({ open: 1, closed: 0 });
-    expect((await world.call("GET", `${repo}/pulls?state=merged`)).body.items).toEqual([]);
+    expect((await world.call("GET", `${repo}/branch-pages?state=merged`)).body.items).toEqual([]);
   });
 
   it("locks a conversation to everyone below triage", async () => {
@@ -257,7 +268,7 @@ describe.skipIf(!configured)("issues and pull requests, against a real Postgres"
     expect(timeline).toHaveLength(1);
     expect(timeline[0]).toMatchObject({
       type: "cross_referenced",
-      source: { number: second.number, title: "Source", isPullRequest: false, state: "open" },
+      source: { number: second.number, title: "Source", branch: null, state: "open" },
     });
 
     const comment = (

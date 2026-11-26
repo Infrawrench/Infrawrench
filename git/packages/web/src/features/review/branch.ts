@@ -32,6 +32,20 @@ export const diffFrom = (mode: DiffMode): "base" | "previous" | "reviewed" =>
 export const parseDiffMode = (value: unknown): DiffMode | undefined =>
   value === "whole" || value === "step" || value === "since" ? value : undefined;
 
+/** A branch page's address query: the version and diff picked, and the tab (`commits`, `checks`). */
+export function parseBranchSearch(search: Record<string, unknown>): {
+  v: number | undefined;
+  diff: DiffMode | undefined;
+  tab: "commits" | "checks" | undefined;
+} {
+  const v = Number(search.v);
+  return {
+    v: Number.isInteger(v) && v > 0 ? v : undefined,
+    diff: parseDiffMode(search.diff),
+    tab: search.tab === "commits" || search.tab === "checks" ? search.tab : undefined,
+  };
+}
+
 /**
  * What a branch opens on: its newest version, and what changed since the
  * reader last marked one as reviewed when there is anything newer.

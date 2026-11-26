@@ -23,7 +23,7 @@ export interface RefPickerProps {
   readonly onSelect: (name: string, kind: "branch" | "tag") => void;
   /** What is being picked, for the button's accessible name: "base", "head". Default "branch or tag". */
   readonly label?: string;
-  /** Leave tags out: a pull request's base is a branch. */
+  /** Leave tags out: a branch page's base is a branch. */
   readonly branchesOnly?: boolean;
   readonly align?: "start" | "end";
 }

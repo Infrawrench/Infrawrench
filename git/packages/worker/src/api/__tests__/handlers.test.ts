@@ -310,7 +310,7 @@ describe("the gates, where they need no database", () => {
       ["/api/explore/repos", {}],
       ["/api/session", {}],
       [
-        "/api/repos/acme/infra/pulls/1/merge",
+        "/api/repos/acme/infra/branches/feature%2Fa/merge",
         { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
       ],
     ] as const) {

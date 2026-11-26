@@ -44,7 +44,7 @@ function LabelForm({
     onSuccess: () => {
       void invalidate("labels");
       void invalidate("issues");
-      void invalidate("pulls");
+      void invalidate("branches");
       onDone();
     },
   });
@@ -153,7 +153,7 @@ export function LabelsManager() {
       setRemoving(null);
       void invalidate("labels");
       void invalidate("issues");
-      void invalidate("pulls");
+      void invalidate("branches");
     },
   });
   const words = filter.trim().toLowerCase();
@@ -219,10 +219,10 @@ export function LabelsManager() {
                           {label.description}
                         </span>
                         <AppLink
-                          href={threadSearchHref(repo, "pulls", { labels: [label.name] })}
+                          href={threadSearchHref(repo, "branches", { labels: [label.name] })}
                           className="text-xs text-on-surface-muted hover:text-on-surface hover:underline"
                         >
-                          Pull requests
+                          Branches
                         </AppLink>
                         {canEdit ? (
                           <span className="flex items-center gap-1">
@@ -264,8 +264,8 @@ export function LabelsManager() {
         onConfirm={() => removing && remove.mutate(removing)}
       >
         <p>
-          <span className="font-medium">{removing?.name}</span> comes off every issue and pull
-          request that carries it.
+          <span className="font-medium">{removing?.name}</span> comes off every issue and branch
+          page that carries it.
         </p>
         <InlineError error={remove.error} />
       </ConfirmDialog>

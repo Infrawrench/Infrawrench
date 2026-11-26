@@ -56,6 +56,7 @@ export * from "./git-forge";
 // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
 export * from "./git-feature-flag";
 export * from "./git-names";
+export * from "./git-branch-key";
 export * from "./ci-access";
 export * from "./ci-live";
 // The job token CI reads a git.infrawrench.com repository with: signed by

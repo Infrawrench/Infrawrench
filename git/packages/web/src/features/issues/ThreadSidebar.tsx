@@ -80,7 +80,7 @@ export function TriageFields({
   value: ThreadTriage;
   onChange: (next: ThreadTriage) => void;
   canTriage: boolean;
-  kind: "issues" | "pulls";
+  kind: "issues" | "branches";
   /** The thread's own labels, people and milestone, to show before the lists load. */
   shown?: {
     readonly labels: ReadonlyArray<Label>;
@@ -256,7 +256,7 @@ export function LockControl({ number, locked }: { number: number; locked: boolea
   const done = () => {
     setOpen(false);
     void invalidate("issues");
-    void invalidate("pulls");
+    void invalidate("branches");
   };
   const lock = useMutation({
     mutationFn: () =>

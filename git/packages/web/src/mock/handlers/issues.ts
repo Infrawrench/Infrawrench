@@ -49,7 +49,7 @@ export default defineMockHandlers({
   issues: {
     list: ({ params, query }) => {
       const repo = findRepository(params.owner, params.repo);
-      const issues = threadsOf(repo).threads.filter((thread) => thread.pull === null);
+      const issues = threadsOf(repo).threads.filter((thread) => thread.page === null);
       const matching = filterThreads(repo, issues, query ?? {});
       const state = query?.state ?? "open";
       const shown = state === "all" ? matching : matching.filter((t) => t.state === state);
@@ -89,7 +89,7 @@ export default defineMockHandlers({
         closedAt: null,
         closedBy: null,
         items: [],
-        pull: null,
+        page: null,
       };
       store.threads.push(thread);
       if (viewerOf(repo).canTriage) {

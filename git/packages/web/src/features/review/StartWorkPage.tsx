@@ -96,11 +96,11 @@ export function StartWorkPage() {
       });
     },
     onSuccess: (made) => {
-      void invalidate("pulls");
+      void invalidate("branches");
       void invalidate("repositories", "get");
       void invalidate("contents", "listBranches");
       void invalidate("review", "inbox");
-      go(paths.pull(repo, made.pullRequest.number));
+      go(paths.branchPage(repo, made.page.key));
     },
   });
 
@@ -123,7 +123,7 @@ export function StartWorkPage() {
   if (!repository.viewer.canPush || repository.archived) {
     return (
       <Page>
-        <EmptyState action={<ButtonLink href={paths.pulls(repo)}>Pull requests</ButtonLink>}>
+        <EmptyState action={<ButtonLink href={paths.branches(repo)}>Branches</ButtonLink>}>
           {repository.archived
             ? "This repository is archived"
             : "Only people who can push here can start work"}
@@ -285,7 +285,7 @@ export function StartWorkPage() {
           >
             Start work
           </Button>
-          <ButtonLink href={paths.pulls(repo)}>Cancel</ButtonLink>
+          <ButtonLink href={paths.branches(repo)}>Cancel</ButtonLink>
           {start.error !== null && !isRefExists(start.error) ? (
             <InlineError error={start.error} />
           ) : null}

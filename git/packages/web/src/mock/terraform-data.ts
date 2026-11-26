@@ -1,6 +1,6 @@
 /**
  * The mock's Terraform workspaces: `acme/infra` has one per environment, each
- * with runs (plans on pull requests, applies on merge), state versions and
+ * with runs (plans on branches, applies on merge), state versions and
  * the resources its state manages, matched to Infrawrench resources with
  * what they cost.
  */
@@ -29,7 +29,7 @@ export interface WorkspaceRecord {
   rootPath: string;
   branch: string | null;
   terraformVersion: string | null;
-  planOnPullRequest: boolean;
+  planOnBranch: boolean;
   applyOnMerge: boolean;
   applyRequiresApproval: boolean;
   accounts: TerraformAccount[];
@@ -267,7 +267,7 @@ function seedInfra(repo: RepositoryRecord): Store {
       id: newId("tfrun"),
       workspace,
       statusReason: null,
-      pullNumber: null,
+      branchPage: null,
       actor: null,
       approvedBy: null,
       createdAt: hoursAgo(hours),
@@ -336,11 +336,11 @@ function seedInfra(repo: RepositoryRecord): Store {
       ws.staging,
       {
         operation: "plan",
-        trigger: "pull_request",
+        trigger: "branch",
         status: "planned",
         commitOid: fx.branches["feature/vpc-peering"]!,
         ref: "feature/vpc-peering",
-        pullNumber: 12,
+        branchPage: "feature/vpc-peering",
         actor: person("jonas"),
         plan: plan(peering, 1),
         costDelta: cost(
@@ -360,11 +360,11 @@ function seedInfra(repo: RepositoryRecord): Store {
       ws.production,
       {
         operation: "plan",
-        trigger: "pull_request",
+        trigger: "branch",
         status: "no_changes",
         commitOid: fx.branches["feature/vpc-peering"]!,
         ref: "feature/vpc-peering",
-        pullNumber: 12,
+        branchPage: "feature/vpc-peering",
         actor: person("jonas"),
         plan: plan([]),
         costDelta: cost(productionCost, []),
@@ -376,12 +376,12 @@ function seedInfra(repo: RepositoryRecord): Store {
       ws.staging,
       {
         operation: "plan",
-        trigger: "pull_request",
+        trigger: "branch",
         status: "discarded",
         statusReason: "A newer plan replaced it",
         commitOid: fx.commits[fx.branches["feature/vpc-peering"]!]!.parents[0]!,
         ref: "feature/vpc-peering",
-        pullNumber: 12,
+        branchPage: "feature/vpc-peering",
         actor: person("jonas"),
         plan: plan(peering),
       },
@@ -391,11 +391,11 @@ function seedInfra(repo: RepositoryRecord): Store {
       ws.staging,
       {
         operation: "plan",
-        trigger: "pull_request",
+        trigger: "branch",
         status: "planned",
         commitOid: fx.branches["fix/database-backups"]!,
         ref: "fix/database-backups",
-        pullNumber: 14,
+        branchPage: "fix/database-backups",
         actor: person("priya"),
         plan: plan([
           change("module.database.aws_rds_cluster.this", "update", ["backup_retention_period"]),
@@ -410,11 +410,11 @@ function seedInfra(repo: RepositoryRecord): Store {
       ws.production,
       {
         operation: "plan",
-        trigger: "pull_request",
+        trigger: "branch",
         status: "no_changes",
         commitOid: fx.branches["fix/database-backups"]!,
         ref: "fix/database-backups",
-        pullNumber: 14,
+        branchPage: "fix/database-backups",
         actor: person("priya"),
         plan: plan([]),
         costDelta: cost(productionCost, []),
@@ -517,7 +517,7 @@ function seedInfra(repo: RepositoryRecord): Store {
     rootPath: `environments/${env}`,
     branch: null,
     terraformVersion: null,
-    planOnPullRequest: true,
+    planOnBranch: true,
     applyOnMerge: true,
     applyRequiresApproval: env === "production",
     accounts: env === "production" ? [ACCOUNTS[0]!, ACCOUNTS[2]!] : [ACCOUNTS[1]!],
@@ -588,7 +588,7 @@ export function toWorkspace(
     rootPath: item.rootPath,
     branch: item.branch ?? repo.defaultBranch,
     terraformVersion: item.terraformVersion,
-    planOnPullRequest: item.planOnPullRequest,
+    planOnBranch: item.planOnBranch,
     applyOnMerge: item.applyOnMerge,
     applyRequiresApproval: item.applyRequiresApproval,
     accounts: item.accounts,

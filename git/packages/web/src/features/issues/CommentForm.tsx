@@ -36,7 +36,7 @@ export function CommentForm({
     onSuccess: () => {
       setBody("");
       void invalidate("issues");
-      void invalidate("pulls", "get");
+      void invalidate("branches", "get");
     },
   });
 

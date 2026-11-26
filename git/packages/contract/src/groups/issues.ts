@@ -1,6 +1,6 @@
 /**
  * `/api/repos/:owner/:repo`: issues, the comments and timeline every thread
- * has (a pull request's too), labels and milestones.
+ * has (a branch page's too), labels and milestones.
  *
  * Commenting, opening an issue and editing one's own need only `read` and a
  * signed-in person. Labels, assignees, milestones, closing someone else's
@@ -31,7 +31,7 @@ import {
   TimelineItem,
 } from "../schemas/threads";
 
-/** The filters issue and pull request lists share. */
+/** The filters issue and branch page lists share. */
 export const threadFilterQuery = {
   ...PageQuery,
   label: Schema.optionalKey(
@@ -80,7 +80,7 @@ export class IssuesGroup extends HttpApiGroup.make("issues")
     })
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "List issues")
-      .annotate(OpenApi.Description, "Pull requests are not listed here; see `pulls.list`.")
+      .annotate(OpenApi.Description, "Branch pages are not listed here; see `branches.list`.")
       .annotate(SuccessDescription, "Issues"),
     HttpApiEndpoint.post("create", "/issues", {
       params: RepoParams,
@@ -97,7 +97,7 @@ export class IssuesGroup extends HttpApiGroup.make("issues")
       .annotate(OpenApi.Summary, "An issue")
       .annotate(
         OpenApi.Description,
-        "404 for a number that is a pull request: the UI redirects on `pulls.get` instead.",
+        "404 for a number that is a branch page: the UI redirects on `branches.locate` instead.",
       )
       .annotate(SuccessDescription, "The issue"),
     HttpApiEndpoint.patch("update", "/issues/:number", {
@@ -127,7 +127,7 @@ export class IssuesGroup extends HttpApiGroup.make("issues")
       .annotate(OpenApi.Summary, "Lock a thread")
       .annotate(
         OpenApi.Description,
-        "An issue or a pull request. Only `triage` and above can comment on a locked thread.",
+        "An issue or a branch page. Only `triage` and above can comment on a locked thread.",
       )
       .annotate(SuccessDescription, "Locked"),
     HttpApiEndpoint.delete("unlock", "/issues/:number/lock", {
@@ -146,7 +146,7 @@ export class IssuesGroup extends HttpApiGroup.make("issues")
       .annotate(OpenApi.Summary, "A thread's timeline")
       .annotate(
         OpenApi.Description,
-        "An issue's or a pull request's: comments, events, and for a pull request its reviews and pushed commits, oldest first.",
+        "An issue's or a branch page's: comments, events, and for a branch page its reviews and pushed commits, oldest first.",
       )
       .annotate(SuccessDescription, "Timeline entries"),
     HttpApiEndpoint.get("listComments", "/issues/:number/comments", {
@@ -165,7 +165,7 @@ export class IssuesGroup extends HttpApiGroup.make("issues")
     })
       .annotate(RequiredAccess, "read")
       .annotate(RequiresUser, true)
-      .annotate(OpenApi.Summary, "Comment on an issue or pull request")
+      .annotate(OpenApi.Summary, "Comment on an issue or branch page")
       .annotate(OpenApi.Description, "422 `locked` on a locked thread without `triage`.")
       .annotate(SuccessDescription, "The comment"),
     HttpApiEndpoint.patch("updateComment", "/issues/comments/:commentId", {

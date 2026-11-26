@@ -210,7 +210,7 @@ export async function listGitForgeRepositories(
           ciRuns.gitRepositoryId,
           rows.map((row) => row.id),
         ),
-        // A pull request's run is on `pull/<n>`, so this leaves those out.
+        // A branch page's run is on `pull/<n>`, so this leaves those out.
         eq(ciRuns.branch, gitRepositories.defaultBranch),
         ne(ciRuns.status, "skipped"),
       ),
@@ -232,7 +232,8 @@ export async function listGitForgeRepositories(
       isFork: row.isFork,
       defaultBranch: row.defaultBranch,
       pushedAt: row.pushedAt?.toISOString() ?? null,
-      openPullRequests: row.openPullRequestsCount,
+      // The column keeps its name: it counts open branch pages.
+      openBranches: row.openPullRequestsCount,
       openIssues: row.openIssuesCount,
       sizeBytes: row.sizeBytes,
       ci: run ? { status: run.status, runId: run.id, sha: run.sha } : null,

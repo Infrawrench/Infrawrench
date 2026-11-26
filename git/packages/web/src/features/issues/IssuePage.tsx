@@ -33,16 +33,20 @@ export function IssuePage({ number }: { number: number }) {
     `${repo.owner}/${repo.repo}`,
   );
 
-  // The number may be a pull request's: the two share one sequence.
+  // The number may be a branch page's: the two share one sequence.
   const missing = isNotFound(issue.error);
-  const asPull = useQuery({ ...queries.pulls.get(request), enabled: missing, retry: false });
-  const isPull = asPull.data !== undefined;
+  const asPage = useQuery({
+    ...queries.branches.locate(request),
+    enabled: missing,
+    retry: false,
+  });
+  const pageKey = asPage.data?.key;
   useEffect(() => {
-    if (isPull) go(paths.pull(repo, number), { replace: true });
-  }, [isPull, go, repo, number]);
+    if (pageKey !== undefined) go(paths.branchPage(repo, pageKey), { replace: true });
+  }, [pageKey, go, repo]);
 
   if (issue.data === undefined) {
-    if (issue.error && (!missing || asPull.error)) {
+    if (issue.error && (!missing || asPage.error)) {
       return (
         <Page>
           <ErrorState error={issue.error} onRetry={() => void issue.refetch()} />

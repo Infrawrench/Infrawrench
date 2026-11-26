@@ -24,11 +24,11 @@ const TOKEN = "iwj_eyJ2IjoxfQ.c2lnbmF0dXJlLW5vdC1yZWFs";
 const input = {
   owner: "acme",
   repo: "infra",
-  pull: 7,
+  key: "work/fix-login",
   branch: "work/fix-login",
   title: "Fix the login redirect",
   body: "Users land on `/` after signing in.\n\nKeep $HOME and `$(rm -rf /)` as text: 'quotes' \"too\".",
-  pullUrl: `${ORIGIN}/acme/infra/pull/7`,
+  pageUrl: `${ORIGIN}/acme/infra/branches/work/fix-login`,
   forgeOrigin: `${ORIGIN}/`,
   sessionId: "6f9619ff-8b86-d011-b42d-00c04fc964ff",
 };
@@ -39,26 +39,30 @@ function unwrap(command: string): string {
   return command.slice(first + 1, last).replace(/'\\''/g, "'");
 }
 
-describe("the first prompt of a session working on a pull request", () => {
+describe("the first prompt of a session working on a branch", () => {
   const prompt = buildGitWorkPrompt(input);
 
   it("carries the ask as written, the branch and where reviewers read it", () => {
     expect(prompt).toContain("### Fix the login redirect");
     expect(prompt).toContain(input.body);
     expect(prompt).toContain("`git push origin work/fix-login`");
-    expect(prompt).toContain(input.pullUrl);
+    expect(prompt).toContain(input.pageUrl);
     // A tool's CLI would read a leading dash as a flag.
     expect(prompt.startsWith("-")).toBe(false);
+    // Everything is a branch on the forge.
+    expect(prompt).not.toMatch(/pull request|\/pulls\//i);
   });
 
   it("says how to record traces and read and answer instructions with the token", () => {
     const api = `${ORIGIN}/api/repos/acme/infra`;
     expect(prompt).toContain(`'${api}/traces'`);
-    expect(prompt).toContain(`'${api}/pulls/7/instructions?status=queued'`);
+    // The key is one path segment.
+    const page = `${api}/branches/work%2Ffix-login`;
+    expect(prompt).toContain(`'${page}/instructions?status=queued'`);
     expect(prompt).toContain(
-      `'${api}/pulls/7/instructions/<id>/delivered' --data '{"via":"infrawrench"}'`,
+      `'${page}/instructions/<id>/delivered' --data '{"via":"infrawrench"}'`,
     );
-    expect(prompt).toContain(`'${api}/pulls/7/instructions/<id>/answered' --data '{}'`);
+    expect(prompt).toContain(`'${page}/instructions/<id>/answered' --data '{}'`);
     expect(prompt).toContain(`-H "Authorization: Bearer $${GIT_WORK_TOKEN_ENV}"`);
     expect(prompt).toMatch(/before you push/);
     expect(prompt).toMatch(/at most 6 hours/);
@@ -71,12 +75,22 @@ describe("the first prompt of a session working on a pull request", () => {
     });
   });
 
-  it("still has an ask when the pull request has no description", () => {
+  it("still has an ask when the page has no description", () => {
     expect(buildGitWorkPrompt({ ...input, body: "  " })).toMatch(/the title is the ask/);
+  });
+
+  it("keeps a branch's quotes and semicolons out of the shell", () => {
+    const odd = buildGitWorkPrompt({ ...input, key: "it's;x~2", branch: "it's;x" });
+    // The key's `'` is percent-encoded, so the single-quoted URL stays one word.
+    expect(odd).toContain("/branches/it%27s%3Bx~2/instructions?status=queued'");
+    expect(odd).toContain("`git push origin 'it'\\''s;x'`");
+    const body = /--data '(\{"branch".*\})'/.exec(odd)?.[1] ?? "";
+    expect(body).not.toContain("'");
+    expect(JSON.parse(body).branch).toBe("it's;x");
   });
 });
 
-describe("what a session working on a pull request starts with", () => {
+describe("what a session working on a branch starts with", () => {
   it("starts the tool once with the prompt file as one argument, and exports the token", () => {
     for (const tool of ["claude-code", "codex"] as const) {
       const script = unwrap(

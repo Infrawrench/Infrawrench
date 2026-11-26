@@ -111,7 +111,7 @@ export const ERROR_CODES = [
   "protected_branch",
   "merge_method_not_allowed",
   "no_commits_between",
-  "pull_request_exists",
+  "branch_page_exists",
   "locked",
   "key_in_use",
   "key_invalid",

@@ -1,6 +1,6 @@
 /**
- * Writing to a mock repository: what merging a pull request and updating its
- * branch need. A three-way merge by path (a file both sides changed is a
+ * Writing to a mock repository: what merging a branch page and updating its
+ * branch need, and the branches the mock seeds. A three-way merge by path (a file both sides changed is a
  * conflict; the mock never merges inside a file) and a commit of the result.
  */
 import type { Signature, UserRef } from "@infrawrench/git-contract";
@@ -122,3 +122,64 @@ export function writeCommit(
 
 /** The files of a commit, for a commit that reuses another's tree. */
 export const filesOf = (fx: GitFixture, oid: string): Flat => flatten(fx, commitOf(fx, oid).oid);
+
+/** The text of `path` at `oid`, or an empty string when it is not there or not text. */
+export function textAt(fx: GitFixture, oid: string, path: string): string {
+  const entry = flatten(fx, oid).get(path);
+  const blob = entry === undefined ? undefined : fx.blobs[entry[1]];
+  return blob !== undefined && !blob.binary ? blob.text : "";
+}
+
+/**
+ * A commit on top of `parent` that writes `texts` (path to new text): how the
+ * mock seeds a branch of its own beside the scripted fixtures.
+ */
+export function commitTexts(
+  fx: GitFixture,
+  parent: string,
+  texts: Readonly<Record<string, string>>,
+  message: string,
+  who: UserRef,
+): string {
+  const files: Flat = flatten(fx, parent);
+  for (const [path, text] of Object.entries(texts)) {
+    const oid = fakeOid();
+    fx.blobs[oid] = { size: new TextEncoder().encode(text).length, binary: false, text };
+    files.set(path, ["100644", oid]);
+  }
+  return writeCommit(fx, files, [parent], message, who);
+}
+
+/**
+ * Copies a commit another repository of the same fork network holds, with
+ * its trees, blobs and any parents missing here, so a fork's branch can be
+ * diffed in its parent's objects. The fixtures of a network share their
+ * scripted history, so only what was written since is copied.
+ */
+export function copyObjects(from: GitFixture, to: GitFixture, oid: string): void {
+  const copyTree = (treeOid: string) => {
+    if (to.trees[treeOid] !== undefined) return;
+    const entries = from.trees[treeOid];
+    if (entries === undefined) return;
+    to.trees[treeOid] = entries;
+    for (const [mode, child] of entries) {
+      if (mode === "040000") copyTree(child);
+      else if (to.blobs[child] === undefined && from.blobs[child] !== undefined) {
+        to.blobs[child] = from.blobs[child]!;
+      }
+    }
+  };
+  const copied: string[] = [];
+  const walk = (commitOid: string) => {
+    if (to.commits[commitOid] !== undefined) return;
+    const commit = from.commits[commitOid];
+    if (commit === undefined) return;
+    to.commits[commitOid] = commit;
+    copyTree(commit.tree);
+    copied.push(commitOid);
+    for (const parent of commit.parents) walk(parent);
+  };
+  walk(oid);
+  // Newest first, as `order` is kept.
+  to.order.unshift(...copied);
+}

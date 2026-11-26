@@ -19,7 +19,7 @@ export const RepoAccess = Schema.Literals(REPO_ACCESS_LEVELS).annotate({
 });
 export type RepoAccess = typeof RepoAccess.Type;
 
-/** A repository named beside something else (a fork's parent, a pull request's head). */
+/** A repository named beside something else (a fork's parent, a branch page's head). */
 export const RepositoryRef = Schema.Struct({
   id: Schema.String,
   owner: Schema.String,
@@ -47,7 +47,7 @@ export const RepositorySummary = Schema.Struct({
   starCount: Schema.Int,
   forkCount: Schema.Int,
   openIssueCount: Schema.Int,
-  openPullRequestCount: Schema.Int,
+  openBranchCount: Schema.Int,
   sizeBytes: Schema.Finite,
   pushedAt: Schema.NullOr(IsoDateTime).annotate({
     description: "The last push. Null for a repository nothing has been pushed to.",
@@ -60,7 +60,6 @@ export type RepositorySummary = typeof RepositorySummary.Type;
 
 export const RepositoryFeatures = Schema.Struct({
   issues: Schema.Boolean,
-  pullRequests: Schema.Boolean,
 }).annotate({ identifier: "RepositoryFeatures" });
 export type RepositoryFeatures = typeof RepositoryFeatures.Type;
 
@@ -153,7 +152,6 @@ export const RepositoryUpdate = Schema.Struct({
   features: Schema.optionalKey(
     Schema.Struct({
       issues: Schema.optionalKey(Schema.Boolean),
-      pullRequests: Schema.optionalKey(Schema.Boolean),
     }),
   ),
   merge: Schema.optionalKey(

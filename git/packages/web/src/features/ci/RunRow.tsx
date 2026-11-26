@@ -37,22 +37,24 @@ export function RunDuration({ run }: { run: CiRun }) {
   );
 }
 
-const EVENT_LABEL = {
+// The wire still names a branch page's run by its old event name.
+const EVENT_LABEL: Record<CiRun["event"], string> = {
   push: "Push",
-  "pull-request": "Pull request",
+  "pull-request": "Branch page",
   schedule: "Schedule",
   manual: "Manual",
-} as const;
+};
 
-/** What started a run: the event, and the pull request when there is one. */
+/** What started a run: the event, and the branch's page when the run is one's. */
 export function RunEvent({ run, repo }: { run: CiRun; repo: RepoRef }) {
-  if (run.event === "pull-request" && run.pullNumber !== null) {
+  if (run.branchPage !== null) {
     return (
       <AppLink
-        href={paths.pull(repo, run.pullNumber)}
+        href={paths.branchPage(repo, run.branchPage)}
         className="inline-flex items-center gap-1 hover:text-on-surface hover:underline"
       >
-        <Icon name="gitPullRequest" size={11} />#{run.pullNumber}
+        <Icon name="fileDiff" size={11} />
+        Branch page
       </AppLink>
     );
   }

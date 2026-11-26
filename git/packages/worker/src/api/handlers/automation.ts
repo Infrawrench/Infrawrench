@@ -57,6 +57,7 @@ import {
   updateWorkspace,
   workspaceAccounts,
 } from "../../db/automation";
+import { pageKeysByNumber, pageNumberOf } from "../../db/branch-pages";
 import { combinedState, statusesForCommit, upsertCommitStatus } from "../../db/policy";
 import { userByUsername } from "../../db/users";
 import { hasAccess } from "../../auth/access";
@@ -68,7 +69,7 @@ import { type StateClientFactory, stateClient } from "../../terraform/client";
 import { recordStateHead } from "../../terraform/directory-db";
 import { treeReaderOf } from "../../terraform/tree";
 import { RepoRef, type RepoCx, inScope, repoOp } from "../context";
-import { statusViews } from "../views/pulls";
+import { statusViews } from "../views/branch-pages";
 import { iso, isoOrNull, peopleById, toUserRef } from "../views/repositories";
 import { describeError } from "../../http/log";
 
@@ -122,13 +123,33 @@ export const StatusesHandlers = HttpApiBuilder.group(GitApi, "statuses", (handle
 // CI
 // ---------------------------------------------------------------------------
 
+/** The keys of the pages runs are of, by the thread number a run records. */
+const pageKeysOf = (
+  cx: RepoCx,
+  rows: ReadonlyArray<{ readonly pullNumber: number | null }>,
+): Promise<Map<number, string>> =>
+  pageKeysByNumber(
+    cx.repo.repository.id,
+    rows.flatMap((row) => (row.pullNumber === null ? [] : [row.pullNumber])),
+  );
+
+/**
+ * A `page=<key>` filter as the thread number runs record: undefined when no
+ * page was asked for, null for a key that names no page (nothing matches).
+ */
+const pageFilter = async (
+  cx: RepoCx,
+  key: string | undefined,
+): Promise<number | null | undefined> =>
+  key === undefined ? undefined : pageNumberOf(cx.repo.repository.id, key);
+
 /** The app's CI, which reaches most of server-core: loaded when a run's output is first asked for. */
 const appCi = () => import("@infrawrench/server-core/ci/runs");
 
 const ciRunViews = async (cx: RepoCx, rows: readonly CiRunRow[]): Promise<CiRun[]> => {
   const { owner } = cx.repo;
   const logins = [...new Set(rows.flatMap((row) => (row.actorLogin ? [row.actorLogin] : [])))];
-  const [retries, actors, titles] = await Promise.all([
+  const [retries, actors, titles, pages] = await Promise.all([
     ciRetriesOf(rows.map((row) => row.id)),
     Promise.all(logins.map(async (login) => [login, await userByUsername(login)] as const)),
     cx.git
@@ -138,6 +159,7 @@ const ciRunViews = async (cx: RepoCx, rows: readonly CiRunRow[]): Promise<CiRun[
         if (error instanceof RepoReaderError) return [];
         throw error;
       }),
+    pageKeysOf(cx, rows),
   ]);
   const actorOf = new Map(actors);
   const titleOf = new Map(titles.map((commit) => [commit.oid, commit.summary]));
@@ -146,7 +168,7 @@ const ciRunViews = async (cx: RepoCx, rows: readonly CiRunRow[]): Promise<CiRun[
     event: row.event,
     headRef: row.headRef,
     sha: row.sha,
-    pullNumber: row.pullNumber,
+    branchPage: row.pullNumber === null ? null : (pages.get(row.pullNumber) ?? null),
     fromFork: row.fromFork,
     actor: row.actorLogin ? toUserRef(actorOf.get(row.actorLogin)) : null,
     status: row.status,
@@ -253,7 +275,13 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
     .handle(
       "listRuns",
       repoOp(async (cx, { query }) => {
-        const found = await listCiRuns(cx.repo.repository.id, cx.repo.owner.organizationId, query);
+        const { page, ...rest } = query;
+        const pull = await pageFilter(cx, page);
+        if (pull === null) return { items: [], nextCursor: null };
+        const found = await listCiRuns(cx.repo.repository.id, cx.repo.owner.organizationId, {
+          ...rest,
+          pull,
+        });
         return { items: await ciRunViews(cx, found.items), nextCursor: found.nextCursor };
       }),
     )
@@ -390,7 +418,8 @@ const runFilter = (status: TerraformRunStatus | undefined) => {
   }
 };
 
-const TRIGGERS = { "pull-request": "pull_request", push: "merge", manual: "manual" } as const;
+/** A run's trigger on the wire: a branch page's plan is `branch` (stored `pull-request`). */
+const TRIGGERS = { "pull-request": "branch", push: "merge", manual: "manual" } as const;
 
 const planOf = (stored: Record<string, unknown> | null): TerraformRun["plan"] => {
   if (!stored || !Array.isArray(stored["resources"])) return null;
@@ -472,10 +501,11 @@ const runViews = async (
   workspaces: ReadonlyMap<string, WorkspaceRow>,
 ): Promise<TerraformRun[]> => {
   const waiting = rows.some((row) => row.status === "awaiting_approval");
-  const [person, costs, approver] = await Promise.all([
+  const [person, costs, approver, pages] = await Promise.all([
     peopleById(rows.flatMap((row) => [row.startedByUserId, row.approvedByUserId])),
     seesCosts(cx),
     waiting ? mayApprove(cx) : Promise.resolve(false),
+    pageKeysOf(cx, rows),
   ]);
   return rows.map((row) => {
     const cost = row.costDelta;
@@ -488,7 +518,7 @@ const runViews = async (
       statusReason: row.error,
       commitOid: row.commitSha,
       ref: row.branch ?? "",
-      pullNumber: row.pullNumber,
+      branchPage: row.pullNumber === null ? null : (pages.get(row.pullNumber) ?? null),
       actor: person(row.startedByUserId),
       approvedBy: person(row.approvedByUserId),
       createdAt: iso(row.createdAt),
@@ -569,7 +599,7 @@ const workspaceViews = async (
         rootPath: row.rootPath,
         branch: row.branch ?? repository.defaultBranch,
         terraformVersion: row.toolVersion,
-        planOnPullRequest: row.planOnPullRequest,
+        planOnBranch: row.planOnPullRequest,
         applyOnMerge: row.applyOnMerge,
         applyRequiresApproval: !row.autoApply,
         accounts: seesAccounts
@@ -622,7 +652,7 @@ const workspaceSettings = (payload: {
   readonly name?: string | undefined;
   readonly branch?: string | undefined;
   readonly terraformVersion?: string | null | undefined;
-  readonly planOnPullRequest?: boolean | undefined;
+  readonly planOnBranch?: boolean | undefined;
   readonly applyOnMerge?: boolean | undefined;
   readonly applyRequiresApproval?: boolean | undefined;
 }): WorkspaceSettings => {
@@ -646,8 +676,7 @@ const workspaceSettings = (payload: {
     }
     settings.toolVersion = payload.terraformVersion;
   }
-  if (payload.planOnPullRequest !== undefined)
-    settings.planOnPullRequest = payload.planOnPullRequest;
+  if (payload.planOnBranch !== undefined) settings.planOnPullRequest = payload.planOnBranch;
   if (payload.applyOnMerge !== undefined) settings.applyOnMerge = payload.applyOnMerge;
   if (payload.applyRequiresApproval !== undefined) {
     settings.autoApply = !payload.applyRequiresApproval;
@@ -845,10 +874,12 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
             ? undefined
             : [...workspaces.values()].find((row) => row.name === query.workspace);
         if (query.workspace !== undefined && !workspace) return { items: [], nextCursor: null };
+        const pull = await pageFilter(cx, query.page);
+        if (pull === null) return { items: [], nextCursor: null };
         const found = await listTerraformRuns(cx.repo.repository.id, {
           ...runFilter(query.status),
           workspaceId: workspace?.id,
-          pull: query.pull,
+          pull,
           cursor: query.cursor,
           limit: query.limit,
         });

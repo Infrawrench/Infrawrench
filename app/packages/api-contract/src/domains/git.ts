@@ -86,7 +86,10 @@ export const GitForgeRepository = Schema.Struct({
   pushedAt: Schema.NullOr(Schema.String).annotate({
     description: "Null until something is pushed.",
   }),
-  openPullRequests: Schema.Int,
+  openBranches: Schema.Int.annotate({
+    description:
+      "The repository's open branch pages: its branches under review, and the ones forks propose to it.",
+  }),
   openIssues: Schema.Int,
   sizeBytes: Schema.Finite,
   ci: Schema.NullOr(

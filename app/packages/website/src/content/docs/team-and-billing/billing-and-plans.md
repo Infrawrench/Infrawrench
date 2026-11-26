@@ -31,7 +31,7 @@ You can hold a paid seat two ways, and mix them: rent seats monthly at $20 each,
 
 ### AI usage
 
-Free organizations (no payment method on file) can use [AI chat](../features/ai-chat.md) up to **$5 of usage per month**. After that, the assistant stops taking new requests until next month or until you upgrade. The same allowance covers `infra.ai()` in [workflows](../features/workflows.md) and [review agents](../features/git-pull-requests.md#review-agents) on git.infrawrench.com: it's one AI budget for the whole org, not one per feature.
+Free organizations (no payment method on file) can use [AI chat](../features/ai-chat.md) up to **$5 of usage per month**. After that, the assistant stops taking new requests until next month or until you upgrade. The same allowance covers `infra.ai()` in [workflows](../features/workflows.md) and [review agents](../features/git-branches.md#review-agents) on git.infrawrench.com: it's one AI budget for the whole org, not one per feature.
 
 Paid organizations are billed for AI usage with no built-in limit. There's no self-serve cap, so ask us if you want one set.
 

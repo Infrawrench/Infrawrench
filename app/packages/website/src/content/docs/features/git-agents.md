@@ -8,7 +8,7 @@ On [git.infrawrench.com](./git-getting-started.md) a branch can name the agent t
 
 ## Start work from an ask
 
-Open **Start work** in a repository, write what you want done, and pick who does it. The forge creates a branch at the base branch's commit and a draft pull request whose description is the ask. The agent's first push is version 1.
+Open **Start work** in a repository's **Branches**, write what you want done, and pick who does it. The forge creates a branch at the base branch's commit and opens the branch's page as a draft, with the ask as its description. The agent's first push is version 1.
 
 | Agent                     | Where it runs                                        | How it starts                                                                |
 | ------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
@@ -16,7 +16,7 @@ Open **Start work** in a repository, write what you want done, and pick who does
 | **T3 Code**               | A thread in one of your T3 Code environments         | The forge launches the thread itself                                         |
 | **Any other agent**       | Wherever you run it                                  | You point it at the branch; it reports through the forge's API or MCP server |
 
-Infrawrench agents need the repository to belong to an organization, because that is where sessions run. For a repository under your own name, pick another agent. [Agents](./agents.md#work-on-a-pull-request-from-gitinfrawrenchcom) has what the session is given: a credential that pushes that one branch and nothing else.
+Infrawrench agents need the repository to belong to an organization, because that is where sessions run. For a repository under your own name, pick another agent. [Agents](./agents.md#work-on-a-branch-from-gitinfrawrenchcom) has what the session is given: a credential that pushes that one branch and nothing else.
 
 ## Send an instruction
 
@@ -70,7 +70,7 @@ Without full access, add the repository as a project in T3 Code yourself first. 
 - If the environment has no project for the repository, the forge has T3 Code clone it to `~/infrawrench-git/<owner>/<repository>` and register it.
 - A thread is launched on a new worktree for the branch, with the project's default model. Its first message is the ask, the branch to push to, and how to add the forge's MCP server so the agent can record its trace and read instructions.
 - The thread pushes with the Git credentials already on that machine. git.infrawrench.com sends no credentials to T3 Code. Make sure the machine can push to the repository, with an [SSH key or an access token](./git-getting-started.md).
-- If T3 Code refuses the launch (for example, the project has no default model), the pull request is kept and the branch's page says why. Fix it in T3 Code and connect the agent again.
+- If T3 Code refuses the launch (for example, the project has no default model), the branch and its page are kept and the page says why. Fix it in T3 Code and connect the agent again.
 
 ### Sign-ins
 

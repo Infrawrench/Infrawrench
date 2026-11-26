@@ -76,7 +76,7 @@ export function CiSettingsPage() {
                   <span className="text-xs text-on-surface-muted">Organisations only</span>
                 )}
               </SettingsRow>
-              <SettingsRow title="Approvals for pull requests from forks">
+              <SettingsRow title="Approvals for branches from forks">
                 {external("Open in Infrawrench") ?? (
                   <span className="text-xs text-on-surface-muted">Organisations only</span>
                 )}

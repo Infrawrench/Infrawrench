@@ -87,11 +87,11 @@ export function sessionLink(
 
 export function AgentPanel({
   state,
-  number,
+  branchKey,
   canEdit,
 }: {
   state: BranchPageState;
-  number: number;
+  branchKey: string;
   canEdit: boolean;
 }) {
   const repo = useRepoRef();
@@ -102,7 +102,7 @@ export function AgentPanel({
     enabled: agent?.kind === "t3" && session.data?.user != null,
   });
   const disconnect = useMutation({
-    mutationFn: () => api.agents.remove({ params: { ...repo, number } }),
+    mutationFn: () => api.agents.remove({ params: { ...repo, branch: branchKey } }),
     onSuccess: () => {
       void invalidate("agents");
       void invalidate("versions", "branchState");

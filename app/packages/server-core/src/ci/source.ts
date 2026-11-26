@@ -19,12 +19,18 @@
  *   runner derives an owner from a clone URL (`<host>-<namespace>`), so the
  *   caches, secrets and usage of `git.infrawrench.com/acme` and
  *   `github.com/acme` never meet.
- * - **where a person looks at it**: `commitUrl`, `pullUrl`.
+ * - **where a person looks at it**: `commitUrl`, `pullUrl` (GitHub) and
+ *   `gitBranchPageUrl` (the forge, which has branch pages instead).
  *
  * A git.infrawrench.com run is one with `gitRepositoryId`; its
  * `installationId` is {@link GIT_SOURCE_INSTALLATION_ID}.
  */
-import { signGitJobToken, type GitJobTokenAccess } from "@infrawrench/client-core";
+import {
+  formatGitBranchKey,
+  gitBranchPagePath,
+  signGitJobToken,
+  type GitJobTokenAccess,
+} from "@infrawrench/client-core";
 
 /** The `installation_id` of a run whose repository is on git.infrawrench.com. GitHub's start at 1. */
 export const GIT_SOURCE_INSTALLATION_ID = 0;
@@ -106,8 +112,40 @@ export function commitUrl(row: CiSourceRef & { repoFullName: string }, sha: stri
   return `${repositoryUrl(row)}/commit/${encodeURIComponent(sha)}`;
 }
 
+/**
+ * A GitHub pull request's page. A repository on git.infrawrench.com has no
+ * pull requests, only branch pages ({@link gitBranchPageUrl}); for one of
+ * those this is the forge's numbered address of a page, `/pulls/<n>`, which
+ * the forge redirects to the page's own.
+ */
 export function pullUrl(row: CiSourceRef & { repoFullName: string }, number: number): string {
-  return `${repositoryUrl(row)}/pull/${number}`;
+  return isGitSource(row)
+    ? `${repositoryUrl(row)}/pulls/${number}`
+    : `${repositoryUrl(row)}/pull/${number}`;
+}
+
+/** A branch's page on git.infrawrench.com, by the page's key (client-core's `git-branch-key.ts`). */
+export function gitBranchPageUrl(repoFullName: string, key: string): string {
+  const [owner = "", repo = ""] = repoFullName.split("/");
+  return `${gitBaseUrl()}${gitBranchPagePath(owner, repo, key)}`;
+}
+
+/**
+ * The key of the branch page a forge run of a page's event belongs to: the
+ * head branch, after the fork it is in when that is another repository
+ * (`owner/name:branch`, `-:branch` once the fork is gone). Bare, so it names
+ * the head's open page, or its newest when none is open: an older page of a
+ * name used again is reached from there.
+ */
+export function gitRunPageKey(row: {
+  headRef: string;
+  headRepoFullName: string | null;
+  fromFork: boolean;
+}): string {
+  if (!row.fromFork) return formatGitBranchKey({ branch: row.headRef });
+  const [owner, name, ...rest] = (row.headRepoFullName ?? "").split("/");
+  const fork = owner && name && rest.length === 0 ? { owner, name } : ("gone" as const);
+  return formatGitBranchKey({ fork, branch: row.headRef });
 }
 
 /**

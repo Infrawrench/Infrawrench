@@ -79,7 +79,7 @@ export default defineMockHandlers({
           (run) =>
             (query?.sha === undefined || run.sha === query.sha) &&
             (query?.ref === undefined || run.headRef === query.ref) &&
-            (query?.pull === undefined || run.pullNumber === query.pull) &&
+            (query?.page === undefined || run.branchPage === query.page) &&
             (query?.event === undefined || run.event === query.event) &&
             (query?.status === undefined ? run.status !== "skipped" : run.status === query.status),
         );

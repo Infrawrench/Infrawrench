@@ -1,14 +1,14 @@
 /**
- * An agent session that works on a pull request on git.infrawrench.com
- * ("Start work with Infrawrench"): the first prompt the coding tool starts
- * with, and the shell commands that hand the VM its forge credential and that
- * prompt. Pure: imported by the web API server (through the
- * `agents/launch-command` entry) and by tests.
+ * An agent session that works on a branch on git.infrawrench.com ("Start
+ * work with Infrawrench"): the first prompt the coding tool starts with, and
+ * the shell commands that hand the VM its forge credential and that prompt.
+ * Pure: imported by the web API server (through the `agents/launch-command`
+ * entry) and by tests.
  *
- * The credential is a job token bound to the pull request's head branch
- * (client-core's `git-job-token.ts`, the `ref` claim): it clones the
- * repository, pushes that one branch, and calls the forge's trace and
- * instruction endpoints for it. It lasts at most six hours
+ * The credential is a job token bound to the branch (client-core's
+ * `git-job-token.ts`, the `ref` claim): it clones the repository, pushes
+ * that one branch, and calls the forge's trace and instruction endpoints
+ * for its page. It lasts at most six hours
  * (`GIT_JOB_TOKEN_MAX_TTL_SECONDS`). After that pushes and API calls answer
  * 401 until the session is opened again in Infrawrench, which writes a fresh
  * one to the same file.
@@ -39,14 +39,18 @@ export interface GitWorkPromptInput {
   /** The namespace's and the repository's names on the forge. */
   readonly owner: string;
   readonly repo: string;
-  readonly pull: number;
-  /** The head branch, short. */
+  /**
+   * The branch page's key (client-core's `git-branch-key.ts`): what names
+   * the page in the forge's API, as one path segment.
+   */
+  readonly key: string;
+  /** The branch, short. */
   readonly branch: string;
-  /** The pull request's title and body: the ask, as the person wrote it. */
+  /** The branch page's title and description: the ask, as the person wrote it. */
   readonly title: string;
   readonly body: string;
-  /** The pull request's page. */
-  readonly pullUrl: string;
+  /** The branch's page. */
+  readonly pageUrl: string;
   /** The forge's origin, without a trailing slash. */
   readonly forgeOrigin: string;
   /** The agent session's id, recorded on trace entries. */
@@ -54,15 +58,25 @@ export interface GitWorkPromptInput {
 }
 
 /**
- * The prompt a session started from a pull request begins with: the ask,
+ * One path segment of a forge API URL. `encodeURIComponent` leaves `'`
+ * alone, and these URLs sit inside single quotes in the prompt's commands.
+ */
+const pathSegment = (value: string): string =>
+  encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+
+/**
+ * The prompt a session started from a branch page begins with: the ask,
  * where to push, and how to keep reviewers informed through the forge's API.
  * The ask is the person's markdown and is passed to the tool as one argument
  * read from a file, so nothing in it is ever interpreted by a shell.
  */
 export function buildGitWorkPrompt(input: GitWorkPromptInput): string {
   const origin = input.forgeOrigin.replace(/\/+$/, "");
-  const api = `${origin}/api/repos/${input.owner}/${input.repo}`;
-  const instructions = `${api}/pulls/${input.pull}/instructions`;
+  const api = `${origin}/api/repos/${pathSegment(input.owner)}/${pathSegment(input.repo)}`;
+  const instructions = `${api}/branches/${pathSegment(input.key)}/instructions`;
   const auth = `-H "Authorization: Bearer $${GIT_WORK_TOKEN_ENV}"`;
   const json = `-H 'Content-Type: application/json'`;
   const agent = JSON.stringify({
@@ -70,21 +84,31 @@ export function buildGitWorkPrompt(input: GitWorkPromptInput): string {
     name: "Infrawrench agent",
     sessionRef: input.sessionId,
   });
-  const traceBody = `{"branch":${JSON.stringify(input.branch)},"agent":${agent},"entries":[{"kind":"step","body":"What you did and why"}]}`;
+  // A branch's name may hold `'`, which JSON leaves as it is: written as
+  // `'`, so the body stays one single-quoted shell word.
+  const traceBody =
+    `{"branch":${JSON.stringify(input.branch)},"agent":${agent},"entries":[{"kind":"step","body":"What you did and why"}]}`.replace(
+      /'/g,
+      "\\u0027",
+    );
+  // A branch's name may hold `;`, `$` or `'` too; quoted then.
+  const branchWord = /^[A-Za-z0-9._/-]+$/.test(input.branch)
+    ? input.branch
+    : shellQuote(input.branch);
   const ask = input.body.trim();
   return [
-    `You are working on pull request #${input.pull} in ${input.owner}/${input.repo} on the Infrawrench Git forge: ${input.pullUrl}`,
+    `You are working on the branch \`${input.branch}\` of ${input.owner}/${input.repo} on the Infrawrench Git forge. Its page: ${input.pageUrl}`,
     "",
     "## The ask",
     "",
     `### ${input.title.trim() || "(untitled)"}`,
     "",
-    ask || "(The pull request has no description: the title is the ask.)",
+    ask || "(The branch page has no description: the title is the ask.)",
     "",
     "## Where the work goes",
     "",
     `- The repository is checked out in the current directory, on the branch \`${input.branch}\`.`,
-    `- Commit your work and push it to \`${input.branch}\` on origin: \`git push origin ${input.branch}\`. Every push becomes a version that reviewers read at ${input.pullUrl}. Push early and often.`,
+    `- Commit your work and push it to \`${input.branch}\` on origin: \`git push origin ${branchWord}\`. Every push becomes a version that reviewers read at ${input.pageUrl}. Push early and often.`,
     `- Your credential pushes this branch only. Pushing another branch or a tag, or deleting this branch, is refused.`,
     "",
     "## Keeping reviewers informed",

@@ -445,7 +445,7 @@ infrawrench git           # the namespace, the plan's limits and what is used
 infrawrench git repos     # repositories, most recently pushed first
 ```
 
-`infrawrench git` prints the namespace's address, what new repositories start as, and private repositories and private storage against the plan. `infrawrench git repos` lists each repository with its visibility, the latest CI run of its default branch, open pull requests, last push, size and its address on the forge. Both take `--json`: `{ org, forgeUrl, namespace, plan, limits, usage }` and `{ org, repositories: [{ id, name, fullName, url, visibility, archived, defaultBranch, pushedAt, openPullRequests, openIssues, sizeBytes, ci }] }`.
+`infrawrench git` prints the namespace's address, what new repositories start as, and private repositories and private storage against the plan. `infrawrench git repos` lists each repository with its visibility, the latest CI run of its default branch, open branches, last push, size and its address on the forge. Both take `--json`: `{ org, forgeUrl, namespace, plan, limits, usage }` and `{ org, repositories: [{ id, name, fullName, url, visibility, archived, defaultBranch, pushedAt, openPullRequests, openIssues, sizeBytes, ci }] }`.
 
 Claiming or renaming the namespace happens in **Settings > Git**. Everything about one repository happens on the forge.
 

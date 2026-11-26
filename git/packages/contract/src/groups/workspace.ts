@@ -9,7 +9,7 @@ import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
 import { RequiresUser, SuccessDescription } from "../http/annotations";
 import { Authentication } from "../http/auth";
 import { NamespaceSlug, PageQuery } from "../schemas/common";
-import { ChangeList, MentionList, WorkspaceHome, WorkThreadList } from "../schemas/workspace";
+import { ChangeList, MentionList, WorkspaceHome } from "../schemas/workspace";
 
 const InNamespace = Schema.optionalKey(
   NamespaceSlug.annotate({
@@ -59,29 +59,6 @@ export class WorkspaceGroup extends HttpApiGroup.make("workspace")
       .annotate(RequiresUser, true)
       .annotate(OpenApi.Summary, "Branches across the viewer's repositories")
       .annotate(SuccessDescription, "Branches, the most recently active first"),
-    HttpApiEndpoint.get("threads", "/threads", {
-      query: {
-        ...PageQuery,
-        kind: Schema.Literals(["issues", "pulls"]),
-        involvement: Schema.Literals(["created", "assigned", "mentioned"]).annotate({
-          description:
-            "`created`: the viewer wrote it. `assigned`: they are an assignee. `mentioned`: its description, or a comment on it by someone else, names them with `@username`.",
-        }),
-        state: Schema.optionalKey(
-          Schema.Literals(["open", "closed", "all"]).annotate({
-            description: "`open` when omitted. `closed` includes merged pull requests.",
-          }),
-        ),
-      },
-      success: WorkThreadList,
-    })
-      .annotate(RequiresUser, true)
-      .annotate(OpenApi.Summary, "The viewer's issues or pull requests across repositories")
-      .annotate(
-        OpenApi.Description,
-        "Issues or pull requests of the repositories the viewer has a tie to that they wrote, are assigned to or are mentioned in, the most recently active first.",
-      )
-      .annotate(SuccessDescription, "Issues or pull requests"),
     HttpApiEndpoint.get("mentions", "/mentions", { query: PageQuery, success: MentionList })
       .annotate(RequiresUser, true)
       .annotate(OpenApi.Summary, "Comments that mention the viewer")

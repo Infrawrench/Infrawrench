@@ -23890,5 +23890,10 @@
   "c0c0172dc78f8dbd": "连接字符串作为 DATABASE_URL，其密码作为 MYSQL_PASSWORD，并在 ~/.my.cnf 中写入以它命名、由 MYSQL_GROUP_SUFFIX 选择的选项组，因此 mysql 无需参数即可连接。除密码外，Terraform 的 MySQL 提供程序还会读取 MYSQL_ENDPOINT 和 MYSQL_USERNAME；连接带有 CA 证书时，MYSQL_TLS_CA_CERT 指向该证书。",
   "8d23e64b5fa8def4": "连接的访问令牌作为 Vercel CLI 读取的 VERCEL_TOKEN，以及 Terraform 的 Vercel 提供程序读取的 VERCEL_API_TOKEN。作业照常指定其项目（.vercel/project.json、VERCEL_ORG_ID 与 VERCEL_PROJECT_ID，或 --scope）。",
   "a48c84d56863a173": "{repository} 中的拉取请求 #{number}",
-  "b0cfba65df36ff3a": "在终端会话中运行"
+  "b0cfba65df36ff3a": "在终端会话中运行",
+  "2508a75dcb29332b": "{repository} 中的分支 {branch}",
+  "fe878c98b0edb6e7": "分支 {branch} 的页面",
+  "841a1e8baa49bf07": "此分支来自复刻。只有在维护者批准此提交后 CI 才会运行，且运行时不会获得你的密钥。",
+  "795c16e01f8abc54": "触发：分支 {branch} 的页面",
+  "04dbb16d9b692feb": "未关闭的分支"
 }

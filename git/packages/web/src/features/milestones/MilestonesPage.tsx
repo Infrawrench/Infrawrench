@@ -8,7 +8,7 @@ import { Icon } from "../../components/icons";
 import { Page, PageHeader, Panel, PanelHeader } from "../../components/Panel";
 import { RelativeTime } from "../../components/people";
 import { EmptyState, QueryView } from "../../components/states";
-import { ThreadStateIcon, issueKind, pullKind } from "../../components/StatusIcons";
+import { ThreadStateIcon, issueKind, pageKind } from "../../components/StatusIcons";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { paths } from "../../lib/paths";
 import {
@@ -45,7 +45,7 @@ export function MilestonePage({ number }: { number: number }) {
   const milestone = useQuery(queries.milestones.get({ params: { ...repo, milestone: number } }));
   const filter = { milestone: String(number), state: "all" as const, limit: 100 };
   const issues = useQuery(queries.issues.list({ params: repo, query: filter }));
-  const pulls = useQuery(queries.pulls.list({ params: repo, query: filter }));
+  const pages = useQuery(queries.branches.list({ params: repo, query: filter }));
 
   return (
     <Page>
@@ -86,25 +86,27 @@ export function MilestonePage({ number }: { number: number }) {
               </div>
             )}
             <Panel>
-              <PanelHeader>Issues and pull requests</PanelHeader>
-              {issues.data === undefined || pulls.data === undefined ? (
+              <PanelHeader>Issues and branches</PanelHeader>
+              {issues.data === undefined || pages.data === undefined ? (
                 <EmptyState>Loading</EmptyState>
-              ) : issues.data.items.length + pulls.data.items.length === 0 ? (
+              ) : issues.data.items.length + pages.data.items.length === 0 ? (
                 <EmptyState action={<ButtonLink href={paths.issues(repo)}>Issues</ButtonLink>}>
                   Nothing is in this milestone
                 </EmptyState>
               ) : (
                 <ul>
                   {[
-                    ...pulls.data.items.map((row) => ({
+                    ...pages.data.items.map((row) => ({
                       row,
-                      href: paths.pull(repo, row.number),
-                      kind: pullKind(row.state, row.draft),
+                      href: paths.branchPage(repo, row.key),
+                      kind: pageKind(row.state, row.draft),
+                      named: row.headRef,
                     })),
                     ...issues.data.items.map((row) => ({
                       row,
                       href: paths.issue(repo, row.number),
                       kind: issueKind(row.state, row.stateReason),
+                      named: `#${row.number}`,
                     })),
                   ]
                     .sort(
@@ -112,7 +114,7 @@ export function MilestonePage({ number }: { number: number }) {
                         Number(a.row.state !== "open") - Number(b.row.state !== "open") ||
                         b.row.number - a.row.number,
                     )
-                    .map(({ row, href, kind }) => (
+                    .map(({ row, href, kind, named }) => (
                       <li
                         key={row.id}
                         className="flex items-center gap-2.5 border-t border-border px-3 py-2 first:border-t-0 hover:bg-surface-inset"
@@ -125,7 +127,7 @@ export function MilestonePage({ number }: { number: number }) {
                           {row.title}
                         </AppLink>
                         <span className="shrink-0 text-xs text-on-surface-muted">
-                          #{row.number} · updated <RelativeTime iso={row.updatedAt} />
+                          {named} · updated <RelativeTime iso={row.updatedAt} />
                         </span>
                         {row.commentCount > 0 ? (
                           <span className="inline-flex shrink-0 items-center gap-1 text-xs text-on-surface-muted">

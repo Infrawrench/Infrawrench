@@ -97,14 +97,14 @@ const HEAVY_REPO_READS = [
   /^\/commits\/[^/]+\/diff$/,
   /^\/compare(\/diff)?$/,
   /^\/blame$/,
-  /^\/pulls\/\d+\/(files|commits|mergeability)$/,
+  /^\/branches\/[^/]+\/(files|commits|mergeability)$/,
 ];
 
-/** Lists that search when asked with `q`: explore, the people finder, issues and pull requests. */
+/** Lists that search when asked with `q`: explore, the people finder, issues and branch pages. */
 const SEARCHES = [
   /^\/api\/explore\/repos$/,
   /^\/api\/users$/,
-  /^\/api\/repos\/[^/]+\/[^/]+\/(issues|pulls)$/,
+  /^\/api\/repos\/[^/]+\/[^/]+\/(issues|branch-pages)$/,
 ];
 
 /** Query parameters that turn a history page into a filtered walk. */

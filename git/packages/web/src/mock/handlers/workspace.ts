@@ -1,13 +1,9 @@
 /**
- * The mock of `/api/workspace`: the home page of someone in agent mode, the
- * Changes list and the Mentions list, from `workspace-data.ts`, and the
- * issues and pull requests someone has a part in, from the threads of the
- * repositories they are a member of.
+ * The mock of `/api/workspace`: the home page, the Changes list and the
+ * Mentions list, from `workspace-data.ts`.
  */
-import type { WorkThread } from "@infrawrench/git-contract";
 import { defineMockHandlers, paginate } from "../define";
-import { findNamespace, isMember, namespaces, repositories, requireUser } from "../db";
-import { threadsOf } from "../threads-data";
+import { namespaces, requireUser } from "../db";
 import {
   mockActivity,
   mockAgentsWorking,
@@ -60,57 +56,6 @@ export default defineMockHandlers({
         }),
         query,
       );
-    },
-    threads: ({ query }) => {
-      const me = requireUser();
-      const kind = query?.kind ?? "issues";
-      const involvement = query?.involvement ?? "created";
-      const state = query?.state ?? "open";
-      const named = me.username === null ? null : `@${me.username.toLowerCase()}`;
-      const names = (text: string) => named !== null && text.toLowerCase().includes(named);
-      const items: WorkThread[] = [];
-      for (const repo of repositories) {
-        // The repositories they have a tie to, not every one they can read.
-        if (!isMember(findNamespace(repo.owner.slug))) continue;
-        for (const thread of threadsOf(repo).threads) {
-          if ((thread.pull !== null) !== (kind === "pulls")) continue;
-          if (state !== "all" && thread.state !== state) continue;
-          const theirs = thread.author?.id === me.id;
-          const involved =
-            involvement === "created"
-              ? theirs
-              : involvement === "assigned"
-                ? thread.assignees.some((user) => user.id === me.id)
-                : (!theirs && names(thread.body)) ||
-                  thread.items.some(
-                    (item) =>
-                      item.type === "comment" &&
-                      item.comment.author?.id !== me.id &&
-                      names(item.comment.body),
-                  );
-          if (!involved) continue;
-          items.push({
-            id: thread.id,
-            repository: {
-              id: repo.id,
-              owner: repo.owner.slug,
-              name: repo.name,
-              visibility: repo.visibility,
-            },
-            number: thread.number,
-            title: thread.title,
-            isPullRequest: thread.pull !== null,
-            state: thread.pull?.merged ? "merged" : thread.state,
-            draft: thread.pull?.draft ?? false,
-            author: thread.author,
-            commentCount: thread.items.filter((item) => item.type === "comment").length,
-            createdAt: thread.createdAt,
-            updatedAt: thread.updatedAt,
-          });
-        }
-      }
-      items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      return paginate(items, query);
     },
     mentions: ({ query }) => {
       requireUser();

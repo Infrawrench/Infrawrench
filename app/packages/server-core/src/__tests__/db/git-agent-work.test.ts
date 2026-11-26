@@ -1,7 +1,8 @@
 /**
- * "Start work with Infrawrench" against a real Postgres: which pull requests
- * an organisation's agent session may work on, the one refusal for every
- * other, and the agent link that names the session on the forge.
+ * "Start work with Infrawrench" against a real Postgres: which branch pages
+ * an organisation's agent session may work on, by their keys, the one
+ * refusal for every other, and the agent link that names the session on the
+ * forge.
  *
  * Skipped unless DATABASE_URL is set, migrations applied, scratch databases
  * only: it writes two organisations and their forge rows, and deletes them
@@ -32,7 +33,7 @@ const ids = {
 };
 const OID = "a".repeat(40);
 
-describe.skipIf(!configured)("agent work on a git.infrawrench.com pull request", () => {
+describe.skipIf(!configured)("agent work on a git.infrawrench.com branch page", () => {
   async function modules() {
     const { db } = await import("../../db/client");
     const schema = await import("../../db/schema");
@@ -40,8 +41,8 @@ describe.skipIf(!configured)("agent work on a git.infrawrench.com pull request",
     return { db, schema, work };
   }
 
-  /** A pull request (and its issue row) numbered `number` in `repositoryId`. */
-  async function pull(
+  /** A branch page (its thread and page rows) numbered `number` in `repositoryId`. */
+  async function page(
     repositoryId: string,
     number: number,
     opts: { state?: "open" | "closed"; headRepositoryId?: string | null; headRef?: string } = {},
@@ -73,7 +74,7 @@ describe.skipIf(!configured)("agent work on a git.infrawrench.com pull request",
     if (!configured) return;
     const { db, schema } = await modules();
     const { inArray } = await import("drizzle-orm");
-    // Namespaces cascade to repositories, issues, pull requests and links.
+    // Namespaces cascade to repositories, threads, pages and links.
     await db
       .delete(schema.organizations)
       .where(inArray(schema.organizations.id, [orgId, otherOrgId, flaglessOrgId]));
@@ -81,7 +82,8 @@ describe.skipIf(!configured)("agent work on a git.infrawrench.com pull request",
     await db.$client.end();
   });
 
-  let pullRequestId = "";
+  let pageId = "";
+  let reusedOpenId = "";
 
   it("sets up two organisations with Git and one without", async () => {
     const { db, schema } = await modules();
@@ -135,14 +137,22 @@ describe.skipIf(!configured)("agent work on a git.infrawrench.com pull request",
         nameLower: "infra",
       },
     ]);
-    pullRequestId = await pull(ids.repo, 1);
-    await pull(ids.repo, 2, { state: "closed" });
-    await pull(ids.repo, 3, { headRepositoryId: ids.fork });
-    await pull(ids.repo, 4, { headRepositoryId: null });
-    await pull(ids.archived, 1);
-    await pull(ids.otherRepo, 1);
-    await pull(ids.flaglessRepo, 1);
-    // An issue numbered 5 that is not a pull request.
+    pageId = await page(ids.repo, 1);
+    await page(ids.repo, 2, { state: "closed" });
+    await page(ids.repo, 3, { headRepositoryId: ids.fork });
+    await page(ids.repo, 4, { headRepositoryId: null });
+    // A name used twice: the first page closed, the second open.
+    await page(ids.repo, 6, { state: "closed", headRef: "work/reused" });
+    reusedOpenId = await page(ids.repo, 7, { headRef: "work/reused" });
+    // A name whose every page closed.
+    await page(ids.repo, 8, { state: "closed", headRef: "work/old" });
+    await page(ids.repo, 9, { state: "closed", headRef: "work/old" });
+    // A fork's branch of the same name as page 1's: not what `work/ask-1` names.
+    await page(ids.repo, 10, { headRepositoryId: ids.fork, headRef: "work/ask-1" });
+    await page(ids.archived, 1);
+    await page(ids.otherRepo, 1);
+    await page(ids.flaglessRepo, 1);
+    // An issue numbered 5 that is no branch page.
     await db.insert(schema.gitIssues).values({
       id: randomUUID(),
       repositoryId: ids.repo,
@@ -151,64 +161,83 @@ describe.skipIf(!configured)("agent work on a git.infrawrench.com pull request",
     });
   });
 
-  it("resolves an open pull request of the organisation's repository, by any case", async () => {
+  it("resolves an open branch page of the organisation's repository, by any case", async () => {
     const { work } = await modules();
     const resolved = await work.resolveGitWork(orgId, {
       owner: namespace.toUpperCase(),
       repo: "INFRA",
-      pull: 1,
+      branch: "work/ask-1",
     });
     expect(resolved).toMatchObject({
       organizationId: orgId,
       repositoryId: ids.repo,
-      pullRequestId,
+      pageId,
       owner: namespace,
       repo: "Infra",
-      pull: 1,
+      key: "work/ask-1",
       branch: "work/ask-1",
       ref: "refs/heads/work/ask-1",
       title: "Ask 1",
       body: "Do thing 1.",
       cloneUrl: `https://git.infrawrench.com/${namespace}/Infra.git`,
-      pullUrl: `https://git.infrawrench.com/${namespace}/Infra/pull/1`,
+      pageUrl: `https://git.infrawrench.com/${namespace}/Infra/branches/work/ask-1`,
     });
+  });
+
+  it("resolves a name used again to its open page, bare or by its place", async () => {
+    const { work } = await modules();
+    for (const branch of ["work/reused", "work/reused~2"]) {
+      expect(
+        await work.resolveGitWork(orgId, { owner: namespace, repo: "infra", branch }),
+        branch,
+      ).toMatchObject({ pageId: reusedOpenId, key: "work/reused", branch: "work/reused" });
+    }
   });
 
   it("refuses everything else with the one refusal", async () => {
     const { work } = await modules();
     const refused = [
-      [orgId, { owner: namespace, repo: "infra", pull: 2 }], // closed
-      [orgId, { owner: namespace, repo: "infra", pull: 3 }], // from a fork
-      [orgId, { owner: namespace, repo: "infra", pull: 4 }], // its fork was deleted
-      [orgId, { owner: namespace, repo: "infra", pull: 5 }], // an issue
-      [orgId, { owner: namespace, repo: "infra", pull: 99 }], // missing
-      [orgId, { owner: namespace, repo: "old", pull: 1 }], // archived
-      [orgId, { owner: namespace, repo: "nothing", pull: 1 }], // no such repository
-      [orgId, { owner: otherNamespace, repo: "infra", pull: 1 }], // another organisation's
-      [otherOrgId, { owner: namespace, repo: "infra", pull: 1 }], // asked by another organisation
-      [flaglessOrgId, { owner: flaglessNamespace, repo: "infra", pull: 1 }], // Git off
-      [orgId, { owner: "../x", repo: "infra", pull: 1 }], // not an address
-      [orgId, { owner: namespace, repo: "infra", pull: 0 }],
+      [orgId, { owner: namespace, repo: "infra", branch: "work/ask-2" }], // closed
+      [orgId, { owner: namespace, repo: "infra", branch: "work/ask-3" }], // only a fork's
+      [orgId, { owner: namespace, repo: "infra", branch: `${namespace}/fork:work/ask-3` }], // a fork's
+      [orgId, { owner: namespace, repo: "infra", branch: "-:work/ask-4" }], // its fork was deleted
+      [orgId, { owner: namespace, repo: "infra", branch: "work/ask-4" }],
+      [orgId, { owner: namespace, repo: "infra", branch: "work/reused~1" }], // an older, closed page
+      [orgId, { owner: namespace, repo: "infra", branch: "work/reused~3" }], // no third page
+      [orgId, { owner: namespace, repo: "infra", branch: "work/old" }], // every page closed
+      [orgId, { owner: namespace, repo: "infra", branch: "work/ask-99" }], // missing
+      [orgId, { owner: namespace, repo: "old", branch: "work/ask-1" }], // archived
+      [orgId, { owner: namespace, repo: "nothing", branch: "work/ask-1" }], // no such repository
+      [orgId, { owner: otherNamespace, repo: "infra", branch: "work/ask-1" }], // another organisation's
+      [otherOrgId, { owner: namespace, repo: "infra", branch: "work/ask-1" }], // asked by another organisation
+      [flaglessOrgId, { owner: flaglessNamespace, repo: "infra", branch: "work/ask-1" }], // Git off
+      [orgId, { owner: "../x", repo: "infra", branch: "work/ask-1" }], // not an address
+      [orgId, { owner: namespace, repo: "infra", branch: "a:b:c" }], // not a key
+      [orgId, { owner: namespace, repo: "infra", branch: "" }],
     ] as const;
     for (const [organizationId, request] of refused) {
       const error = await work.resolveGitWork(organizationId, request).catch((e: unknown) => e);
       expect(error, JSON.stringify(request)).toBeInstanceOf(work.GitWorkUnavailable);
       expect((error as Error).message).toBe(
-        "There is no open pull request to work on at that address.",
+        "There is no open branch page to work on at that address.",
       );
     }
   });
 
-  it("names the session as the pull request's agent, and finds the work from it", async () => {
+  it("names the session as the page's agent, and finds the work from it", async () => {
     const { db, schema, work } = await modules();
     const { eq } = await import("drizzle-orm");
-    const resolved = await work.resolveGitWork(orgId, { owner: namespace, repo: "infra", pull: 1 });
+    const resolved = await work.resolveGitWork(orgId, {
+      owner: namespace,
+      repo: "infra",
+      branch: "work/ask-1",
+    });
     const sessionId = randomUUID();
     await work.recordAgentLink({ work: resolved, sessionId, userId });
     const [link] = await db
       .select()
       .from(schema.gitAgentLinks)
-      .where(eq(schema.gitAgentLinks.pullRequestId, pullRequestId));
+      .where(eq(schema.gitAgentLinks.pullRequestId, pageId));
     expect(link).toMatchObject({
       repositoryId: ids.repo,
       kind: "infrawrench",
@@ -217,24 +246,25 @@ describe.skipIf(!configured)("agent work on a git.infrawrench.com pull request",
       connectedByUserId: userId,
     });
     expect(await work.gitWorkForSession(orgId, sessionId)).toMatchObject({
-      pullRequestId,
+      pageId,
+      key: "work/ask-1",
       ref: "refs/heads/work/ask-1",
     });
     // Another organisation, or another session, finds nothing.
     expect(await work.gitWorkForSession(otherOrgId, sessionId)).toBeNull();
     expect(await work.gitWorkForSession(orgId, randomUUID())).toBeNull();
 
-    // A second session takes the pull request over.
+    // A second session takes the page over.
     const next = randomUUID();
     await work.recordAgentLink({ work: resolved, sessionId: next, userId: null });
     expect(await work.gitWorkForSession(orgId, sessionId)).toBeNull();
     expect(await work.gitWorkForSession(orgId, next)).not.toBeNull();
 
-    // Once the pull request closes there is no work, so no new token.
+    // Once the page closes there is no work, so no new token.
     await db
       .update(schema.gitIssues)
       .set({ state: "closed" })
-      .where(eq(schema.gitIssues.id, pullRequestId));
+      .where(eq(schema.gitIssues.id, pageId));
     expect(await work.gitWorkForSession(orgId, next)).toBeNull();
   });
 });

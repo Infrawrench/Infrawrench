@@ -4,7 +4,7 @@ description: Sign in to git.infrawrench.com, choose a username, add an SSH key o
 sidebar_order: 7
 ---
 
-[git.infrawrench.com](https://git.infrawrench.com) hosts Git repositories with issues, pull requests, [CI](./ci.md) and [Terraform state](./git-terraform.md). This page takes you from signing in to your first push. For what an organization sets in the app (its namespace, default visibility and plan limits), see [Git in the app](./git.md).
+[git.infrawrench.com](https://git.infrawrench.com) hosts Git repositories with issues, a page for every branch, [CI](./ci.md) and [Terraform state](./git-terraform.md). This page takes you from signing in to your first push. For what an organization sets in the app (its namespace, default visibility and plan limits), see [Git in the app](./git.md).
 
 ## Sign in and choose a username
 
@@ -30,7 +30,7 @@ Members of an organization get access to its repositories from their [role](../t
 
 ## Create a repository
 
-1. Click **New** in the top bar.
+1. Open the workspace menu at the top of the sidebar and choose to create a repository.
 2. Pick the **Owner** (your username, or an organization you can create repositories in) and type a **Name**.
 3. Choose the **Visibility**:
    - **Public**: anyone can read and clone it, signed in or not.
@@ -108,18 +108,18 @@ git remote add origin git@git.infrawrench.com:<owner>/<repository>.git
 git push -u origin main
 ```
 
-Branches and tags are what you can push. When a push is refused, Git prints the reason after `remote:` or beside the ref, for example a [protected branch](./git-pull-requests.md#protected-branches) or a [storage limit](./git.md#usage-and-plan-limits).
+Branches and tags are what you can push. When a push is refused, Git prints the reason after `remote:` or beside the ref, for example a [protected branch](./git-branches.md#protected-branches) or a [storage limit](./git.md#usage-and-plan-limits).
 
 ## Browse a repository
 
 <insert [A repository's Code tab: the branch picker, the file table with each entry's last commit, the README rendered below, and the About panel with stars, forks and size] here>
 
 - **Code** lists files with the last commit that touched each one, and renders the README. Open a file for syntax highlighting, **Raw**, **Blame** and its **History**.
-- The branch picker switches between branches and tags. **Branches** and **Tags** list them, with how far each branch is ahead of and behind the default branch.
+- The branch picker switches between branches and tags. **Branches** lists each branch by its [page](./git-branches.md#branches), and **Tags** lists the tags.
 - **Commits** shows history. A commit's page shows its diff, unified or split.
-- **Compare** shows what one branch or tag has that another does not, and is where a pull request starts.
+- **Compare** shows what one branch or tag has that another does not.
 - **Clone > Download ZIP** or **TAR.GZ** downloads the files at the branch or tag you are looking at.
-- **Star** keeps a repository on your home page. **Explore** and the search box find public repositories and the private ones you can read.
+- **Star** keeps a repository in your stars, under your name at the foot of the sidebar. **Explore** and the sidebar's search find public repositories and the private ones you can read.
 
 <insert [A file's page on the Code tab: the path, the last commit, line numbers with syntax highlighting, and the Raw, Blame and History buttons] here>
 
@@ -127,14 +127,14 @@ Branches and tags are what you can push. When a push is refused, Git prints the 
 
 Administrators of a repository get a **Settings** tab:
 
-| Section                    | What it holds                                                                                                                             |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| **General**                | Name, description, topics, default branch, whether issues and pull requests are on, merge methods, visibility, archive, transfer, delete. |
-| **Collaborators**          | People added to this repository alone, each with a role: **Read**, **Triage**, **Write** or **Admin**.                                    |
-| **Branches**               | [Protected branches](./git-pull-requests.md#protected-branches).                                                                          |
-| **Deploy keys**            | SSH keys that reach this one repository, for a server or a deploy script.                                                                 |
-| **Labels**, **Milestones** | What issues and pull requests can be filed under.                                                                                         |
-| **CI**                     | Whether [Infrawrench CI](./ci.md) runs for this repository, and its pipelines.                                                            |
+| Section                    | What it holds                                                                                                           |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **General**                | Name, description, topics, default branch, whether issues are on, merge methods, visibility, archive, transfer, delete. |
+| **Collaborators**          | People added to this repository alone, each with a role: **Read**, **Triage**, **Write** or **Admin**.                  |
+| **Branches**               | [Protected branches](./git-branches.md#protected-branches).                                                             |
+| **Deploy keys**            | SSH keys that reach this one repository, for a server or a deploy script.                                               |
+| **Labels**, **Milestones** | What issues and branch pages can be filed under.                                                                        |
+| **CI**                     | Whether [Infrawrench CI](./ci.md) runs for this repository, and its pipelines.                                          |
 
 Renaming or transferring a repository changes its address. Archiving makes it read-only for everyone until it is unarchived.
 
@@ -143,6 +143,6 @@ Renaming or transferring a repository changes its address. Archiving makes it re
 ## Next
 
 - [Home and your work](./git-home.md): the sidebar, the home page, and the Changes, Reviews and Mentions lists.
-- [Issues and pull requests](./git-pull-requests.md): reviews, merging, protected branches and forks.
-- [CI](./ci.md): pipelines in `.infrawrench/ci/` run on every push and pull request of an organization's repositories.
-- [Terraform](./git-terraform.md): state, plans on pull requests and applies on merge.
+- [Issues and branches](./git-branches.md): branch pages, reviews, merging, protected branches and forks.
+- [CI](./ci.md): pipelines in `.infrawrench/ci/` run on every push to an organization's repositories.
+- [Terraform](./git-terraform.md): state, plans on branches and applies on merge.

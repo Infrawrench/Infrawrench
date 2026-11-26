@@ -318,7 +318,7 @@ export async function setPullRef(
   if (!cx.repo.isReady()) return;
   const name = `refs/pull/${input.number}/head`;
   if (input.oid !== null && !(await cx.repo.importFrom(input.headRepositoryId, [input.oid]))) {
-    throw new RepoReaderError("ref_not_found", "The pull request's head commit is not there");
+    throw new RepoReaderError("ref_not_found", "The branch's head commit is not there");
   }
   // Whoever else moved it in between was writing the same pull request's head: once more settles it.
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -332,5 +332,5 @@ export async function setPullRef(
     );
     if (moved === "moved") return;
   }
-  throw new RepoReaderError("head_moved", "The pull request's ref kept moving");
+  throw new RepoReaderError("head_moved", "The branch page's ref kept moving");
 }

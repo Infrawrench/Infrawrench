@@ -1,7 +1,7 @@
 /**
  * How a Terraform run reads: its status, what its plan would do (the counts
  * and each resource's action) and what that changes on the monthly bill. The
- * pull request page shows the same pieces.
+ * branch page shows the same pieces.
  */
 import { Badge, type BadgeTone } from "../../components/Badge";
 import { Table, Td, Th, Tr } from "../../components/Panel";
@@ -49,7 +49,7 @@ export function TerraformStatusBadge({ status }: { status: TerraformRunStatus })
 
 const OPERATION = { plan: "Plan", apply: "Apply", destroy: "Destroy" } as const;
 const TRIGGER = {
-  pull_request: "pull request",
+  branch: "branch",
   merge: "merge",
   manual: "manual",
   drift: "drift check",
@@ -62,7 +62,7 @@ export const triggerLabel = (run: Pick<TerraformRun, "trigger">): string => TRIG
 type TerraformRunEvent = Extract<TimelineItem, { type: "terraform_run" }>;
 
 /**
- * A pull request's timeline entry for a run, as a sentence after the
+ * A branch page's timeline entry for a run, as a sentence after the
  * workspace's name: Terraform's own counts for a plan, the reason for a
  * failure or for a run that was never started.
  */

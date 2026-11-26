@@ -89,7 +89,7 @@ The expiry shown for a connected application is when it lapses if it is left unu
 An agent that cannot open a browser sends a credential in the `Authorization` header instead:
 
 - **A personal access token** (`iwg_`). Create one under **Settings > Access tokens**, with the `repo:write` scope if the agent records traces. See [Access tokens](./git-getting-started.md#access-tokens).
-- **A CI job's token.** A job in [Infrawrench CI](./ci.md) can record traces on the branch its run is of. It cannot use the other tools, and a run of a fork's pull request cannot record.
+- **A CI job's token.** A job in [Infrawrench CI](./ci.md) can record traces on the branch its run is of. It cannot use the other tools, and a run of a branch proposed from a fork cannot record.
 
 ```sh
 claude mcp add --transport http infrawrench-git https://git.infrawrench.com/mcp \
@@ -103,8 +103,8 @@ For Codex, set `bearer_token_env_var` on the server in `~/.codex/config.toml`. F
 | Tool                         | What it does                                                                                                    |
 | ---------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `whoami`                     | Says whose credential the connection uses and whether it can write.                                             |
-| `list_my_branches`           | Lists open pull requests that involve you and have something you have not looked at.                            |
-| `get_branch`                 | Reads a branch's pull request, its state, its versions, and how many instructions and findings are open.        |
+| `list_my_branches`           | Lists open branches that involve you and have something you have not looked at.                                 |
+| `get_branch`                 | Reads a branch's page, its state, its versions, and how many instructions and findings are open.                |
 | `get_version_diff`           | Reads a diff of a version: the whole change, what that version changed, or everything since an earlier version. |
 | `record_trace`               | Records the ask, steps, decisions, evidence and doubts of the work on a branch.                                 |
 | `list_instructions`          | Lists what reviewers sent to the agent that writes the branch.                                                  |
@@ -112,9 +112,9 @@ For Codex, set `bearer_token_env_var` on the server in `~/.codex/config.toml`. F
 | `mark_instruction_answered`  | Says which version answers an instruction. Left out, it is the next push.                                       |
 | `list_findings`              | Lists what review agents found on a branch.                                                                     |
 | `report_finding`             | Reports a review agent's findings on a version.                                                                 |
-| `start_work`                 | Creates a branch and a draft pull request from an ask, before any code exists.                                  |
+| `start_work`                 | Creates a branch and its page, as a draft, from an ask, before any code exists.                                 |
 
-Tools take a repository as `owner/name`, and a branch either by its name or by its pull request's number.
+Tools take a repository as `owner/name` and a branch by its name.
 
 ## What an agent records
 

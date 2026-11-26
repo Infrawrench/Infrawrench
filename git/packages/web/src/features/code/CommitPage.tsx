@@ -46,7 +46,7 @@ export function CommitPage({ sha }: { sha: string }) {
   return (
     <Page>
       <QueryView query={detail} shape="code">
-        {({ commit, stats, files, filesTruncated, branches, tags, pullRequests }) => {
+        {({ commit, stats, files, filesTruncated, branches, tags, branchPages }) => {
           const body = commit.message.slice(commit.summary.length).replace(/^\n+/, "");
           const sameCommitter =
             commit.author.email === commit.committer.email &&
@@ -65,7 +65,7 @@ export function CommitPage({ sha }: { sha: string }) {
                         {body}
                       </pre>
                     ) : null}
-                    {branches.length + tags.length + pullRequests.length > 0 ? (
+                    {branches.length + tags.length + branchPages.length > 0 ? (
                       <ul aria-label="Refs at this commit" className="mt-2 flex flex-wrap gap-1.5">
                         {branches.map((name) => (
                           <li key={`b:${name}`}>
@@ -87,11 +87,12 @@ export function CommitPage({ sha }: { sha: string }) {
                             </AppLink>
                           </li>
                         ))}
-                        {pullRequests.map((pull) => (
-                          <li key={`p:${pull.number}`}>
-                            <AppLink href={paths.pull(repo, pull.number)} title={pull.title}>
+                        {branchPages.map((page) => (
+                          <li key={`p:${page.key}`}>
+                            <AppLink href={paths.branchPage(repo, page.key)} title={page.title}>
                               <Badge tone="outline">
-                                <Icon name="gitPullRequest" size={10} />#{pull.number}
+                                <Icon name="fileDiff" size={10} />
+                                <span className="max-w-48 truncate">{page.title}</span>
                               </Badge>
                             </AppLink>
                           </li>

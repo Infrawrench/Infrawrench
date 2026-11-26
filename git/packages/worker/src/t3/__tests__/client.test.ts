@@ -533,7 +533,7 @@ describe("what a T3 Code thread is told", () => {
       {
         repository: { owner: "acme", name: "infra" },
         pullRequestId: "pr-1",
-        number: 14,
+        key: "work/add-rate-limits",
         title: "Add rate limits",
         ask: "Add rate limits to the API.\n\nPer key, 100 a minute.",
         branch: "work/add-rate-limits",
@@ -541,8 +541,11 @@ describe("what a T3 Code thread is told", () => {
       },
       "https://git.example.test",
     );
-    expect(prompt).toContain("acme/infra on git.example.test, pull request #14: Add rate limits");
-    expect(prompt).toContain("https://git.example.test/acme/infra/pulls/14");
+    expect(prompt).toContain(
+      "acme/infra on git.example.test, on the branch `work/add-rate-limits`: Add rate limits",
+    );
+    expect(prompt).toContain("https://git.example.test/acme/infra/branches/work/add-rate-limits");
+    expect(prompt).not.toMatch(/pull request/i);
     expect(prompt).toContain("Per key, 100 a minute.");
     expect(prompt).toContain("git push -u origin work/add-rate-limits");
     expect(prompt).toContain(

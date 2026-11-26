@@ -24,7 +24,8 @@
  * machine. No token of the forge's ever goes to an environment.
  */
 import type { T3Thread } from "@infrawrench/git-contract";
-import { httpCloneUrl, repositoryPath } from "@infrawrench/git-contract";
+import { branchPagePath, httpCloneUrl } from "@infrawrench/git-contract";
+import { pageKey } from "../db/branch-pages";
 import { getAgentLink } from "../db/review";
 import { type Env } from "../env";
 import type { InstructionSender } from "../review/instructions";
@@ -42,9 +43,9 @@ import { MCP_PATH } from "./oauth";
 
 type Json = Record<string, unknown>;
 
-/** A pull request's page on this site. */
-const pullRequestPath = (ref: { owner: string; repo: string }, number: number): string =>
-  `${repositoryPath(ref)}/pulls/${number}`;
+/** A branch's page on this site, by its key. */
+const pagePath = (ref: { owner: string; repo: string }, key: string): string =>
+  branchPagePath(ref.owner, ref.repo, key);
 
 const rec = (value: unknown): Json =>
   typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Json) : {};
@@ -244,7 +245,8 @@ export const projectFor = (
 export interface WorkToStart {
   readonly repository: WorkRepository;
   readonly pullRequestId: string;
-  readonly number: number;
+  /** The page's key (`db/branch-pages.ts`). */
+  readonly key: string;
   readonly title: string;
   readonly ask: string;
   readonly branch: string;
@@ -258,21 +260,21 @@ const MAX_ASK = 100_000;
 export const workPrompt = (work: WorkToStart, siteOrigin: string): string => {
   const { owner, name } = work.repository;
   const host = new URL(siteOrigin).host;
-  const page = `${siteOrigin}${pullRequestPath({ owner, repo: name }, work.number)}`;
+  const page = `${siteOrigin}${pagePath({ owner, repo: name }, work.key)}`;
   const ask =
     work.ask.length > MAX_ASK
       ? `${work.ask.slice(0, MAX_ASK)}\n\n(The ask is longer than this; read the rest at ${page})`
       : work.ask;
   return [
-    `You are working on ${owner}/${name} on ${host}, pull request #${work.number}: ${work.title}`,
+    `You are working on ${owner}/${name} on ${host}, on the branch \`${work.branch}\`: ${work.title}`,
     page,
     "## The ask",
     ask,
     "## Where the work goes",
     [
       `- Work on the branch \`${work.branch}\`, which this worktree is on, and push to it: \`git push -u origin ${work.branch}\`. The branch already exists on the remote, at the commit \`${work.baseRef}\` was at.`,
-      `- Every push is recorded as a version (v1, v2, ...) that reviewers read on the pull request's page. Push when a step is worth reading, not only at the end.`,
-      `- Do not open another pull request and do not push to \`${work.baseRef}\`.`,
+      `- Every push is recorded as a version (v1, v2, ...) that reviewers read on the branch's page. Push when a step is worth reading, not only at the end.`,
+      `- Do not start another branch for this work and do not push to \`${work.baseRef}\`.`,
       `- Pushing uses the Git credentials this machine already has for ${host}: none were sent with this message. If a push is refused for lack of them, stop and say so.`,
     ].join("\n"),
     "## Reporting to the reviewers",
@@ -365,12 +367,12 @@ export const sendInstructionToThread: InstructionSender = async (env, target, in
   const deps = t3Deps(env);
   const row = await environmentOfLink(target.link);
   const { owner, repository } = target.repo;
-  const page = `${deps.siteOrigin}${pullRequestPath(
+  const page = `${deps.siteOrigin}${pagePath(
     { owner: owner.slug, repo: repository.name },
-    target.pull.thread.number,
+    await pageKey(target.pull.pull),
   )}`;
   const message = [
-    `A reviewer sent an instruction for pull request #${target.pull.thread.number} (${page}). Its id is ${instruction.id}.`,
+    `A reviewer sent an instruction for the branch \`${target.pull.pull.headRef}\` (${page}). Its id is ${instruction.id}.`,
     instruction.body,
     `Mark instruction ${instruction.id} answered with the infrawrench-git MCP server before you push the change that answers it, then push to \`${target.pull.pull.headRef}\`.`,
   ].join("\n\n");
