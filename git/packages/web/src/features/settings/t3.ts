@@ -1,4 +1,4 @@
-import type { T3Environment } from "@infrawrench/git-contract";
+import { type T3Environment, t3ConnectOrigin } from "@infrawrench/git-contract";
 import type { BadgeTone } from "../../components/Badge";
 
 /** How the browser came back from signing in (`?t3=`), as the callback writes it. */
@@ -32,6 +32,19 @@ export const addressProblem = (typed: string): "empty" | "localhost" | "not-http
     return "localhost";
   }
   return url.protocol === "https:" ? null : "not-https";
+};
+
+/**
+ * Whether what was pasted can be an environment's T3 Connect address (the
+ * MCP URL T3 Code copies). The rule is the contract's, which the server
+ * applies too; localhost is named first here as well.
+ */
+export const connectProblem = (
+  pasted: string,
+): "empty" | "localhost" | "not-https" | "not-t3-connect" | null => {
+  if (addressProblem(pasted) === "localhost") return "localhost";
+  const found = t3ConnectOrigin(pasted);
+  return "problem" in found ? found.problem : null;
 };
 
 export interface EnvironmentState {

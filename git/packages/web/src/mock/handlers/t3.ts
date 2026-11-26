@@ -1,3 +1,4 @@
+import { T3_CONNECT_REFUSAL, t3ConnectOrigin } from "@infrawrench/git-contract";
 import { badRequest, conflict, defineMockHandlers, notFound, ok, unprocessable } from "../define";
 import { requireUser } from "../db";
 import { newT3Id, signInT3, t3Environments, t3Threads } from "../t3-data";
@@ -19,6 +20,19 @@ const originOf = (typed: string): string => {
   return url.origin;
 };
 
+/** The origin of a pasted T3 Connect address, refused the way the API refuses it. */
+const connectOriginOf = (pasted: string): string => {
+  const found = t3ConnectOrigin(pasted);
+  if ("origin" in found) return found.origin;
+  throw badRequest(
+    found.problem === "not-https"
+      ? "The address has to start with https://"
+      : found.problem === "empty"
+        ? "That is not an address"
+        : T3_CONNECT_REFUSAL,
+  );
+};
+
 const find = (environmentId: string) => {
   requireUser();
   const environment = t3Environments.find((each) => each.id === environmentId);
@@ -34,7 +48,8 @@ export default defineMockHandlers({
     },
     create: ({ payload }) => {
       requireUser();
-      const baseUrl = originOf(payload.baseUrl);
+      const baseUrl =
+        payload.via === "t3-connect" ? connectOriginOf(payload.baseUrl) : originOf(payload.baseUrl);
       if (t3Environments.some((each) => each.baseUrl === baseUrl)) {
         throw conflict("You already have an environment at that address");
       }

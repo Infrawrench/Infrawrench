@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { addressProblem, environmentState, outcomeOf } from "../t3";
+import { addressProblem, connectProblem, environmentState, outcomeOf } from "../t3";
 
 describe("addressProblem", () => {
   it("takes an https address, with or without the scheme typed", () => {
-    expect(addressProblem("https://studio.t3connect.example")).toBeNull();
-    expect(addressProblem("  studio.t3connect.example/mcp ")).toBeNull();
+    expect(addressProblem("https://studio.example.net")).toBeNull();
+    expect(addressProblem("  studio.example.net/mcp ")).toBeNull();
   });
 
   it("names localhost, which a person tries first", () => {
@@ -20,9 +20,26 @@ describe("addressProblem", () => {
   });
 
   it("wants https", () => {
-    expect(addressProblem("http://studio.t3connect.example")).toBe("not-https");
+    expect(addressProblem("http://studio.example.net")).toBe("not-https");
     expect(addressProblem("")).toBe("empty");
     expect(addressProblem("   ")).toBe("empty");
+  });
+});
+
+describe("connectProblem", () => {
+  const host = "prod-0123456789abcdef.t3connect.example";
+  it("takes the MCP URL T3 Code copies", () => {
+    expect(connectProblem(`https://${host}/mcp`)).toBeNull();
+    expect(connectProblem(`  ${host} `)).toBeNull();
+  });
+
+  it("names localhost first, then what is not a T3 Connect address", () => {
+    expect(connectProblem("http://localhost:3773/mcp")).toBe("localhost");
+    expect(connectProblem("https://127.0.0.1:3773/mcp")).toBe("localhost");
+    expect(connectProblem(`http://${host}/mcp`)).toBe("not-https");
+    expect(connectProblem("https://studio.example.net/mcp")).toBe("not-t3-connect");
+    expect(connectProblem(`https://${host}:8443/mcp`)).toBe("not-t3-connect");
+    expect(connectProblem("")).toBe("empty");
   });
 });
 

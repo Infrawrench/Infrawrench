@@ -1,20 +1,29 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { T3Environment } from "@infrawrench/git-contract";
+import {
+  type T3Environment,
+  type T3EnvironmentVia,
+  T3_CONNECT_REFUSAL,
+  isT3ConnectAddress,
+} from "@infrawrench/git-contract";
 import { api } from "../../api/client";
 import { invalidate, queries } from "../../api/queries";
 import { useGo } from "../../components/AppLink";
 import { Badge } from "../../components/Badge";
 import { Button } from "../../components/Button";
 import { ConfirmDialog, Dialog } from "../../components/controls";
-import { Field, Input } from "../../components/forms";
+import { Field, Input, RadioCards } from "../../components/forms";
+import { Icon } from "../../components/icons";
 import { Panel } from "../../components/Panel";
 import { RelativeTime } from "../../components/people";
 import { SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
 import { formatDate } from "../../lib/format";
 import { paths } from "../../lib/paths";
-import { type T3Outcome, addressProblem, environmentState } from "./t3";
+import { type T3Outcome, addressProblem, connectProblem, environmentState } from "./t3";
+
+const LOCALHOST_PROBLEM =
+  "An environment on localhost cannot be reached from here. Turn T3 Connect on in T3 Code and use the address it gives.";
 
 /** Send the browser to the environment to sign in. It comes back to this page. */
 const useSignIn = () => {
@@ -34,18 +43,22 @@ const useSignIn = () => {
 };
 
 function EnvironmentForm({ onDone, onCancel }: { onDone: () => void; onCancel: () => void }) {
+  // Through T3 Connect unless the person says otherwise: it is the address a
+  // Worker can reach without anybody running a proxy.
+  const [via, setVia] = useState<T3EnvironmentVia>("t3-connect");
   const [label, setLabel] = useState("");
   const [address, setAddress] = useState("");
   const signIn = useSignIn();
   const create = useMutation({
-    mutationFn: () => api.t3.create({ payload: { label: label.trim(), baseUrl: address.trim() } }),
+    mutationFn: () =>
+      api.t3.create({ payload: { label: label.trim(), baseUrl: address.trim(), via } }),
     onSuccess: (created) => {
       void invalidate("t3", "list");
       // Adding one is only half of it: straight on to signing in.
       signIn.mutate(created, { onError: onDone });
     },
   });
-  const problem = addressProblem(address);
+  const problem = via === "t3-connect" ? connectProblem(address) : addressProblem(address);
   const valid = label.trim() !== "" && problem === null;
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -53,6 +66,18 @@ function EnvironmentForm({ onDone, onCancel }: { onDone: () => void; onCancel: (
   };
   return (
     <form onSubmit={submit} className="space-y-3 px-3 py-3">
+      <div className="max-w-sm">
+        <RadioCards
+          legend="Connect through"
+          name="t3-via"
+          value={via}
+          onChange={setVia}
+          options={[
+            { value: "t3-connect", label: "T3 Connect", icon: <Icon name="link" size={12} /> },
+            { value: "address", label: "Use an address", icon: <Icon name="globe" size={12} /> },
+          ]}
+        />
+      </div>
       <Field label="Name">
         {(control) => (
           <Input
@@ -67,14 +92,20 @@ function EnvironmentForm({ onDone, onCancel }: { onDone: () => void; onCancel: (
         )}
       </Field>
       <Field
-        label="Address"
-        hint="https, and reachable from the internet"
+        label={via === "t3-connect" ? "MCP URL" : "Address"}
+        hint={
+          via === "t3-connect"
+            ? "In T3 Code, with T3 Connect on: Settings, Environments, Copy MCP URL"
+            : "https, and reachable from the internet"
+        }
         error={
           problem === "localhost"
-            ? "An environment on localhost cannot be reached from here. Link T3 Connect in T3 Code and use the address it gives."
+            ? LOCALHOST_PROBLEM
             : problem === "not-https"
               ? "The address has to start with https://"
-              : undefined
+              : problem === "not-t3-connect"
+                ? T3_CONNECT_REFUSAL
+                : undefined
         }
       >
         {(control) => (
@@ -182,6 +213,9 @@ function EnvironmentRow({
         <p className="flex flex-wrap items-center gap-2 text-xs font-medium text-on-surface">
           {environment.label}
           <Badge tone={state.tone}>{state.label}</Badge>
+          {isT3ConnectAddress(environment.baseUrl) ? (
+            <Badge tone="neutral">T3 Connect</Badge>
+          ) : null}
         </p>
         <p className="break-all font-mono text-[11px] text-on-surface-muted">
           {environment.baseUrl}

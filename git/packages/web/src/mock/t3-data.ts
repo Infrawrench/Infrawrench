@@ -1,6 +1,8 @@
 /**
  * The mock's T3 Code state: the signed-in person's environments and the
- * threads each one would list. Only the `t3` handlers write it.
+ * threads each one would list. Only the `t3` handlers write it. Two are on
+ * T3 Connect addresses (`prod-<16 hex>.<zone>`, the shape the contract's
+ * `t3-connect.ts` checks; the zone is made up) and one on a typed address.
  */
 import type { T3Environment, T3Thread } from "@infrawrench/git-contract";
 import type { Mutable } from "./define";
@@ -16,7 +18,7 @@ export const t3Environments: Mutable<T3Environment>[] = [
   {
     id: "t3env_studio",
     label: "Studio",
-    baseUrl: "https://studio-mara.t3connect.example",
+    baseUrl: "https://prod-4f1c09ab72de3a65.t3connect.example",
     status: "connected",
     scopes: ["orchestration:read", "orchestration:operate"],
     tokenExpiresAt: daysFromNow(22),
@@ -28,7 +30,7 @@ export const t3Environments: Mutable<T3Environment>[] = [
   {
     id: "t3env_laptop",
     label: "Laptop",
-    baseUrl: "https://laptop-mara.t3connect.example",
+    baseUrl: "https://prod-b8e2d4017c96f3a0.t3connect.example",
     status: "error",
     scopes: ["orchestration:read"],
     tokenExpiresAt: null,
@@ -40,7 +42,7 @@ export const t3Environments: Mutable<T3Environment>[] = [
   {
     id: "t3env_build",
     label: "Build box",
-    baseUrl: "https://build.t3connect.example",
+    baseUrl: "https://build.acme.example",
     status: "pending",
     scopes: [],
     tokenExpiresAt: null,
