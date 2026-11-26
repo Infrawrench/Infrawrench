@@ -40,11 +40,11 @@ export function BranchNeeds({ number }: { number: number }) {
   if (state.data === undefined) return null;
   const { tone, text } = needsNow(state.data);
   return (
-    <p role="status" className="mb-3 flex items-center gap-1.5 text-xs text-on-surface-secondary">
+    <p role="status" className="mt-3 flex items-center gap-2 text-sm text-on-surface-secondary">
       {state.data.state === "agent_working" ? (
-        <Spinner size={13} className={TONE_CLASS[tone]} />
+        <Spinner size={15} className={TONE_CLASS[tone]} />
       ) : (
-        <Icon name={TONE_ICON[tone]} size={13} className={TONE_CLASS[tone]} />
+        <Icon name={TONE_ICON[tone]} size={15} className={TONE_CLASS[tone]} />
       )}
       {text}
     </p>

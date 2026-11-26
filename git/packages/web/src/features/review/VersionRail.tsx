@@ -1,5 +1,5 @@
 /**
- * The versions of a branch in a row, oldest first: who pushed each, where
+ * The versions of a branch as one slim strip, oldest first: who pushed each, where
  * the reader last reviewed, and which carry comments, findings or a trace.
  * Picking one shows it below.
  */
@@ -28,6 +28,11 @@ function Count({
   );
 }
 
+/** The line from one version to the next. */
+function Link() {
+  return <span aria-hidden="true" className="h-px w-5 shrink-0 bg-border-strong" />;
+}
+
 export function VersionRail({
   versions,
   selected,
@@ -45,26 +50,27 @@ export function VersionRail({
 }) {
   return (
     <nav aria-label="Versions">
-      <ol className="flex gap-1.5 overflow-x-auto pb-1">
+      <ol className="flex items-center overflow-x-auto pb-1">
         {versions.map((version) => {
           const current = version.number === selected;
           const fresh = reviewed !== null && version.number > reviewed;
           const who = version.agent?.name ?? version.pusher?.username ?? "Someone";
           return (
-            <li key={version.id} className="shrink-0">
+            <li key={version.id} className="flex shrink-0 items-center">
+              {version.number === versions[0]?.number ? null : <Link />}
               <button
                 type="button"
                 aria-current={current ? "true" : undefined}
                 aria-label={`Version ${version.number}`}
                 onClick={() => onSelect(version.number)}
-                className={`flex h-full w-44 flex-col gap-1 rounded-md border px-2.5 py-1.5 text-left text-xs ${
+                className={`flex h-9 items-center gap-2.5 rounded-full border px-3.5 text-left text-xs whitespace-nowrap ${
                   current
-                    ? "border-border-strong bg-surface-raised"
+                    ? "border-on-surface bg-surface-raised"
                     : "border-border bg-surface hover:bg-surface-raised"
                 }`}
               >
                 <span className="flex items-center gap-1.5">
-                  <span className="font-mono text-sm font-semibold text-on-surface">
+                  <span className="font-mono text-[13px] font-semibold text-on-surface">
                     v{version.number}
                   </span>
                   {version.forced ? <Badge tone="warning">Forced</Badge> : null}
@@ -79,7 +85,7 @@ export function VersionRail({
                 </span>
                 <span className="flex items-center gap-1 text-on-surface-muted">
                   {version.agent !== null ? <Icon name="bot" size={11} /> : null}
-                  <span className="min-w-0 truncate">{who}</span>
+                  <span className="max-w-40 min-w-0 truncate">{who}</span>
                   <span aria-hidden="true">·</span>
                   <RelativeTime iso={version.createdAt} className="shrink-0" />
                 </span>
@@ -104,12 +110,13 @@ export function VersionRail({
           );
         })}
         {workingOn !== null ? (
-          <li className="shrink-0">
+          <li className="flex shrink-0 items-center">
+            {versions.length > 0 ? <Link /> : null}
             <div
               role="status"
-              className="flex h-full w-36 flex-col justify-center gap-1 rounded-md border border-dashed border-border px-2.5 py-1.5 text-xs text-on-surface-muted"
+              className="flex h-9 items-center gap-2.5 rounded-full border border-dashed border-border px-3.5 text-xs whitespace-nowrap text-on-surface-muted"
             >
-              <span className="font-mono text-sm font-semibold">v{workingOn}</span>
+              <span className="font-mono text-[13px] font-semibold">v{workingOn}</span>
               <span className="flex items-center gap-1.5">
                 <Spinner size={11} />
                 In progress

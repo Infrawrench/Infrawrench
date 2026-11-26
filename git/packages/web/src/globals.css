@@ -183,3 +183,33 @@ body {
   border: 0;
   border-top: 1px solid var(--color-border);
 }
+
+/*
+ * The branch page (features/review). A sticky row of it stops this far down
+ * the window: under the shell's bar. A shell with no bar at the top sets it
+ * to 0.
+ */
+.review-page {
+  --review-sticky-top: 3rem;
+}
+
+/* What hangs on a diff's lines or sits in the page's text: a soft card. */
+.diff-note {
+  overflow: hidden;
+  max-width: 52rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background-color: var(--color-surface-raised);
+  color: var(--color-on-surface);
+  white-space: normal;
+}
+
+/* The ask reads as the page's opening text, a size up from a comment. */
+.branch-ask .markdown {
+  font-size: 0.9375rem;
+  line-height: 1.65;
+}
+
+.diff-note > ul {
+  background-color: transparent;
+}

@@ -46,6 +46,17 @@ beforeAll(() => {
     this.removeAttribute("open");
   };
   window.scrollTo = () => {};
+  // The diff and the file tree watch their own size, which jsdom never changes.
+  class NoLayoutObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() {
+      return [];
+    }
+  }
+  vi.stubGlobal("ResizeObserver", NoLayoutObserver);
+  vi.stubGlobal("IntersectionObserver", NoLayoutObserver);
 });
 
 /** Every call goes to the mock, unless `refuse` names its group: a server that does not serve it yet. */

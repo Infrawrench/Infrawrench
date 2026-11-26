@@ -52,6 +52,19 @@ export function refreshPull(): void {
 const branch =
   "inline-flex max-w-64 items-center rounded bg-surface-sunken px-1.5 py-px font-mono text-[11px] text-on-surface";
 
+/**
+ * The branch page is a document the width of the window: its diff wants the
+ * room. `--review-sticky-top` is how far down the page a sticky row of it
+ * stops, under the shell's own bar.
+ */
+function ReviewFrame({ children }: { children: ReactNode }) {
+  return (
+    <div className="review-page mx-auto w-full max-w-[112rem] px-4 py-6 sm:px-6 lg:px-10">
+      {children}
+    </div>
+  );
+}
+
 export function PullLayout({ number, children }: { number: number; children: ReactNode }) {
   const repo = useRepoRef();
   const go = useGo();
@@ -112,11 +125,13 @@ export function PullLayout({ number, children }: { number: number; children: Rea
       : data.headRef;
 
   const agent = mode === "agent";
+  const Frame = agent ? ReviewFrame : Page;
   return (
     <PullContext.Provider value={data}>
       <PullModeContext.Provider value={mode}>
-        <Page>
+        <Frame>
           <ThreadHeader
+            large={agent}
             title={data.title}
             number={number}
             kind={pullKind(data.state, data.draft)}
@@ -170,7 +185,9 @@ export function PullLayout({ number, children }: { number: number; children: Rea
             </span>
           </ThreadHeader>
           {agent ? <BranchNeeds number={number} /> : null}
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border">
+          <div
+            className={`flex flex-wrap items-center justify-between gap-2 border-b border-border ${agent ? "mt-5 mb-6" : "mb-4"}`}
+          >
             <LinkTabs
               label={agent ? "Branch" : "Pull request"}
               tabs={[
@@ -214,12 +231,14 @@ export function PullLayout({ number, children }: { number: number; children: Rea
               ]}
             />
             <span className="mb-1.5 flex flex-wrap items-center gap-3">
-              <DiffStat additions={data.stats.additions} deletions={data.stats.deletions} />
+              {agent ? null : (
+                <DiffStat additions={data.stats.additions} deletions={data.stats.deletions} />
+              )}
               <ModeSwitch />
             </span>
           </div>
           {children}
-        </Page>
+        </Frame>
       </PullModeContext.Provider>
     </PullContext.Provider>
   );
