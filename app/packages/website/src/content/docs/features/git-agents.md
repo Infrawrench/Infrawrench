@@ -33,15 +33,25 @@ Sending and withdrawing an instruction need write access to the repository.
 
 [T3 Code](https://github.com/pingdotgg/t3code) runs agents in environments on your own machines. To let git.infrawrench.com start threads in one and send them instructions, connect it under **Settings > T3 Code**.
 
-<insert [Settings > T3 Code on git.infrawrench.com: three environments in a list, one Connected with its sign-in date, one "Sign-in ended" with its last error in red and a "Sign in again" button, one "Not signed in"] here>
+<insert [Settings > T3 Code on git.infrawrench.com: three environments in a list, one Connected with a "T3 Connect" badge and its sign-in date, one "Sign-in ended" with its last error in red and a "Sign in again" button, one "Not signed in"] here>
 
-1. In T3 Code, link **T3 Connect** so the environment has a public `https` address, and copy that address.
-2. On git.infrawrench.com, open **Settings > T3 Code**, click **Add environment**, give it a name and paste the address.
-3. Click **Add and sign in**. You are sent to T3 Code to approve git.infrawrench.com, then back.
+1. In T3 Code, open **Settings > Sharing & access**, sign in and turn on **T3 Connect**. On a headless host, run `t3 connect`.
+2. Still in T3 Code, open **Settings > Environments**, open the environment's menu and choose **Copy MCP URL**.
+3. On git.infrawrench.com, open **Settings > T3 Code** and click **Add environment**. **T3 Connect** is already selected.
+4. Give the environment a name and paste the MCP URL.
+5. Click **Add and sign in**. You are sent to T3 Code's approval page, where you approve git.infrawrench.com with your T3 Connect account, then back.
 
-<insert [The Add environment form on Settings > T3 Code: a Name field, an Address field holding an https address, and the Add and sign in button] here>
+<insert [The Add environment form on Settings > T3 Code with "T3 Connect" selected under "Connect through": a Name field, an MCP URL field holding a T3 Connect address ending in /mcp, the hint under it, and the Add and sign in button] here>
 
-The address has to be `https` and reachable from the internet. An environment on `localhost`, on your local network or on a tailnet cannot be reached, because git.infrawrench.com connects to it from its own servers.
+git.infrawrench.com connects to the environment's own T3 Connect address. It does not sign in to your T3 Connect account and cannot see your other environments, so each one you want to use is added the same way.
+
+### Use an address instead
+
+If the environment is published some other way, for example behind your own reverse proxy, choose **Use an address** in the form and type its address.
+
+<insert [The Add environment form on Settings > T3 Code with "Use an address" selected: a Name field, an Address field holding an https address, and the Add and sign in button] here>
+
+The address has to be `https` and reachable from the internet. An environment on `localhost`, on your local network or on a tailnet cannot be reached, because git.infrawrench.com connects to it from its own servers. Use T3 Connect for those.
 
 ### What to approve in T3 Code
 
