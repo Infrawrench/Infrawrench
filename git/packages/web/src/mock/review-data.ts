@@ -7,7 +7,11 @@
  *
  * `acme/infra` #12 has three versions (the second a forced push), a trace
  * for each, findings of every severity and state, and instructions that were
- * answered. #14 is written by a T3 Code thread that is still working.
+ * answered. #14 is written by a T3 Code thread that is still working. #7 was
+ * merged six weeks ago: its versions are pruned, and what a reviewer outside
+ * the forge found on it is what the merged commit and the files it touched
+ * show. `acme/edge-router` #4 has findings from such a reviewer in a
+ * repository whose own review agents are off.
  */
 import type {
   AgentIdentity,
@@ -39,6 +43,8 @@ export interface StoredVersion {
   pusherKind: string | null;
   agent: AgentIdentity | null;
   createdAt: string;
+  /** When its commit stopped being kept. Absent while it is. */
+  prunedAt?: string;
 }
 
 export type StoredFinding = Mutable<Omit<ReviewFinding, "overridden" | "viewerCanDismiss">> & {
@@ -91,6 +97,9 @@ const INFRAWRENCH_AGENT: AgentIdentity = {
   sessionRef: "ses_8f2c41",
 };
 const T3_AGENT: AgentIdentity = { kind: "t3", name: "T3 Code", sessionRef: "thr_backups" };
+const CLAUDE_CODE: AgentIdentity = { kind: "mcp", name: "Claude Code", sessionRef: null };
+/** A reviewer that runs in CI and reports through the API: none of the forge's own. */
+const OUTSIDE_REVIEWER = "claude-review";
 
 function oidOf(fx: GitFixture, prefix: string): string {
   const found = fx.order.find((oid) => oid.startsWith(prefix));
@@ -529,8 +538,201 @@ function seedBackups(fx: GitFixture): ReviewState {
   return state;
 }
 
+/**
+ * `acme/infra` #7: `feature/flow-logs`, merged with a merge commit six weeks
+ * ago. Two versions, both pruned thirteen days ago, a trace, and findings
+ * from a reviewer outside the forge in every state a merge can leave one.
+ */
+function seedFlowLogs(fx: GitFixture): ReviewState {
+  const branch = "feature/flow-logs";
+  const [v1, v2] = [oidOf(fx, "142a748"), oidOf(fx, "23b5b1e")];
+  const by = { branch, agent: CLAUDE_CODE };
+  const pruned = hoursAgo(24 * 13);
+  const version = (number: number, tipOid: string, previousOid: string | null, hours: number) => ({
+    number,
+    tipOid,
+    previousOid,
+    forced: false,
+    rebased: false,
+    pusher: person("jonas"),
+    pusherKind: "api-key",
+    agent: CLAUDE_CODE,
+    createdAt: hoursAgo(hours),
+    prunedAt: pruned,
+  });
+  const state = blank();
+  state.versions = [version(1, v1, null, 24 * 43.7), version(2, v2, v1, 24 * 43.4)];
+  state.reviewed = 2;
+  state.traces = [
+    entry(
+      "ask",
+      1,
+      24 * 43.8,
+      "Let an environment send its VPC flow logs to a bucket, off unless it names one. Turn it on for staging.",
+      by,
+    ),
+    entry("step", 1, 24 * 43.75, "`flow_logs_bucket_arn` on the network module, null by default.", {
+      ...by,
+      anchors: [{ path: "modules/network/variables.tf", startLine: 29, endLine: 33 }],
+    }),
+    entry(
+      "decision",
+      1,
+      24 * 43.72,
+      "One `aws_flow_log` with a count, not a module of its own: there is nothing else to configure.",
+      { ...by, anchors: [{ path: "modules/network/main.tf", startLine: 97, endLine: 106 }] },
+    ),
+    entry("evidence", 2, 24 * 43.45, "Staging plans one flow log and nothing else.", {
+      ...by,
+      evidence: {
+        command: "terraform -chdir=environments/staging plan",
+        exitCode: 0,
+        output: "Plan: 1 to add, 0 to change, 0 to destroy.",
+      },
+    }),
+  ];
+  const kept = finding(
+    {
+      reviewerKind: OUTSIDE_REVIEWER,
+      severity: "must_fix",
+      title: "The bucket's ARN is written out",
+      body: "Nothing here creates `acme-staging-flow-logs` or checks that it exists. An apply against an account without it fails after the VPC has changed.",
+      version: 2,
+      lastSeenVersion: 2,
+      path: "environments/staging/main.tf",
+      startLine: 27,
+      endLine: 27,
+      evidence: [
+        { kind: "code", text: '  flow_logs_bucket_arn = "arn:aws:s3:::acme-staging-flow-logs"' },
+      ],
+    },
+    v2,
+    24 * 43.38,
+  );
+  state.findings = [
+    kept,
+    finding(
+      {
+        reviewerKind: OUTSIDE_REVIEWER,
+        severity: "must_fix",
+        title: "No environment turns flow logs on",
+        body: "The variable defaults to null and no root sets it, so the change plans nothing anywhere.",
+        version: 1,
+        lastSeenVersion: 1,
+        status: "fixed",
+        fixedInVersion: 2,
+      },
+      v1,
+      24 * 43.68,
+    ),
+    finding(
+      {
+        reviewerKind: OUTSIDE_REVIEWER,
+        severity: "should_fix",
+        title: "Accepted traffic is logged too",
+        body: '`traffic_type = "ALL"` records every accepted flow. `REJECT` alone is a tenth of the volume and is what the issue asks about.',
+        version: 1,
+        lastSeenVersion: 1,
+        path: "modules/network/main.tf",
+        startLine: 101,
+        endLine: 101,
+        status: "dismissed",
+        dismissedBy: person("mara"),
+        dismissedAt: hoursAgo(24 * 43.2),
+        dismissalReason: "The audit wants accepted flows as well",
+      },
+      v1,
+      24 * 43.68,
+    ),
+    finding(
+      {
+        reviewerKind: OUTSIDE_REVIEWER,
+        severity: "note",
+        title: "The flow log has no Name tag",
+        body: "Every other resource in the module merges a `Name` into `var.tags`.",
+        version: 1,
+        lastSeenVersion: 2,
+        path: "modules/network/main.tf",
+        startLine: 105,
+        endLine: 105,
+      },
+      v2,
+      24 * 43.68,
+    ),
+  ];
+  state.overrides = [
+    {
+      id: newId("override"),
+      by: person("mara"),
+      reason: "The bucket is created by the audit account's root, which is applied first",
+      findingIds: [kept.id],
+      headOid: v2,
+      createdAt: hoursAgo(24 * 43.05),
+    },
+  ];
+  const reported = run(2, v2, 24 * 43.39, [OUTSIDE_REVIEWER], 2);
+  state.runs = [{ ...reported, trigger: "manual", model: null }];
+  return state;
+}
+
+/**
+ * `acme/edge-router` #4: `feature/health-checks`. The repository's review
+ * agents are off; a reviewer that runs in CI reported these all the same.
+ * Its one version is the branch's head, recorded when the page is read.
+ */
+function seedHealthChecks(fx: GitFixture): ReviewState {
+  const tip = fx.branches["feature/health-checks"] ?? "";
+  const state = blank();
+  state.findings = [
+    finding(
+      {
+        reviewerKind: OUTSIDE_REVIEWER,
+        severity: "must_fix",
+        title: "Nothing asks whether an upstream is healthy",
+        body: "`src/router.ts` never imports `src/health.ts`, so a failing upstream keeps its share of requests.",
+        version: 1,
+      },
+      tip,
+      27.5,
+    ),
+    finding(
+      {
+        reviewerKind: OUTSIDE_REVIEWER,
+        severity: "should_fix",
+        title: "The failing set lives in one isolate",
+        body: "Each isolate marks and forgets upstreams on its own, so two requests a second apart can disagree.",
+        version: 1,
+        path: "src/health.ts",
+        startLine: 1,
+        endLine: 1,
+        evidence: [{ kind: "code", text: "const failing = new Set<string>();" }],
+      },
+      tip,
+      27.5,
+    ),
+    finding(
+      {
+        reviewerKind: OUTSIDE_REVIEWER,
+        severity: "note",
+        title: "One failure is enough to leave an upstream out",
+        body: "The issue asks for two failed checks in a row.",
+        version: 1,
+        path: "src/health.ts",
+        startLine: 3,
+        endLine: 5,
+      },
+      tip,
+      27.5,
+    ),
+  ];
+  return state;
+}
+
 function seedFor(repo: RepositoryRecord, number: number): ReviewState | null {
-  if (`${repo.owner.slug}/${repo.name}` !== "acme/infra") return null;
+  const name = `${repo.owner.slug}/${repo.name}`;
+  if (name === "acme/edge-router" && number === 4) return seedHealthChecks(gitOf(repo));
+  if (name !== "acme/infra") return null;
+  if (number === 7) return seedFlowLogs(gitOf(repo));
   if (number === 12) return seedPeering(gitOf(repo));
   if (number === 14) return seedBackups(gitOf(repo));
   return null;
