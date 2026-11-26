@@ -4,7 +4,7 @@ description: Track work with issues, review and merge pull requests, protect bra
 sidebar_order: 8
 ---
 
-Every repository on [git.infrawrench.com](./git-getting-started.md) has **Issues** and **Pull requests** tabs (**Pull requests** is named **Branches** in the [sidebar layout](./git-home.md#inside-a-repository)). Either can be switched off under the repository's **Settings > General**.
+Every repository on [git.infrawrench.com](./git-getting-started.md) has **Issues** and **Pull requests** tabs (**Pull requests** is named **Branches** in the [default layout](./git-home.md#inside-a-repository)). Either can be switched off under the repository's **Settings > General**.
 
 ## Issues
 

@@ -1,10 +1,10 @@
 ---
 title: Home and your work on git.infrawrench.com
-description: The sidebar, the home page, and the Changes, Reviews and Mentions lists on git.infrawrench.com, and how to switch between the branch page and classic layouts.
+description: The sidebar, the home page, and the lists of your work on git.infrawrench.com, in the branch page layout and in classic, and how to switch between the two.
 sidebar_order: 8
 ---
 
-When you are signed in to [git.infrawrench.com](./git-getting-started.md), the site opens on your work: the branches that are active in your repositories, the ones waiting on you, and what happened lately.
+When you are signed in to [git.infrawrench.com](./git-getting-started.md), a sidebar runs down the left of every page. What it holds depends on your layout: this page describes the default one first, then [classic](#the-classic-sidebar). In the default layout the site opens on your work: the branches that are active in your repositories, the ones waiting on you, and what happened lately.
 
 <insert [The git.infrawrench.com home page for an organisation: the sidebar with Home, Your work and the organisation's repositories, the headline "Your team has 15 active branches", the Your changes and Team changes cards side by side, and Suggested for your review underneath] here>
 
@@ -57,15 +57,27 @@ A row shows the first line of the pull request's description. A branch that has 
 
 ## Branch page or classic
 
-The sidebar, this home page and the [branch page](./git-agents.md) are the default layout. **Classic** is the top navigation bar, a home page of your repositories and recent pushes, and pull requests as conversation, commits, checks and files. Both show the same data at the same addresses.
+The sidebar described above, this home page and the [branch page](./git-agents.md) are the default layout. **Classic** keeps a sidebar and changes what is in it and beside it: a home page of your repositories and recent pushes, a repository's own header and tabs, and pull requests as conversation, commits, checks and files. Both show the same data at the same addresses.
 
-Switch in any of four places:
+Switch in any of three places:
 
-- Your name at the foot of the sidebar, under **Open pull requests as**.
+- Your name at the foot of the sidebar, under **Open pull requests as**, in either layout.
 - The top bar of a branch page, beside the repository's sections.
-- The account menu at the top right, in the classic layout.
 - **Settings > Review**.
 
 <insert [The account menu at the foot of the git.infrawrench.com sidebar, open: Your repositories, Your stars, Settings, then "Open pull requests as" with Branch page ticked and Classic, then Infrawrench app and Sign out] here>
 
-The choice is yours alone and follows your account. Signed-out visitors always see the top navigation bar.
+The choice is yours alone and follows your account. Signed-out visitors see a top navigation bar and no sidebar.
+
+## The classic sidebar
+
+- **Home** is your repositories, recent pushes to them and the repositories you starred.
+- **Pull requests** holds **Created** (the ones you opened), **Review requested** (open ones with a version you have not marked as reviewed) and **Assigned**.
+- **Issues** holds **Assigned**, **Created** and **Mentioned** (issues whose description or comments name you with `@username`).
+- **Explore** lists public repositories.
+- Each namespace you have repositories in is a group that lists them, with how many there are and a **+** that creates a repository there.
+- Your name, at the foot, opens the same menu as in the default layout.
+
+The pull request and issue lists span every repository you own, collaborate on or reach through an organisation. Each row names its repository. **Open**, **Closed** and **All** in the top bar filter by state. The top bar of other pages has the repository search and **New**.
+
+<insert [git.infrawrench.com in the classic layout: the sidebar with Home, Pull requests (Created, Review requested, Assigned), Issues (Assigned, Created, Mentioned), Explore and the Acme group with its count and plus button, beside the Issues list on the Created view with rows from several repositories] here>
