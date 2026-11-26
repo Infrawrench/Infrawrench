@@ -21,9 +21,7 @@
  */
 
 /** The fork a page's branch is in: its `owner/name`, or `"gone"` once deleted. */
-export type GitBranchKeyFork =
-  | { readonly owner: string; readonly name: string }
-  | "gone";
+export type GitBranchKeyFork = { readonly owner: string; readonly name: string } | "gone";
 
 export interface GitBranchKey {
   /** Null for a branch of the repository the page is in. */
