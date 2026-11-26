@@ -318,7 +318,9 @@ export async function gitHttp(
     });
   }
 
-  const auth = await directory.authenticate(withoutCookie(request));
+  // A job token bound to one branch is taken here and only here among these
+  // routes: the push policy confines what it writes to that branch (`onlyRef`).
+  const auth = await directory.authenticate(withoutCookie(request), { refTokens: true });
   if (auth.refused) return unauthorized();
   const principal = auth.principal ?? ANONYMOUS;
   const limited = await admit(request, principal);

@@ -172,6 +172,13 @@ export async function mintGitJobToken(
      * and pushes nothing. `access` is then about the state.
      */
     workspace?: string;
+    /**
+     * Pushes this one branch only (a full ref name, `refs/heads/<branch>`):
+     * the forge lets the token read the repository and create or update that
+     * branch, and refuses it everywhere else (archive, raw files, Terraform,
+     * every other ref). What an agent session working on a pull request holds.
+     */
+    ref?: string;
   } = {},
 ): Promise<string> {
   const key = process.env["GIT_JOB_TOKEN_KEY"] ?? "";
@@ -186,6 +193,7 @@ export async function mintGitJobToken(
       expiresAt: Math.floor(now / 1000) + (opts.ttlSeconds ?? CLONE_TOKEN_TTL_SECONDS),
       ...(opts.commit !== undefined ? { commit: opts.commit } : {}),
       ...(opts.workspace !== undefined ? { workspace: opts.workspace } : {}),
+      ...(opts.ref !== undefined ? { ref: opts.ref } : {}),
     },
     now,
   );

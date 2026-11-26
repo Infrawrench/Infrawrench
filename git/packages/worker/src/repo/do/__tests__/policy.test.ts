@@ -1,7 +1,7 @@
 import type { ReceiveUpdate } from "@infrawrench/git-protocol";
 import { describe, expect, it } from "vitest";
 import type { ProtectedBranchRule } from "../../../db/policy-rules";
-import { type PushPolicy, checkPush, refusal } from "../policy";
+import { type PushPolicy, checkPush, onlyRefOf, refusal } from "../policy";
 
 const A = "a".repeat(40);
 const B = "b".repeat(40);
@@ -139,5 +139,44 @@ describe("push policy", () => {
     expect(
       refusal(policy([], { quotaRefusal: null }), update("refs/heads/x", "create")),
     ).toBeNull();
+  });
+
+  it("confines a branch-bound job to creating and updating its own branch", () => {
+    const own = "refs/heads/work/fix";
+    const agent = policy([], { userId: null, onlyRef: own });
+    expect(refusal(agent, update(own, "create"))).toBeNull();
+    expect(refusal(agent, update(own, "update"))).toBeNull();
+    expect(refusal(agent, update(own, "update", true))).toBeNull();
+    expect(refusal(agent, update(own, "delete"))).toMatch(/may not delete/);
+    expect(refusal(agent, update("refs/heads/main", "update"))).toMatch(/its own branch/);
+    expect(refusal(agent, update("refs/heads/work/fix-2", "create"))).toMatch(/its own branch/);
+    expect(refusal(agent, update("refs/heads/work", "create"))).toMatch(/its own branch/);
+    expect(refusal(agent, update("refs/tags/v1", "create"))).toMatch(/its own branch/);
+    // Even as an administrator would be: the confinement is the credential's.
+    expect(refusal({ ...agent, admin: true }, update("refs/heads/main", "update"))).toMatch(
+      /its own branch/,
+    );
+    // Protected-branch rules still apply on top.
+    const guarded = policy([rule({ pattern: "work/*" })], { userId: null, onlyRef: own });
+    expect(refusal(guarded, update(own, "update", true))).toMatch(/force pushes/);
+    expect(refusal(guarded, update(own, "update"))).toBeNull();
+    const refused = checkPush(agent, [
+      update(own, "update"),
+      update("refs/heads/main", "update"),
+      update("refs/tags/v2", "create"),
+    ]);
+    expect([...refused.keys()]).toEqual(["refs/heads/main", "refs/tags/v2"]);
+  });
+
+  it("confines only a job bound to a branch", () => {
+    const base = { userId: null, admin: false, rules: [] };
+    expect(onlyRefOf({ kind: "job", repositoryId: "r", write: true, runId: null })).toBeNull();
+    expect(
+      onlyRefOf({ kind: "job", repositoryId: "r", write: true, runId: null, ref: "refs/heads/x" }),
+    ).toBe("refs/heads/x");
+    expect(onlyRefOf({ kind: "deploy-key", keyId: "k", repositoryId: "r", readOnly: false })).toBe(
+      null,
+    );
+    expect(refusal({ ...base, onlyRef: null }, update("refs/heads/main", "update"))).toBeNull();
   });
 });

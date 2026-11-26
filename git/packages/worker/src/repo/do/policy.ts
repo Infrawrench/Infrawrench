@@ -5,6 +5,7 @@
  * Pure: no database, no bindings.
  */
 import type { ReceiveUpdate } from "@infrawrench/git-protocol";
+import type { Principal } from "../../auth/principal";
 import { type ProtectedBranchRule, protectionFor } from "../../db/policy-rules";
 
 export interface PushPolicy {
@@ -21,7 +22,20 @@ export interface PushPolicy {
    * is still allowed. Absent or null when pushes are welcome.
    */
   readonly quotaRefusal?: string | null;
+  /**
+   * The one ref (`refs/heads/<branch>`) this pusher may write, when it is
+   * confined to one: a job token bound to a branch (`onlyRefOf`), which is
+   * what an agent session working on a pull request holds. It may create or
+   * update that branch; any other branch, any tag and a deletion of the
+   * branch itself are refused. Protected-branch rules still apply on top.
+   * Absent or null for every other pusher.
+   */
+  readonly onlyRef?: string | null;
 }
+
+/** The one branch a ref-bound job token may push, or null when the principal is not confined to one. */
+export const onlyRefOf = (principal: Principal): string | null =>
+  principal.kind === "job" ? (principal.ref ?? null) : null;
 
 /** Refs the forge writes itself: a pull request's head and merge preview. */
 const RESERVED_PREFIXES = ["refs/pull/", "refs/infrawrench/"];
@@ -49,6 +63,10 @@ export function namespaceRefusal(name: string): string | null {
 export function refusal(policy: PushPolicy, update: ReceiveUpdate): string | null {
   const outside = namespaceRefusal(update.name);
   if (outside !== null) return outside;
+  if (policy.onlyRef != null) {
+    if (update.name !== policy.onlyRef) return "this credential may only push to its own branch";
+    if (update.kind === "delete") return "this credential may not delete its branch";
+  }
   if (policy.quotaRefusal && update.kind !== "delete") return policy.quotaRefusal;
   if (!update.name.startsWith(BRANCH_PREFIX)) return null;
   const branch = update.name.slice(BRANCH_PREFIX.length);
