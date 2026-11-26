@@ -6355,6 +6355,15 @@ The app never embeds the forge: it links out and keeps the organisation's own se
 - **`infra/git/setup.mjs` is a script, not Terraform**, because what it makes is small, mostly one-off, and half of it is not a resource a provider models well: two secrets that must be generated once and never replaced, and a beta Spectrum application whose origin is a Worker's tag. It reads the names from `wrangler.jsonc`. `infra/README.md` ("git.infrawrench.com") is the runbook.
 - **Durable Object migrations**: `v1` creates `RepoDO`, `v2` `TerraformStateDO`. A deployed tag is never edited; a new class gets a new tag.
 
+### The two shells and a person's work
+
+Someone signed in and in agent mode gets a sidebar frame and a home page of their work; a signed-out reader and someone in classic mode keep the top bar and the pages as they were. `git/packages/web/NOTES.md` ("The two shells") and `git/packages/worker/NOTES.md` ("A person's work across repositories") have the detail. What binds a change:
+
+- **The frame follows the mode, in one place** (`web/src/routes/__root.tsx`). A page never asks which shell it is in: it renders `TopBar` and both shells place it.
+- **`/api/workspace` is scoped by `tiedTo`**, the repositories the viewer has a tie to, never `visibleTo`. Anything added to it goes behind the same scope, and reads what a row shows in the row's own statement.
+- **Every sentence on the home page is computed** (`web/src/features/workspace/sentences.ts`). There is no model-written summary, and none is to be added without data behind it.
+- **`/changes`, `/reviews` and `/mentions` are pages, so they are reserved namespaces** in client-core's `git-names.ts`. A new top-level page is reserved there in the same change.
+
 ### Agent work review (versions of a branch)
 
 `git/README.md` ("Agent work review") is the product and `git/packages/worker/NOTES.md` ("Versions and review") the mechanism. What binds a change:

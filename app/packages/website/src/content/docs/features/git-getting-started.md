@@ -142,6 +142,7 @@ Renaming or transferring a repository changes its address. Archiving makes it re
 
 ## Next
 
+- [Home and your work](./git-home.md): the sidebar, the home page, and the Changes, Reviews and Mentions lists.
 - [Issues and pull requests](./git-pull-requests.md): reviews, merging, protected branches and forks.
 - [CI](./ci.md): pipelines in `.infrawrench/ci/` run on every push and pull request of an organization's repositories.
 - [Terraform](./git-terraform.md): state, plans on pull requests and applies on merge.
