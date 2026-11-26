@@ -52,6 +52,25 @@ const MIGRATIONS: readonly string[] = [
      at INTEGER NOT NULL,
      PRIMARY KEY (kind, key, commit_oid)
    ) WITHOUT ROWID;`,
+  // Versions of branches (`versions.ts`): one row per push to a branch that
+  // is not the default branch, and per branch the lineage and number given
+  // out last, which outlive the versions so neither is ever reused.
+  `CREATE TABLE versions (
+     branch TEXT NOT NULL,
+     lineage INTEGER NOT NULL,
+     number INTEGER NOT NULL,
+     tip TEXT NOT NULL,
+     previous TEXT,
+     forced INTEGER NOT NULL DEFAULT 0,
+     at INTEGER NOT NULL,
+     PRIMARY KEY (branch, lineage, number)
+   ) WITHOUT ROWID;
+   CREATE TABLE version_branches (
+     branch TEXT PRIMARY KEY,
+     lineage INTEGER NOT NULL,
+     number INTEGER NOT NULL,
+     tip TEXT
+   ) WITHOUT ROWID;`,
 ];
 
 /** Brings the schema up to date. Synchronous, so it runs in the constructor. */

@@ -344,6 +344,53 @@ export interface DiffAnchorInput {
   readonly startLine?: number | undefined;
 }
 
+/** A version of a branch as the storage recorded it (`do/versions.ts`). */
+export interface ReaderVersion {
+  /** Short (`feature/x`). */
+  readonly branch: string;
+  readonly lineage: number;
+  readonly number: number;
+  readonly tipOid: string;
+  /** The branch's commit before the push; null for a lineage's first version. */
+  readonly previousOid: string | null;
+  readonly forced: boolean;
+  /** Milliseconds since the epoch. */
+  readonly at: number;
+}
+
+/** A version's two ends: its commit, and the merge base it was recorded with. */
+export interface VersionSide {
+  readonly tipOid: string;
+  readonly baseOid: string | null;
+}
+
+export interface VersionDiffInput {
+  /** The older version, for what `to` changed since it. Null: the whole change of `to`, base to tip. */
+  readonly from: VersionSide | null;
+  readonly to: VersionSide;
+}
+
+export interface ReaderVersionDiff {
+  readonly diff: Diff;
+  /** The two versions have different bases. */
+  readonly rebased: boolean;
+  /** False when the older version could not be carried to the newer base: the diff is tip to tip. */
+  readonly exact: boolean;
+}
+
+/** Lines of a file, by whatever `key` the caller knows them. */
+export interface LineAnchor {
+  readonly key: string;
+  readonly path: string;
+  /** The (last) line, 1-based. */
+  readonly line: number;
+  readonly startLine: number | null;
+}
+
+export type MappedLine =
+  | { readonly key: string; readonly line: number; readonly startLine: number | null }
+  | { readonly key: string; readonly changed: true };
+
 export interface RepoReader {
   // -------------------------------------------------------------------------
   // The repository itself
@@ -576,6 +623,49 @@ export interface RepoReader {
 
   /** Bring a pull request's head branch up to date with its base. See {@link UpdateBranchInput}. */
   updateBranch(input: UpdateBranchInput): Promise<UpdateBranchOutcome>;
+
+  // -------------------------------------------------------------------------
+  // Versions of branches
+  // -------------------------------------------------------------------------
+
+  /**
+   * The versions the storage recorded for a branch (short name), oldest
+   * first: one per push to a branch that is not the default branch, numbered
+   * in the transaction that moved it. `after` leaves out what the caller has
+   * already copied. Capped; ask again from the last one.
+   */
+  listVersions(input: {
+    readonly branch: string;
+    readonly after?: { readonly lineage: number; readonly number: number } | undefined;
+  }): Promise<readonly ReaderVersion[]>;
+
+  /**
+   * Forget versions: their records and the refs that kept their commits
+   * readable. Safe to repeat, and on a repository that is gone.
+   */
+  pruneVersions(input: {
+    readonly branch: string;
+    readonly versions: ReadonlyArray<{ readonly lineage: number; readonly number: number }>;
+  }): Promise<{ readonly dropped: number }>;
+
+  /**
+   * A version's diff, paged by file: its whole change, or what it changed
+   * since an older version with each taken against its own base, so a rebase
+   * alone shows nothing. The commit ids are the forge's own records and are
+   * read as given.
+   */
+  versionDiff(input: VersionDiffInput, options: DiffOptions): Promise<ReaderVersionDiff>;
+
+  /**
+   * Where lines of files at `fromOid` are at `toOid`, for carrying review
+   * comments from one version to the next: the new numbers when every line
+   * an anchor covers is unchanged, `changed` otherwise.
+   */
+  mapLines(input: {
+    readonly fromOid: string;
+    readonly toOid: string;
+    readonly anchors: readonly LineAnchor[];
+  }): Promise<readonly MappedLine[]>;
 }
 
 const refuse = (): Promise<never> =>
@@ -619,6 +709,10 @@ export const unavailableRepoReader: RepoReader = {
   mergeability: refuse,
   merge: refuse,
   updateBranch: refuse,
+  listVersions: refuse,
+  pruneVersions: refuse,
+  versionDiff: refuse,
+  mapLines: refuse,
 };
 
 /** Whether an error is the storage saying it is not there (yet). */

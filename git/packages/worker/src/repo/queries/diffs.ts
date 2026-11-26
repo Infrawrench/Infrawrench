@@ -165,8 +165,8 @@ async function renderFile(
   };
 }
 
-/** One page of a diff, in path order. */
-async function page(
+/** One page of a diff between two trees, in path order. */
+export async function diffPage(
   session: Session,
   baseOid: ObjectId | null,
   headOid: ObjectId,
@@ -226,7 +226,7 @@ async function page(
   return answer(files, next < summary.changes.length ? String(next) : null);
 }
 
-const treeOf = async (session: Session, commit: ObjectId): Promise<ObjectId> => {
+export const treeOf = async (session: Session, commit: ObjectId): Promise<ObjectId> => {
   try {
     return (await session.cache.node(commit)).tree;
   } catch (error) {
@@ -277,7 +277,7 @@ export async function commitDiff(
   const oid = await commitById(session, sha);
   const node = await session.cache.node(oid);
   const parent = node.parents[0] ?? null;
-  return page(
+  return diffPage(
     session,
     parent,
     oid,
@@ -422,7 +422,7 @@ export async function compareDiff(
   options: DiffOptions,
 ): Promise<Diff> {
   const { session, head, mergeBaseOid } = await sides(cx, input);
-  return page(
+  return diffPage(
     session,
     mergeBaseOid,
     head.commitOid,

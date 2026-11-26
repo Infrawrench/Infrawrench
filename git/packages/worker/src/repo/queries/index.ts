@@ -38,6 +38,7 @@ import {
 } from "./session";
 import type { ReaderState } from "./state";
 import { gitignoreFor, licenseFor, readmeFor } from "./templates";
+import { listVersions, mapLines, pruneVersions, versionDiff } from "./versions";
 
 export { ReaderState } from "./state";
 export { DEFAULT_READER_LIMITS, type ReaderLimits } from "./session";
@@ -149,6 +150,10 @@ export function localRepoReader(
     mergeability: (input) => mergeability(cx, input),
     merge: (input) => merge(cx, input),
     updateBranch: (input) => updateBranch(cx, input),
+    listVersions: (input) => listVersions(cx, input),
+    pruneVersions: (input) => pruneVersions(cx, input),
+    versionDiff: (input, diffOptions) => versionDiff(cx, input, diffOptions),
+    mapLines: (input) => mapLines(cx, input),
   };
 }
 
@@ -186,6 +191,10 @@ export const READER_METHODS = [
   "mergeability",
   "merge",
   "updateBranch",
+  "listVersions",
+  "pruneVersions",
+  "versionDiff",
+  "mapLines",
 ] as const satisfies ReadonlyArray<keyof RepoReader>;
 export type ReaderMethod = (typeof READER_METHODS)[number];
 

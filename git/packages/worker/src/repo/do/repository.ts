@@ -47,6 +47,13 @@ import { selectByOid, selectEverything, streamPack } from "./pack-stream";
 import type { Bucket, EventSink, RepoStorage, Sql } from "./platform";
 import { type PushPolicy, checkPush } from "./policy";
 import { getMeta, migrate, setMeta } from "./schema";
+import {
+  type StoredVersion,
+  dropVersions,
+  isHiddenRef,
+  listVersions,
+  recordVersion,
+} from "./versions";
 
 export interface RepositoryLimits {
   /** Largest pack a push may bring. */
@@ -496,6 +503,7 @@ export class Repository {
         object.type === "tag" ? (await peelTags(reader, update.newOid)).oid : update.newOid,
       );
     }
+    const nothingNew = await this.bringNothing(updates, reader);
 
     const outcome = this.deps.storage.transactionSync(() => {
       const results = updates.map((update): RefUpdateResult => {
@@ -542,6 +550,7 @@ export class Repository {
         );
       });
       const applied = updates.filter((_, index) => results[index]!.error === null);
+      this.recordVersions(applied, nothingNew);
       const tips = new Set(
         applied
           .filter((update) => isBranchOrTag(update.name) && update.newOid !== ZERO_OID)
@@ -572,6 +581,94 @@ export class Repository {
     return outcome.results;
   }
 
+  // Versions of branches (`versions.ts`)
+
+  /**
+   * The branches among `updates` that are being created at a commit the
+   * default branch already has: a branch made to start work from, which is
+   * not yet a version of anything. Read before the transaction, which must
+   * not await. A walk that gives up counts as bringing something.
+   */
+  private async bringNothing(
+    updates: readonly RefUpdate[],
+    reader: ObjectReader,
+  ): Promise<Set<string>> {
+    const none = new Set<string>();
+    const head = this.head();
+    const created = updates.filter(
+      (update) =>
+        update.name.startsWith("refs/heads/") &&
+        update.name !== head &&
+        update.oldOid === ZERO_OID &&
+        update.newOid !== ZERO_OID,
+    );
+    if (created.length === 0) return none;
+    const [tip] = this.sql
+      .exec<{ oid: string }>("SELECT oid FROM refs WHERE name = ?", head)
+      .toArray();
+    if (!tip) return none;
+    const graph = new CommitGraph(reader);
+    for (const update of created) {
+      try {
+        if (update.newOid === tip.oid || (await isAncestor(graph, update.newOid, tip.oid))) {
+          none.add(update.name);
+        }
+      } catch {
+        // Too long a walk to say: recorded as a version, which loses nothing.
+      }
+    }
+    return none;
+  }
+
+  /**
+   * Records a version for every branch that moved, other than the default
+   * branch. Call inside the transaction that moved them. The version's ref
+   * points at the branch's new tip, so nothing becomes reachable or
+   * unreachable by it and `changed` needs no telling.
+   */
+  private recordVersions(applied: readonly RefUpdate[], nothingNew: ReadonlySet<string>): void {
+    const head = this.head();
+    for (const update of applied) {
+      if (!update.name.startsWith("refs/heads/") || update.name === head) continue;
+      if (update.newOid === ZERO_OID) continue;
+      recordVersion(
+        this.sql,
+        {
+          name: update.name,
+          oldOid: update.oldOid === ZERO_OID ? null : update.oldOid,
+          newOid: update.newOid,
+          forced: (update as { readonly forced?: boolean }).forced === true,
+          nothingNew: nothingNew.has(update.name),
+        },
+        this.now(),
+      );
+    }
+  }
+
+  /** A branch's recorded versions after a point, oldest first. `branch` is short. */
+  versions(
+    branch: string,
+    after?: { readonly lineage: number; readonly number: number },
+  ): StoredVersion[] {
+    return listVersions(this.sql, branch, after);
+  }
+
+  /**
+   * Forgets versions and the refs that kept their commits. What only those
+   * refs held is a leftover now (it was one for full clones already, and
+   * stops being readable by id), so the reachability answer is asked again.
+   */
+  pruneVersions(
+    branch: string,
+    versions: ReadonlyArray<{ readonly lineage: number; readonly number: number }>,
+  ): number {
+    return this.deps.storage.transactionSync(() => {
+      const dropped = dropVersions(this.sql, branch, versions);
+      if (dropped > 0) this.changed(false);
+      return dropped;
+    });
+  }
+
   // The protocol's view
 
   /** The repository as `@infrawrench/git-protocol` sees it. */
@@ -580,7 +677,8 @@ export class Repository {
     return {
       read: (oid) => this.readObject(oid),
       has: (oid) => this.hasObject(oid),
-      listRefs: async () => this.listRefs(),
+      // The forge's own refs are never advertised: a client neither sees nor asks for them.
+      listRefs: async () => this.listRefs().filter((ref) => !isHiddenRef(ref.name)),
       head: async () => this.head(),
       ingestPack: (pack, arrival) =>
         this.ingest(pack, false, this.limits.maxPackBytes, true, arrival ?? null),
