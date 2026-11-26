@@ -136,6 +136,11 @@ export const Session = Schema.Struct({
       suggestedUsername: Schema.NullOr(Schema.String).annotate({
         description: "A free, valid username derived from their name or email, to prefill.",
       }),
+      // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+      signupsOpen: Schema.Boolean.annotate({
+        description:
+          "Whether this person may claim a username yet. Sign-ups are open to members of an Infrawrench organisation that has Git turned on.",
+      }),
     }),
   ).annotate({ description: "Null when signed out." }),
   personal: Schema.NullOr(

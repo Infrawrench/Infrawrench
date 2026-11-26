@@ -47,6 +47,8 @@ export interface OrgMembership {
    * the server enforces the scope either way.
    */
   costVisibility?: CostVisibilitySummary;
+  /** git-feature-flag: false while the organisation does not have Git (`git-feature-flag.ts`). */
+  gitEnabled?: boolean;
 }
 
 const EMPTY_MEMBERSHIP: OrgMembership = {

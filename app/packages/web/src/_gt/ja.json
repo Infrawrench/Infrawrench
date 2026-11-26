@@ -24071,5 +24071,8 @@
   "ccc0004b5a8a002f": "{repository}（{root}）",
   "fc85aaa8ca92a306": "このクラスター用の kubeconfig を /root/.kube に接続名で作成し、KUBECONFIG と KUBE_CONFIG_PATH をそのファイルに向けます。kubectl は前者を、Terraform の Kubernetes プロバイダーと Helm プロバイダーは後者を読み取ります。クラスターが対応していれば、サービスアカウントトークンは短期間有効なトークンに置き換えられます。",
   "c0c0172dc78f8dbd": "接続文字列を DATABASE_URL、パスワードを MYSQL_PASSWORD として渡し、~/.my.cnf に接続名のオプショングループを書き込みます。MYSQL_GROUP_SUFFIX がそれを選択するので、mysql は引数なしで接続できます。Terraform の MySQL プロバイダーは、パスワードに加えて MYSQL_ENDPOINT と MYSQL_USERNAME を読み取ります。接続に CA 証明書がある場合は、MYSQL_TLS_CA_CERT がその場所を示します。",
-  "8d23e64b5fa8def4": "接続のアクセストークンを、Vercel CLI が読み取る VERCEL_TOKEN と、Terraform の Vercel プロバイダーが読み取る VERCEL_API_TOKEN として渡します。ジョブはいつもどおりプロジェクトを指定します（.vercel/project.json、VERCEL_ORG_ID と VERCEL_PROJECT_ID、または --scope）。"
+  "8d23e64b5fa8def4": "接続のアクセストークンを、Vercel CLI が読み取る VERCEL_TOKEN と、Terraform の Vercel プロバイダーが読み取る VERCEL_API_TOKEN として渡します。ジョブはいつもどおりプロジェクトを指定します（.vercel/project.json、VERCEL_ORG_ID と VERCEL_PROJECT_ID、または --scope）。",
+  "12864829c994334d": "Git は、組織のアプリ内で Git をオンにし、そのメンバーが git.infrawrench.com でサインアップできるようにします。",
+  "379192c9c065f94b": "{name} の Git をオフにする",
+  "2312882473a3e78b": "{name} の Git をオンにする"
 }

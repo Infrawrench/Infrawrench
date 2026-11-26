@@ -9,7 +9,7 @@ sidebar_order: 7
 ## Sign in and choose a username
 
 1. Open [git.infrawrench.com](https://git.infrawrench.com) and click **Sign in**. You sign in with your Infrawrench account, the same one as the app.
-2. The first time, you are asked to **Choose a username**. It becomes your personal namespace: your own repositories live at `git.infrawrench.com/<username>/<repository>`.
+2. The first time, you are asked to **Choose a username**. It becomes your personal namespace: your own repositories live at `git.infrawrench.com/<username>/<repository>`. While Git is in early access, choosing a username needs membership of an organization that has Git turned on; otherwise the page says sign-ups are not open yet, and you can still browse public repositories.
 
 Usernames use letters, digits, dots, dashes and underscores, are at most 39 characters, and cannot end in `.git`. The field tells you whether a name is available as you type.
 

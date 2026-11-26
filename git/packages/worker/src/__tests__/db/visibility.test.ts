@@ -286,7 +286,7 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
     const newcomer = await world.person("frank", { username: false });
     const me = await world.call("GET", "/api/session", { as: newcomer });
     expect(me.body.user.username).toBeNull();
-    expect(me.body.onboarding).toMatchObject({ needsUsername: true });
+    expect(me.body.onboarding).toMatchObject({ needsUsername: true, signupsOpen: false });
     expect(typeof me.body.onboarding.suggestedUsername).toBe("string");
     // Reads like a visitor.
     expect(
@@ -298,6 +298,20 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
 
     const claim = (username: string) =>
       world.call("POST", "/api/session/username", { as: newcomer, body: { username } });
+    // git-feature-flag: sign-ups are for members of an organisation that has Git.
+    expect(await claim(newcomer.username)).toMatchObject({
+      status: 403,
+      body: { code: "signups_closed" },
+    });
+    await world.organization("frankco", { members: [[newcomer, "member"]], namespace: false });
+    expect((await claim(newcomer.username)).status).toBe(403);
+    await world.organization("frankgit", {
+      members: [[newcomer, "member"]],
+      namespace: false,
+      git: true,
+    });
+    const opened = await world.call("GET", "/api/session", { as: newcomer });
+    expect(opened.body.onboarding).toMatchObject({ needsUsername: true, signupsOpen: true });
     expect(await claim("api")).toMatchObject({ status: 400, body: { code: "username_reserved" } });
     expect(await claim("-nope")).toMatchObject({ status: 400, body: { code: "username_invalid" } });
     expect(await claim(alice.username.toUpperCase())).toMatchObject({

@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { OrgMembership, OrgRoleSummary } from "@infrawrench/client-core";
+import { gitFeatureHides, type OrgMembership, type OrgRoleSummary } from "@infrawrench/client-core";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { apiGet } from "@/lib/api";
 
@@ -32,6 +32,8 @@ interface ProviderProps {
 export function PermissionsProvider({ orgId, children }: ProviderProps) {
   const [permissions, setPermissions] = useState<readonly string[]>([]);
   const [role, setRole] = useState<OrgRoleSummary | null>(null);
+  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+  const [gitEnabled, setGitEnabled] = useState<boolean | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +44,7 @@ export function PermissionsProvider({ orgId, children }: ProviderProps) {
       const me = await apiGet<OrgMembership>(`/api/org/${orgId}/team/me`);
       setPermissions(me.permissions);
       setRole(me.role);
+      setGitEnabled(me.gitEnabled); // git-feature-flag
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setPermissions([]);
@@ -61,11 +64,14 @@ export function PermissionsProvider({ orgId, children }: ProviderProps) {
       error,
       permissions,
       role,
-      has: (permission: string) => hasPermission(permissions, permission),
-      hasAny: (...perms: string[]) => perms.some((p) => hasPermission(permissions, p)),
+      // git-feature-flag: `git:` permissions grant nothing while the org does not have Git.
+      has: (permission: string) =>
+        !gitFeatureHides(permission, { gitEnabled }) && hasPermission(permissions, permission),
+      hasAny: (...perms: string[]) =>
+        perms.some((p) => !gitFeatureHides(p, { gitEnabled }) && hasPermission(permissions, p)),
       refresh,
     };
-  }, [loading, error, permissions, role, refresh]);
+  }, [loading, error, permissions, role, refresh, gitEnabled]);
 
   return <PermissionsContext.Provider value={value}>{children}</PermissionsContext.Provider>;
 }

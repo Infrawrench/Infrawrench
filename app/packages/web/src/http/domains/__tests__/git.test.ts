@@ -31,6 +31,11 @@ vi.mock("@infrawrench/server-core/git/forge", () => ({
 vi.mock("../../../services/audit", () => ({
   logAudit: (...args: unknown[]) => mockLogAudit(...args),
 }));
+// git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+const mockGitEnabled = vi.fn<(orgId: string) => Promise<boolean>>();
+vi.mock("@infrawrench/server-core/git/feature-flag", () => ({
+  isGitEnabled: (orgId: string) => mockGitEnabled(orgId),
+}));
 vi.mock("../billing/operations", () => ({
   ensureGitStoragePrice: (orgId: string) => mockEnsurePrice(orgId),
 }));
@@ -71,6 +76,25 @@ beforeEach(() => {
   mockOverview.mockResolvedValue(overview);
   mockRepositories.mockResolvedValue([]);
   mockEnsurePrice.mockResolvedValue([]);
+  mockGitEnabled.mockResolvedValue(true); // git-feature-flag
+});
+
+// git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+describe("the Git feature flag", () => {
+  it("answers every route 404 until the organisation has Git, and reads nothing", async () => {
+    mockGitEnabled.mockResolvedValue(false);
+    const app = buildApp(["git:read", "git:write", "git:admin"]);
+    const answers = await Promise.all([
+      app.request("/"),
+      app.request("/repositories"),
+      app.request("/namespace", put({ slug: "acme" })),
+      app.request("/settings", put({ defaultVisibility: "public" })),
+    ]);
+    expect(answers.map((res) => res.status)).toEqual([404, 404, 404, 404]);
+    expect(mockGitEnabled).toHaveBeenCalledWith("org-1");
+    expect(mockOverview).not.toHaveBeenCalled();
+    expect(mockSetNamespace).not.toHaveBeenCalled();
+  });
 });
 
 describe("GET /git", () => {

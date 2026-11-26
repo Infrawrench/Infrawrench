@@ -384,6 +384,7 @@
     "./ci/values": "./src/ci/values.ts",
     "./billing/capacity-slots": "./src/billing/capacity-slots.ts",
     "./git/billing": "./src/git/billing.ts",
+    "./git/feature-flag": "./src/git/feature-flag.ts",
     "./git/forge": "./src/git/forge.ts",
     "./git/quota": "./src/git/quota.ts",
     "./billing/ai-pricing": "./src/billing/ai-pricing.ts",

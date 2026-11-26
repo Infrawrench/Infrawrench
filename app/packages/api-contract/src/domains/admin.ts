@@ -26,6 +26,10 @@ export const AdminOrganization = Schema.Struct({
   ).annotate({
     description: "Stripe subscription status, or null when the org never checked out",
   }),
+  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+  git: Schema.Boolean.annotate({
+    description: "Whether the org has Git (git.infrawrench.com) turned on",
+  }),
 }).annotate({ identifier: "AdminOrganization" });
 
 const ComplimentaryUpdate = Schema.Struct({ complimentary: Schema.Boolean }).annotate({
@@ -36,6 +40,17 @@ export const ComplimentaryResult = Schema.Struct({
   id: Schema.String,
   complimentary: Schema.Boolean,
 }).annotate({ identifier: "ComplimentaryResult" });
+
+// git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+const GitFeatureUpdate = Schema.Struct({ enabled: Schema.Boolean }).annotate({
+  identifier: "GitFeatureUpdate",
+});
+
+// git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+export const GitFeatureResult = Schema.Struct({
+  id: Schema.String,
+  git: Schema.Boolean,
+}).annotate({ identifier: "GitFeatureResult" });
 
 const ALLOWLIST_NOTE =
   "Platform admins only (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist). 403 for everyone else.";
@@ -62,6 +77,19 @@ export class AdminGroup extends HttpApiGroup.make("admin")
       )
       .annotate(SuccessDescription, "Updated flag")
       .annotate(OpenApi.Transform, optionalRequestBody),
+    // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+    HttpApiEndpoint.put("setGit", "/organizations/:orgId/git", {
+      params: { orgId: Schema.String.annotate({ description: "Organization id" }) },
+      payload: GitFeatureUpdate,
+      success: GitFeatureResult,
+      error: [BadRequest, Forbidden, NotFound],
+    })
+      .annotate(OpenApi.Summary, "Turn Git on or off for an org")
+      .annotate(
+        OpenApi.Description,
+        "Platform admins only (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist). Turns on the app's Git surfaces for the org and lets its members sign up on git.infrawrench.com.",
+      )
+      .annotate(SuccessDescription, "Updated flag"),
   )
   .prefix("/api/admin")
   .middleware(SessionAuth)

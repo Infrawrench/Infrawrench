@@ -39,6 +39,7 @@ import {
 } from "../../db/namespaces";
 import { getOrganization } from "../../db/organizations";
 import { countVisibleRepositories } from "../../db/repository-lists";
+import { maySignUp } from "../../db/signups"; // git-feature-flag
 import { getGitUser, getUser } from "../../db/users";
 import { appOrigin } from "../../env";
 import { type Cx, op } from "../context";
@@ -192,6 +193,8 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
                     user.displayName,
                   ])
                 : null,
+            // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+            signupsOpen: namespace === null ? await maySignUp(user.id) : true,
           },
           personal:
             namespace === null
@@ -243,6 +246,10 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
         requireSession(cx);
         const userId = cx.userId!;
         checkSlug(payload.username, "username_invalid", "username_reserved");
+        // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+        if (!(await maySignUp(userId))) {
+          throw forbidden("Sign-ups are not open yet", "signups_closed");
+        }
         const user = await getUser(userId);
         const claimed = await claimUserNamespace(userId, payload.username, {
           displayName: user?.displayName ?? null,

@@ -6199,3 +6199,5 @@ export * from "./ci-schema.js";
 export * from "./git-schema.js";
 export * from "./analytics-schema.js";
 export * from "./terraform-schema.js";
+// git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+export * from "./git-feature-flag-schema.js";

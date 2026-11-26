@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchOrgPermissions, hasPermission } from "@infrawrench/client-core";
+import { fetchOrgPermissions, gitFeatureHides, hasPermission } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 
 /**
@@ -28,7 +28,9 @@ export function useOrgPermissions(): {
   });
   const permissions = query.data?.permissions ?? [];
   return {
-    has: (permission: string) => hasPermission(permissions, permission),
+    // git-feature-flag: `git:` permissions grant nothing while the org does not have Git.
+    has: (permission: string) =>
+      !gitFeatureHides(permission, query.data) && hasPermission(permissions, permission),
     permissions,
     loading: query.isLoading,
     error: query.error instanceof Error ? query.error : null,

@@ -24091,5 +24091,8 @@
   "ccc0004b5a8a002f": "{repository} ({root})",
   "fc85aaa8ca92a306": "Eine kubeconfig für diesen Cluster in /root/.kube, benannt nach der Verbindung, mit KUBECONFIG und KUBE_CONFIG_PATH als Verweis darauf: kubectl liest die erste Variable, die Kubernetes- und Helm-Provider von Terraform lesen die zweite. Ein Service-Account-Token wird gegen ein kurzlebiges getauscht, sofern der Cluster das erlaubt.",
   "c0c0172dc78f8dbd": "Die Verbindungszeichenfolge als DATABASE_URL, ihr Passwort als MYSQL_PASSWORD und eine nach ihr benannte Optionsgruppe in ~/.my.cnf, die MYSQL_GROUP_SUFFIX auswählt, sodass mysql ohne Argumente verbindet. Der MySQL-Provider von Terraform liest neben dem Passwort MYSQL_ENDPOINT und MYSQL_USERNAME, und MYSQL_TLS_CA_CERT verweist auf das CA-Zertifikat der Verbindung, falls sie eines hat.",
-  "8d23e64b5fa8def4": "Das Zugriffstoken der Verbindung als VERCEL_TOKEN, das die Vercel-CLI liest, und als VERCEL_API_TOKEN, das der Vercel-Provider von Terraform liest. Der Job benennt sein Projekt wie üblich (.vercel/project.json, VERCEL_ORG_ID mit VERCEL_PROJECT_ID oder --scope)."
+  "8d23e64b5fa8def4": "Das Zugriffstoken der Verbindung als VERCEL_TOKEN, das die Vercel-CLI liest, und als VERCEL_API_TOKEN, das der Vercel-Provider von Terraform liest. Der Job benennt sein Projekt wie üblich (.vercel/project.json, VERCEL_ORG_ID mit VERCEL_PROJECT_ID oder --scope).",
+  "12864829c994334d": "Git aktiviert Git in der App für eine Organisation und ermöglicht ihren Mitgliedern, sich auf git.infrawrench.com zu registrieren.",
+  "379192c9c065f94b": "Git für {name} deaktivieren",
+  "2312882473a3e78b": "Git für {name} aktivieren"
 }

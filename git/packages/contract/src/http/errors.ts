@@ -82,6 +82,8 @@ export class ServiceUnavailable extends Schema.Error<ServiceUnavailable>(
 export const ERROR_CODES = [
   "sign_in_required",
   "username_required",
+  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+  "signups_closed",
   "username_taken",
   "username_reserved",
   "username_invalid",

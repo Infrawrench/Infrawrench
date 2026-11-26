@@ -108,6 +108,7 @@ export function session(): Session {
     onboarding: {
       needsUsername: user.username === null,
       suggestedUsername: user.username === null ? "mara" : null,
+      signupsOpen: true, // git-feature-flag
     },
     personal: own ? fits(own) : null,
     organizations: [

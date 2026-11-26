@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.130.1",
+    "version": "1.131.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -26228,6 +26228,10 @@
           },
           "costVisibility": {
             "$ref": "#/components/schemas/CostVisibilitySummary"
+          },
+          "gitEnabled": {
+            "type": "boolean",
+            "description": "Whether the organisation has Git (git.infrawrench.com) turned on. While it is false, the `git:` permissions grant nothing and the Git routes answer 404. Absent means on."
           }
         },
         "required": [
@@ -84299,6 +84303,34 @@
         ],
         "additionalProperties": false
       },
+      "GitFeatureResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "git": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "git"
+        ],
+        "additionalProperties": false
+      },
+      "GitFeatureUpdate": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "additionalProperties": false
+      },
       "ComplimentaryResult": {
         "type": "object",
         "properties": {
@@ -84366,6 +84398,10 @@
               }
             ],
             "description": "Stripe subscription status, or null when the org never checked out"
+          },
+          "git": {
+            "type": "boolean",
+            "description": "Whether the org has Git (git.infrawrench.com) turned on"
           }
         },
         "required": [
@@ -84374,7 +84410,8 @@
           "complimentary",
           "createdAt",
           "memberCount",
-          "subscriptionStatus"
+          "subscriptionStatus",
+          "git"
         ],
         "additionalProperties": false
       },
@@ -117217,6 +117254,16 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
         "description": "The namespace (null until claimed), the plan's limits for private repositories and their storage, and what the namespace uses. Public repositories are free and count toward no limit.\n\n_Requires permission: `git:read`._",
@@ -117258,6 +117305,16 @@
           },
           "400": {
             "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -117388,6 +117445,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/GitForgeRepositoryList"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -150559,6 +150626,80 @@
           }
         },
         "operationId": "putAdminOrganizationsOrgIdComplimentary",
+        "x-internal": true
+      }
+    },
+    "/api/admin/organizations/{orgId}/git": {
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Updated flag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitFeatureResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Platform admins only (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist). Turns on the app's Git surfaces for the org and lets its members sign up on git.infrawrench.com.",
+        "summary": "Turn Git on or off for an org",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitFeatureUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "operationId": "putAdminOrganizationsOrgIdGit",
         "x-internal": true
       }
     },

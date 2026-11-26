@@ -9,7 +9,7 @@ import {
   useUIStore,
   type SettingsHostValue,
 } from "@infrawrench/ui";
-import { hasPermission, type OrgMembership } from "@infrawrench/client-core";
+import { gitFeatureHides, hasPermission, type OrgMembership } from "@infrawrench/client-core";
 import { CLOUD_URL } from "../../env";
 import { createDesktopSettingsApi, requestText } from "../lib/settings-client";
 import { mountPlaybackTerminal } from "../lib/playback-terminal";
@@ -47,6 +47,8 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
   const navigate = useNavigate();
   const [permissions, setPermissions] = useState<readonly string[]>([]);
   const [permissionsLoading, setPermissionsLoading] = useState(true);
+  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+  const [gitEnabled, setGitEnabled] = useState<boolean | undefined>(undefined);
 
   const api = useMemo(() => createDesktopSettingsApi(), []);
 
@@ -55,6 +57,7 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
     try {
       const me = await api.get<OrgMembership>(`/api/org/${orgId}/team/me`);
       setPermissions(me.permissions);
+      setGitEnabled(me.gitEnabled); // git-feature-flag
     } catch {
       setPermissions([]);
     } finally {
@@ -71,8 +74,11 @@ function CloudSettings({ orgId, section }: { orgId: string; section: string }) {
       orgId,
       api,
       fetchText: requestText,
-      has: (permission) => hasPermission(permissions, permission),
-      hasAny: (...perms) => perms.some((p) => hasPermission(permissions, p)),
+      // git-feature-flag: `git:` permissions grant nothing while the org does not have Git.
+      has: (permission) =>
+        !gitFeatureHides(permission, { gitEnabled }) && hasPermission(permissions, permission),
+      hasAny: (...perms) =>
+        perms.some((p) => !gitFeatureHides(p, { gitEnabled }) && hasPermission(permissions, p)),
       permissionsLoading,
       refreshPermissions,
       openExternal: (url) => {

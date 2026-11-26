@@ -124,6 +124,13 @@ export const MeResponse = Schema.Struct({
   role: Schema.NullOr(RoleSummary),
   permissions: Schema.Array(Permission),
   costVisibility: Schema.optionalKey(CostVisibilitySummary),
+  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+  gitEnabled: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Whether the organisation has Git (git.infrawrench.com) turned on. While it is false, the `git:` permissions grant nothing and the Git routes answer 404. Absent means on.",
+    }),
+  ),
 }).annotate({ identifier: "MeResponse" });
 
 export const PermissionCatalog = Schema.Struct({ permissions: Schema.Array(Permission) }).annotate({

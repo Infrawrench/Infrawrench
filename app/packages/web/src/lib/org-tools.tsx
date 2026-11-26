@@ -305,7 +305,9 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
     // git.infrawrench.com is its own site, so this is a link out, not a tab:
     // the organisation's namespace there, or Settings > Git to claim one.
     // Left out for someone without `git:read`, who could open neither.
-    ...(gitForge.status === "unavailable"
+    // git-feature-flag: shown once the overview has answered, so an organisation
+    // without Git (a 404 there) never sees it flash. Was `=== "unavailable"`.
+    ...(gitForge.status !== "ready"
       ? []
       : [
           {

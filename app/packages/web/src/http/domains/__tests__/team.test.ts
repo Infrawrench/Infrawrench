@@ -33,6 +33,11 @@ vi.mock("@/db/schema", () => ({
 }));
 
 vi.mock("@/services/audit", () => ({ logAudit: vi.fn() }));
+// git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+const mockGitEnabled = vi.fn(async (_orgId: string) => false);
+vi.mock("@infrawrench/server-core/git/feature-flag", () => ({
+  isGitEnabled: (orgId: string) => mockGitEnabled(orgId),
+}));
 const mockStopLending = vi.fn(async () => [] as string[]);
 vi.mock("@infrawrench/server-core/ci/access", () => ({
   stopLendingKeysOf: (...a: unknown[]) => mockStopLending(...(a as [])),
@@ -104,6 +109,8 @@ describe("Team routes", () => {
     expect(body.userId).toBe("user-1");
     expect(body.role.systemKey).toBe("admin");
     expect(body.permissions).toEqual(["*"]);
+    // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+    expect(body.gitEnabled).toBe(false);
   });
 
   it("GET /permissions returns the catalog", async () => {

@@ -10,7 +10,10 @@ function useUsernameOnboarding() {
   const session = useSession();
   const go = useGo();
   const location = useLocation();
-  const needsUsername = session.data?.onboarding?.needsUsername === true;
+  const needsUsername =
+    session.data?.onboarding?.needsUsername === true &&
+    // git-feature-flag: nobody is sent to a username page they cannot use.
+    session.data.onboarding.signupsOpen;
   const onPage = location.pathname === "/onboarding/username";
   const here = location.href;
   useEffect(() => {

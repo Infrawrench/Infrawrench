@@ -117,6 +117,8 @@ export class GitForgeGroup extends HttpApiGroup.make("gitForge")
     HttpApiEndpoint.get("overview", "/", {
       params: OrgParams,
       success: GitForgeOverview,
+      // git-feature-flag: 404 while the organisation does not have Git.
+      error: NotFound,
     })
       .annotate(RequiredPermission, "git:read")
       .annotate(
@@ -134,7 +136,8 @@ export class GitForgeGroup extends HttpApiGroup.make("gitForge")
       params: OrgParams,
       payload: GitForgeNamespaceInput,
       success: GitForgeNamespace,
-      error: [BadRequest, Conflict],
+      // git-feature-flag: NotFound while the organisation does not have Git.
+      error: [BadRequest, Conflict, NotFound],
     })
       .annotate(RequiredPermission, "git:admin")
       .annotate(OpenApi.Summary, "Claim or rename the organisation's namespace")
@@ -160,6 +163,8 @@ export class GitForgeGroup extends HttpApiGroup.make("gitForge")
     HttpApiEndpoint.get("repositories", "/repositories", {
       params: OrgParams,
       success: GitForgeRepositoryList,
+      // git-feature-flag: 404 while the organisation does not have Git.
+      error: NotFound,
     })
       .annotate(RequiredPermission, "git:read")
       .annotate(OpenApi.Summary, "The organisation's repositories on git.infrawrench.com")

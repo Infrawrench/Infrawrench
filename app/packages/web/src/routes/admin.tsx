@@ -10,6 +10,8 @@ interface AdminOrg {
   createdAt: string;
   memberCount: number;
   subscriptionStatus: string | null;
+  /** git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag"). */
+  git: boolean;
 }
 
 export const Route = createFileRoute("/admin")({
@@ -52,6 +54,23 @@ function AdminPage() {
     }
   }
 
+  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+  async function toggleGit(org: AdminOrg) {
+    setBusyOrgId(org.id);
+    setError(null);
+    try {
+      const updated = await apiPut<{ id: string; git: boolean }>(
+        `/api/admin/organizations/${encodeURIComponent(org.id)}/git`,
+        { enabled: !org.git },
+      );
+      setOrgs((prev) => prev?.map((o) => (o.id === updated.id ? { ...o, git: updated.git } : o)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : gt("Failed to update organization"));
+    } finally {
+      setBusyOrgId(null);
+    }
+  }
+
   if (forbidden) {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface">
@@ -80,6 +99,10 @@ function AdminPage() {
         <p className="text-sm text-on-surface-tertiary mb-6">
           {gt(
             "Complimentary organizations get every paid feature, uncapped AI chat, and are never billed.",
+          )}{" "}
+          {/* git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag"). */}
+          {gt(
+            "Git turns on Git in the app for an organization and lets its members sign up on git.infrawrench.com.",
           )}
         </p>
 
@@ -107,6 +130,10 @@ function AdminPage() {
                   <th scope="col" className="px-4 py-3 font-medium">
                     {gt("Created")}
                   </th>
+                  {/* git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag"). */}
+                  <th scope="col" className="px-4 py-3 font-medium text-right">
+                    {gt("Git")}
+                  </th>
                   <th scope="col" className="px-4 py-3 font-medium text-right">
                     {gt("Complimentary")}
                   </th>
@@ -133,6 +160,30 @@ function AdminPage() {
                     </td>
                     <td className="px-4 py-3 text-on-surface-tertiary">
                       {new Date(org.createdAt).toLocaleDateString()}
+                    </td>
+                    {/* git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag"). */}
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => void toggleGit(org)}
+                        disabled={busyOrgId === org.id}
+                        aria-label={
+                          org.git
+                            ? gt("Turn off Git for {name}", { name: org.displayName })
+                            : gt("Turn on Git for {name}", { name: org.displayName })
+                        }
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors disabled:opacity-50 ${
+                          org.git
+                            ? "border border-border-strong text-on-surface-secondary hover:text-on-surface"
+                            : "bg-purple-600 hover:bg-purple-500 text-white"
+                        }`}
+                      >
+                        {busyOrgId === org.id
+                          ? gt("Saving…")
+                          : org.git
+                            ? gt("Turn off")
+                            : gt("Turn on")}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-right">
                       <button

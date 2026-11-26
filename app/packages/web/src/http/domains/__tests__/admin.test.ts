@@ -10,6 +10,16 @@ vi.mock("@/db/client", () => ({
   },
 }));
 
+// git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+const mockGitOrgs = vi.fn<() => Promise<Set<string>>>();
+const mockSetGit =
+  vi.fn<(orgId: string, enabled: boolean, by: string | null) => Promise<boolean>>();
+vi.mock("@infrawrench/server-core/git/feature-flag", () => ({
+  gitEnabledOrganizationIds: () => mockGitOrgs(),
+  setGitEnabled: (orgId: string, enabled: boolean, by: string | null) =>
+    mockSetGit(orgId, enabled, by),
+}));
+
 const { adminDomain } = await import("@/http/domains/admin/index");
 const buildApp = () => buildTestApi(adminDomain, { basePath: "/api/admin" });
 
@@ -32,6 +42,7 @@ describe("Admin routes", () => {
   // buildTestApi's session email is test@example.com
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGitOrgs.mockResolvedValue(new Set()); // git-feature-flag
     process.env["INFRAWRENCH_PLATFORM_ADMIN_EMAILS"] = "someone@else.com, Test@Example.com";
   });
   afterEach(() => {
@@ -83,6 +94,61 @@ describe("Admin routes", () => {
     const body = (await res.json()) as Array<{ id: string }>;
     expect(body).toHaveLength(1);
     expect(body[0]).toMatchObject({ id: "org-1", complimentary: false });
+  });
+
+  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+  it("lists which organizations have Git and turns it on and off", async () => {
+    listReturns([
+      {
+        id: "org-1",
+        displayName: "Acme",
+        complimentary: false,
+        createdAt: "2026-01-01T00:00:00Z",
+        memberCount: 3,
+        subscriptionStatus: null,
+      },
+      {
+        id: "org-2",
+        displayName: "Beta",
+        complimentary: false,
+        createdAt: "2026-01-02T00:00:00Z",
+        memberCount: 1,
+        subscriptionStatus: null,
+      },
+    ]);
+    mockGitOrgs.mockResolvedValue(new Set(["org-2"]));
+    const list = (await (await buildApp().request("/organizations")).json()) as Array<{
+      id: string;
+      git: boolean;
+    }>;
+    expect(list.map((org) => [org.id, org.git])).toEqual([
+      ["org-1", false],
+      ["org-2", true],
+    ]);
+
+    const limit = vi.fn().mockResolvedValue([{ id: "org-1" }]);
+    const where = vi.fn().mockReturnValue({ limit });
+    mockSelect.mockReturnValue({ from: vi.fn().mockReturnValue({ where }) });
+    mockSetGit.mockResolvedValue(true);
+    const res = await buildApp().request("/organizations/org-1/git", {
+      method: "PUT",
+      body: JSON.stringify({ enabled: true }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: "org-1", git: true });
+    expect(mockSetGit).toHaveBeenCalledWith("org-1", true, "test@example.com");
+  });
+
+  it("keeps the Git switch to platform admins", async () => {
+    process.env["INFRAWRENCH_PLATFORM_ADMIN_EMAILS"] = "someone@else.com";
+    const res = await buildApp().request("/organizations/org-1/git", {
+      method: "PUT",
+      body: JSON.stringify({ enabled: true }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(403);
+    expect(mockSetGit).not.toHaveBeenCalled();
   });
 
   it("grants complimentary access", async () => {

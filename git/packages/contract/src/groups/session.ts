@@ -11,7 +11,7 @@ import { Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
 import { RequiresUser, SuccessDescription } from "../http/annotations";
 import { Authentication } from "../http/auth";
-import { BadRequest, Conflict, TooManyRequests } from "../http/errors";
+import { BadRequest, Conflict, Forbidden, TooManyRequests } from "../http/errors";
 import { NamespaceRef, Session, UsernameAvailability } from "../schemas/people";
 
 const UsernameBody = Schema.Struct({
@@ -51,13 +51,14 @@ export class SessionGroup extends HttpApiGroup.make("session")
     HttpApiEndpoint.post("claimUsername", "/username", {
       payload: UsernameBody,
       success: Schema.Struct({ namespace: NamespaceRef }),
-      error: [BadRequest, Conflict],
+      // git-feature-flag: Forbidden (`signups_closed`) is the flag's; remove with it.
+      error: [BadRequest, Conflict, Forbidden],
     })
       .annotate(RequiresUser, true)
       .annotate(OpenApi.Summary, "Claim a username")
       .annotate(
         OpenApi.Description,
-        "Creates the person's namespace. 409 `username_taken` when someone has it, 409 `namespace_already_claimed` when the person already has one (use `renameUsername`).",
+        "Creates the person's namespace. 409 `username_taken` when someone has it, 409 `namespace_already_claimed` when the person already has one (use `renameUsername`). 403 `signups_closed` while sign-ups are not open to this person.",
       )
       .annotate(SuccessDescription, "The namespace"),
     HttpApiEndpoint.put("renameUsername", "/username", {

@@ -1015,6 +1015,7 @@ export const DOMAIN_ROUTES: readonly DomainRoute[] = [
   ["invitations","*","/api/invitations"],
   ["admin","GET","/api/admin/organizations"],
   ["admin","PUT","/api/admin/organizations/:orgId/complimentary"],
+  ["admin","PUT","/api/admin/organizations/:orgId/git"],
   ["admin","*","/api/admin/:segment/*"],
   ["admin","*","/api/admin"],
   ["push-devices","POST","/api/push/devices"],

@@ -13,7 +13,8 @@ const session: Session = {
     displayName: null,
     avatarUrl: null,
   },
-  onboarding: { needsUsername: false, suggestedUsername: null },
+  // git-feature-flag: `signupsOpen` goes with the flag.
+  onboarding: { needsUsername: false, suggestedUsername: null, signupsOpen: true },
   personal: {
     privateRepositories: true,
     privateRepositoryRefusal: null,
