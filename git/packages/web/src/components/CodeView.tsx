@@ -99,7 +99,7 @@ export function CodeView({
     onSelectLine(line, event.shiftKey);
   };
   return (
-    <div className="overflow-x-auto">
+    <div className="code-surface overflow-x-auto">
       <table
         aria-label={label}
         className="w-full border-collapse font-mono text-xs leading-5 [tab-size:4]"

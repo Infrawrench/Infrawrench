@@ -102,7 +102,7 @@ export function LogViewer({
         const element = event.currentTarget;
         pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24;
       }}
-      className="max-h-[70vh] overflow-auto bg-surface-inset py-1 font-mono text-xs leading-5 focus:outline-none"
+      className="code-surface max-h-[70vh] overflow-auto bg-surface-inset py-1 font-mono text-xs leading-5 focus:outline-none"
     >
       {hiddenBefore > 0 ? (
         <div className="px-3 py-1">

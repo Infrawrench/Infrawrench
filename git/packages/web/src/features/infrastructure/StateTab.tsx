@@ -39,7 +39,7 @@ export function BackendSnippet() {
           Access tokens
         </AppLink>
       </PanelHeader>
-      <pre className="overflow-x-auto bg-surface-inset px-3 py-2.5 font-mono text-xs leading-5 text-on-surface">
+      <pre className="code-surface overflow-x-auto bg-surface-inset px-3 py-2.5 font-mono text-xs leading-5 text-on-surface">
         {snippet}
       </pre>
     </Panel>

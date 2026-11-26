@@ -255,7 +255,7 @@ function DiffFileView({
           {file.status === "renamed" ? "Renamed without changes" : "No changes to show"}
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="code-surface overflow-x-auto">
           <table
             aria-label={`Changes to ${file.path}`}
             className={`w-full border-collapse font-mono text-xs leading-5 [tab-size:4] ${

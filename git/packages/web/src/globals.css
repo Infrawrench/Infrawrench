@@ -28,6 +28,19 @@ body {
 }
 
 /*
+ * Where code is shown: a file, a blame, a diff, a Markdown code block, a CI
+ * log, the setup commands, a Terraform state. Black in the dark scheme, so
+ * code stands apart from the panels around it; the light scheme keeps what
+ * each place already has.
+ */
+@media (prefers-color-scheme: dark) {
+  .code-surface,
+  .markdown pre {
+    background-color: #000;
+  }
+}
+
+/*
  * Rendered Markdown (components/Markdown.tsx). Written out rather than taken
  * from a typography plugin so it stays on the theme's tokens and density.
  */

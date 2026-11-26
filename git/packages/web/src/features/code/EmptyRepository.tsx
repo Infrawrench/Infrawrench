@@ -9,7 +9,7 @@ function Commands({ label, lines }: { label: string; lines: ReadonlyArray<string
   return (
     <section aria-label={label} className="space-y-1.5">
       <h3 className="text-xs font-medium text-on-surface">{label}</h3>
-      <div className="relative rounded border border-border bg-surface-inset">
+      <div className="code-surface relative rounded border border-border bg-surface-inset">
         <pre className="overflow-x-auto px-3 py-2 font-mono text-xs leading-5 text-on-surface">
           {text}
         </pre>
