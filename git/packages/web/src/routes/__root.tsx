@@ -1,13 +1,15 @@
 import { useEffect } from "react";
 import { Outlet, createRootRoute, useLocation } from "@tanstack/react-router";
 import { useGo } from "../components/AppLink";
+import { useReviewMode } from "../features/review/mode";
+import { AgentShell } from "../layout/AgentShell";
 import { AppShell } from "../layout/AppShell";
 import { paths } from "../lib/paths";
 import { useDocumentTitle } from "../lib/title";
 import { useSession } from "../lib/session";
 
 /** Someone signed in without a username is sent to pick one, and comes back afterwards. */
-function useUsernameOnboarding() {
+function useUsernameOnboarding(): boolean {
   const session = useSession();
   const go = useGo();
   const location = useLocation();
@@ -20,11 +22,25 @@ function useUsernameOnboarding() {
   useEffect(() => {
     if (needsUsername && !onPage) go(paths.onboardingUsername(here), { replace: true });
   }, [needsUsername, onPage, here, go]);
+  return needsUsername;
 }
 
 function Root() {
-  useUsernameOnboarding();
+  const needsUsername = useUsernameOnboarding();
   useDocumentTitle();
+  const session = useSession();
+  const { mode } = useReviewMode();
+  const user = session.data?.user ?? null;
+  // Not one frame and then the other: nothing is drawn until the mode is known.
+  if (mode === undefined) return <div className="min-h-screen bg-surface" />;
+  // The sidebar is the frame of someone in agent mode who has a name to work under.
+  if (session.data !== undefined && user !== null && mode === "agent" && !needsUsername) {
+    return (
+      <AgentShell user={user} appUrl={session.data.appUrl}>
+        <Outlet />
+      </AgentShell>
+    );
+  }
   return (
     <AppShell>
       <Outlet />

@@ -402,6 +402,66 @@ const glyphs = {
       <path d="M7 11V7a5 5 0 0 1 9.9-1" />
     </>
   ),
+  atSign: (
+    <>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8" />
+    </>
+  ),
+  chevronsUpDown: (
+    <>
+      <path d="m7 15 5 5 5-5" />
+      <path d="m7 9 5-5 5 5" />
+    </>
+  ),
+  circleChevronUp: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m8 14 4-4 4 4" />
+    </>
+  ),
+  circleDashed: (
+    <>
+      <path d="M10.1 2.182a10 10 0 0 1 3.8 0" />
+      <path d="M13.9 21.818a10 10 0 0 1-3.8 0" />
+      <path d="M17.609 3.721a10 10 0 0 1 2.69 2.7" />
+      <path d="M2.182 13.9a10 10 0 0 1 0-3.8" />
+      <path d="M20.279 17.609a10 10 0 0 1-2.7 2.69" />
+      <path d="M21.818 10.1a10 10 0 0 1 0 3.8" />
+      <path d="M3.721 6.391a10 10 0 0 1 2.7-2.69" />
+      <path d="M6.391 20.279a10 10 0 0 1-2.69-2.7" />
+    </>
+  ),
+  contrast: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 18a6 6 0 0 0 0-12v12z" fill="currentColor" />
+    </>
+  ),
+  home: (
+    <>
+      <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+      <path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+    </>
+  ),
+  lightbulb: (
+    <>
+      <path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" />
+      <path d="M9 18h6" />
+      <path d="M10 22h4" />
+    </>
+  ),
+  menu: (
+    <>
+      <path d="M4 12h16" />
+      <path d="M4 6h16" />
+      <path d="M4 18h16" />
+    </>
+  ),
+  messageCircle: <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />,
+  zap: (
+    <path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />
+  ),
 } satisfies Record<string, ReactNode>;
 
 export type IconName = keyof typeof glyphs;

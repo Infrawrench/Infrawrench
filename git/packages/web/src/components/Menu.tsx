@@ -13,6 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { AppLink } from "./AppLink";
+import { Icon } from "./icons";
 
 export interface PopoverProps {
   /** The trigger. Spread `props` on a button; `open` is for its pressed look. */
@@ -26,6 +27,8 @@ export interface PopoverProps {
   }) => ReactNode;
   readonly children: (control: { close: () => void }) => ReactNode;
   readonly align?: "start" | "end";
+  /** Above the trigger rather than under it: for one at the foot of the page. */
+  readonly side?: "bottom" | "top";
   readonly className?: string;
   readonly onOpenChange?: (open: boolean) => void;
 }
@@ -34,6 +37,7 @@ export function Popover({
   trigger,
   children,
   align = "start",
+  side = "bottom",
   className = "",
   onOpenChange,
 }: PopoverProps) {
@@ -89,9 +93,9 @@ export function Popover({
       {open ? (
         <div
           id={id}
-          className={`absolute top-full z-30 mt-1 min-w-44 rounded-md border border-border bg-surface-raised shadow-[var(--shadow-tile-hover)] ${
-            align === "end" ? "right-0" : "left-0"
-          } ${className}`}
+          className={`absolute z-30 min-w-44 rounded-md border border-border bg-surface-raised shadow-[var(--shadow-tile-hover)] ${
+            side === "top" ? "bottom-full mb-1" : "top-full mt-1"
+          } ${align === "end" ? "right-0" : "left-0"} ${className}`}
         >
           {children({ close })}
         </div>
@@ -137,6 +141,10 @@ export interface MenuItem {
   readonly disabled?: boolean;
   /** Draws a rule above this item. */
   readonly separated?: boolean;
+  /** One of a set of choices: drawn with a tick when true, and read as a radio item. */
+  readonly checked?: boolean;
+  /** A label above this item, naming the set it starts. */
+  readonly heading?: string;
 }
 
 export interface MenuProps {
@@ -144,8 +152,10 @@ export interface MenuProps {
   readonly items: ReadonlyArray<MenuItem>;
   readonly label: string;
   readonly align?: "start" | "end";
+  readonly side?: "bottom" | "top";
   /** Shown above the items: who is signed in, what the menu is about. */
   readonly header?: ReactNode;
+  readonly className?: string;
 }
 
 /**
@@ -156,17 +166,19 @@ export interface MenuProps {
 const itemClass =
   "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-surface-sunken focus:outline-none focus-visible:bg-surface-sunken disabled:opacity-50";
 
-export function Menu({ trigger, items, label, align, header }: MenuProps) {
+const ITEMS = "[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled])";
+
+export function Menu({ trigger, items, label, align, side, header, className }: MenuProps) {
   const list = useRef<HTMLDivElement>(null);
   return (
     <Popover
       trigger={trigger}
       align={align ?? "start"}
+      side={side ?? "bottom"}
+      className={className ?? ""}
       onOpenChange={(open) => {
         if (open) {
-          requestAnimationFrame(() =>
-            list.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus(),
-          );
+          requestAnimationFrame(() => list.current?.querySelector<HTMLElement>(ITEMS)?.focus());
         }
       }}
     >
@@ -176,7 +188,7 @@ export function Menu({ trigger, items, label, align, header }: MenuProps) {
           role="menu"
           aria-label={label}
           className="py-1"
-          onKeyDown={(event) => moveFocus(event, "[role=menuitem]:not([disabled])")}
+          onKeyDown={(event) => moveFocus(event, ITEMS)}
         >
           {header !== undefined ? (
             <div className="border-b border-border px-3 py-2 text-xs text-on-surface-muted">
@@ -186,6 +198,37 @@ export function Menu({ trigger, items, label, align, header }: MenuProps) {
           {items.map((item) => {
             const tone = item.danger === true ? "text-danger" : "text-on-surface";
             const rule = item.separated === true ? "mt-1 border-t border-border pt-1.5" : "";
+            const heading =
+              item.heading !== undefined ? (
+                <div
+                  key={`${item.label}-heading`}
+                  className={`px-3 pb-1 text-[11px] text-on-surface-muted ${rule}`}
+                >
+                  {item.heading}
+                </div>
+              ) : null;
+            if (item.checked !== undefined) {
+              return [
+                heading,
+                <button
+                  key={item.label}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={item.checked}
+                  tabIndex={-1}
+                  disabled={item.disabled}
+                  onClick={() => {
+                    close();
+                    item.onSelect?.();
+                  }}
+                  className={`${itemClass} ${tone} ${heading === null ? rule : ""}`}
+                >
+                  {item.icon}
+                  <span className="flex-1">{item.label}</span>
+                  {item.checked ? <Icon name="check" size={13} /> : null}
+                </button>,
+              ];
+            }
             return item.href !== undefined ? (
               <AppLink
                 key={item.label}

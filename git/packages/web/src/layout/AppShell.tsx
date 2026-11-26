@@ -4,16 +4,18 @@
  */
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { useLocation } from "@tanstack/react-router";
+import type { SessionUser } from "@infrawrench/git-contract";
 import { AppLink, useGo } from "../components/AppLink";
 import { ButtonLink, buttonClass } from "../components/Button";
 import { Icon } from "../components/icons";
 import { Menu } from "../components/Menu";
 import { Avatar } from "../components/people";
 import { paths } from "../lib/paths";
-import { signInHref, signOut, useSession } from "../lib/session";
+import { signInHref, useSession } from "../lib/session";
+import { accountName, useAccountMenuItems } from "./account-menu";
 
 /** The Infrawrench mark (`brand/mark.svg`), drawn in the text colour. */
-function BrandMark({ size = 20 }: { size?: number }) {
+export function BrandMark({ size = 20 }: { size?: number }) {
   const mask = useId();
   return (
     <svg width={size} height={size} viewBox="0 0 512 512" aria-hidden="true" className="shrink-0">
@@ -76,7 +78,12 @@ function UserMenu() {
       </a>
     );
   }
-  const name = user.displayName ?? user.username ?? user.email;
+  return <SignedInMenu user={user} appUrl={appUrl} />;
+}
+
+function SignedInMenu({ user, appUrl }: { user: SessionUser; appUrl: string }) {
+  const name = accountName(user);
+  const items = useAccountMenuItems(user, appUrl);
   return (
     <div className="flex items-center gap-2">
       <ButtonLink href={paths.newRepository()} aria-label="New repository">
@@ -104,35 +111,7 @@ function UserMenu() {
             <Icon name="chevronDown" size={12} className="text-on-surface-muted" />
           </button>
         )}
-        items={[
-          ...(user.username !== null
-            ? [
-                {
-                  label: "Your repositories",
-                  href: paths.namespace(user.username),
-                  icon: <Icon name="book" />,
-                },
-                {
-                  label: "Your stars",
-                  href: paths.namespace(user.username, { tab: "stars" }),
-                  icon: <Icon name="star" />,
-                },
-              ]
-            : []),
-          { label: "Settings", href: paths.settings(), icon: <Icon name="settings" /> },
-          {
-            label: "Infrawrench app",
-            href: appUrl,
-            icon: <Icon name="externalLink" />,
-            separated: true,
-          },
-          {
-            label: "Sign out",
-            onSelect: () => void signOut(),
-            icon: <Icon name="logOut" />,
-            separated: true,
-          },
-        ]}
+        items={items}
       />
     </div>
   );

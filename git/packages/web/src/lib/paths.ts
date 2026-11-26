@@ -26,6 +26,11 @@ const search = (values: Record<string, string | number | undefined>): string => 
 
 export const paths = {
   home: () => "/",
+  /** Branches across the reader's repositories, and the two lists beside it. */
+  changes: (query: { state?: "merged" | "all"; author?: "mine" | "team" } = {}) =>
+    `/changes${search(query)}`,
+  reviews: () => "/reviews",
+  mentions: () => "/mentions",
   explore: (query: { q?: string; language?: string } = {}) => `/explore${search(query)}`,
   newRepository: (owner?: string) => `/new${search({ owner })}`,
   onboardingUsername: (returnTo?: string) => `/onboarding/username${search({ returnTo })}`,
