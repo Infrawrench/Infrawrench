@@ -20,7 +20,7 @@ import {
 
 const SITE = ["git.example.test"];
 const REDIRECT = "https://git.example.test/auth/t3/callback";
-const TUNNEL = "https://prod-0123456789abcdef.tunnels.example.net";
+const TUNNEL = "https://prod-0123456789abcdef.t3coderelay.com";
 
 const httpOf = (fetch: (input: string, init: RequestInit) => Promise<Response>) =>
   makeT3Http({ fetch, siteHosts: SITE });
@@ -38,7 +38,7 @@ const refusal = async (work: () => unknown): Promise<T3Error> => {
 describe("which addresses are a T3 Connect environment's", () => {
   it("takes the MCP URL T3 Code copies and keeps the origin", () => {
     expect(connectOrigin(`${TUNNEL}/mcp`, SITE)).toBe(TUNNEL);
-    expect(connectOrigin("  prod-0123456789abcdef.tunnels.example.net ", SITE)).toBe(TUNNEL);
+    expect(connectOrigin("  prod-0123456789abcdef.t3coderelay.com ", SITE)).toBe(TUNNEL);
     expect(isConnectOrigin(TUNNEL)).toBe(true);
   });
 
@@ -55,7 +55,7 @@ describe("which addresses are a T3 Connect environment's", () => {
       "https://app.t3.codes/approve-agent",
       `${TUNNEL}:8443/mcp`,
       `https://user:secret@${new URL(TUNNEL).host}/mcp`,
-      "https://dev-julius-0123456789abcdef.tunnels.example.net/mcp",
+      "https://dev-julius-0123456789abcdef.t3coderelay.com/mcp",
       "https://git.example.test",
     ]) {
       const error = await refusal(() => connectOrigin(pasted, SITE));
@@ -69,7 +69,7 @@ describe("which addresses are a T3 Connect environment's", () => {
   });
 
   it("is held to the zone once the zone is known", async () => {
-    expect(connectOrigin(`${TUNNEL}/mcp`, SITE, ["tunnels.example.net"])).toBe(TUNNEL);
+    expect(connectOrigin(`${TUNNEL}/mcp`, SITE, ["t3coderelay.com"])).toBe(TUNNEL);
     const error = await refusal(() =>
       connectOrigin(`${TUNNEL}/mcp`, SITE, ["tunnels.example.org"]),
     );
@@ -78,7 +78,7 @@ describe("which addresses are a T3 Connect environment's", () => {
   });
 
   it("never loosens the public-address rule: a tunnel name that is this site is refused", async () => {
-    const host = "prod-0123456789abcdef.tunnels.example.net";
+    const host = "prod-0123456789abcdef.t3coderelay.com";
     const error = await refusal(() => connectOrigin(`https://${host}/mcp`, [host]));
     expect(error.code).toBe("address_refused");
     expect(error.message).not.toBe(T3_CONNECT_REFUSAL);
@@ -157,7 +157,7 @@ describe("signing in to an environment on its T3 Connect address", () => {
         "/.well-known/oauth-authorization-server",
         (body) =>
           (body["registration_endpoint"] =
-            "https://prod-fedcba9876543210.tunnels.example.net/oauth/mcp/register"),
+            "https://prod-fedcba9876543210.t3coderelay.com/oauth/mcp/register"),
       ],
     ];
     for (const [path, change] of cases) {

@@ -27,7 +27,7 @@ describe("addressProblem", () => {
 });
 
 describe("connectProblem", () => {
-  const host = "prod-0123456789abcdef.t3connect.example";
+  const host = "prod-0123456789abcdef.t3coderelay.com";
   it("takes the MCP URL T3 Code copies", () => {
     expect(connectProblem(`https://${host}/mcp`)).toBeNull();
     expect(connectProblem(`  ${host} `)).toBeNull();

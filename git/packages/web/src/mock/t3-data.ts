@@ -18,7 +18,7 @@ export const t3Environments: Mutable<T3Environment>[] = [
   {
     id: "t3env_studio",
     label: "Studio",
-    baseUrl: "https://prod-4f1c09ab72de3a65.t3connect.example",
+    baseUrl: "https://prod-4f1c09ab72de3a65.t3coderelay.com",
     status: "connected",
     scopes: ["orchestration:read", "orchestration:operate"],
     tokenExpiresAt: daysFromNow(22),
@@ -30,7 +30,7 @@ export const t3Environments: Mutable<T3Environment>[] = [
   {
     id: "t3env_laptop",
     label: "Laptop",
-    baseUrl: "https://prod-b8e2d4017c96f3a0.t3connect.example",
+    baseUrl: "https://prod-b8e2d4017c96f3a0.t3coderelay.com",
     status: "error",
     scopes: ["orchestration:read"],
     tokenExpiresAt: null,

@@ -11,10 +11,12 @@
  *   the person's T3 Connect user id and the environment's id, so it cannot be
  *   worked out from an environment id alone.
  * - The tunnel zone is a deployment variable of T3 Code's
- *   (`RELAY_TUNNEL_ZONE_NAME`). Neither the source nor the documentation says
- *   what it is in production, so {@link T3_CONNECT_ZONES} starts empty and
- *   the label is what is checked. Name the zone there once it has been read
- *   off a real address and the rule becomes exact.
+ *   (`RELAY_TUNNEL_ZONE_NAME`). Its value is not in the source, but T3 Code's
+ *   own tests use `t3coderelay.com` for tunnel addresses throughout
+ *   (`apps/web/src/components/mcp/mcpGate.test.ts`, `apps/server/src/auth/McpOAuth.test.ts`),
+ *   and that domain is registered at and served by Cloudflare, where the
+ *   tunnels are. If a real address turns out to be under another zone, add it
+ *   to {@link T3_CONNECT_ZONES}; until then "Use an address" still connects it.
  *
  * An environment's MCP server is at `<address>/mcp`, which is what T3 Code's
  * "Copy MCP URL" copies, so that is what a person pastes.
@@ -26,9 +28,9 @@ const DNS_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 
 /**
  * The zones T3 Connect's production tunnels are under, without a leading
- * dot. Empty: any public zone, with the label still checked.
+ * dot. Empty would mean any public zone, with the label still checked.
  */
-export const T3_CONNECT_ZONES: readonly string[] = [];
+export const T3_CONNECT_ZONES: readonly string[] = ["t3coderelay.com"];
 
 /** Whether `hostname` is a T3 Connect tunnel's: `prod-<16 hex>.<zone>`. */
 export const isT3ConnectHost = (
