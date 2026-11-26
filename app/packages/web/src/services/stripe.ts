@@ -41,6 +41,17 @@ export function getStripeCiPriceIds(): string[] {
 }
 
 /**
+ * Metered price for private storage on git.infrawrench.com, bound to the
+ * meter `INFRAWRENCH_STRIPE_GIT_STORAGE_METER_EVENT` names (GiB-hours above
+ * the plan's included storage, see `server-core/src/git/billing.ts`).
+ * Optional: without it the line is left off subscriptions and that storage
+ * goes unbilled.
+ */
+export function getStripeGitStoragePriceId(): string | null {
+  return process.env["STRIPE_GIT_STORAGE_PRICE_ID"] || null;
+}
+
+/**
  * One-time price of a single prepaid capacity slot: a seat bought outright for
  * a fixed term rather than rented monthly (see
  * `server-core/billing/capacity-slots.ts`).

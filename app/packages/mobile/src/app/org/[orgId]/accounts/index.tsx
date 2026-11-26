@@ -91,6 +91,11 @@ export default function AccountsScreen() {
           onPress={() => router.push(`/org/${orgId}/delivery`)}
         />
         <Row
+          title="Git"
+          subtitle="Repositories on git.infrawrench.com"
+          onPress={() => router.push(`/org/${orgId}/git`)}
+        />
+        <Row
           title="Log workspace"
           subtitle="Saved multi-resource log tails and match alerts"
           onPress={() => router.push(`/org/${orgId}/log-workspaces`)}

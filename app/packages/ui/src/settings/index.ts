@@ -37,6 +37,7 @@ export {
 export { CredentialHygieneSection } from "./CredentialHygieneSection.js";
 export { FreezesSection } from "./FreezesSection.js";
 export { TagPolicySection } from "./TagPolicySection.js";
+export { GitSection } from "./GitSection.js";
 export { TagKeysSection } from "./TagKeysSection.js";
 export { BillingRulesSection } from "./BillingRulesSection.js";
 export { CostCentresSection } from "./CostCentresSection.js";

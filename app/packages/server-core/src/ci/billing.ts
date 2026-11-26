@@ -49,10 +49,13 @@ export function ciBillingConfigured(): boolean {
   );
 }
 
-type Customer = { kind: "bill"; id: string } | { kind: "never" } | { kind: "unknown" };
+export type Customer = { kind: "bill"; id: string } | { kind: "never" } | { kind: "unknown" };
 
-/** Who to bill: the org's Stripe customer, never (complimentary), or not yet known. */
-async function customerOf(organizationId: string): Promise<Customer> {
+/**
+ * Who to bill: the org's Stripe customer, never (complimentary), or not yet
+ * known. Shared with the forge's storage meter (`git/billing.ts`).
+ */
+export async function customerOf(organizationId: string): Promise<Customer> {
   const [org] = await db
     .select({ complimentary: organizations.complimentary })
     .from(organizations)
@@ -67,7 +70,7 @@ async function customerOf(organizationId: string): Promise<Customer> {
   return sub?.stripeCustomerId ? { kind: "bill", id: sub.stripeCustomerId } : { kind: "unknown" };
 }
 
-async function sendMeterEvent(
+export async function sendMeterEvent(
   eventName: string,
   identifier: string,
   customerId: string,
@@ -96,7 +99,7 @@ async function sendMeterEvent(
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     if (res.status === 400 && text.includes("resource_already_exists")) return;
-    throw new Error(`Stripe rejected the CI meter event ${identifier} (${res.status}).`);
+    throw new Error(`Stripe rejected the meter event ${identifier} (${res.status}).`);
   }
 }
 

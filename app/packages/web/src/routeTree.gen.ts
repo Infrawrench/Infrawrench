@@ -100,6 +100,7 @@ import { Route as OrgOrgIdSettingsCredentialHygieneRouteImport } from './routes/
 import { Route as OrgOrgIdSettingsCurrencyRouteImport } from './routes/org.$orgId.settings.currency'
 import { Route as OrgOrgIdSettingsCustomCostSourcesRouteImport } from './routes/org.$orgId.settings.custom-cost-sources'
 import { Route as OrgOrgIdSettingsFreezesRouteImport } from './routes/org.$orgId.settings.freezes'
+import { Route as OrgOrgIdSettingsGitRouteImport } from './routes/org.$orgId.settings.git'
 import { Route as OrgOrgIdSettingsGithubIssuesRouteImport } from './routes/org.$orgId.settings.github-issues'
 import { Route as OrgOrgIdSettingsJiraRouteImport } from './routes/org.$orgId.settings.jira'
 import { Route as OrgOrgIdSettingsJitAccessRouteImport } from './routes/org.$orgId.settings.jit-access'
@@ -601,6 +602,11 @@ const OrgOrgIdSettingsFreezesRoute = OrgOrgIdSettingsFreezesRouteImport.update({
   path: '/freezes',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsGitRoute = OrgOrgIdSettingsGitRouteImport.update({
+  id: '/git',
+  path: '/git',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
 const OrgOrgIdSettingsGithubIssuesRoute =
   OrgOrgIdSettingsGithubIssuesRouteImport.update({
     id: '/github-issues',
@@ -791,6 +797,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/custom-cost-sources': typeof OrgOrgIdSettingsCustomCostSourcesRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
+  '/org/$orgId/settings/git': typeof OrgOrgIdSettingsGitRoute
   '/org/$orgId/settings/github-issues': typeof OrgOrgIdSettingsGithubIssuesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/jit-access': typeof OrgOrgIdSettingsJitAccessRoute
@@ -899,6 +906,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/custom-cost-sources': typeof OrgOrgIdSettingsCustomCostSourcesRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
+  '/org/$orgId/settings/git': typeof OrgOrgIdSettingsGitRoute
   '/org/$orgId/settings/github-issues': typeof OrgOrgIdSettingsGithubIssuesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/jit-access': typeof OrgOrgIdSettingsJitAccessRoute
@@ -1011,6 +1019,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/currency': typeof OrgOrgIdSettingsCurrencyRoute
   '/org/$orgId/settings/custom-cost-sources': typeof OrgOrgIdSettingsCustomCostSourcesRoute
   '/org/$orgId/settings/freezes': typeof OrgOrgIdSettingsFreezesRoute
+  '/org/$orgId/settings/git': typeof OrgOrgIdSettingsGitRoute
   '/org/$orgId/settings/github-issues': typeof OrgOrgIdSettingsGithubIssuesRoute
   '/org/$orgId/settings/jira': typeof OrgOrgIdSettingsJiraRoute
   '/org/$orgId/settings/jit-access': typeof OrgOrgIdSettingsJitAccessRoute
@@ -1124,6 +1133,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/currency'
     | '/org/$orgId/settings/custom-cost-sources'
     | '/org/$orgId/settings/freezes'
+    | '/org/$orgId/settings/git'
     | '/org/$orgId/settings/github-issues'
     | '/org/$orgId/settings/jira'
     | '/org/$orgId/settings/jit-access'
@@ -1232,6 +1242,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/currency'
     | '/org/$orgId/settings/custom-cost-sources'
     | '/org/$orgId/settings/freezes'
+    | '/org/$orgId/settings/git'
     | '/org/$orgId/settings/github-issues'
     | '/org/$orgId/settings/jira'
     | '/org/$orgId/settings/jit-access'
@@ -1343,6 +1354,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/currency'
     | '/org/$orgId/settings/custom-cost-sources'
     | '/org/$orgId/settings/freezes'
+    | '/org/$orgId/settings/git'
     | '/org/$orgId/settings/github-issues'
     | '/org/$orgId/settings/jira'
     | '/org/$orgId/settings/jit-access'
@@ -2015,6 +2027,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsFreezesRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/git': {
+      id: '/org/$orgId/settings/git'
+      path: '/git'
+      fullPath: '/org/$orgId/settings/git'
+      preLoaderRoute: typeof OrgOrgIdSettingsGitRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/github-issues': {
       id: '/org/$orgId/settings/github-issues'
       path: '/github-issues'
@@ -2322,6 +2341,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsCurrencyRoute: typeof OrgOrgIdSettingsCurrencyRoute
   OrgOrgIdSettingsCustomCostSourcesRoute: typeof OrgOrgIdSettingsCustomCostSourcesRoute
   OrgOrgIdSettingsFreezesRoute: typeof OrgOrgIdSettingsFreezesRoute
+  OrgOrgIdSettingsGitRoute: typeof OrgOrgIdSettingsGitRoute
   OrgOrgIdSettingsGithubIssuesRoute: typeof OrgOrgIdSettingsGithubIssuesRoute
   OrgOrgIdSettingsJiraRoute: typeof OrgOrgIdSettingsJiraRoute
   OrgOrgIdSettingsJitAccessRoute: typeof OrgOrgIdSettingsJitAccessRoute
@@ -2361,6 +2381,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsCustomCostSourcesRoute:
     OrgOrgIdSettingsCustomCostSourcesRoute,
   OrgOrgIdSettingsFreezesRoute: OrgOrgIdSettingsFreezesRoute,
+  OrgOrgIdSettingsGitRoute: OrgOrgIdSettingsGitRoute,
   OrgOrgIdSettingsGithubIssuesRoute: OrgOrgIdSettingsGithubIssuesRoute,
   OrgOrgIdSettingsJiraRoute: OrgOrgIdSettingsJiraRoute,
   OrgOrgIdSettingsJitAccessRoute: OrgOrgIdSettingsJitAccessRoute,

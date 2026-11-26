@@ -275,6 +275,15 @@ app_env = {
   STRIPE_CI_VCPU_PRICE_ID                   = "price_..."
   STRIPE_CI_MEMORY_PRICE_ID                 = "price_..."
   STRIPE_CI_STORAGE_PRICE_ID                = "price_..."
+  # Optional: billing storage on git.infrawrench.com. The meter reports
+  # GiB-hours of private repositories above the paid plan's included 10 GiB
+  # (sampled hourly per organization) and the price carries the unit price.
+  # Unset, the hours are still sampled for Settings > Git but nothing is
+  # billed, and turning it on later never bills the past. Checkout attaches
+  # the price to new subscriptions; claiming a namespace in Settings > Git
+  # adds it to a subscription that lacks it.
+  INFRAWRENCH_STRIPE_GIT_STORAGE_METER_EVENT = "git_storage_gib_hours"
+  STRIPE_GIT_STORAGE_PRICE_ID                = "price_..."
 
   # Optional: egress proxy Worker (app/packages/egress-proxy) for workflow
   # fetch(), the chat agent's web_fetch, the poller's provider status-feed

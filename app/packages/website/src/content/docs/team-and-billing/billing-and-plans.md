@@ -8,20 +8,22 @@ sidebar_order: 3
 
 ## Plans
 
-| Feature            | Free                   | Paid                   |
-| ------------------ | ---------------------- | ---------------------- |
-| Users              | 1                      | Unlimited              |
-| Connected accounts | 3                      | Unlimited              |
-| Plugins            | All 153                | All 153                |
-| Dashboards         | Yes                    | Yes                    |
-| SSH terminal / SQL | Yes                    | Yes                    |
-| Audit log          | No                     | Yes                    |
-| Custom graphs      | No                     | Yes                    |
-| API keys           | No                     | Yes                    |
-| AI chat            | $5 usage / mo included | Metered, pay-as-you-go |
-| [CI](#ci)          | No                     | Metered, by usage      |
-| Price              | $0                     | $20 / seat / mo        |
-| Prepaid capacity   | Not available          | $200 / seat / 2 years  |
+| Feature                          | Free                   | Paid                       |
+| -------------------------------- | ---------------------- | -------------------------- |
+| Users                            | 1                      | Unlimited                  |
+| Connected accounts               | 3                      | Unlimited                  |
+| Plugins                          | All 153                | All 153                    |
+| Dashboards                       | Yes                    | Yes                        |
+| SSH terminal / SQL               | Yes                    | Yes                        |
+| Audit log                        | No                     | Yes                        |
+| Custom graphs                    | No                     | Yes                        |
+| API keys                         | No                     | Yes                        |
+| AI chat                          | $5 usage / mo included | Metered, pay-as-you-go     |
+| [CI](#ci)                        | No                     | Metered, by usage          |
+| [Git](#git) public repositories  | Unlimited              | Unlimited                  |
+| [Git](#git) private repositories | 3, up to 1 GiB         | Unlimited, 10 GiB included |
+| Price                            | $0                     | $20 / seat / mo            |
+| Prepaid capacity                 | Not available          | $200 / seat / 2 years      |
 
 On the free plan, inviting a teammate or connecting a fourth account is refused with a prompt to upgrade.
 
@@ -113,3 +115,21 @@ If your subscription includes a trial period (for example a promotional offer), 
 For example, a job with `memory: 4GiB` that runs for 10 minutes is charged 150 vCPU-seconds (a quarter of a vCPU for 600 seconds, $0.012) and 2,400 GiB-seconds ($0.0192), about $0.03 in all. With `cpus: 2` as well it is charged 1,200 vCPU-seconds ($0.096) instead of 150. A job the task cache stands in for does not run, so it costs nothing, and a [cloud job](../features/ci.md#cloud-jobs) is billed by your provider, not here.
 
 The **CI** page shows this month's runs, compute and storage. Complimentary organizations are never billed for CI.
+
+## Git
+
+Repositories on [git.infrawrench.com](../features/git.md) follow your plan:
+
+|                      | Free      | Paid                                                         |
+| -------------------- | --------- | ------------------------------------------------------------ |
+| Public repositories  | Unlimited | Unlimited                                                    |
+| Private repositories | 3         | Unlimited                                                    |
+| Private storage      | 1 GiB     | 10 GiB included, then metered by the GiB-hour, up to 100 GiB |
+
+Public repositories are free on every plan, and their storage counts toward nothing. On the free plan the limits are fixed: a fourth private repository is refused, and so are pushes to private repositories once they hold 1 GiB. On a paid plan the first 10 GiB of private storage is included, and storage above that is measured every hour and billed on the same invoice as your seats. Pushes to private repositories are refused at 100 GiB. Write to us if you need more.
+
+Going over a limit never deletes or hides anything, including after you cancel: your repositories stay readable and clonable, and you can't add to the private ones until you're back under. **Settings > Git** shows where you stand. Complimentary organizations are never billed for Git storage.
+
+A personal namespace on git.infrawrench.com is separate from any organization's plan: it includes 5 private repositories and 1 GiB of private storage.
+
+**Self-hosting:** storage is only billed when `INFRAWRENCH_STRIPE_GIT_STORAGE_METER_EVENT` and `STRIPE_GIT_STORAGE_PRICE_ID` are set. The limits apply either way.

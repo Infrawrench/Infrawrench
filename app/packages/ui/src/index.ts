@@ -1306,6 +1306,12 @@ export { SlosIcon } from "./components/icons/SlosIcon.js";
 export { ServicesIcon } from "./components/icons/ServicesIcon.js";
 export { DeliveryIcon } from "./components/icons/DeliveryIcon.js";
 export { CiIcon } from "./components/icons/CiIcon.js";
+export { GitIcon } from "./components/icons/GitIcon.js";
+export {
+  notifyGitForgeNamespaceChanged,
+  useGitForgeLinkFrom,
+  type GitForgeLink,
+} from "./git/forge-link.js";
 export { EnvironmentsIcon } from "./components/icons/EnvironmentsIcon.js";
 export { ToolsIcon } from "./components/icons/ToolsIcon.js";
 

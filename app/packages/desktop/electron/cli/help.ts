@@ -216,6 +216,9 @@ COMMANDS
   migrate-estimate    what a service or a set of resources would cost on another provider, side
                       by side (cloud only)   --service <id|slug|name> | --resources <id,id>
                       --to <plugin> [--region <id>] [--save <name>]
+  git                 the org's namespace on git.infrawrench.com: plan limits & usage (cloud only)
+  git repos           its repositories: visibility, CI on the default branch, open PRs, last
+                      push, size & address
   github-issues       findings filed as GitHub issues, open first, with any pull request
   github-issues settings  repository routing, Terraform sources and each GitHub App
                       installation's granted permissions (cloud only)

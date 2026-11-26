@@ -99,6 +99,7 @@ Pods listed by a Kubernetes integration have a **Shell** button that opens a `ku
 
 The mobile app is for reading and responding. Some things are limited or left out on purpose:
 
+- **[Git](./git.md) is read-only.** **Git** on the Resources tab shows your organization's namespace on git.infrawrench.com, its private repositories and storage against the plan, and its repositories. Tapping one opens it in the browser. Claiming or renaming the namespace and the default visibility are in Settings > Git on web and desktop.
 - **Billing is read-only.** You can see your plan, your monthly and prepaid seats, and your [capacity slot](../team-and-billing/billing-and-plans.md#prepaid-capacity-slots) purchases with their expiry dates. Plan changes, slot purchases and payment details are managed on the web (App Store rules).
 - **[Canvases](./ai-canvas.md) are read-only.** Building and editing one is a conversation with the assistant next to the canvas, which needs a bigger screen.
 - **[Cost reports](./cost-reports.md) are read-only.** You can open any saved report with its chart, description and the dashboards it feeds. Creating or editing one happens on web or desktop.

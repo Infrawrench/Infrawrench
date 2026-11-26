@@ -1,6 +1,6 @@
 # @infrawrench/git-contract
 
-The JSON API of git.infrawrench.com as Effect `HttpApi` definitions. The worker serves them; the UI derives its client from them (`HttpApiClient.make(GitApi)` or one of the per-group APIs). It imports only `effect`.
+The JSON API of git.infrawrench.com as Effect `HttpApi` definitions. The worker serves them; the UI derives its client from them (`HttpApiClient.make(GitApi)` or one of the per-group APIs). It imports only `effect`, and `@infrawrench/client-core` for the name rules (`src/names.ts` re-exports them: the app claims an organisation's namespace by the same list).
 
 ## Layout
 

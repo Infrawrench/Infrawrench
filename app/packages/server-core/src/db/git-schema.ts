@@ -77,6 +77,15 @@ export const gitNamespaces = pgTable(
     }),
     /** The last rename, which the rename limit counts from. */
     renamedAt: timestamp("renamed_at"),
+    /**
+     * What a new repository here starts as when its creator does not say. Set
+     * for an organisation in the app (Settings > Git); a creator can always
+     * choose the other, within the plan's limits (`git/quota.ts`).
+     */
+    defaultVisibility: text("default_visibility")
+      .$type<GitVisibility>()
+      .notNull()
+      .default("private"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -190,6 +199,35 @@ export const gitRepositories = pgTable(
       t.pushedAt,
     ),
     forkOfIdx: index("git_repositories_fork_of_idx").on(t.forkOfId),
+  }),
+);
+
+/**
+ * An organisation's storage on the forge in one hour: the outbox its storage
+ * is metered from (`git/billing.ts`, the pattern of `ci_storage_samples`).
+ * `private_bytes` is what the plan counts; `bytes` is every repository's.
+ * A person's own namespace is never sampled: it has a fixed allowance and
+ * nobody to bill.
+ */
+export const gitStorageSamples = pgTable(
+  "git_storage_samples",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    hour: timestamp("hour").notNull(),
+    bytes: bigint("bytes", { mode: "number" }).notNull(),
+    privateBytes: bigint("private_bytes", { mode: "number" }).notNull(),
+    /** The part of `private_bytes` above the plan's included storage at that hour: what is sent. */
+    billableBytes: bigint("billable_bytes", { mode: "number" }).notNull(),
+    reportedAt: timestamp("reported_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgHourIdx: uniqueIndex("git_storage_samples_org_hour_idx").on(t.organizationId, t.hour),
+    // The reporter's read: what has not been sent, oldest first.
+    reportedIdx: index("git_storage_samples_reported_idx").on(t.reportedAt, t.hour),
   }),
 );
 

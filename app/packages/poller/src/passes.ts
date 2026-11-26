@@ -22,6 +22,7 @@
  */
 import { runCiStatusPass, runCiUpkeepPass } from "@infrawrench/server-core/ci/pass";
 import { runCiCloudPass } from "@infrawrench/server-core/ci/cloud-jobs";
+import { runGitStoragePass } from "@infrawrench/server-core/git/billing";
 import { eq } from "drizzle-orm";
 import { nextCronOccurrence } from "@infrawrench/client-core";
 import { db } from "@infrawrench/server-core/db/client";
@@ -632,6 +633,16 @@ export const PASSES: readonly Pass[] = [
     runtime: "gateway",
     ownLoopMs: CI_CLOUD_LOOP_MS,
     run: guarded("[ci-cloud] tick failed:", () => runCiCloudPass()),
+  },
+
+  // git.infrawrench.com storage: one sample per organisation per hour (the
+  // unique index makes a second instance's insert a no-op), sent to the
+  // storage meter when one is configured. Postgres and Stripe only.
+  {
+    kind: "periodic",
+    name: "git-storage",
+    runtime: "edge",
+    run: guarded("[git] storage metering failed:", () => runGitStoragePass()),
   },
 
   // Retention: idempotent prunes, at most hourly.

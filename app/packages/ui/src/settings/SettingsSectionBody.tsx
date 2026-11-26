@@ -31,6 +31,7 @@ import { JiraSection } from "./JiraSection.js";
 import { LinearSection } from "./LinearSection.js";
 import { GithubIssuesSection } from "./GithubIssuesSection.js";
 import { PrChecksSection } from "./PrChecksSection.js";
+import { GitSection } from "./GitSection.js";
 import { BillingSection } from "./BillingSection.js";
 import { AuditLogSection } from "./AuditLogSection.js";
 
@@ -106,6 +107,8 @@ export function SettingsSectionBody({ section }: { section: string }): ReactNode
       return <GithubIssuesSection />;
     case "pr-checks":
       return <PrChecksSection />;
+    case "git":
+      return <GitSection />;
     case "billing":
       return <BillingSection />;
     case "audit-log":

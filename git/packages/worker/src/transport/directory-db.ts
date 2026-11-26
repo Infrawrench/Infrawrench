@@ -16,6 +16,7 @@ import { type WaitUntil, withDb } from "../db/client";
 import { listProtectedBranches } from "../db/policy";
 import { getRepository, getRepositoryById, toRepoForAccess } from "../db/repositories";
 import { userRefs } from "../db/users";
+import { gitPushRefusal } from "@infrawrench/server-core/git/quota";
 import type { Env } from "../env";
 import type { PushPolicy } from "../repo/do/policy";
 import type { GitDirectory } from "./directory";
@@ -72,6 +73,7 @@ export function databaseDirectory(env: Env, ctx: WaitUntil): GitDirectory {
               rules: await listProtectedBranches(id),
               userId: userIdOf(principal),
               admin: hasAccess(access, "admin"),
+              quotaRefusal: await gitPushRefusal(found.owner, found.repository.visibility),
             })),
         };
       }),

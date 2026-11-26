@@ -23,6 +23,7 @@ import {
   getStripeChatPriceId,
   getStripePriceId,
   getStripeCiPriceIds,
+  getStripeGitStoragePriceId,
 } from "../../../services/stripe";
 import { saveCheckoutHandoff } from "../../../services/revnu-checkout";
 
@@ -142,6 +143,8 @@ export async function openSubscriptionCheckout(
   // CI's metered prices too, so an organization that later gets CI is
   // billed for it without touching its subscription.
   const ciPriceIds = getStripeCiPriceIds();
+  // And the forge's storage price, for the same reason.
+  const gitStoragePriceId = getStripeGitStoragePriceId();
   const checkoutSession = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: "subscription",
@@ -150,6 +153,7 @@ export async function openSubscriptionCheckout(
       { price: priceId, quantity: 1, adjustable_quantity: { enabled: true, minimum: 1 } },
       ...(chatPriceId ? [{ price: chatPriceId }] : []),
       ...ciPriceIds.map((price) => ({ price })),
+      ...(gitStoragePriceId ? [{ price: gitStoragePriceId }] : []),
     ],
     // organizationId lets a later paid webhook find this checkout. The Revnu
     // visitor id is a spare field; consent is stored on our row, not here.
@@ -256,8 +260,20 @@ export async function openPortal(orgId: string): Promise<string | null> {
  * checkout before CI existed lack them. Returns the prices added; nothing
  * when there is no subscription (checkout will add them) or no CI prices.
  */
-export async function ensureCiPrices(orgId: string): Promise<string[]> {
-  const priceIds = getStripeCiPriceIds();
+export function ensureCiPrices(orgId: string): Promise<string[]> {
+  return ensureMeteredPrices(orgId, getStripeCiPriceIds());
+}
+
+/**
+ * The same for the forge's storage price, when an organization that already
+ * subscribes claims its namespace on git.infrawrench.com.
+ */
+export function ensureGitStoragePrice(orgId: string): Promise<string[]> {
+  const price = getStripeGitStoragePriceId();
+  return ensureMeteredPrices(orgId, price ? [price] : []);
+}
+
+async function ensureMeteredPrices(orgId: string, priceIds: string[]): Promise<string[]> {
   if (priceIds.length === 0 || !process.env["STRIPE_SECRET_KEY"]) return [];
   const [sub] = await db
     .select({ stripeSubscriptionId: subscriptions.stripeSubscriptionId })

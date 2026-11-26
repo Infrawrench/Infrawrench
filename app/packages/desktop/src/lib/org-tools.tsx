@@ -6,6 +6,7 @@ import {
   CalendarIcon,
   ChangesIcon,
   CiIcon,
+  GitIcon,
   ComplianceIcon,
   DeliveryIcon,
   DomainsIcon,
@@ -73,8 +74,11 @@ import {
   wallboardTabTarget,
   workflowsTabTarget,
   navigateToWorkspaceTarget,
+  settingsTabTarget,
 } from "./workspace-tabs";
+import { openExternalUrl } from "./app-shell";
 import { useDisabledProducts } from "./disabled-products";
+import { useGitForgeLink } from "./git-forge";
 
 /**
  * The org-level tools, one entry per sidebar tile. One list feeds both the
@@ -88,6 +92,7 @@ export function useOrgTools(): SidebarToolDef[] {
   const navigate = useNavigate();
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const disabledProducts = useDisabledProducts();
+  const gitForge = useGitForgeLink();
 
   // Costs and Changes have no local half (spend is collected server-side,
   // change events are recorded by the cloud poller) so the tool count differs
@@ -285,6 +290,27 @@ export function useOrgTools(): SidebarToolDef[] {
             icon: <CiIcon />,
             onClick: () => void navigate({ to: "/ci", search: {} }),
           },
+          // git.infrawrench.com is its own site, so this is a link out, not a
+          // tab: the organisation's namespace in the browser, or Settings >
+          // Git to claim one. Left out for someone without `git:read`.
+          ...(gitForge.status === "unavailable"
+            ? []
+            : [
+                {
+                  key: "git",
+                  label: gt("Git"),
+                  icon: <GitIcon />,
+                  onClick: () => {
+                    if (gitForge.status === "ready" && gitForge.url) {
+                      void openExternalUrl(gitForge.url);
+                      return;
+                    }
+                    void navigateToWorkspaceTarget(navigate, settingsTabTarget("git"), {
+                      label: gt("Settings"),
+                    });
+                  },
+                },
+              ]),
           {
             key: "status-pages",
             label: gt("Status pages"),

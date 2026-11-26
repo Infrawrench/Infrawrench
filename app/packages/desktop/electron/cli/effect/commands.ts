@@ -25,6 +25,7 @@ export const COMMAND_LOADERS = {
   ownership: () => import("../commands/ownership").then((m) => m.ownership),
   "blast-radius": () => import("../commands/blast-radius").then((m) => m.blastRadius),
   oversized: () => import("../commands/oversized").then((m) => m.oversized),
+  git: () => import("../commands/git").then((m) => m.git),
   "github-issues": () => import("../commands/github-issues").then((m) => m.githubIssues),
   "idle-rules": () => import("../commands/idle-rules").then((m) => m.idleRules),
   incidents: () => import("../commands/incidents").then((m) => m.incidents),

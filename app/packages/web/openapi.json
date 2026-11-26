@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.128.0",
+    "version": "1.129.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -434,6 +434,9 @@
     },
     {
       "name": "Weekly digest"
+    },
+    {
+      "name": "Git"
     },
     {
       "name": "IaC"
@@ -44164,6 +44167,313 @@
         ],
         "additionalProperties": false,
         "description": "What an installation has **accepted**. An installation made before issue filing existed shows `issues: none` until an owner of the GitHub account approves the app's updated permissions."
+      },
+      "GitForgeRepositoryList": {
+        "type": "object",
+        "properties": {
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitForgeRepository"
+            }
+          }
+        },
+        "required": [
+          "repositories"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeRepository": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string",
+            "description": "`namespace/name`."
+          },
+          "url": {
+            "type": "string",
+            "description": "The repository's page on the forge."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/GitForgeVisibility"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "isFork": {
+            "type": "boolean"
+          },
+          "defaultBranch": {
+            "type": "string"
+          },
+          "pushedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null until something is pushed."
+          },
+          "openPullRequests": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "openIssues": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "sizeBytes": {
+            "type": "number"
+          },
+          "ci": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "description": "A CI run status (`passed`, `failed`, `running`, ...)."
+                  },
+                  "runId": {
+                    "type": "string"
+                  },
+                  "sha": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "runId",
+                  "sha"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest CI run of the default branch. Null when CI has not run there."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "fullName",
+          "url",
+          "description",
+          "visibility",
+          "archived",
+          "isFork",
+          "defaultBranch",
+          "pushedAt",
+          "openPullRequests",
+          "openIssues",
+          "sizeBytes",
+          "ci"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeNamespace": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "The first path segment of every repository URL, as its owner spelled it."
+          },
+          "url": {
+            "type": "string",
+            "description": "The namespace's page on the forge."
+          },
+          "defaultVisibility": {
+            "$ref": "#/components/schemas/GitForgeVisibility"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "renamedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "slug",
+          "url",
+          "defaultVisibility",
+          "createdAt",
+          "renamedAt"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeVisibility": {
+        "type": "string",
+        "enum": [
+          "public",
+          "private"
+        ],
+        "description": "What a new repository starts as, unless its creator says otherwise."
+      },
+      "GitForgeSettingsInput": {
+        "type": "object",
+        "properties": {
+          "defaultVisibility": {
+            "$ref": "#/components/schemas/GitForgeVisibility"
+          }
+        },
+        "required": [
+          "defaultVisibility"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeNamespaceInput": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 39,
+            "description": "Letters, digits, dots, dashes and underscores; starts with a letter, digit or underscore; does not end in `.git`; not one of the forge's reserved names."
+          }
+        },
+        "required": [
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeOverview": {
+        "type": "object",
+        "properties": {
+          "forgeUrl": {
+            "type": "string",
+            "description": "The forge's origin."
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GitForgeNamespace"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null until someone with `git:admin` claims one."
+          },
+          "plan": {
+            "type": "string",
+            "enum": [
+              "free",
+              "paid"
+            ]
+          },
+          "limits": {
+            "$ref": "#/components/schemas/GitForgeLimits"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/GitForgeUsage"
+          }
+        },
+        "required": [
+          "forgeUrl",
+          "namespace",
+          "plan",
+          "limits",
+          "usage"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeUsage": {
+        "type": "object",
+        "properties": {
+          "repositories": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "publicRepositories": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "privateRepositories": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "storageBytes": {
+            "type": "number",
+            "description": "Bytes of every repository's packs."
+          },
+          "privateStorageBytes": {
+            "type": "number",
+            "description": "The part private repositories hold: what the limits count."
+          }
+        },
+        "required": [
+          "repositories",
+          "publicRepositories",
+          "privateRepositories",
+          "storageBytes",
+          "privateStorageBytes"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeLimits": {
+        "type": "object",
+        "properties": {
+          "privateRepositories": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many private repositories the plan allows. Null is no limit."
+          },
+          "privateStorageBytes": {
+            "type": "number",
+            "description": "Bytes of private repositories at which pushes to them are refused."
+          },
+          "includedStorageBytes": {
+            "type": "number",
+            "description": "Bytes of private repositories that cost nothing. Storage between this and `privateStorageBytes` is metered; where the two are equal nothing is."
+          }
+        },
+        "required": [
+          "privateRepositories",
+          "privateStorageBytes",
+          "includedStorageBytes"
+        ],
+        "additionalProperties": false
       },
       "WorkflowMetric": {
         "type": "object",
@@ -116835,6 +117145,218 @@
         },
         "x-required-permission": "github-issues:write",
         "operationId": "postOrgOrgIdGithubIssuesPullRequests"
+      }
+    },
+    "/api/org/{orgId}/git": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Namespace, limits and usage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitForgeOverview"
+                }
+              }
+            }
+          }
+        },
+        "description": "The namespace (null until claimed), the plan's limits for private repositories and their storage, and what the namespace uses. Public repositories are free and count toward no limit.\n\n_Requires permission: `git:read`._",
+        "summary": "The organisation's namespace on git.infrawrench.com and its usage",
+        "x-required-permission": "git:read",
+        "operationId": "getOrgOrgIdGit"
+      }
+    },
+    "/api/org/{orgId}/git/namespace": {
+      "put": {
+        "tags": [
+          "Git"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The namespace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitForgeNamespace"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Claims the namespace when the organisation has none, renames it otherwise. A rename moves no repository, and URLs under the old name stop resolving. 400 when the name breaks the forge's rules or is reserved, 409 when someone has it.\n\n_Requires permission: `git:admin`._",
+        "summary": "Claim or rename the organisation's namespace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitForgeNamespaceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "git:admin",
+        "operationId": "putOrgOrgIdGitNamespace"
+      }
+    },
+    "/api/org/{orgId}/git/settings": {
+      "put": {
+        "tags": [
+          "Git"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The namespace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitForgeNamespace"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "404 until the organisation has claimed a namespace.\n\n_Requires permission: `git:admin`._",
+        "summary": "Set what a new repository starts as",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitForgeSettingsInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "git:admin",
+        "operationId": "putOrgOrgIdGitSettings"
+      }
+    },
+    "/api/org/{orgId}/git/repositories": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repositories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitForgeRepositoryList"
+                }
+              }
+            }
+          }
+        },
+        "description": "Most recently pushed first, private ones included, each with its open pull requests and the latest CI run of its default branch. At most 500; the forge lists the rest.\n\n_Requires permission: `git:read`._",
+        "summary": "The organisation's repositories on git.infrawrench.com",
+        "x-required-permission": "git:read",
+        "operationId": "getOrgOrgIdGitRepositories"
       }
     },
     "/api/org/{orgId}/workflows": {

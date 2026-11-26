@@ -111,4 +111,19 @@ describe("push policy", () => {
     ]);
     expect([...refused.keys()]).toEqual(["refs/heads/main"]);
   });
+
+  it("refuses every addition while the owner is over its storage quota, admins included", () => {
+    const over = policy([], {
+      admin: true,
+      quotaRefusal: "storage quota exceeded: 1.2 GiB of 1 GiB",
+    });
+    expect(refusal(over, update("refs/heads/topic", "create"))).toMatch(/storage quota exceeded/);
+    expect(refusal(over, update("refs/heads/main", "update"))).toMatch(/storage quota exceeded/);
+    expect(refusal(over, update("refs/tags/v1", "create"))).toMatch(/storage quota exceeded/);
+    // Deleting is how someone makes room.
+    expect(refusal(over, update("refs/heads/topic", "delete"))).toBeNull();
+    expect(
+      refusal(policy([], { quotaRefusal: null }), update("refs/heads/x", "create")),
+    ).toBeNull();
+  });
 });

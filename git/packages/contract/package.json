@@ -13,6 +13,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@infrawrench/client-core": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

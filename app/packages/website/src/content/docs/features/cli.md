@@ -436,6 +436,19 @@ infrawrench env hooks uninstall
 
 `env hooks install` (also run by `env init`, unless you pass `--no-hooks`) adds a marked block to the `post-checkout`, `post-merge`, `post-rewrite` and `post-commit` hooks (honouring `core.hooksPath`) and leaves anything else in them alone. The block pulls only when the commit changed the `.infraenv` or the output is missing, in the background, and prefers the project's own `infraenv` from the npm package over starting the desktop app. It never fails the git command. See [Environment files](./env-files.md#regenerate-on-checkout).
 
+## Git repositories
+
+`git` reads your organization's side of [git.infrawrench.com](./git.md). Cloud only.
+
+```
+infrawrench git           # the namespace, the plan's limits and what is used
+infrawrench git repos     # repositories, most recently pushed first
+```
+
+`infrawrench git` prints the namespace's address, what new repositories start as, and private repositories and private storage against the plan. `infrawrench git repos` lists each repository with its visibility, the latest CI run of its default branch, open pull requests, last push, size and its address on the forge. Both take `--json`: `{ org, forgeUrl, namespace, plan, limits, usage }` and `{ org, repositories: [{ id, name, fullName, url, visibility, archived, defaultBranch, pushedAt, openPullRequests, openIssues, sizeBytes, ci }] }`.
+
+Claiming or renaming the namespace happens in **Settings > Git**. Everything about one repository happens on the forge.
+
 ## Track credits, savings and waste
 
 `credits` is the [credit burndown](./credit-burndown.md): prepaid balances with a measured burn rate and a runway, for providers that report one. It's a good one for a morning check, since a prepaid balance that runs out means an outage, not an invoice. Needs `costs:read`:

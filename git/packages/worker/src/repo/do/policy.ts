@@ -14,6 +14,13 @@ export interface PushPolicy {
   readonly userId: string | null;
   /** The pusher administers the repository. Rules bind them only when `enforceAdmins`. */
   readonly admin: boolean;
+  /**
+   * Why nothing may be added to this repository right now, when that is so:
+   * its owner's private storage is over the plan's quota (server-core
+   * `git/quota.ts`, read by the front Worker like the rules). Deleting a ref
+   * is still allowed. Absent or null when pushes are welcome.
+   */
+  readonly quotaRefusal?: string | null;
 }
 
 /** Refs the forge writes itself: a pull request's head and merge preview. */
@@ -26,6 +33,7 @@ export function refusal(policy: PushPolicy, update: ReceiveUpdate): string | nul
   if (RESERVED_PREFIXES.some((prefix) => update.name.startsWith(prefix))) {
     return "this ref is managed by the server";
   }
+  if (policy.quotaRefusal && update.kind !== "delete") return policy.quotaRefusal;
   if (!update.name.startsWith(BRANCH_PREFIX)) return null;
   const branch = update.name.slice(BRANCH_PREFIX.length);
   const protection = protectionFor(policy.rules, branch);

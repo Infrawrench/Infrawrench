@@ -75,6 +75,7 @@ import { eventSubscriptionsDomain } from "./domains/event-subscriptions/index";
 import { jiraDomain } from "./domains/jira/index";
 import { linearDomain } from "./domains/linear/index";
 import { githubIssuesDomain } from "./domains/github-issues/index";
+import { gitDomain } from "./domains/git/index";
 import { workflowsDomain } from "./domains/workflows/index";
 import { workflowApprovalsDomain } from "./domains/workflow-approvals/index";
 import { workflowSecretsDomain } from "./domains/workflow-secrets/index";
@@ -249,6 +250,7 @@ export const DOMAINS: readonly Domain[] = [
   jiraDomain,
   linearDomain,
   githubIssuesDomain,
+  gitDomain,
   workflowsDomain,
   workflowApprovalsDomain,
   workflowSecretsDomain,

@@ -596,4 +596,9 @@
 // 1.128.0: the `git:read`, `git:write` and `git:admin` permissions join the
 // `Permission` enum, for the organization's namespace on git.infrawrench.com
 // (the forge's own API is not part of this document). Additive.
-export const API_VERSION = "1.128.0";
+// 1.129.0: the organization's side of git.infrawrench.com under
+// `/api/org/:orgId/git`: `GET /` (namespace, plan limits and usage), `PUT
+// /namespace` (claim or rename, `git:admin`), `PUT /settings` (the default
+// visibility of new repositories) and `GET /repositories`, with their
+// `GitForge*` schemas. Additive.
+export const API_VERSION = "1.129.0";

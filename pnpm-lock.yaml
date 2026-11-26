@@ -2182,6 +2182,9 @@ importers:
 
   git/packages/contract:
     dependencies:
+      '@infrawrench/client-core':
+        specifier: workspace:*
+        version: link:../../../app/packages/client-core
       effect:
         specifier: 'catalog:'
         version: 4.1.2

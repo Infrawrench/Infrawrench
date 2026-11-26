@@ -22,7 +22,7 @@ import {
   unprocessable,
 } from "@infrawrench/git-contract";
 import { gitTerraformWorkspaces } from "@infrawrench/server-core/db/schema";
-import { planAccess } from "@infrawrench/server-core/entitlements";
+import { gitPrivateRepositoryRefusal } from "@infrawrench/server-core/git/quota";
 import type { RepoAccess } from "../../auth/access";
 import { repoAccess } from "../../auth/repo-access";
 import { db } from "../../db/client";
@@ -91,15 +91,16 @@ const checkName = (name: string): void => {
   }
 };
 
-/** Private repositories follow the organisation's plan. A person's own are theirs to keep private. */
-const checkPrivateAllowed = async (namespace: NamespaceRow): Promise<void> => {
-  if (namespace.organizationId === null) return;
-  if (!(await planAccess(namespace.organizationId)).paid) {
-    throw new PaymentRequired({
-      error: "Private repositories need a paid plan",
-      code: "plan_required",
-    });
-  }
+/**
+ * Private repositories follow the owner's plan: how many an organisation's
+ * plan or a person's own allowance includes (server-core `git/quota.ts`).
+ */
+const checkPrivateAllowed = async (namespace: {
+  readonly organizationId: string | null;
+  readonly userId: string | null;
+}): Promise<void> => {
+  const refusal = await gitPrivateRepositoryRefusal(namespace);
+  if (refusal !== null) throw new PaymentRequired({ error: refusal, code: "plan_required" });
 };
 
 const identityOf = async (cx: Cx) => {
@@ -388,14 +389,7 @@ export const RepositoriesHandlers = HttpApiBuilder.group(GitApi, "repositories",
           if (payload.visibility === "public" && (await privateParent(cx.repo))) {
             throw unprocessable("A fork of a private repository cannot be made public");
           }
-          if (payload.visibility === "private" && owner.organizationId !== null) {
-            if (!(await planAccess(owner.organizationId)).paid) {
-              throw new PaymentRequired({
-                error: "Private repositories need a paid plan",
-                code: "plan_required",
-              });
-            }
-          }
+          if (payload.visibility === "private") await checkPrivateAllowed(owner);
           await updateRepository(repository.id, { visibility: payload.visibility });
         }
         return reload(cx, repository.id);

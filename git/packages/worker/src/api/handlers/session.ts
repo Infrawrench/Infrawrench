@@ -22,7 +22,7 @@ import {
   suggestSlug,
 } from "@infrawrench/git-contract";
 import { gitNamespaces, gitUsers, users } from "@infrawrench/server-core/db/schema";
-import { planAccess } from "@infrawrench/server-core/entitlements";
+import { gitPrivateRepositoryRefusal } from "@infrawrench/server-core/git/quota";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { signOut } from "../../auth/sign-in";
 import { db } from "../../db/client";
@@ -145,7 +145,12 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
               permissions,
               canClaimNamespace:
                 organization.namespace === null && permissions.includes("git:admin"),
-              privateRepositories: (await planAccess(organization.id)).paid,
+              // Whether one more private repository fits the plan right now.
+              privateRepositories:
+                (await gitPrivateRepositoryRefusal({
+                  organizationId: organization.id,
+                  userId: null,
+                })) === null,
             };
           }),
         );

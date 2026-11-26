@@ -52,6 +52,8 @@ export {
 export { ALL_PERMISSIONS } from "./permission-catalog";
 export * from "./products";
 export * from "./ci";
+export * from "./git-forge";
+export * from "./git-names";
 export * from "./ci-access";
 export * from "./ci-live";
 // The job token CI reads a git.infrawrench.com repository with: signed by

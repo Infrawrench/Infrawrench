@@ -115,6 +115,7 @@ export * from "./domains/event-subscriptions";
 export * from "./domains/expiring";
 export * from "./domains/extended-support";
 export * from "./domains/github";
+export * from "./domains/git";
 export * from "./domains/github-issues";
 export * from "./domains/iac";
 export * from "./domains/idle-findings";
@@ -279,6 +280,7 @@ import { EventSubscriptionsApi } from "./domains/event-subscriptions";
 import { ExpiringApi } from "./domains/expiring";
 import { ExtendedSupportApi } from "./domains/extended-support";
 import { GithubApi } from "./domains/github";
+import { GitForgeApi } from "./domains/git";
 import { GithubIssuesApi } from "./domains/github-issues";
 import { IacApi } from "./domains/iac";
 import { IdleFindingsApi } from "./domains/idle-findings";
@@ -449,6 +451,7 @@ export const API_DEFINITIONS = {
   expiring: ExpiringApi,
   "extended-support": ExtendedSupportApi,
   github: GithubApi,
+  git: GitForgeApi,
   "github-issues": GithubIssuesApi,
   heartbeats: HeartbeatsApi,
   iac: IacApi,

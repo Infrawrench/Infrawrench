@@ -1,6 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
-import { useUIStore, withoutDisabledProducts, type SidebarToolDef } from "@infrawrench/ui";
+import {
+  settingsTabTarget,
+  useUIStore,
+  withoutDisabledProducts,
+  type SidebarToolDef,
+} from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CostsIcon } from "@infrawrench/ui/cost";
 import { CostReportsIcon } from "@infrawrench/ui/cost-reports";
@@ -40,13 +45,16 @@ import {
   ServicesIcon,
   DeliveryIcon,
   CiIcon,
+  GitIcon,
   EnvironmentsIcon,
   EnvFilesIcon,
 } from "@infrawrench/ui";
 import { useDisabledProducts } from "@/lib/disabled-products";
+import { useGitForgeLink } from "@/lib/git-forge";
 import {
   complianceTabTarget,
   getWorkspaceNavigateArgs,
+  navigateToWorkspaceTarget,
   offboardingTabTarget,
 } from "@/lib/workspace-tabs";
 
@@ -64,6 +72,7 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
   // Apps the organization has turned off take their tools with them, which
   // is what removes them from the Apps tree, Recent, the launcher and Home.
   const disabledProducts = useDisabledProducts(orgId);
+  const gitForge = useGitForgeLink(orgId);
 
   if (!orgId) return [];
   const tools: SidebarToolDef[] = [
@@ -293,6 +302,27 @@ export function useOrgTools(orgId: string | undefined): SidebarToolDef[] {
       icon: <CiIcon />,
       onClick: () => void navigate({ to: "/org/$orgId/ci", params: { orgId: orgId! } }),
     },
+    // git.infrawrench.com is its own site, so this is a link out, not a tab:
+    // the organisation's namespace there, or Settings > Git to claim one.
+    // Left out for someone without `git:read`, who could open neither.
+    ...(gitForge.status === "unavailable"
+      ? []
+      : [
+          {
+            key: "git",
+            label: gt("Git"),
+            icon: <GitIcon />,
+            onClick: () => {
+              if (gitForge.status === "ready" && gitForge.url) {
+                window.open(gitForge.url, "_blank", "noopener,noreferrer");
+                return;
+              }
+              void navigateToWorkspaceTarget(navigate, settingsTabTarget("git"), {
+                label: "Settings",
+              });
+            },
+          },
+        ]),
     {
       key: "status-pages",
       label: gt("Status pages"),

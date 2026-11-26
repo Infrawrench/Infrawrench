@@ -107,6 +107,7 @@ describe("effect/cli: routing", () => {
       "export",
       "exports",
       "extended-support",
+      "git",
       "github-issues",
       "graph",
       "heartbeats",

@@ -221,8 +221,14 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
     });
 
     const free = await world.organization("free", { members: [[erin, "owner"]] });
+    // The free plan includes three private repositories; the fourth is refused.
+    for (const name of ["hidden-1", "hidden-2", "hidden-3"]) {
+      expect((await create(erin, { owner: free.slug, name, visibility: "private" })).status).toBe(
+        200,
+      );
+    }
     expect(
-      await create(erin, { owner: free.slug, name: "hidden", visibility: "private" }),
+      await create(erin, { owner: free.slug, name: "hidden-4", visibility: "private" }),
     ).toMatchObject({ status: 402, body: { code: "plan_required" } });
     expect((await create(erin, { owner: free.slug, name: "shown" })).status).toBe(200);
   });
