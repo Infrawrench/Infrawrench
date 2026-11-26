@@ -499,13 +499,14 @@ Verified against T3 Code 0.1.11. An environment serves MCP at `<origin>/mcp` wit
 
 ### A person's work across repositories (`/api/workspace`)
 
-`db/workspace.ts` and `api/handlers/workspace.ts` answer the home page of someone in agent mode (`workspace.home`), the Changes list (`workspace.changes`) and the comments that mention them (`workspace.mentions`).
+`db/workspace.ts` and `api/handlers/workspace.ts` answer the home page of someone in agent mode (`workspace.home`), the Changes list (`workspace.changes`), the issues and pull requests they have a part in (`workspace.threads`) and the comments that mention them (`workspace.mentions`).
 
 - **The scope is `tiedTo`, not `visibleTo`.** A workspace is the repositories the viewer has a tie to (their own namespace's, their organisations', the ones they collaborate on), optionally one namespace's share of them. A public repository they have nothing to do with is not their work, and a private one they cannot read is in none of it: asking for a namespace they have no tie to answers an empty workspace, the same as one with nothing in it.
 - **A row's state is read in the statement that reads the row.** `changeColumns` carries the newest version, the newest verdict, the open must-fix count and whether the agent is at work as correlated subqueries, each on an index by pull request. `changeStateOf` then orders them the way the contract's `ChangeState` says. It is a list's state, not the branch page's: it reads no checks and nothing of the viewer's.
 - **"Mine" is the author or whoever connected the agent**, so a branch an agent writes for someone is theirs.
 - **Suggestions** are other people's open branches, out of draft and not with their agent, with a version newer than the viewer's mark, that the viewer has not approved at the current head. Reasons come from rows that exist (assignee, a reviewed mark, a review of theirs, a version they pushed to the repository); there is no "review requested" in the schema, and nothing is inferred from file paths, which would be a call to the repository's object per row.
 - **Activity is four reads, each newest first up to the limit**, merged: versions, reviews submitted, review runs that found something, merges. The newest twenty of all four are among the newest twenty of each.
+- **`listThreads` is one statement over `git_issues`** behind the same `tiedTo`, archived repositories included: written by the viewer, assigned to them, or mentioning them. "Mentioned" is the description (someone else's) or a comment by someone else matching `mentionPattern`, the same scan `listMentions` makes. It pages by `updated_at` like the Changes list.
 - **Mentions match text.** There is no table of mentions, so `listMentions` matches `@username` (`mentionPattern`, the same expression for Postgres and for the excerpt) against the comments and review comments of the viewer's repositories. That is a scan of those repositories' comments; a mentions table written when a comment is saved is what replaces it if it ever shows.
 
 ### Known gaps

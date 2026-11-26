@@ -142,6 +142,7 @@ export const API_ROUTES = {
   workspace: {
     home: ["GET", "/api/workspace/home"],
     changes: ["GET", "/api/workspace/changes"],
+    threads: ["GET", "/api/workspace/threads"],
     mentions: ["GET", "/api/workspace/mentions"],
   },
   t3: {

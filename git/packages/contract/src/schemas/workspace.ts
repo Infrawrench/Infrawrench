@@ -157,5 +157,26 @@ export const Mention = Schema.Struct({
 }).annotate({ identifier: "Mention" });
 export type Mention = typeof Mention.Type;
 
+/** An issue or a pull request in a list across repositories. */
+export const WorkThread = Schema.Struct({
+  id: Schema.String,
+  repository: RepositoryRef,
+  number: Schema.Int,
+  title: Schema.String,
+  isPullRequest: Schema.Boolean,
+  state: Schema.Literals(["open", "closed", "merged"]).annotate({
+    description: "`merged` is a pull request's alone.",
+  }),
+  draft: Schema.Boolean.annotate({ description: "False for an issue." }),
+  author: Schema.NullOr(UserRef),
+  commentCount: Schema.Int,
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+}).annotate({ identifier: "WorkThread" });
+export type WorkThread = typeof WorkThread.Type;
+
+export const WorkThreadList = Page(WorkThread).annotate({ identifier: "WorkThreadList" });
+export type WorkThreadList = typeof WorkThreadList.Type;
+
 export const MentionList = Page(Mention).annotate({ identifier: "MentionList" });
 export type MentionList = typeof MentionList.Type;

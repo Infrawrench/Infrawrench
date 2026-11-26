@@ -364,6 +364,55 @@ describe.skipIf(!configured)("a person's work across repositories, against a rea
     ).toMatchObject({ activeBranches: 0 });
   });
 
+  it("lists the pull requests and issues someone wrote, is assigned to or is mentioned in", async () => {
+    const threads = async (as: Person, query: string) =>
+      (await world.call("GET", `/api/workspace/threads?${query}`, { as })).body.items as Array<
+        Record<string, any>
+      >;
+    const created = await threads(alice, "kind=pulls&involvement=created&state=all");
+    expect(created.length).toBeGreaterThan(0);
+    expect(created.every((row) => row.isPullRequest && row.author.id === alice.id)).toBe(true);
+    expect(created.map((row) => row.number)).toContain(11);
+    // Bob's pull request is hers to look at: she is an assignee.
+    const assigned = await threads(alice, "kind=pulls&involvement=assigned");
+    expect(assigned.length).toBeGreaterThan(0);
+    expect(assigned.every((row) => row.author.id === bob.id && row.state === "open")).toBe(true);
+    // Bob's comment names her; her own note to herself does not count.
+    expect(await threads(alice, "kind=pulls&involvement=mentioned&state=all")).toMatchObject([
+      { number: 11, repository: { id: app.id }, isPullRequest: true },
+    ]);
+    expect(await threads(bob, "kind=pulls&involvement=mentioned&state=all")).toEqual([]);
+
+    const closed = newId();
+    await db.insert(gitIssues).values({
+      id: closed,
+      repositoryId: app.id,
+      number: 90,
+      isPullRequest: false,
+      title: "Limits are not documented",
+      body: `@${bob.username} knows where this goes`,
+      state: "closed",
+      authorUserId: alice.id,
+      createdAt: hoursAgo(30),
+      updatedAt: hoursAgo(20),
+    });
+    expect(await threads(alice, "kind=issues&involvement=created")).toEqual([]);
+    expect(await threads(alice, "kind=issues&involvement=created&state=closed")).toMatchObject([
+      { id: closed, number: 90, isPullRequest: false, state: "closed", draft: false },
+    ]);
+    // A description names someone as a comment does.
+    expect(await threads(bob, "kind=issues&involvement=mentioned&state=all")).toMatchObject([
+      { id: closed },
+    ]);
+    // Carol has no tie to the repository, whatever it holds.
+    for (const involvement of ["created", "assigned", "mentioned"]) {
+      expect(await threads(carol, `kind=issues&involvement=${involvement}&state=all`)).toEqual([]);
+    }
+    expect(
+      (await world.call("GET", "/api/workspace/threads?kind=issues&involvement=created")).status,
+    ).toBe(401);
+  });
+
   it("lists the comments by other people that name the viewer", async () => {
     const mentions = async (as: Person) =>
       (await world.call("GET", "/api/workspace/mentions", { as })).body.items as Array<

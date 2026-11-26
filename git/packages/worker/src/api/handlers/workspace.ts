@@ -21,6 +21,7 @@ import {
   countOpenChanges,
   listChanges,
   listMentions,
+  listThreads,
   mentionPattern,
   pushedSince,
   suggestedReviews,
@@ -202,6 +203,46 @@ export const WorkspaceHandlers = HttpApiBuilder.group(GitApi, "workspace", (hand
         const person = await peopleById(page.items.map((row) => row.authorUserId));
         return {
           items: page.items.map((row) => changeView(row, person)),
+          nextCursor: page.nextCursor,
+        };
+      }),
+    )
+    .handle(
+      "threads",
+      op(async (cx, { query }) => {
+        const page = await listThreads({
+          viewer: { ...(await cx.viewer()), userId: cx.userId! },
+          username: cx.username,
+          kind: query.kind,
+          involvement: query.involvement,
+          state: query.state ?? "open",
+          cursor: decodeCursor(query.cursor),
+          limit: pageSize(query.limit),
+        });
+        const person = await peopleById(page.items.map((row) => row.authorUserId));
+        return {
+          items: page.items.map((row) => ({
+            id: row.id,
+            repository: {
+              id: row.repositoryId,
+              owner: row.owner,
+              name: row.repositoryName,
+              visibility: row.visibility,
+            },
+            number: row.number,
+            title: row.title,
+            isPullRequest: row.isPullRequest,
+            state: row.mergedAt
+              ? ("merged" as const)
+              : row.threadState === "open"
+                ? ("open" as const)
+                : ("closed" as const),
+            draft: row.draft ?? false,
+            author: person(row.authorUserId),
+            commentCount: row.commentsCount,
+            createdAt: iso(row.createdAt),
+            updatedAt: iso(row.updatedAt),
+          })),
           nextCursor: page.nextCursor,
         };
       }),

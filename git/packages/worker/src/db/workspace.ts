@@ -427,6 +427,85 @@ export const activitySince = async (
   return all.sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, limit);
 };
 
+export interface ThreadRow {
+  readonly id: string;
+  readonly repositoryId: string;
+  readonly owner: string;
+  readonly repositoryName: string;
+  readonly visibility: "public" | "private";
+  readonly number: number;
+  readonly title: string;
+  readonly isPullRequest: boolean;
+  readonly threadState: "open" | "closed";
+  readonly mergedAt: Date | null;
+  readonly draft: boolean | null;
+  readonly authorUserId: string | null;
+  readonly commentsCount: number;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+
+export interface ListThreadsOptions {
+  readonly viewer: WorkspaceViewer;
+  /** The viewer's username, for `mentioned`. Null matches nothing. */
+  readonly username: string | null;
+  readonly kind: "issues" | "pulls";
+  readonly involvement: "created" | "assigned" | "mentioned";
+  readonly state: "open" | "closed" | "all";
+  readonly cursor: TimeCursor | null;
+  readonly limit: number;
+}
+
+/**
+ * Issues or pull requests the viewer wrote, is assigned to or is mentioned
+ * in, the most recently active first. Archived repositories are included: a
+ * list of what someone wrote is not only what is in progress.
+ */
+export const listThreads = async (
+  options: ListThreadsOptions,
+): Promise<{ readonly items: ThreadRow[]; readonly nextCursor: string | null }> => {
+  const me = options.viewer.userId;
+  if (options.involvement === "mentioned" && options.username === null) {
+    return { items: [], nextCursor: null };
+  }
+  const pattern = options.username === null ? "" : mentionPattern(options.username);
+  const involved: SQL =
+    options.involvement === "created"
+      ? eq(issue.authorUserId, me)
+      : options.involvement === "assigned"
+        ? sql`exists (select 1 from ${gitIssueAssignees} where ${gitIssueAssignees.issueId} = ${issue.id} and ${gitIssueAssignees.userId} = ${me})`
+        : sql`((${issue.authorUserId} is distinct from ${me} and ${issue.body} ~* ${pattern}) or exists (select 1 from ${gitComments} where ${gitComments.issueId} = ${issue.id} and ${gitComments.authorUserId} is distinct from ${me} and ${gitComments.body} ~* ${pattern}))`;
+  const rows = await db
+    .select({
+      ...threadColumns,
+      id: issue.id,
+      isPullRequest: issue.isPullRequest,
+      threadState: issue.state,
+      mergedAt: pull.mergedAt,
+      draft: pull.draft,
+      authorUserId: issue.authorUserId,
+      commentsCount: issue.commentsCount,
+      createdAt: issue.createdAt,
+      updatedAt: issue.updatedAt,
+    })
+    .from(issue)
+    .innerJoin(repo, eq(repo.id, issue.repositoryId))
+    .innerJoin(owner, eq(owner.id, repo.namespaceId))
+    .leftJoin(pull, eq(pull.issueId, issue.id))
+    .where(
+      and(
+        inScope({ viewer: options.viewer }, true),
+        eq(issue.isPullRequest, options.kind === "pulls"),
+        options.state === "all" ? undefined : eq(issue.state, options.state),
+        involved,
+        afterCursor(issue.updatedAt, issue.id, options.cursor, "desc"),
+      ),
+    )
+    .orderBy(desc(cursorTime(issue.updatedAt)), desc(issue.id))
+    .limit(options.limit + 1);
+  return toPage(rows, options.limit, (row) => ({ at: row.updatedAt.getTime(), id: row.id }));
+};
+
 /** `@name` as a Postgres (and JavaScript) pattern: not part of a longer name or an address. */
 export const mentionPattern = (username: string): string =>
   `(^|[^a-z0-9_.-])@${username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9_.-]|\\.($|[^a-z0-9]))`;
