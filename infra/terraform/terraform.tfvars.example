@@ -258,12 +258,13 @@ app_env = {
   # token a Terraform workspace's run uses the forge's state backend with,
   # and the token the gateway's pass reads a workspace's state with to link
   # it to the organisation's resources. At least 32 characters
-  # (`openssl rand -base64 48`), and the same value as the forge Worker's
-  # JOB_TOKEN_KEY secret, which checks them. Without it runs of those
-  # repositories stay queued, saying the key is missing; GitHub repositories
-  # run as before. Rotating it (both sides together) fails the runs being
-  # cloned at that moment; retry them.
-  GIT_JOB_TOKEN_KEY = "<the forge Worker's JOB_TOKEN_KEY>"
+  # (`openssl rand -base64 48`). The forge's deploy (git-deploy) uploads it as
+  # the Worker's GIT_JOB_TOKEN_KEY secret, which checks them, so this is the
+  # one place the value lives. Without it runs of those repositories stay
+  # queued, saying the key is missing, and the forge's deploy stops; GitHub
+  # repositories run as before. To rotate it, change it here, apply, and run
+  # git-deploy again: runs being cloned in between fail; retry them.
+  GIT_JOB_TOKEN_KEY = "<openssl rand -base64 48>"
   # Optional: where the forge is served, which runners clone from and a run's
   # commit and pull request links open. Without it,
   # https://git.infrawrench.com.
