@@ -13,8 +13,11 @@ import type {
   ScheduledController,
   Socket,
 } from "@cloudflare/workers-types/index";
-import { type Env, type GitEvent, siteOrigin } from "./env";
+import { type Env, type GitEvent, type GitReviewMessage, siteOrigin } from "./env";
 import { type Ctx, type Routes, serve } from "./http/router";
+
+/** The review queue's name (`wrangler.jsonc`). Spelled here so nothing is imported to route a batch. */
+const REVIEW_QUEUE = "infrawrench-git-reviews";
 
 const lazy = <T>(load: () => Promise<T>): (() => Promise<T>) => {
   let loaded: Promise<T> | undefined;
@@ -79,20 +82,37 @@ export default {
     return serve(request, env, ctx, routes);
   },
 
-  /** `infrawrench-git-events`: what a push leaves behind (`events/consumer.ts`). */
-  async queue(batch: MessageBatch<GitEvent>, env: Env, ctx: ExecutionContext): Promise<void> {
+  /**
+   * `infrawrench-git-events`: what a push leaves behind (`events/consumer.ts`).
+   * `infrawrench-git-reviews`: a review run (`review/queue.ts`).
+   */
+  async queue(
+    batch: MessageBatch<GitEvent | GitReviewMessage>,
+    env: Env,
+    ctx: ExecutionContext,
+  ): Promise<void> {
+    if (batch.queue === REVIEW_QUEUE) {
+      const { consumeReviewRuns } = await import("./review/queue");
+      await consumeReviewRuns(batch as MessageBatch<GitReviewMessage>, env, ctx);
+      return;
+    }
     const { consumeGitEvents } = await import("./events/consumer");
-    await consumeGitEvents(batch, env, ctx);
+    await consumeGitEvents(batch as MessageBatch<GitEvent>, env, ctx);
   },
 
-  /** The cron trigger (`wrangler.jsonc`): versions whose thirty days are up (`review/prune.ts`). */
+  /**
+   * The cron trigger (`wrangler.jsonc`): versions whose thirty days are up
+   * (`review/prune.ts`), and review runs nothing finished (`review/queue.ts`).
+   */
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    const [{ withDb }, { pruneVersions }] = await Promise.all([
+    const [{ withDb }, { pruneVersions }, { sweepReviewRuns }] = await Promise.all([
       database(),
       import("./review/prune"),
+      import("./review/queue"),
     ]);
     await withDb(env, ctx, async () => {
       await pruneVersions(env);
+      await sweepReviewRuns(env);
     });
   },
 

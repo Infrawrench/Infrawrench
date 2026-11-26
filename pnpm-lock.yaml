@@ -2343,6 +2343,9 @@ importers:
 
   git/packages/worker:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^0.96.0
+        version: 0.96.0(zod@4.6.7)
       '@infrawrench/client-core':
         specifier: workspace:*
         version: link:../../../app/packages/client-core
