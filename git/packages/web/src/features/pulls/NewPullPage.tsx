@@ -106,7 +106,18 @@ export function NewPullPage({
       void invalidate("contents", "listBranches");
       go(paths.pull(repo, pull.number));
     },
+    onError: (error) => {
+      // The branch has a pull request already (a draft opened at its first push):
+      // ask the comparison again, which names it and links to it.
+      if (error instanceof ApiError && error.code === "pull_request_exists") {
+        void invalidate("contents", "compare");
+      }
+    },
   });
+  const already =
+    create.error instanceof ApiError && create.error.code === "pull_request_exists"
+      ? Number(/#(\d+)/.exec(create.error.message)?.[1] ?? Number.NaN)
+      : Number.NaN;
 
   if (session.data !== undefined && session.data.user === null) {
     return (
@@ -245,11 +256,20 @@ export function NewPullPage({
                   rows={8}
                   actions={
                     <>
-                      <InlineError
-                        error={
-                          create.error instanceof ApiError || create.error ? create.error : null
-                        }
-                      />
+                      {Number.isInteger(already) ? (
+                        <AppLink
+                          href={paths.pull(repo, already)}
+                          className="text-xs font-medium text-on-surface hover:underline"
+                        >
+                          This branch already has pull request #{already}
+                        </AppLink>
+                      ) : (
+                        <InlineError
+                          error={
+                            create.error instanceof ApiError || create.error ? create.error : null
+                          }
+                        />
+                      )}
                       <Checkbox
                         label="Draft"
                         checked={draft}

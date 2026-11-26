@@ -14,6 +14,8 @@ import { EmptyState, Loading, QueryView } from "../../components/states";
 import { shortOid } from "../../lib/format";
 import { paths } from "../../lib/paths";
 import { signInHref, useSession } from "../../lib/session";
+import { InboxSection } from "../review/Inbox";
+import { useReviewMode } from "../review/mode";
 import { showBidi } from "../../lib/bidi";
 
 export function HomePage() {
@@ -56,6 +58,8 @@ function SignedOutHome() {
 
 function SignedInHome({ username }: { username: string | null }) {
   const [filter, setFilter] = useState("");
+  // The inbox is the branch page's: someone in classic mode keeps the home page as it was.
+  const { mode } = useReviewMode();
   const mine = useQuery(
     queries.repositoryLists.listMine({ query: { sort: "pushed", limit: 100 } }),
   );
@@ -136,6 +140,7 @@ function SignedInHome({ username }: { username: string | null }) {
         </section>
 
         <div className="min-w-0 space-y-6">
+          {mode === "agent" ? <InboxSection /> : null}
           <section aria-labelledby="home-activity" className="space-y-2">
             <h2 id="home-activity" className="text-sm font-semibold text-on-surface">
               Recent pushes

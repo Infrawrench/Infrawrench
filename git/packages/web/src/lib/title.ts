@@ -50,7 +50,14 @@ export function titleForPath(pathname: string): string {
   if (first === "new") return join("New repository");
   if (first === "onboarding") return join("Choose a username");
   if (first === "settings") {
-    const page = second === "keys" ? "SSH keys" : second === "tokens" ? "Access tokens" : null;
+    const page =
+      second === "keys"
+        ? "SSH keys"
+        : second === "tokens"
+          ? "Access tokens"
+          : second === "review"
+            ? "Review"
+            : null;
     return join(page, "Settings");
   }
   if (second === undefined) return join(first);
@@ -66,6 +73,7 @@ export function titleForPath(pathname: string): string {
   }
   if (third === "pulls") {
     if (fourth === "new") return join("New pull request", repo);
+    if (fourth === "start") return join("Start work", repo);
     if (fourth !== undefined) return join(`Pull request #${fourth}`, repo);
   }
   if (third === "ci" && fourth === "runs" && fifth !== undefined) return join("CI run", repo);

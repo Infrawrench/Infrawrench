@@ -41,6 +41,11 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
                 exact: true,
               },
               {
+                label: "Review",
+                href: paths.settings("review"),
+                icon: <Icon name="eye" size={13} />,
+              },
+              {
                 label: "SSH keys",
                 href: paths.settings("keys"),
                 icon: <Icon name="key" size={13} />,

@@ -3,7 +3,8 @@
  * hunks revealed on demand from the file's text.
  *
  * Pages that add to a diff (review comments on a pull request) do it through
- * `renderAfterLine` and `lineAction` rather than by copying this file.
+ * `renderAfterLine`, `renderBeforeLine` and `lineAction` rather than by
+ * copying this file.
  */
 import { Fragment, useMemo, useState, type ReactNode } from "react";
 import type { DiffFile, DiffHunk, DiffLine } from "@infrawrench/git-contract";
@@ -61,6 +62,8 @@ export interface DiffViewProps {
   readonly loadFile?: (path: string) => Promise<DiffFile | undefined>;
   /** A row under a line: a review thread. Return null for none. */
   readonly renderAfterLine?: (file: DiffFile, line: DiffLine) => ReactNode;
+  /** A row above a line: what explains the lines that follow. Return null for none. */
+  readonly renderBeforeLine?: (file: DiffFile, line: DiffLine) => ReactNode;
   /** A control in a line's number gutter: "comment on this line". */
   readonly lineAction?: (file: DiffFile, line: DiffLine) => ReactNode;
 }
@@ -96,6 +99,7 @@ function DiffFileView({
   layout,
   loadFile,
   renderAfterLine,
+  renderBeforeLine,
   lineAction,
 }: DiffViewProps & { file: DiffFile }) {
   const [loadedFile, setLoadedFile] = useState<DiffFile | null>(null);
@@ -277,6 +281,21 @@ function DiffFileView({
                   {layout === "split"
                     ? splitRows(hunk.lines).map((row, rowIndex) => (
                         <Fragment key={rowIndex}>
+                          {renderBeforeLine
+                            ? [row.left, row.right === row.left ? null : row.right].map((line) => {
+                                const above = line ? renderBeforeLine(file, line) : null;
+                                return above ? (
+                                  <tr key={`${line!.type}:${line!.oldLine}:${line!.newLine}`}>
+                                    <td
+                                      colSpan={4}
+                                      className="border-y border-border p-0 font-sans"
+                                    >
+                                      {above}
+                                    </td>
+                                  </tr>
+                                ) : null;
+                              })
+                            : null}
                           <tr>
                             <SplitCell
                               line={row.left}
@@ -314,8 +333,16 @@ function DiffFileView({
                       ))
                     : hunk.lines.map((line) => {
                         const extra = renderAfterLine ? renderAfterLine(file, line) : null;
+                        const above = renderBeforeLine ? renderBeforeLine(file, line) : null;
                         return (
                           <Fragment key={`${line.type}:${line.oldLine}:${line.newLine}`}>
+                            {above ? (
+                              <tr>
+                                <td colSpan={3} className="border-y border-border p-0 font-sans">
+                                  {above}
+                                </td>
+                              </tr>
+                            ) : null}
                             <UnifiedRow
                               line={line}
                               tokens={

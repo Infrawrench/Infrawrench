@@ -43,6 +43,11 @@ export function RepoSettingsLayout({ children }: { children: ReactNode }) {
               icon: <Icon name="shield" size={13} />,
             },
             {
+              label: "Review",
+              href: paths.repoSettings(repo, "review"),
+              icon: <Icon name="eye" size={13} />,
+            },
+            {
               label: "Deploy keys",
               href: paths.repoSettings(repo, "keys"),
               icon: <Icon name="key" size={13} />,

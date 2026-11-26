@@ -16,7 +16,14 @@ import {
 } from "../infrastructure/PlanSummary";
 
 /** The newest plan of each workspace for a pull request: what merging it would change, and cost. */
-export function InfrastructureBox({ number }: { number: number }) {
+export function InfrastructureBox({
+  number,
+  flush = false,
+}: {
+  number: number;
+  /** Without the timeline's indent: on the branch page. */
+  flush?: boolean;
+}) {
   const repo = useRepoRef();
   const repository = useRepository();
   const runs = useQuery({
@@ -35,7 +42,7 @@ export function InfrastructureBox({ number }: { number: number }) {
   return (
     <section
       aria-label="Infrastructure"
-      className="rounded-md border border-border bg-surface-raised sm:ml-10"
+      className={`rounded-md border border-border bg-surface-raised ${flush ? "" : "sm:ml-10"}`}
     >
       <h2 className="flex items-center gap-2 rounded-t-md border-b border-border bg-surface-inset px-3 py-1.5 text-xs font-semibold text-on-surface-secondary">
         <Icon name="boxes" size={13} />

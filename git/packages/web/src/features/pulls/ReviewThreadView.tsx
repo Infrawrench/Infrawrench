@@ -19,6 +19,8 @@ import { useRepoRef } from "../../layout/RepoLayout";
 import { paths } from "../../lib/paths";
 import { CommentCard } from "../issues/CommentCard";
 import { refreshPull, usePull } from "./PullLayout";
+import { instructionFor } from "../review/branch";
+import { InstructionBadge, SendToAgentButton, useInstructions } from "../review/Instructions";
 import { describeAnchor, startsCollapsed, type LineAnchor } from "./review-threads";
 
 const TONE = { context: "", add: "bg-success/10", delete: "bg-danger/10" } as const;
@@ -143,13 +145,24 @@ export function ReviewCommentForm({
 export function ReviewThreadView({
   thread,
   showLines = true,
+  branch = false,
 }: {
   thread: ReviewThread;
   /** Draw the lines the thread is on: everywhere but under its line in the diff. */
   showLines?: boolean;
+  /** On the branch page: name its version, what answered it, and offer it to the agent. */
+  branch?: boolean;
 }) {
   const repo = useRepoRef();
   const pull = usePull();
+  const sent = useInstructions();
+  const instruction =
+    !branch || sent === null || sent.instructions === null
+      ? null
+      : instructionFor(sent.instructions, {
+          commentIds: thread.comments.map((comment) => comment.id),
+        });
+  const answeredIn = branch ? (thread.answeredInVersion ?? null) : null;
   const [collapsed, setCollapsed] = useState(() => startsCollapsed(thread));
   const [replying, setReplying] = useState(false);
   const resolve = useMutation({
@@ -187,7 +200,11 @@ export function ReviewThreadView({
         </button>
         {showLines ? (
           <AppLink
-            href={`${paths.pullTab(repo, pull.number, "files")}#${diffFileId(thread.path)}`}
+            href={
+              branch
+                ? `${paths.pull(repo, pull.number)}#${diffFileId(thread.path)}`
+                : `${paths.pullTab(repo, pull.number, "files")}#${diffFileId(thread.path)}`
+            }
             className="min-w-0 truncate font-mono text-on-surface hover:underline"
           >
             {thread.path}
@@ -201,7 +218,18 @@ export function ReviewThreadView({
         ) : (
           <span className="flex-1" />
         )}
-        {thread.outdated ? <Badge tone="warning">Outdated</Badge> : null}
+        {branch && thread.version !== undefined && thread.version !== null ? (
+          <Badge tone="outline">v{thread.version}</Badge>
+        ) : null}
+        {answeredIn !== null ? (
+          <Badge tone="notice">Answered by v{answeredIn}</Badge>
+        ) : thread.outdated ? (
+          <Badge tone="warning">Outdated</Badge>
+        ) : null}
+        {instruction !== null &&
+        !(answeredIn !== null && instruction.answeredInVersion === answeredIn) ? (
+          <InstructionBadge instruction={instruction} />
+        ) : null}
         {thread.resolved ? (
           <Badge tone="success">
             <Icon name="check" size={10} />
@@ -259,6 +287,11 @@ export function ReviewThreadView({
                   <Button size="sm" busy={resolve.isPending} onClick={() => resolve.mutate()}>
                     {thread.resolved ? "Unresolve" : "Resolve"}
                   </Button>
+                ) : null}
+                {branch && instruction === null && !thread.resolved && first ? (
+                  <SendToAgentButton
+                    from={{ source: "review_comment", reviewCommentId: first.id }}
+                  />
                 ) : null}
                 {thread.resolved && thread.resolvedBy !== null ? (
                   <span className="inline-flex items-center gap-1 text-xs text-on-surface-muted">

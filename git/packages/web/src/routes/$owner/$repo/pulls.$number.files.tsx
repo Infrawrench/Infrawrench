@@ -1,4 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FilesTab } from "../../../features/pulls/FilesTab";
+import { PullFiles } from "../../../features/review/PullIndex";
 
-export const Route = createFileRoute("/$owner/$repo/pulls/$number/files")({ component: FilesTab });
+export const Route = createFileRoute("/$owner/$repo/pulls/$number/files")({ component: PullFiles });

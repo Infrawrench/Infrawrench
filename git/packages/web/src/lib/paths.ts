@@ -68,6 +68,17 @@ export const paths = {
   pull: (repo: RepoRef, number: number) => `${repositoryPath(repo)}/pulls/${number}`,
   newPull: (repo: RepoRef, query: { base?: string; head?: string } = {}) =>
     `${repositoryPath(repo)}/pulls/new${search(query)}`,
+  /**
+   * A pull request's page with a version and a diff picked: what the branch
+   * page (the pull request, for someone in agent mode) keeps in its address.
+   */
+  branchPage: (
+    repo: RepoRef,
+    number: number,
+    query: { v?: number; diff?: "whole" | "step" | "since" } = {},
+  ) => `${repositoryPath(repo)}/pulls/${number}${search(query)}`,
+  /** Under `/pulls` so the Pull requests tab stays the active one. */
+  startWork: (repo: RepoRef) => `${repositoryPath(repo)}/pulls/start`,
   ci: (repo: RepoRef) => `${repositoryPath(repo)}/ci`,
   /**
    * The Infrastructure tab. Not `/terraform`: that prefix is the state

@@ -5,19 +5,20 @@
  */
 import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import type { MergeMethod, PullRequest } from "@infrawrench/git-contract";
+import type { FindingsTally, MergeMethod, PullRequest } from "@infrawrench/git-contract";
 import { ApiError, api } from "../../api/client";
 import { invalidate } from "../../api/queries";
 import { AppLink } from "../../components/AppLink";
 import { Badge } from "../../components/Badge";
 import { Button } from "../../components/Button";
+import { Dialog } from "../../components/controls";
 import { Checkbox, Field, Input, Select, Textarea } from "../../components/forms";
 import { Icon, type IconName } from "../../components/icons";
 import { Menu } from "../../components/Menu";
 import { InlineError } from "../../components/states";
 import { CheckStateIcon } from "../../components/StatusIcons";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
-import { shortOid } from "../../lib/format";
+import { plural, shortOid } from "../../lib/format";
 import { paths } from "../../lib/paths";
 import {
   MERGE_BUTTON,
@@ -28,6 +29,7 @@ import {
   type RowTone,
 } from "./merge-box";
 import { refreshPull } from "./PullLayout";
+import { tallySentence } from "../review/branch";
 
 const TONE_CLASS: Record<RowTone, string> = {
   success: "text-success",
@@ -94,8 +96,104 @@ function CheckList({ rows }: { rows: ReadonlyArray<CheckRow> }) {
   );
 }
 
-export function MergeBox({ pull }: { pull: PullRequest }) {
+/**
+ * What review agents hold the merge on, and the way past it an administrator
+ * has: an override, on the record with its reason.
+ */
+function FindingsRow({
+  pull,
+  tally,
+}: {
+  pull: PullRequest;
+  tally: FindingsTally | null | undefined;
+}) {
   const repo = useRepoRef();
+  const gate = pull.mergeability.findings;
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
+  const override = useMutation({
+    mutationFn: () =>
+      api.findings.override({
+        params: { ...repo, number: pull.number },
+        payload: { reason: reason.trim() },
+      }),
+    onSuccess: () => {
+      setOpen(false);
+      setReason("");
+      refreshPull();
+      void invalidate("findings");
+      void invalidate("versions", "branchState");
+    },
+  });
+  if (gate === undefined) return null;
+  const held = gate.mustFixOpen > 0;
+  if (!held && (tally === null || tally === undefined || tally.found === 0)) return null;
+  const detail = tally === null || tally === undefined ? null : tallySentence(tally);
+  return (
+    <Row
+      row={
+        held
+          ? {
+              tone: gate.blocks ? "danger" : "warning",
+              title: `${plural(gate.mustFixOpen, "must-fix finding")} open`,
+              detail,
+            }
+          : { tone: "success", title: "No must-fix findings open", detail }
+      }
+      actions={
+        held && gate.blocks && gate.canOverride ? (
+          <Button onClick={() => setOpen(true)}>Override</Button>
+        ) : undefined
+      }
+    >
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Merge past must-fix findings"
+        footer={
+          <>
+            <Button onClick={() => setOpen(false)}>Cancel</Button>
+            <Button
+              variant="danger"
+              busy={override.isPending}
+              disabled={reason.trim() === ""}
+              onClick={() => override.mutate()}
+            >
+              Override
+            </Button>
+          </>
+        }
+      >
+        <Field label="Reason">
+          {(control) => (
+            <Textarea
+              {...control}
+              rows={3}
+              maxLength={2000}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          )}
+        </Field>
+        <InlineError error={override.error} />
+      </Dialog>
+    </Row>
+  );
+}
+
+export function MergeBox({
+  pull,
+  tally,
+  flush = false,
+}: {
+  pull: PullRequest;
+  /** The findings tally, where the page has it: the findings row then says more. */
+  tally?: FindingsTally | null;
+  /** Without the timeline's indent: on the branch page. */
+  flush?: boolean;
+}) {
+  const repo = useRepoRef();
+  const indent = flush ? "" : "sm:ml-10";
   const repository = useRepository();
   const params = { ...repo, number: pull.number };
   const { mergeability } = pull;
@@ -172,7 +270,7 @@ export function MergeBox({ pull }: { pull: PullRequest }) {
     return (
       <section
         aria-label="Merge status"
-        className="rounded-md border border-border bg-surface-raised sm:ml-10"
+        className={`rounded-md border border-border bg-surface-raised ${indent}`}
       >
         <Row
           row={{
@@ -211,7 +309,7 @@ export function MergeBox({ pull }: { pull: PullRequest }) {
   return (
     <section
       aria-label="Merge"
-      className="rounded-md border border-border bg-surface-raised sm:ml-10"
+      className={`rounded-md border border-border bg-surface-raised ${indent}`}
     >
       {pull.draft ? (
         <Row
@@ -228,6 +326,7 @@ export function MergeBox({ pull }: { pull: PullRequest }) {
         </Row>
       ) : null}
       {model.reviews !== null ? <Row row={model.reviews} /> : null}
+      <FindingsRow pull={pull} tally={tally} />
       {model.checks !== null ? (
         <Row
           row={model.checks}

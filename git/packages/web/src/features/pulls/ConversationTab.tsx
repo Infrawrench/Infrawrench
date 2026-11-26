@@ -86,7 +86,14 @@ function DismissButton({ review }: { review: Review }) {
   );
 }
 
-function ReviewEntry({ item }: { item: Extract<TimelineItem, { type: "review" }> }) {
+export function ReviewEntry({
+  item,
+  branch = false,
+}: {
+  item: Extract<TimelineItem, { type: "review" }>;
+  /** On the branch page: its threads name their version and can go to the agent. */
+  branch?: boolean;
+}) {
   const { review, threads } = item;
   const look = REVIEW[review.state];
   // A bare comment on a line is a review of one thread and no words: show the thread alone.
@@ -121,7 +128,7 @@ function ReviewEntry({ item }: { item: Extract<TimelineItem, { type: "review" }>
       ) : null}
       {threads.map((thread) => (
         <div key={thread.id} className="sm:ml-10">
-          <ReviewThreadView thread={thread} />
+          <ReviewThreadView thread={thread} branch={branch} />
         </div>
       ))}
     </div>
@@ -136,7 +143,7 @@ const DECISION: Record<string, { icon: IconName; tone: string; label: string }> 
 };
 
 /** Each reviewer's newest verdict. */
-function Reviewers({ reviews }: { reviews: ReadonlyArray<Review> }) {
+export function Reviewers({ reviews }: { reviews: ReadonlyArray<Review> }) {
   const newest = new Map<string, Review>();
   for (const review of reviews) {
     if (review.state === "pending" || review.author === null) continue;

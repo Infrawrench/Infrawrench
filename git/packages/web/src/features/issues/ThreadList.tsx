@@ -171,6 +171,12 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
           <Icon name="milestone" size={12} />
           Milestones
         </ButtonLink>
+        {kind === "pulls" && signedIn && repository.viewer.canPush && !repository.archived ? (
+          <ButtonLink href={paths.startWork(repo)}>
+            <Icon name="bot" size={12} />
+            Start work
+          </ButtonLink>
+        ) : null}
         {repository.archived ? null : signedIn ? (
           canOpen ? (
             <ButtonLink
