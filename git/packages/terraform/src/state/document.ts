@@ -77,7 +77,7 @@ export function readStateHeader(bytes: Uint8Array): StateHeaderResult {
  * was. Restoring an old version writes it again as the newest, and going
  * through `JSON.parse` and `JSON.stringify` for that would round any integer
  * past 2^53 in a resource's attributes. Null when the text has no top-level
- * numeric `serial`.
+ * numeric `serial`. The number is replaced whole, however it was written.
  */
 export function withSerial(text: string, serial: number): string | null {
   let depth = 0;
@@ -96,10 +96,11 @@ export function withSerial(text: string, serial: number): string | null {
       if (text[j] !== ":") continue;
       j += 1;
       while (j < text.length && /\s/.test(text[j]!)) j += 1;
-      let end = j;
-      while (end < text.length && /[0-9]/.test(text[end]!)) end += 1;
-      if (end === j) return null;
-      return text.slice(0, j) + String(serial) + text.slice(end);
+      // The whole number, as JSON spells one: `1e3` is a serial too, and
+      // replacing only its digits would leave the exponent behind.
+      const number = /^-?[0-9]+(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(text.slice(j, j + 64));
+      if (!number) return null;
+      return text.slice(0, j) + String(serial) + text.slice(j + number[0].length);
     }
     if (ch === "{" || ch === "[") depth += 1;
     else if (ch === "}" || ch === "]") depth -= 1;

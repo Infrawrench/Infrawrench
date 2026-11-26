@@ -88,6 +88,10 @@ describe("summarizePlan, on a real plan", () => {
     expect(gone).toMatchObject({ action: "delete", reason: "delete_because_count_index" });
     expect(describeReason(gone!.reason)).toBe("its index is out of range for count");
     expect(describeReason("something_new")).toBeNull();
+    // Only its own table: a reason named like something every object has is unknown too.
+    for (const inherited of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      expect(describeReason(inherited)).toBeNull();
+    }
   });
 
   it("reports a move that changes nothing else", () => {

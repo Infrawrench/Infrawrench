@@ -209,7 +209,13 @@ function readHcl(directory: string, source: string, into: Declared): void {
 
 /** The JSON syntax (`*.tf.json`): the same declarations as nested objects. */
 function readJson(directory: string, source: string, into: Declared): void {
-  const doc: unknown = JSON.parse(source);
+  let doc: unknown;
+  try {
+    doc = JSON.parse(source);
+  } catch {
+    // Never the parser's own message: it quotes the text it could not read.
+    throw new Error("The file is not valid JSON.");
+  }
   if (!isRecord(doc)) return;
   const each = (value: unknown): Record<string, unknown>[] =>
     (Array.isArray(value) ? value : [value]).filter(isRecord);
@@ -313,6 +319,9 @@ export async function discoverTerraformDirectories(
         // Dot directories hold tooling (`.terraform`, `.git`), never roots of their own.
         if (entry.name.startsWith(".") || SKIPPED_DIRECTORIES.has(entry.name)) continue;
         if (depth + 1 > maxDepth) truncated = true;
+        // Never queue more than can be walked: a few shared trees with
+        // thousands of entries each would otherwise queue millions of paths.
+        else if (walked + queue.length >= maxDirectories) truncated = true;
         else queue.push({ path: join(path, entry.name), depth: depth + 1 });
       } else if (isTerraformFile(entry.name) && !entry.name.startsWith(".")) {
         files.push(entry.name);
@@ -409,12 +418,17 @@ export function isWorkspaceName(name: string): boolean {
  * already in use; the answer is none of them.
  */
 export function suggestWorkspaceName(path: string, taken: Iterable<string> = []): string {
-  const base =
-    path
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]+/g, "-")
-      .replace(/^[-_]+|-+$/g, "")
-      .slice(0, MAX_WORKSPACE_NAME - 4) || "default";
+  // Trimmed by index, on a bounded piece of the path: `-+$` tried from every
+  // dash of a long run is quadratic.
+  const cleaned = path
+    .slice(0, 4 * MAX_WORKSPACE_NAME)
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-");
+  let start = 0;
+  let end = cleaned.length;
+  while (start < end && (cleaned[start] === "-" || cleaned[start] === "_")) start += 1;
+  while (end > start && cleaned[end - 1] === "-") end -= 1;
+  const base = cleaned.slice(start, end).slice(0, MAX_WORKSPACE_NAME - 4) || "default";
   const used = new Set(taken);
   if (!used.has(base)) return base;
   for (let n = 2; ; n++) if (!used.has(`${base}-${n}`)) return `${base}-${n}`;

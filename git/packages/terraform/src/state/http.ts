@@ -43,7 +43,12 @@ export interface StateAuth {
   readonly principal: string | null;
   /** May read the state: it holds every secret the workspace manages. */
   readonly canRead: boolean;
-  /** May lock, unlock with the lock's id, and write. */
+  /**
+   * May lock, and unlock with the lock's id. A plan locks and reads; it
+   * never writes, so its credential has this without `canWrite`.
+   */
+  readonly canLock: boolean;
+  /** May write a new version. */
   readonly canWrite: boolean;
   /** May delete the state, and unlock without naming the lock. */
   readonly canAdmin: boolean;
@@ -311,7 +316,13 @@ export async function handleStateRequest(
   }
 
   const allowed =
-    operation === "read" ? auth.canRead : operation === "purge" ? auth.canAdmin : auth.canWrite;
+    operation === "read"
+      ? auth.canRead
+      : operation === "purge"
+        ? auth.canAdmin
+        : operation === "write"
+          ? auth.canWrite
+          : auth.canLock;
   if (!allowed) return problem(403, "This credential may not do that to the workspace's state.");
 
   switch (operation) {

@@ -273,6 +273,20 @@ describe("discovering roots", () => {
     expect(broken.unreadable).toEqual([{ file: "main.tf", reason: "A { is never closed" }]);
   });
 
+  it("says a JSON file is not JSON without quoting what is in it", async () => {
+    // A JSON parser's own message quotes the text around the error.
+    const { directories } = await discoverTerraformDirectories(
+      tree({
+        "main.tf": 'resource "terraform_data" "x" {}',
+        "secrets.tf.json": '{"variable": {"token": {"default": hunter2-not-for-a-message}}}',
+      }),
+    );
+    expect(directories[0]?.unreadable).toEqual([
+      { file: "secrets.tf.json", reason: "The file is not valid JSON." },
+    ]);
+    expect(JSON.stringify(directories)).not.toContain("hunter2");
+  });
+
   it("never looks inside tooling directories", async () => {
     const reader = tree(repository);
     await discoverTerraformDirectories(reader);
@@ -293,6 +307,24 @@ describe("discovering roots", () => {
     const capped = await discoverTerraformDirectories(tree(wide), { maxDirectories: 10 });
     expect(capped.truncated).toBe(true);
     expect(capped.directories.length).toBeLessThan(30);
+
+    // Shared subtrees: every level lists the same two thousand names. Only
+    // what will be walked is ever queued, so the walk asks for ten listings
+    // and holds ten paths, not two thousand to the power of the depth.
+    const names = Array.from({ length: 2000 }, (_, i) => `d${i}`);
+    let listed = 0;
+    const shared = await discoverTerraformDirectories(
+      {
+        list: async () => {
+          listed += 1;
+          return names.map((name) => ({ name, kind: "directory" as const }));
+        },
+        read: async () => null,
+      },
+      { maxDirectories: 10 },
+    );
+    expect(shared.truncated).toBe(true);
+    expect(listed).toBe(10);
 
     const deep = await discoverTerraformDirectories(
       tree({ "a/b/c/d/main.tf": 'resource "terraform_data" "x" {}' }),
@@ -315,6 +347,11 @@ describe("workspace names", () => {
     expect(suggestWorkspaceName("envs/prod", ["envs-prod", "envs-prod-2"])).toBe("envs-prod-3");
     expect(suggestWorkspaceName("_weird path/ü/")).toBe("weird-path");
     expect(isWorkspaceName(suggestWorkspaceName("a/".repeat(80)))).toBe(true);
+    // A long run of dashes that is not at the end costs nothing.
+    const started = performance.now();
+    expect(suggestWorkspaceName(`a${"-".repeat(200_000)}b`)).toBe("a");
+    expect(suggestWorkspaceName(`${"-".repeat(200_000)}`)).toBe("default");
+    expect(performance.now() - started).toBeLessThan(200);
   });
 
   it("are lowercase URL segments", () => {

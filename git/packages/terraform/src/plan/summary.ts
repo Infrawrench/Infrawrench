@@ -367,7 +367,8 @@ const REASONS: Record<string, string> = {
 
 /** A reason in words, or null for one this does not know (show the raw value then). */
 export function describeReason(reason: string | null): string | null {
-  return reason === null ? null : (REASONS[reason] ?? null);
+  // Own keys only: `constructor` is not a reason.
+  return reason !== null && Object.hasOwn(REASONS, reason) ? (REASONS[reason] ?? null) : null;
 }
 
 /** Terraform's closing line, from a summary. */

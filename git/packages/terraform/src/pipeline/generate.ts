@@ -22,7 +22,9 @@ import { Literal, renderYaml, type YamlValue } from "./yaml.js";
  *
  * **State.** The script adds an override file that sets `backend "http" {}`,
  * whatever backend the root declares, and the `TF_HTTP_*` variables point it
- * at the forge. The password is the run's job token.
+ * at the forge. The password is the run's job token, which is good for this
+ * workspace's state and this run's plan and for nothing of the repository: a
+ * plan's reads the state and takes the lock, an apply's writes it too.
  */
 
 export type TerraformProduct = "terraform" | "opentofu";
@@ -187,7 +189,11 @@ export function backendEnvironment(stateUrl: string): Record<string, string> {
   };
 }
 
-/** The `backend "http"` block for someone running Terraform on their own machine. */
+/**
+ * The `backend "http"` block for someone running Terraform on their own
+ * machine: an administrator of the repository, with a personal access token
+ * that has `repo:write`.
+ */
 export function backendConfiguration(stateUrl: string, username: string): string {
   const q = (value: string) => JSON.stringify(value);
   return [
@@ -211,8 +217,13 @@ export const BACKEND_OVERRIDE_FILE = "infrawrench_backend_override.tf";
 export const BACKEND_OVERRIDE = 'terraform {\n  backend "http" {}\n}\n';
 
 /**
- * Installs the release into the job's cache directory and puts it on `PATH`.
- * Reads `IW_TF_*`; nothing is substituted into it.
+ * Installs the release and puts it on `PATH`. Reads `IW_TF_*`; nothing is
+ * substituted into it.
+ *
+ * The cache holds the release's archive and nothing that is run. Every job
+ * checks the archive against the pinned SHA-256 and unpacks the program from
+ * it into its own temporary directory, so whatever wrote the cache before
+ * can change what is downloaded again and never what runs.
  */
 const INSTALL = `case "$(uname -m)" in
   x86_64) arch=amd64; sha256="$IW_TF_SHA256_AMD64" ;;
@@ -230,21 +241,22 @@ else
   tf=terraform
   url="https://releases.hashicorp.com/terraform/$IW_TF_VERSION/terraform_\${IW_TF_VERSION}_linux_$arch.zip"
 fi
-bin="$IW_TF_CACHE/$IW_TF_PRODUCT-$IW_TF_VERSION-$arch"
-if [ ! -x "$bin/$tf" ] || ! echo "$sha256  $bin/release.zip" | sha256sum --check --status; then
-  rm -rf "$bin"
-  mkdir -p "$bin"
-  curl --fail --silent --show-error --location --retry 3 --output "$bin/release.zip" "$url"
-  echo "$sha256  $bin/release.zip" | sha256sum --check --status || {
+zip="$IW_TF_CACHE/$IW_TF_PRODUCT-$IW_TF_VERSION-$arch.zip"
+if ! echo "$sha256  $zip" | sha256sum --check --status 2>/dev/null; then
+  rm -rf "$zip"
+  mkdir -p "$IW_TF_CACHE"
+  curl --fail --silent --show-error --location --retry 3 --output "$zip" "$url"
+  echo "$sha256  $zip" | sha256sum --check --status || {
     echo "The download of $url does not match its pinned SHA-256." >&2
     exit 1
   }
-  unzip -q -o "$bin/release.zip" "$tf" -d "$bin"
 fi
-export PATH="$bin:$PATH"
+out="$(mktemp -d)"
+mkdir "$out/bin"
+unzip -q -o "$zip" "$tf" -d "$out/bin"
+export PATH="$out/bin:$PATH"
 
 printf 'terraform {\\n  backend "http" {}\\n}\\n' > ${BACKEND_OVERRIDE_FILE}
-out="$(mktemp -d)"
 "$tf" init -input=false -no-color`;
 
 /** Plans, and posts the plan's JSON to the forge, which keeps only its summary. */

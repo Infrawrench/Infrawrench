@@ -15,10 +15,34 @@ import { md5 } from "../src/util/md5.js";
 
 const STATE_URL = "https://git.example/acme/infra/terraform/prod/state";
 
-const WRITER: StateAuth = { principal: "user:w", canRead: true, canWrite: true, canAdmin: false };
-const ADMIN: StateAuth = { principal: "user:a", canRead: true, canWrite: true, canAdmin: true };
-const READER: StateAuth = { principal: "user:r", canRead: true, canWrite: false, canAdmin: false };
-const NOBODY: StateAuth = { principal: null, canRead: false, canWrite: false, canAdmin: false };
+const WRITER: StateAuth = {
+  principal: "user:w",
+  canRead: true,
+  canLock: true,
+  canWrite: true,
+  canAdmin: false,
+};
+const ADMIN: StateAuth = {
+  principal: "user:a",
+  canRead: true,
+  canLock: true,
+  canWrite: true,
+  canAdmin: true,
+};
+const READER: StateAuth = {
+  principal: "user:r",
+  canRead: true,
+  canLock: false,
+  canWrite: false,
+  canAdmin: false,
+};
+const NOBODY: StateAuth = {
+  principal: null,
+  canRead: false,
+  canLock: false,
+  canWrite: false,
+  canAdmin: false,
+};
 
 function state(serial: number, lineage = "lineage-a", extra: Record<string, unknown> = {}): string {
   return JSON.stringify(
@@ -259,6 +283,21 @@ describe("the http backend's answers", () => {
     expect((await call(store, WRITER, "DELETE")).status).toBe(403);
   });
 
+  it("lets a plan's credential lock and read, and write nothing", async () => {
+    const store = new MemoryStateStore();
+    const planner: StateAuth = { ...READER, principal: "ci:plan", canLock: true };
+    expect((await call(store, WRITER, "POST", "", state(1))).status).toBe(200);
+    const info = JSON.stringify(lockInfo("plan-lock"));
+    expect((await call(store, planner, "LOCK", "", info)).status).toBe(200);
+    expect((await call(store, planner, "GET")).status).toBe(200);
+    expect((await call(store, planner, "POST", "?ID=plan-lock", state(2))).status).toBe(403);
+    expect((await call(store, planner, "DELETE")).status).toBe(403);
+    // Its own lock by id, never someone else's by force.
+    expect((await call(store, planner, "UNLOCK")).status).toBe(403);
+    expect((await call(store, planner, "UNLOCK", "", info)).status).toBe(200);
+    expect((await store.head()).version?.serial).toBe(1);
+  });
+
   it("deletes the current state but keeps its versions", async () => {
     const store = new MemoryStateStore();
     await call(store, WRITER, "POST", "", state(1));
@@ -333,6 +372,12 @@ describe("restoring a version", () => {
       '{"a": {"serial": 7}, "s": "serial", "serial" : 40, "resources": [{"serial": 1}]}',
     );
     expect(withSerial('{"x": "\\"serial\\": 1"}', 2)).toBeNull();
+    // A serial is replaced whole, however JSON spelled it.
+    expect(withSerial('{"serial": 1e3, "lineage": "l"}', 1001)).toBe(
+      '{"serial": 1001, "lineage": "l"}',
+    );
+    expect(withSerial('{"serial":12.0E+1}', 121)).toBe('{"serial":121}');
+    expect(withSerial('{"serial": "12"}', 13)).toBeNull();
   });
 });
 

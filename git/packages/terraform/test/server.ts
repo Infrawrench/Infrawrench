@@ -29,12 +29,44 @@ export interface TestServer {
 
 /** Passwords the server knows, as a host's access resolution would answer for them. */
 export const TOKENS: Record<string, StateAuth> = {
-  "writer-token": { principal: "ci:run-1", canRead: true, canWrite: true, canAdmin: false },
-  "admin-token": { principal: "user:admin", canRead: true, canWrite: true, canAdmin: true },
-  "reader-token": { principal: "user:reader", canRead: true, canWrite: false, canAdmin: false },
+  "writer-token": {
+    principal: "ci:run-1",
+    canRead: true,
+    canLock: true,
+    canWrite: true,
+    canAdmin: false,
+  },
+  "admin-token": {
+    principal: "user:admin",
+    canRead: true,
+    canLock: true,
+    canWrite: true,
+    canAdmin: true,
+  },
+  "reader-token": {
+    principal: "user:reader",
+    canRead: true,
+    canLock: false,
+    canWrite: false,
+    canAdmin: false,
+  },
+  // A plan's job: it reads and locks, and writes nothing.
+  "planner-token": {
+    principal: "ci:run-2",
+    canRead: true,
+    canLock: true,
+    canWrite: false,
+    canAdmin: false,
+  },
 };
 
-const NOBODY: StateAuth = { principal: null, canRead: false, canWrite: false, canAdmin: false };
+const NOBODY: StateAuth = {
+  principal: null,
+  canRead: false,
+  canLock: false,
+  canWrite: false,
+  canAdmin: false,
+};
 
 function authOf(header: string | undefined): StateAuth {
   if (!header?.startsWith("Basic ")) return NOBODY;
@@ -58,8 +90,8 @@ export async function startServer(store: StateStore): Promise<TestServer> {
         const auth = authOf(incoming.headers.authorization);
         let response: Response;
         if (url.pathname === `${base}/runs/1/plan` && method === "POST") {
-          if (auth.canWrite) plans.push(JSON.parse(body.toString("utf8")));
-          response = new Response(null, { status: auth.canWrite ? 204 : 403 });
+          if (auth.canLock) plans.push(JSON.parse(body.toString("utf8")));
+          response = new Response(null, { status: auth.canLock ? 204 : 403 });
         } else if (url.pathname.startsWith(`${base}/state`)) {
           const headers = new Headers();
           for (const [name, value] of Object.entries(incoming.headers)) {

@@ -263,6 +263,23 @@ describe.skipIf(TERRAFORM === null)("terraform against the http backend", () => 
     expect((await store.versions({ limit: 50 })).length).toBe(before);
   });
 
+  it("plans with a credential that locks and reads, and cannot apply with it", async () => {
+    await ok(["init", "-no-color"]);
+    await ok(["apply", "-auto-approve", "-no-color"]);
+    const before = (await store.versions({ limit: 50 })).length;
+    const planner = { TF_HTTP_PASSWORD: "planner-token" };
+    // The plan a job runs: with the lock, a saved plan file, and a refresh.
+    await ok(
+      ["plan", "-no-color", "-lock-timeout=10s", "-out=tfplan", "-var", "release=v9"],
+      planner,
+    );
+    expect((await store.head()).lock).toBeNull();
+    expect((await store.versions({ limit: 50 })).length).toBe(before);
+    const apply = await terraform(["apply", "-no-color", "-lock-timeout=10s", "tfplan"], planner);
+    expect(apply.code).not.toBe(0);
+    expect((await store.versions({ limit: 50 })).length).toBe(before);
+  });
+
   it("runs what a CI job runs: an override backend, a plan posted as JSON, that plan applied", async () => {
     // The root declares another backend; the override file wins.
     await writeFile(join(dir, "main.tf"), `terraform {\n  backend "local" {}\n}\n${CONFIG}`);
