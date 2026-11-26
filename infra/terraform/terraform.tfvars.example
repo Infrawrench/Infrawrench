@@ -327,6 +327,9 @@ app_env = {
   # with AI Gateway credits loaded) and AI_GATEWAY_TOKEN (a Cloudflare API
   # token with the AI Gateway Run permission). ANTHROPIC_API_KEY is not read;
   # remove it from app_env.
+  #
+  # git.infrawrench.com's review agents use the same three (git-deploy passes
+  # them to the forge's Worker). Without them review agents do not run there.
   # Optional
   # AI_GATEWAY_ID        = "infrawrench"
   # AI_GATEWAY_TOKEN     = "..."

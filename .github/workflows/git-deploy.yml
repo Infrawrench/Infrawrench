@@ -135,7 +135,8 @@ jobs:
           aws secretsmanager get-secret-value --secret-id "$FUNCTION_PREFIX/edge-env" \
             --query SecretString --output text > "$RUNNER_TEMP/edge-secrets.json"
           jq '{WORKOS_API_KEY, WORKOS_CLIENT_ID, ENCRYPTION_MASTER_KEY, GIT_JOB_TOKEN_KEY,
-               CI_PROXY_URL, CI_PROXY_KEY, APP_URL}
+               CI_PROXY_URL, CI_PROXY_KEY, APP_URL,
+               CLOUDFLARE_ACCOUNT_ID, AI_GATEWAY_ID, AI_GATEWAY_TOKEN}
               | with_entries(select(.value != null and .value != ""))' \
             "$RUNNER_TEMP/edge-secrets.json" > "$RUNNER_TEMP/git-secrets.json"
           rm -f "$RUNNER_TEMP/edge-secrets.json"
@@ -148,6 +149,10 @@ jobs:
           optional="$(jq -r '["CI_PROXY_URL", "CI_PROXY_KEY", "APP_URL"] - keys | join(", ")' "$RUNNER_TEMP/git-secrets.json")"
           if [ -n "$optional" ]; then
             echo "::warning::Not set in edge-env, so CI for repositories here is partly off: $optional (git/packages/worker/README.md)."
+          fi
+          review="$(jq -r '["CLOUDFLARE_ACCOUNT_ID", "AI_GATEWAY_ID", "AI_GATEWAY_TOKEN"] - keys | join(", ")' "$RUNNER_TEMP/git-secrets.json")"
+          if [ -n "$review" ]; then
+            echo "::warning::Not set in edge-env, so review agents do not run: $review (git/packages/worker/README.md)."
           fi
 
       # --old-asset-ttl keeps the previous build's hashed assets servable for a

@@ -114,12 +114,21 @@ function parseJsonc(text) {
 }
 
 const wrangler = parseJsonc(readFileSync(join(WORKER_DIR, "wrangler.jsonc"), "utf8"));
-const consumer = wrangler.queues.consumers[0];
 const config = {
   worker: wrangler.name,
   bucket: wrangler.r2_buckets[0].bucket_name,
-  queue: wrangler.queues.producers[0].queue,
-  deadLetterQueue: consumer.dead_letter_queue,
+  // Every queue the Worker sends to or consumes, and where each one's failures go.
+  queues: [
+    ...new Set(
+      [
+        ...wrangler.queues.producers.map((producer) => producer.queue),
+        ...wrangler.queues.consumers.flatMap((consumer) => [
+          consumer.queue,
+          consumer.dead_letter_queue,
+        ]),
+      ].filter(Boolean),
+    ),
+  ],
   hyperdrive: wrangler.hyperdrive[0].id,
   siteHost: new URL(wrangler.vars.SITE_ORIGIN).hostname,
   siteOrigin: wrangler.vars.SITE_ORIGIN,
@@ -252,15 +261,15 @@ const steps = {
   },
 
   /**
-   * The push event queue and where a message goes after its retries. The
-   * consumer (batch size, retries, the dead letter queue) is the Worker's
-   * wrangler.jsonc, attached by `wrangler deploy`; both queues only have to
-   * exist by then.
+   * The push event queue, the review queue and where a message goes after
+   * its retries. The consumers (batch size, retries, the dead letter queue)
+   * are the Worker's wrangler.jsonc, attached by `wrangler deploy`; the
+   * queues only have to exist by then.
    */
   async queues() {
     const path = `/accounts/${account}/queues`;
     const existing = new Set((await list(path)).map((queue) => queue.queue_name));
-    for (const name of [config.queue, config.deadLetterQueue]) {
+    for (const name of config.queues) {
       if (existing.has(name)) {
         note(`queue ${name} exists`);
         continue;

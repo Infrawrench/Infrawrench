@@ -99,6 +99,11 @@ function ensureDevVars() {
     "# docker-compose.dev.yml's fixed dev key, so `iwk_` API keys made in the local app verify here.",
     "ENCRYPTION_MASTER_KEY=uRW8wQXfjwBUcLFwQnmNnO3VvY4x/Nd8E2VVQF9nnvo=",
     `SSH_HOST_KEY="${hostKey.trim().replaceAll("\n", "\\n")}\\n"`,
+    "# Review agents call Claude through Cloudflare AI Gateway and spend its credits.",
+    "# To run them here, set all three (app/packages/web/.env.example says where they come from):",
+    "# CLOUDFLARE_ACCOUNT_ID=",
+    "# AI_GATEWAY_ID=default",
+    "# AI_GATEWAY_TOKEN=",
     "",
   ];
   writeFileSync(DEV_VARS, lines.join("\n"), { mode: 0o600 });
