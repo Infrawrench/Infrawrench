@@ -243,10 +243,8 @@ export default defineMockHandlers({
     },
     downloadStateVersion: ({ params }) => {
       const repo = findRepository(params.owner, params.repo);
-      // The document holds secrets: `write`, as the API asks.
-      if (accessTo(repo) !== "admin" && accessTo(repo) !== "write") {
-        throw mockError(403, "Forbidden");
-      }
+      // The document holds secrets: `admin`, as the API asks.
+      if (accessTo(repo) !== "admin") throw mockError(403, "Forbidden");
       return stateDocument(repo, params.workspace, params.versionId);
     },
     restoreStateVersion: ({ params }) => {

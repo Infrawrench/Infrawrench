@@ -20,7 +20,7 @@ import {
   backendEnvironment,
   stateResourceInstances,
 } from "@infrawrench/git-terraform";
-import { planInputsKey } from "../src/terraform/route";
+import { MAX_PLAN_BYTES, planInputsKey } from "../src/terraform/route";
 import { WorkspaceStateStore, workspacePrefix } from "../src/terraform/state-store";
 import { MemoryBucket, nodeStorage } from "./support/node-platform";
 import {
@@ -214,8 +214,8 @@ describe.skipIf(TERRAFORM === null)("terraform against the Worker's state backen
     await ok(["init", "-no-color"]);
     await ok(["apply", "-auto-approve", "-no-color"]);
     const held = lockInfo("11111111-2222-3333-4444-555555555555");
-    expect((await call("POST", "/lock", PASSWORDS.writer, JSON.stringify(held))).status).toBe(200);
-    expect(server.heads.at(-1)!.report.lock?.heldBy).toBe("user:writer");
+    expect((await call("POST", "/lock", PASSWORDS.token, JSON.stringify(held))).status).toBe(200);
+    expect(server.heads.at(-1)!.report.lock?.heldBy).toBe("token:pat-admin");
 
     const blocked = await terraform(["apply", "-auto-approve", "-no-color", "-lock-timeout=0s"], {
       TF_VAR_release: "v2",
@@ -225,9 +225,9 @@ describe.skipIf(TERRAFORM === null)("terraform against the Worker's state backen
     expect(blocked.output).toContain(held.ID);
 
     // A write that names no lock, or another one, is refused with the holder's info.
-    const current = await (await call("GET", "", PASSWORDS.writer)).text();
-    expect((await call("POST", "", PASSWORDS.writer, current)).status).toBe(423);
-    const stolen = await call("POST", "?ID=another-lock", PASSWORDS.writer, current);
+    const current = await (await call("GET", "", PASSWORDS.token)).text();
+    expect((await call("POST", "", PASSWORDS.token, current)).status).toBe(423);
+    const stolen = await call("POST", "?ID=another-lock", PASSWORDS.token, current);
     expect(stolen.status).toBe(423);
     expect(((await stolen.json()) as LockInfo).ID).toBe(held.ID);
 
@@ -249,7 +249,7 @@ describe.skipIf(TERRAFORM === null)("terraform against the Worker's state backen
     expect(second.serial).toBeGreaterThan(first.serial);
 
     // Refused while a run holds the lock: it would write over the restore.
-    await call("POST", "/lock", PASSWORDS.writer, JSON.stringify(lockInfo("lock-1")));
+    await call("POST", "/lock", PASSWORDS.token, JSON.stringify(lockInfo("lock-1")));
     expect(await server.client.restore(first.id, "user:admin")).toMatchObject({ kind: "locked" });
     await call("DELETE", "/lock", PASSWORDS.admin);
     expect(await server.client.restore("no-such-version", "user:admin")).toEqual({
@@ -290,12 +290,21 @@ describe.skipIf(TERRAFORM === null)("terraform against the Worker's state backen
     expect(nobody.headers.get("www-authenticate")).toContain("Basic");
     expect((await call("GET", "", "a-password-nobody-has")).status).toBe(401);
 
-    // A reader of a public repository, and every job but the live run's own.
+    // A reader of a public repository; a member, who writes the repository
+    // and is not its administrator, signed in or with a token; an
+    // administrator's token that may only read; and every job token but the
+    // live run's own for this workspace: another run's, another repository's,
+    // another workspace's, and one that names no workspace at all.
     for (const password of [
       PASSWORDS.reader,
+      PASSWORDS.writer,
+      PASSWORDS.writerToken,
+      PASSWORDS.readToken,
       PASSWORDS.otherJob,
-      PASSWORDS.readJob,
       PASSWORDS.foreignJob,
+      PASSWORDS.otherWorkspaceJob,
+      PASSWORDS.unboundJob,
+      PASSWORDS.unboundService,
     ]) {
       expect((await call("GET", "", password)).status, password).toBe(403);
       expect((await call("POST", "/lock", password, JSON.stringify(lockInfo("x")))).status).toBe(
@@ -321,10 +330,29 @@ describe.skipIf(TERRAFORM === null)("terraform against the Worker's state backen
     expect(
       (await call("POST", "/lock", PASSWORDS.service, JSON.stringify(lockInfo("x")))).status,
     ).toBe(403);
-    // A personal access token with `repo:write` reads and writes; deleting takes an admin.
+    // An administrator's personal access token with `repo:write` reads and
+    // writes; it never deletes, which is done signed in.
     expect((await call("GET", "", PASSWORDS.token)).status).toBe(200);
     expect((await call("DELETE", "", PASSWORDS.token)).status).toBe(403);
     expect((await call("DELETE", "", PASSWORDS.writer)).status).toBe(403);
+
+    // A plan's token reads and locks, and writes nothing.
+    const planLock = JSON.stringify(lockInfo("plan-lock"));
+    const stored = await (await call("GET", "", PASSWORDS.planJob)).text();
+    expect((await call("POST", "/lock", PASSWORDS.planJob, planLock)).status).toBe(200);
+    expect((await call("POST", "?ID=plan-lock", PASSWORDS.planJob, stored)).status).toBe(403);
+    expect((await call("DELETE", "", PASSWORDS.planJob)).status).toBe(403);
+    expect((await call("DELETE", "/lock", PASSWORDS.planJob, planLock)).status).toBe(200);
+    await ok(["plan", "-no-color", "-lock-timeout=5s"], { TF_HTTP_PASSWORD: PASSWORDS.planJob });
+    const applied = await terraform(["apply", "-auto-approve", "-no-color"], {
+      TF_HTTP_PASSWORD: PASSWORDS.planJob,
+      TF_VAR_release: "v7",
+    });
+    expect(applied.code).not.toBe(0);
+
+    // The session cookie is never read here, whatever it would prove elsewhere.
+    const cookie = await fetch(server.stateUrl, { headers: { cookie: "iwg-session=anything" } });
+    expect(cookie.status).toBe(401);
 
     // A run's token stops working when its run is over.
     server.live = false;
@@ -333,20 +361,20 @@ describe.skipIf(TERRAFORM === null)("terraform against the Worker's state backen
 
     // An archived repository's state is read, never changed.
     server.archived = true;
-    expect((await call("GET", "", PASSWORDS.writer)).status).toBe(200);
+    expect((await call("GET", "", PASSWORDS.token)).status).toBe(200);
     expect(
-      (await call("POST", "/lock", PASSWORDS.writer, JSON.stringify(lockInfo("x")))).status,
+      (await call("POST", "/lock", PASSWORDS.token, JSON.stringify(lockInfo("x")))).status,
     ).toBe(403);
     expect((await call("DELETE", "", PASSWORDS.admin)).status).toBe(403);
     server.archived = false;
 
     // Deleted by an admin, the workspace is truly empty: only now is it a 404.
     expect((await call("DELETE", "", PASSWORDS.admin)).status).toBe(200);
-    expect((await call("GET", "", PASSWORDS.writer)).status).toBe(404);
+    expect((await call("GET", "", PASSWORDS.token)).status).toBe(404);
     expect(server.heads.at(-1)!.report.version).toBeNull();
     // The versions are still stored: a delete is undone by restoring one.
     expect(stateKeys().length).toBeGreaterThan(0);
-    expect((await call("GET", "/nonsense", PASSWORDS.writer)).status).toBe(400);
+    expect((await call("GET", "/nonsense", PASSWORDS.token)).status).toBe(400);
   });
 
   it("takes a run's plan, keeps its summary and hands pricing its inputs once", async () => {
@@ -368,18 +396,35 @@ describe.skipIf(TERRAFORM === null)("terraform against the Worker's state backen
       PASSWORDS.admin,
       PASSWORDS.writer,
       PASSWORDS.otherJob,
+      PASSWORDS.otherWorkspaceJob,
+      PASSWORDS.unboundJob,
       PASSWORDS.service,
     ]) {
       expect((await post(password, document)).status, password).toBe(403);
     }
+    // A plan larger than the route parses is refused before it is read.
+    const huge = await fetch(server.planUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...basic(PASSWORDS.planJob) },
+      body: new Uint8Array(MAX_PLAN_BYTES + 1),
+    });
+    expect(huge.status).toBe(413);
     expect(
       (await post(PASSWORDS.job, document, server.planUrl.replace(LIVE_RUN, "tf-run-2"))).status,
     ).toBe(403);
     expect((await post(PASSWORDS.job, "{not json")).status).toBe(400);
+    // A parser's own message quotes its input, and a plan is full of secrets: ours says nothing.
+    const unparsed = await post(PASSWORDS.job, `{"resource_changes": [{"after": ${SECRET}`);
+    expect(unparsed.status).toBe(400);
+    expect(await unparsed.text()).toBe('{"error":"The plan is not valid JSON."}');
+    const badState = await call("POST", "", PASSWORDS.job, `{"version": 4, "outputs": ${SECRET}`);
+    expect(badState.status).toBe(400);
+    expect(await badState.text()).not.toContain(SECRET);
     expect((await post(PASSWORDS.job, JSON.stringify({ format_version: "9.0" }))).status).toBe(400);
     expect(server.plans).toEqual([]);
 
-    expect((await post(PASSWORDS.job, document)).status).toBe(204);
+    // A plan's own token is `read`: it posts its plan all the same.
+    expect((await post(PASSWORDS.planJob, document)).status).toBe(204);
     expect(server.plans).toHaveLength(1);
     const { summary, runId, ciRunId } = server.plans[0]!;
     expect({ runId, ciRunId }).toEqual({ runId: LIVE_RUN, ciRunId: LIVE_CI_RUN });
@@ -402,6 +447,7 @@ describe.skipIf(TERRAFORM === null)("terraform against the Worker's state backen
     const get = (password: string) => fetch(server.planUrl, { headers: basic(password) });
     expect((await get(PASSWORDS.job)).status).toBe(403);
     expect((await get(PASSWORDS.admin)).status).toBe(403);
+    expect((await get(PASSWORDS.unboundService)).status).toBe(403);
     const priced = await get(PASSWORDS.service);
     expect(priced.status).toBe(200);
     expect(((await priced.json()) as { changes: unknown[] }).changes).toHaveLength(4);

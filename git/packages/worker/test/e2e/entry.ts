@@ -33,7 +33,12 @@ import { sshConnect } from "../../src/transport/ssh/host";
 import { cacheFailureLimiter, defaultCache } from "../../src/transport/ssh/rate-limit";
 import { routeOf } from "../../src/http/router";
 import type { Bucket } from "../../src/repo/do/platform";
-import { decideStateAuth, isServiceToken } from "../../src/terraform/access";
+import {
+  decidePlanAccess,
+  decideStateAuth,
+  isServiceToken,
+  stateHolder,
+} from "../../src/terraform/access";
 import { stateClient } from "../../src/terraform/client";
 import {
   type TerraformDirectory,
@@ -77,7 +82,10 @@ interface TestEnv extends Env {
   readonly SSH_MAX_FAILURES?: string;
 }
 
-function fixtureDirectory(env: TestEnv): GitDirectory {
+function fixtureDirectory(
+  env: TestEnv,
+  options: { readonly workspaceTokens?: boolean } = {},
+): GitDirectory {
   const fixture = JSON.parse(env.FIXTURE) as Fixture;
   return {
     authenticate: async (request) => {
@@ -100,7 +108,10 @@ function fixtureDirectory(env: TestEnv): GitDirectory {
         }
       }
       if (credential?.kind === "job-token") {
-        const claims = await verifyJobToken(env.GIT_JOB_TOKEN_KEY, credential.secret);
+        // As `authenticateRequest` does: only the Terraform routes take a workspace's token.
+        const claims = await verifyJobToken(env.GIT_JOB_TOKEN_KEY, credential.secret, undefined, {
+          workspace: options.workspaceTokens === true,
+        });
         if (claims) {
           return {
             principal: {
@@ -108,6 +119,7 @@ function fixtureDirectory(env: TestEnv): GitDirectory {
               repositoryId: claims.repositoryId,
               write: claims.write,
               runId: claims.runId,
+              workspaceId: claims.workspaceId,
             },
             refused: false,
           };
@@ -116,7 +128,7 @@ function fixtureDirectory(env: TestEnv): GitDirectory {
       return { principal: ANONYMOUS, refused: true };
     },
     authenticateArchiveToken: async (token, commit) => {
-      const claims = await verifyJobToken(env.GIT_JOB_TOKEN_KEY, token, undefined, commit);
+      const claims = await verifyJobToken(env.GIT_JOB_TOKEN_KEY, token, undefined, { commit });
       return claims
         ? {
             kind: "job",
@@ -190,7 +202,7 @@ function fixtureDirectory(env: TestEnv): GitDirectory {
  */
 function terraformFixture(env: TestEnv): TerraformDirectory {
   const fixture = JSON.parse(env.FIXTURE) as Fixture;
-  const git = fixtureDirectory(env);
+  const git = fixtureDirectory(env, { workspaceTokens: true });
   const bucket = env.OBJECTS as unknown as R2Bucket;
   const note = (kind: string, value: unknown) =>
     bucket.put(
@@ -215,25 +227,28 @@ function terraformFixture(env: TestEnv): TerraformDirectory {
         (each) => each.repositoryId === found?.id && each.name === name,
       );
       if (!found || !workspace) return null;
-      const decision = decideRepoAccess(
-        principal,
-        {
-          id: found.id,
-          visibility: found.visibility,
-          archived: found.archived ?? false,
-          owner: { kind: "user", userId: found.ownerUserId },
-        },
-        {
-          orgPermissions: [],
-          collaboratorRole:
-            principal.kind === "user" ? (found.collaborators?.[principal.userId] ?? null) : null,
-        },
-      );
+      const decide = (who: Principal) =>
+        decideRepoAccess(
+          who,
+          {
+            id: found.id,
+            visibility: found.visibility,
+            archived: found.archived ?? false,
+            owner: { kind: "user", userId: found.ownerUserId },
+          },
+          {
+            orgPermissions: [],
+            collaboratorRole:
+              who.kind === "user" ? (found.collaborators?.[who.userId] ?? null) : null,
+          },
+        );
       return {
         id: workspace.id,
         auth: decideStateAuth(principal, {
           repositoryId: found.id,
-          access: principal.kind === "job" ? null : decision,
+          workspaceId: workspace.id,
+          access: principal.kind === "job" ? null : decide(principal),
+          holder: principal.kind === "job" ? null : decide(stateHolder(principal)),
           liveRun: !isServiceToken(principal) && live(workspace.id, principal),
         }),
       };
@@ -243,13 +258,16 @@ function terraformFixture(env: TestEnv): TerraformDirectory {
     },
     planAccess: async (workspaceId, runId, principal) => {
       const workspace = fixture.workspaces?.find((each) => each.id === workspaceId);
-      if (principal.kind !== "job" || principal.repositoryId !== workspace?.repositoryId) {
-        return { kind: "none" };
-      }
-      if (isServiceToken(principal)) return { kind: "service" };
-      return principal.write && live(workspaceId, principal) && runId === workspace.liveRun
-        ? { kind: "job", ciRunId: principal.runId! }
-        : { kind: "none" };
+      if (!workspace) return { kind: "none" };
+      return decidePlanAccess(
+        principal,
+        {
+          repositoryId: workspace.repositoryId,
+          workspaceId,
+          liveRunId: live(workspaceId, principal) ? (workspace.liveRun ?? null) : null,
+        },
+        runId,
+      );
     },
     recordPlan: async (plan) => {
       await note("plans", plan);

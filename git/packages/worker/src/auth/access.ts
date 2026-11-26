@@ -20,7 +20,8 @@
  *    - a collaborator role gives its level; the highest of these wins;
  *    - an API key gets what its permissions give, in its organisation only;
  *    - a deploy key and a job token get `read` or `write` on their one
- *      repository and nothing anywhere else.
+ *      repository and nothing anywhere else; a job token bound to a
+ *      Terraform workspace gets nothing of the repository at all.
  * 2. A personal access token never exceeds its scopes: `repo:write` caps it
  *    at `write`, `repo:read` at `read`, neither at `none`. Settings are
  *    never reachable with a token.
@@ -131,6 +132,8 @@ const ownAccess = (
       return principal.readOnly ? "read" : "write";
     case "job":
       if (principal.repositoryId !== repo.id) return "none";
+      // Bound to a Terraform workspace: its `write` is the state's, never the repository's.
+      if (principal.workspaceId != null) return "none";
       return principal.write ? "write" : "read";
   }
 };

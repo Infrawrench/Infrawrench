@@ -31,7 +31,7 @@ export function databaseDirectory(env: Env, ctx: WaitUntil): GitDirectory {
       }),
 
     authenticateArchiveToken: async (token, commit) => {
-      const claims = await verifyJobToken(env.GIT_JOB_TOKEN_KEY, token, undefined, commit);
+      const claims = await verifyJobToken(env.GIT_JOB_TOKEN_KEY, token, undefined, { commit });
       if (!claims) return null;
       return {
         kind: "job",

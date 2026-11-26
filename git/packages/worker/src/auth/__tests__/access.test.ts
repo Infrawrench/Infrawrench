@@ -238,6 +238,10 @@ describe("deploy keys and job tokens", () => {
     expect(access(job(true), repo())).toBe("write");
     expect(access(job(true, "repo_2"), repo())).toBe("none");
     expect(access(job(true, "repo_2"), repo({ visibility: "public" }))).toBe("read");
+    // Bound to a Terraform workspace, its `write` is the state's: nothing of the repository.
+    const bound: Principal = { ...job(true), workspaceId: "ws_1" } as Principal;
+    expect(access(bound, repo())).toBe("none");
+    expect(access({ ...job(false), workspaceId: "ws_1" } as Principal, repo())).toBe("none");
   });
 
   it("never gives either more than write", () => {

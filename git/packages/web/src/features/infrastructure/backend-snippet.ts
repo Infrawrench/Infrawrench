@@ -1,6 +1,7 @@
 /**
  * The `backend "http"` block for someone running Terraform on their own
- * machine. The same text as `backendConfiguration` in
+ * machine: an administrator of the repository, with a personal access token
+ * that has `repo:write`. The same text as `backendConfiguration` in
  * `@infrawrench/git-terraform` (`pipeline/generate.ts`), which this package
  * does not depend on: change the two together.
  */
@@ -27,6 +28,7 @@ export function suggestWorkspaceName(rootPath: string, taken: ReadonlyArray<stri
   const last = rootPath.split("/").filter(Boolean).pop() ?? "default";
   const base =
     last
+      .slice(0, 252)
       .toLowerCase()
       .replace(/[^a-z0-9_-]+/g, "-")
       .replace(/^[^a-z0-9]+/, "")

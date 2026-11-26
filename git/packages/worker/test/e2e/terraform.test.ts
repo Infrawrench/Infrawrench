@@ -39,6 +39,7 @@ const TERRAFORM = (() => {
 const enabled = process.env["GIT_WORKER_E2E"] === "1" && TERRAFORM !== null;
 
 // Obviously fake, and in no real token format beyond the prefix the Worker routes by.
+const ADMIN = "iwg_admin-token-for-tests";
 const WRITER = "iwg_writer-token-for-tests";
 const READER = "iwg_reader-token-for-tests";
 
@@ -73,17 +74,25 @@ describe.skipIf(!enabled)("terraform against the worker in workerd", () => {
   let serviceToken: string;
   let env: NodeJS.ProcessEnv;
 
-  const token = (runId: string, access: "read" | "write", repositoryId = "repo-tf") =>
+  /** A job token as server-core mints one for a run: bound to the run's workspace. */
+  const token = (
+    runId: string,
+    access: "read" | "write",
+    options: { repositoryId?: string; workspace?: string | null } = {},
+  ) =>
     signGitJobToken(JOB_TOKEN_KEY, {
-      repositoryId,
+      repositoryId: options.repositoryId ?? "repo-tf",
       access,
       runId,
       expiresAt: Math.floor(Date.now() / 1000) + 600,
+      ...(options.workspace === null ? {} : { workspace: options.workspace ?? "ws-e2e" }),
     });
 
   beforeAll(async () => {
     const fixture: Fixture = {
       tokens: {
+        // Owl owns the namespace, so administers the repository; Wren only writes it.
+        [ADMIN]: { userId: "owl", scopes: ["repo:write"] },
         [WRITER]: { userId: "wren", scopes: ["repo:write"] },
         [READER]: { userId: "robin", scopes: ["repo:read", "repo:write"] },
       },
@@ -95,7 +104,7 @@ describe.skipIf(!enabled)("terraform against the worker in workerd", () => {
           owner: "acme",
           name: "infra",
           ownerUserId: "owl",
-          // Public: anyone reads the repository, and nobody without `write` reads its state.
+          // Public: anyone reads the repository, and only its administrators its state.
           visibility: "public",
           collaborators: { wren: "write" },
         },
@@ -195,9 +204,16 @@ describe.skipIf(!enabled)("terraform against the worker in workerd", () => {
       Created: new Date().toISOString(),
       Path: "",
     };
-    const lock = await fetch(`${stateUrl}/lock`, {
+    // Writing the repository is not using its state: that takes an administrator.
+    const member = await fetch(`${stateUrl}/lock`, {
       method: "POST",
       headers: basic(WRITER),
+      body: JSON.stringify(info),
+    });
+    expect(member.status).toBe(403);
+    const lock = await fetch(`${stateUrl}/lock`, {
+      method: "POST",
+      headers: basic(ADMIN),
       body: JSON.stringify(info),
     });
     expect(lock.status).toBe(200);
@@ -218,7 +234,7 @@ describe.skipIf(!enabled)("terraform against the worker in workerd", () => {
 
     // A personal token never administers, so it cannot force the lock open.
     expect(
-      (await fetch(`${stateUrl}/lock`, { method: "DELETE", headers: basic(WRITER) })).status,
+      (await fetch(`${stateUrl}/lock`, { method: "DELETE", headers: basic(ADMIN) })).status,
     ).toBe(403);
     expect((await rpc<StateHeadReport>("forceUnlock")).lock).toBeNull();
     await ok(["apply", "-auto-approve", "-no-color"], { TF_VAR_release: "v2" });
@@ -228,18 +244,28 @@ describe.skipIf(!enabled)("terraform against the worker in workerd", () => {
     expect((await fetch(stateUrl)).status).toBe(401);
     // Robin's token has `repo:write`, but Robin only reads this public repository.
     expect((await fetch(stateUrl, { headers: basic(READER) })).status).toBe(403);
-    expect((await fetch(stateUrl, { headers: basic(await token("ci-8", "write")) })).status).toBe(
-      403,
-    );
-    expect((await fetch(stateUrl, { headers: basic(await token("ci-7", "read")) })).status).toBe(
-      403,
-    );
+    expect((await fetch(stateUrl, { headers: basic(WRITER) })).status).toBe(403);
+    // Another run's token, another repository's, another workspace's.
+    for (const other of [
+      await token("ci-8", "write"),
+      await token("ci-7", "write", { repositoryId: "repo-other" }),
+      await token("ci-7", "write", { workspace: "ws-other" }),
+    ]) {
+      expect((await fetch(stateUrl, { headers: basic(other) })).status).toBe(403);
+    }
+    // A job token that names no workspace is not a credential here at all,
+    // whatever it may do to the repository: the live run's own id on a
+    // `write` token, which is what a run used to get, and the app's.
+    for (const unbound of [
+      await token("ci-7", "write", { workspace: null }),
+      await token(SERVICE_TOKEN_PURPOSE, "read", { workspace: null }),
+    ]) {
+      const refused = await fetch(stateUrl, { headers: basic(unbound) });
+      expect(refused.status).toBe(401);
+      expect(refused.headers.get("www-authenticate")).toContain("Basic");
+    }
     expect(
-      (await fetch(stateUrl, { headers: basic(await token("ci-7", "write", "repo-other")) }))
-        .status,
-    ).toBe(403);
-    expect(
-      (await fetch(`${worker.httpUrl}/acme/infra/terraform/nope/state`, { headers: basic(WRITER) }))
+      (await fetch(`${worker.httpUrl}/acme/infra/terraform/nope/state`, { headers: basic(ADMIN) }))
         .status,
     ).toBe(403);
     const refused = await terraform(["plan", "-no-color"], { TF_HTTP_PASSWORD: READER });
@@ -249,6 +275,39 @@ describe.skipIf(!enabled)("terraform against the worker in workerd", () => {
     const read = await fetch(stateUrl, { headers: { authorization: `Bearer ${serviceToken}` } });
     expect(read.status).toBe(200);
     expect(((await read.json()) as { resources: unknown[] }).resources).toHaveLength(2);
+  });
+
+  it("gives a plan's token the lock and the state, and nothing to write", async () => {
+    const planToken = await token("ci-7", "read");
+    const current = await fetch(stateUrl, { headers: basic(planToken) });
+    expect(current.status).toBe(200);
+    const body = await current.text();
+    await ok(["plan", "-no-color", "-lock-timeout=5s"], { TF_HTTP_PASSWORD: planToken });
+    const write = await fetch(stateUrl, { method: "POST", headers: basic(planToken), body });
+    expect(write.status).toBe(403);
+    const applied = await terraform(["apply", "-auto-approve", "-no-color"], {
+      TF_HTTP_PASSWORD: planToken,
+      TF_VAR_release: "v8",
+    });
+    expect(applied.code).not.toBe(0);
+    expect((await rpc<StateHeadReport>("head")).lock).toBeNull();
+  });
+
+  it("keeps a run's token to its state: it does not clone, push, or read a file", async () => {
+    const git = (path: string, init: RequestInit = {}) =>
+      fetch(`${worker.httpUrl}${path}`, { ...init, headers: basic(jobToken) });
+    // The repository is public, so no credential at all would read it: a
+    // credential that is refused is a 401 all the same, never the anonymous answer.
+    for (const path of [
+      "/acme/infra.git/info/refs?service=git-receive-pack",
+      "/acme/infra.git/info/refs?service=git-upload-pack",
+      `/acme/infra/raw/${"a".repeat(40)}/main.tf`,
+      `/acme/infra/archive/${"a".repeat(40)}.tar.gz`,
+    ]) {
+      expect((await git(path)).status, path).toBe(401);
+    }
+    expect((await git("/acme/infra.git/git-receive-pack", { method: "POST" })).status).toBe(401);
+    expect((await git("/acme/infra.git/git-upload-pack", { method: "POST" })).status).toBe(401);
   });
 
   it("lists versions newest first and restores an old one as a new version", async () => {
@@ -286,6 +345,8 @@ describe.skipIf(!enabled)("terraform against the worker in workerd", () => {
         body: document,
       });
     expect((await post(WRITER)).status).toBe(403);
+    expect((await post(ADMIN)).status).toBe(403);
+    expect((await post(await token("ci-7", "write", { workspace: null }))).status).toBe(401);
     expect((await post(jobToken, planUrl.replace("tf-7", "tf-8"))).status).toBe(403);
     expect((await post(jobToken)).status).toBe(204);
     const { plans, objects } = await recorded();

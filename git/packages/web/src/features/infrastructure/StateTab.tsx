@@ -123,14 +123,16 @@ export function StateTab() {
     mutationFn: (version: TerraformStateVersion) =>
       downloadStateVersion(repo, workspace.name, version),
   });
-  // The state document holds secrets: the backend only serves it to `write` and above.
-  const canDownload = repository.viewer.canPush || repository.viewer.canAdminister;
-  const canRestore = repository.viewer.canAdminister;
+  // The state document holds secrets: it is served to administrators of the
+  // repository only, by the backend and by the download alike.
+  const canUseState = repository.viewer.canAdminister;
+  const canDownload = canUseState;
+  const canRestore = canUseState;
 
   return (
     <div className="space-y-4">
       <LockPanel />
-      <BackendSnippet />
+      {canUseState ? <BackendSnippet /> : null}
       <Panel>
         <PanelHeader>State versions</PanelHeader>
         {versions.error ? (

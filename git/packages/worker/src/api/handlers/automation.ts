@@ -174,6 +174,18 @@ const ciRunOr404 = async (cx: RepoCx, runId: string): Promise<CiRunRow> => {
   return row;
 };
 
+/**
+ * Whether a run's output is kept from this caller. Terraform prints the
+ * attribute values of a plan and an apply that are not marked sensitive, and
+ * a CI run is read with `read`, which on a public repository is everyone: a
+ * workspace run's output takes `write`. Its jobs and their results stay
+ * visible.
+ */
+const terraformOutputWithheld = (
+  row: Pick<CiRunRow, "terraformRunId">,
+  access: RepoCx["access"],
+): boolean => row.terraformRunId !== null && !accessAtLeast(access, "write");
+
 const pipelinesOf = async (cx: RepoCx): Promise<Array<{ file: string; name: string }>> => {
   const known = await ciKnownPipelines(cx.repo.repository.id);
   if (known.length > 0) return known;
@@ -250,6 +262,7 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
       repoOp(async (cx, { params }) => {
         const row = await ciRunOr404(cx, params.runId);
         const [run] = await ciRunViews(cx, [row]);
+        const withheld = terraformOutputWithheld(row, cx.access);
         let jobs: Awaited<ReturnType<Awaited<ReturnType<typeof appCi>>["getRun"]>>["jobs"] = null;
         try {
           jobs = (await (await appCi()).getRun(row.organizationId, row.id)).jobs;
@@ -270,8 +283,8 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
               reason: job.reason,
               durationMs: job.durationMs,
               ...(job.needs ? { needs: job.needs } : {}),
-              stdout: job.stdout,
-              stderr: job.stderr,
+              stdout: withheld ? "" : job.stdout,
+              stderr: withheld ? "" : job.stderr,
             })) ?? null,
         };
       }),
@@ -288,6 +301,9 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
               )
             : null;
           if (!row) throw notFound("No such run");
+          if (state && terraformOutputWithheld(row, state.access)) {
+            throw forbidden("A Terraform run's output takes write access to the repository");
+          }
           const abort = new AbortController();
           const upstream = await (
             await appCi()
@@ -900,7 +916,8 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
           kind: payload.operation,
           trigger: "manual",
           commitSha: commitOid,
-          branch: OID.test(ref) ? branch : ref,
+          // An apply is of the workspace's branch, whatever name its head was asked for by.
+          branch: payload.operation === "apply" || OID.test(ref) ? branch : ref,
           pullNumber: null,
           startedByUserId: cx.userId,
           // Whoever may approve an apply has, by asking for it.

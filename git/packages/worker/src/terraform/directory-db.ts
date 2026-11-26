@@ -16,7 +16,13 @@ import { getWorkspace } from "../db/automation";
 import { type WaitUntil, db, withDb } from "../db/client";
 import { getRepository, toRepoForAccess } from "../db/repositories";
 import type { Env } from "../env";
-import { decideStateAuth, isServiceToken, principalName } from "./access";
+import {
+  decidePlanAccess,
+  decideStateAuth,
+  isServiceToken,
+  principalName,
+  stateHolder,
+} from "./access";
 import type { TerraformDirectory } from "./route";
 import type { StateHeadReport } from "./state-serve";
 
@@ -92,7 +98,10 @@ export function terraformDirectory(env: Env, ctx: WaitUntil): TerraformDirectory
   return {
     authenticate: (request) =>
       run(async () => {
-        const { principal, refused } = await authenticateRequest(request, env);
+        // The one place a job token bound to a workspace is taken.
+        const { principal, refused } = await authenticateRequest(request, env, {
+          workspaceTokens: true,
+        });
         return { principal, refused };
       }),
 
@@ -103,9 +112,15 @@ export function terraformDirectory(env: Env, ctx: WaitUntil): TerraformDirectory
         const workspace = await getWorkspace(found.repository.id, name);
         if (!workspace) return null;
         const isJob = principal.kind === "job";
+        const repository = toRepoForAccess(found);
+        const access = isJob ? null : await repoAccess.detail(principal, repository);
+        const holder = stateHolder(principal);
         const auth = decideStateAuth(principal, {
           repositoryId: found.repository.id,
-          access: isJob ? null : await repoAccess.detail(principal, toRepoForAccess(found)),
+          workspaceId: workspace.id,
+          access,
+          holder:
+            isJob || holder === principal ? access : await repoAccess.detail(holder, repository),
           liveRun:
             isJob && !isServiceToken(principal)
               ? (await liveRun(workspace.id, principal.runId)) !== null
@@ -120,12 +135,18 @@ export function terraformDirectory(env: Env, ctx: WaitUntil): TerraformDirectory
     planAccess: (workspaceId, runId, principal) =>
       run(async () => {
         if (principal.kind !== "job") return { kind: "none" as const };
-        if (isServiceToken(principal)) return { kind: "service" as const };
-        if (!principal.write || principal.runId === null) return { kind: "none" as const };
-        const live = await liveRun(workspaceId, principal.runId);
-        return live?.id === runId
-          ? { kind: "job" as const, ciRunId: principal.runId }
-          : { kind: "none" as const };
+        const [workspace] = await db
+          .select({ repositoryId: gitTerraformWorkspaces.repositoryId })
+          .from(gitTerraformWorkspaces)
+          .where(eq(gitTerraformWorkspaces.id, workspaceId))
+          .limit(1);
+        if (!workspace) return { kind: "none" as const };
+        const live = isServiceToken(principal) ? null : await liveRun(workspaceId, principal.runId);
+        return decidePlanAccess(
+          principal,
+          { repositoryId: workspace.repositoryId, workspaceId, liveRunId: live?.id ?? null },
+          runId,
+        );
       }),
 
     recordPlan: ({ runId, ciRunId, summary }) =>

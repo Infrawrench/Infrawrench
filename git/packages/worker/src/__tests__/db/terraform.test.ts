@@ -9,7 +9,7 @@
  * row, its generated pipeline, the job token and the linked accounts a
  * dispatch would add) is the real code.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { verifyGitJobToken } from "@infrawrench/client-core";
 import { summarizePlan } from "@infrawrench/git-terraform";
@@ -18,6 +18,9 @@ import {
   ciRuns,
   costDaily,
   gitCommitStatuses,
+  gitIssues,
+  gitPullRequests,
+  gitRepositories,
   gitTerraformRuns,
   gitTerraformWorkspaces,
   resources,
@@ -47,9 +50,27 @@ vi.mock("../../events/ci", () => ({
 vi.mock("@infrawrench/server-core/ci/runs", async (original) => ({
   ...(await original<typeof import("@infrawrench/server-core/ci/runs")>()),
   dispatchRun: vi.fn(async () => {}),
+  // What the runners' store would answer: a job that printed something.
+  getRun: vi.fn(async () => ({
+    jobs: [
+      {
+        pipeline: "Terraform plan: prod",
+        id: "plan",
+        name: "Plan prod",
+        status: "passed",
+        reason: null,
+        durationMs: 1200,
+        stdout: `  + name = "${PRINTED}"\n`,
+        stderr: `Warning: ${PRINTED}\n`,
+      },
+    ],
+  })),
+  openRunLogs: vi.fn(async () => new ReadableStream<Uint8Array>({ start: (c) => c.close() })),
 }));
 
 const ZERO = "0".repeat(40);
+// An attribute value Terraform printed: not marked sensitive, and still not for every reader.
+const PRINTED = "db-primary.internal.example";
 // Obviously fake, and in no real key format.
 const JOB_TOKEN_KEY = "test-job-token-key-0123456789abcdef-0123456789abcdef";
 
@@ -259,13 +280,42 @@ describe.skipIf(!configured)("Terraform runs, against a real Postgres", () => {
     const dispatch = await terraformDispatch(ci);
     if ("refuse" in dispatch) throw new Error(dispatch.refuse);
     const token = dispatch.secrets["IW_GIT_JOB_TOKEN"]!;
+    // Bound to the run's workspace, and a plan's: it reads the state and never writes it.
     expect(
-      await verifyGitJobToken(JOB_TOKEN_KEY, token, { repositoryId, access: "write" }),
-    ).toMatchObject({ ok: true, claims: { runId: ci.id, repositoryId } });
+      await verifyGitJobToken(JOB_TOKEN_KEY, token, { repositoryId, workspace: workspaceId }),
+    ).toMatchObject({
+      ok: true,
+      claims: { runId: ci.id, repositoryId, access: "read", workspace: workspaceId },
+    });
+    // Nothing that serves the repository itself takes it: not a clone, not a push.
+    for (const expected of [{ repositoryId }, { repositoryId, access: "write" as const }]) {
+      expect(await verifyGitJobToken(JOB_TOKEN_KEY, token, expected)).toEqual({
+        ok: false,
+        reason: "access",
+      });
+    }
     expect([...dispatch.linkedAccounts.keys()]).toEqual([accountId]);
     expect(dispatch.linkedAccounts.get(accountId)).toBe(alice.id);
     // Never stored: not on the CI run, not on the Terraform run.
     expect(JSON.stringify(await ciRunOf(plan!["id"]))).not.toContain(token);
+
+    // The fork rule is asked again where the credentials are handed over: a
+    // run whose pull request's head is not this repository's is not sent.
+    const [held] = await db
+      .select({ issueId: gitPullRequests.issueId })
+      .from(gitPullRequests)
+      .innerJoin(gitIssues, eq(gitIssues.id, gitPullRequests.issueId))
+      .where(and(eq(gitIssues.repositoryId, repositoryId), eq(gitIssues.number, pull.number)));
+    await db
+      .update(gitPullRequests)
+      .set({ headRepositoryId: null })
+      .where(eq(gitPullRequests.issueId, held!.issueId));
+    expect(await terraformDispatch(ci)).toEqual({ refuse: FORK_REASON });
+    await db
+      .update(gitPullRequests)
+      .set({ headRepositoryId: repositoryId })
+      .where(eq(gitPullRequests.issueId, held!.issueId));
+    expect(await terraformDispatch(ci)).toHaveProperty("secrets");
 
     // A second delivery of the pull request's head records nothing new.
     await queuePullRequestPlans({
@@ -549,7 +599,8 @@ describe.skipIf(!configured)("Terraform runs, against a real Postgres", () => {
       .where(eq(gitTerraformWorkspaces.id, workspaceId));
     expect(linked!.linkedAt).not.toBeNull();
 
-    // The app's resource page: which repository and root manage it.
+    // The app's resource page: which repository and root manage it. The
+    // repository is public, so anyone who may see the resource is told.
     const managedBy = await managedByForResource(organization.id, resourceId);
     expect(managedBy).toEqual([
       {
@@ -569,6 +620,23 @@ describe.skipIf(!configured)("Terraform runs, against a real Postgres", () => {
       driftFieldCount: 0,
       managedBy,
     });
+    // A private repository is named only to someone who reads the organisation's repositories.
+    await db
+      .update(gitRepositories)
+      .set({ visibility: "private" })
+      .where(eq(gitRepositories.id, repositoryId));
+    expect(await managedByForResource(organization.id, resourceId)).toEqual([]);
+    expect((await getIacResourceStatus(organization.id, resourceId)).managedBy).toEqual([]);
+    expect(await managedByForResource(organization.id, resourceId, { readsGit: true })).toEqual(
+      managedBy,
+    );
+    expect(
+      (await getIacResourceStatus(organization.id, resourceId, { readsGit: true })).managedBy,
+    ).toEqual(managedBy);
+    await db
+      .update(gitRepositories)
+      .set({ visibility: "public" })
+      .where(eq(gitRepositories.id, repositoryId));
     // Another organisation asking about the same id learns nothing.
     expect(await managedByForResource("another-organization", resourceId)).toEqual([]);
     expect((await getIacResourceStatus(organization.id, "no-such-resource")).managedBy).toEqual([]);
@@ -613,6 +681,33 @@ describe.skipIf(!configured)("Terraform runs, against a real Postgres", () => {
       monthlyCost: { amount: 12.5, currency: "EUR" },
       matchedResourceCount: 1,
     });
+
+    // What only an administrator gets: a state's document. Bob writes the
+    // repository, as every member of an organisation does, and a visitor reads it.
+    const download = `${repo}/terraform/workspaces/prod/state-versions/no-such-version/download`;
+    expect((await world.call("GET", download, { as: bob })).status).toBe(403);
+    expect((await world.call("GET", download)).status).toBe(401);
+    // Alice administers it: past the gate, there is simply no such version.
+    expect((await world.call("GET", download, { as: alice })).status).toBe(404);
+
+    // A workspace run's output: Terraform prints values that are not marked
+    // sensitive, so it takes `write`. The run and its jobs stay visible.
+    const [terraformCi] = await db
+      .select({ id: ciRuns.id })
+      .from(ciRuns)
+      .where(and(eq(ciRuns.gitRepositoryId, repositoryId), isNotNull(ciRuns.terraformRunId)))
+      .limit(1);
+    const runPath = `${repo}/ci/runs/${terraformCi!.id}`;
+    const visitor = await world.call("GET", runPath);
+    expect(visitor.status).toBe(200);
+    expect(visitor.body.jobs).toEqual([
+      expect.objectContaining({ id: "plan", status: "passed", stdout: "", stderr: "" }),
+    ]);
+    expect(JSON.stringify(visitor.body)).not.toContain(PRINTED);
+    expect((await world.call("GET", `${runPath}/log`)).status).toBe(403);
+    const writer = await world.call("GET", runPath, { as: bob });
+    expect(writer.body.jobs[0].stdout).toContain(PRINTED);
+    expect((await world.call("GET", `${runPath}/log`, { as: bob })).status).toBe(200);
 
     // Bob can read the repository and is nobody in the organisation: no money.
     const bobs = await world.call("GET", `${repo}/terraform/workspaces/prod/resources`, {

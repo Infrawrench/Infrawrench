@@ -58,6 +58,13 @@ export interface JobPrincipal {
   readonly repositoryId: string;
   readonly write: boolean;
   readonly runId: string | null;
+  /**
+   * Set on a token bound to one Terraform workspace: it is that workspace's
+   * state and plans it reaches, and `write` is about the state. Such a
+   * principal has no access to the repository itself (`repoAccess`), and
+   * only the Terraform routes authenticate one at all.
+   */
+  readonly workspaceId?: string | null;
 }
 
 export type Principal =

@@ -60,7 +60,21 @@ const anonymous = (refused: boolean, setCookies: readonly string[] = []): Authen
   email: null,
 });
 
-const fromAuthorization = async (header: string, env: Env): Promise<Authenticated> => {
+export interface AuthenticateOptions {
+  /**
+   * The caller is a Terraform route (the state backend, a run's plan): the
+   * only place a job token bound to a workspace is accepted. Everywhere else
+   * such a token is a refused credential, so it never clones, pushes or
+   * reads through the API.
+   */
+  readonly workspaceTokens?: boolean;
+}
+
+const fromAuthorization = async (
+  header: string,
+  env: Env,
+  options: AuthenticateOptions,
+): Promise<Authenticated> => {
   const credential = presentedCredential(header);
   if (!credential) return anonymous(true);
 
@@ -100,7 +114,9 @@ const fromAuthorization = async (header: string, env: Env): Promise<Authenticate
       };
     }
     case "job-token": {
-      const claims = await verifyJobToken(env.GIT_JOB_TOKEN_KEY, credential.secret);
+      const claims = await verifyJobToken(env.GIT_JOB_TOKEN_KEY, credential.secret, undefined, {
+        workspace: options.workspaceTokens === true,
+      });
       if (!claims) return anonymous(true);
       return {
         principal: {
@@ -108,6 +124,7 @@ const fromAuthorization = async (header: string, env: Env): Promise<Authenticate
           repositoryId: claims.repositoryId,
           write: claims.write,
           runId: claims.runId,
+          workspaceId: claims.workspaceId,
         },
         refused: false,
         setCookies: [],
@@ -157,6 +174,7 @@ const fromCookie = async (
 export const authenticateRequest = async (
   request: IncomingRequest,
   env: Env,
+  options: AuthenticateOptions = {},
 ): Promise<Authenticated> => {
   const authorization = request.headers.get("authorization");
   const sealed = parseCookies(request.headers.get("cookie")).get(
@@ -168,7 +186,7 @@ export const authenticateRequest = async (
   // own, and nothing here answers CORS, so no other site has a reason to.
   if ((presents || sealed) && writeOrigin(request, env) === "foreign") return anonymous(true);
 
-  if (presents) return fromAuthorization(authorization ?? "", env);
+  if (presents) return fromAuthorization(authorization ?? "", env, options);
   if (sealed) return fromCookie(sealed, request, env);
   return anonymous(false);
 };

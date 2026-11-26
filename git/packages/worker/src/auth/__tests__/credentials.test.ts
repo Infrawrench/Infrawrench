@@ -214,6 +214,7 @@ describe("CI job tokens", () => {
       write: true,
       runId: "run_1",
       expiresAt: NOW + 3600,
+      workspaceId: null,
     });
   });
 
@@ -299,8 +300,33 @@ describe("CI job tokens", () => {
       NOW * 1000,
     );
     expect(await verifyJobToken(KEY, token, NOW)).toBe(null);
-    expect(await verifyJobToken(KEY, token, NOW, "d".repeat(40))).toBe(null);
-    expect(await verifyJobToken(KEY, token, NOW, commit)).toMatchObject({ repositoryId: "repo_1" });
+    expect(await verifyJobToken(KEY, token, NOW, { commit: "d".repeat(40) })).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { commit })).toMatchObject({
+      repositoryId: "repo_1",
+    });
+    // Not a way into a workspace either.
+    expect(await verifyJobToken(KEY, token, NOW, { workspace: true })).toBe(null);
+  });
+
+  it("takes a workspace's token where workspaces are served, and nowhere else", async () => {
+    const token = await mintJobToken(KEY, {
+      repositoryId: "repo_1",
+      write: true,
+      runId: "run_1",
+      workspaceId: "ws_1",
+      now: NOW,
+    });
+    expect(await verifyJobToken(KEY, token, NOW)).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { commit: "c".repeat(40) })).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { workspace: true })).toMatchObject({
+      repositoryId: "repo_1",
+      write: true,
+      runId: "run_1",
+      workspaceId: "ws_1",
+    });
+    // And a token that names no workspace is not one a workspace takes.
+    const plain = await mintJobToken(KEY, { repositoryId: "repo_1", write: true, now: NOW });
+    expect(await verifyJobToken(KEY, plain, NOW, { workspace: true })).toBe(null);
   });
 });
 
@@ -365,6 +391,45 @@ describe("authenticateRequest before any credential is looked up", () => {
     expect(result).toMatchObject({
       refused: false,
       principal: { kind: "job", repositoryId: "repo_1", write: true },
+    });
+  });
+
+  it("refuses a Terraform run's token on every route but Terraform's", async () => {
+    const job = await mintJobToken(env.GIT_JOB_TOKEN_KEY, {
+      repositoryId: "repo_1",
+      write: true,
+      runId: "run_1",
+      workspaceId: "ws_1",
+    });
+    const basic = { authorization: `Basic ${toBase64(utf8(`x-access-token:${job}`))}` };
+    const bearer = { authorization: `Bearer ${job}` };
+    // A push, a clone, a raw file, an archive, the API: a refused credential, so a 401.
+    for (const [method, path] of [
+      ["POST", "/acme/infra.git/git-receive-pack"],
+      ["GET", "/acme/infra.git/info/refs?service=git-receive-pack"],
+      ["POST", "/acme/infra.git/git-upload-pack"],
+      ["GET", "/acme/infra/raw/main/main.tf"],
+      ["GET", `/acme/infra/archive/${"c".repeat(40)}.tar.gz`],
+      ["POST", `/api/repos/acme/infra/statuses/${"c".repeat(40)}`],
+      ["GET", "/api/repos/acme/infra/ci/runs"],
+    ] as const) {
+      for (const headers of [basic, bearer]) {
+        const result = await authenticateRequest(
+          new Request(`https://git.example.test${path}`, { method, headers }),
+          env,
+        );
+        expect(result, path).toMatchObject({ refused: true, principal: { kind: "anonymous" } });
+      }
+    }
+    // The state backend and the plan route ask for it.
+    const taken = await authenticateRequest(
+      new Request("https://git.example.test/acme/infra/terraform/prod/state", { headers: basic }),
+      env,
+      { workspaceTokens: true },
+    );
+    expect(taken).toMatchObject({
+      refused: false,
+      principal: { kind: "job", repositoryId: "repo_1", write: true, workspaceId: "ws_1" },
     });
   });
 });

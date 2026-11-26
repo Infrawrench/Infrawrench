@@ -131,6 +131,10 @@ export class CiGroup extends HttpApiGroup.make("ci")
     })
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "A CI run with each job's output")
+      .annotate(
+        OpenApi.Description,
+        "The output of a Terraform workspace's run is empty for a caller without `write`: Terraform prints attribute values that are not marked sensitive.",
+      )
       .annotate(SuccessDescription, "The run"),
     HttpApiEndpoint.get("runLog", "/ci/runs/:runId/log", {
       params: RunParams,
@@ -139,6 +143,10 @@ export class CiGroup extends HttpApiGroup.make("ci")
     })
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "Follow a running CI run's log")
+      .annotate(
+        OpenApi.Description,
+        "403 for a Terraform workspace's run without `write` on the repository.",
+      )
       .annotate(SuccessDescription, "Server-sent events until the run ends"),
   )
   .prefix("/api/repos/:owner/:repo")
@@ -299,7 +307,7 @@ export class TerraformGroup extends HttpApiGroup.make("terraform")
       .annotate(OpenApi.Summary, "A workspace's state versions")
       .annotate(
         OpenApi.Description,
-        "Newest first. The state documents themselves hold secrets and are only served by the HTTP backend, to `write` and above.",
+        "Newest first. The state documents themselves hold secrets and are only served to an `admin` of the repository: by the HTTP backend, and by the download below.",
       )
       .annotate(SuccessDescription, "State versions"),
     HttpApiEndpoint.get(
@@ -307,11 +315,13 @@ export class TerraformGroup extends HttpApiGroup.make("terraform")
       "/terraform/workspaces/:workspace/state-versions/:versionId/download",
       { params: StateVersionParams, success: StateDocument, error: NotFound },
     )
-      .annotate(RequiredAccess, "write")
+      .annotate(RequiredAccess, "admin")
+      // An archived repository's state is still read by its administrators.
+      .annotate(AllowedWhenArchived, true)
       .annotate(OpenApi.Summary, "Download a state version")
       .annotate(
         OpenApi.Description,
-        "The document as stored, as an attachment. It holds every secret the workspace manages, so it takes `write`: a reader of a public repository gets 403.",
+        "The document as stored, as an attachment. It holds every secret the workspace manages, so it takes `admin`, as the HTTP backend does: every member of an organisation has `write`. Anyone else gets 403.",
       )
       .annotate(SuccessDescription, "The state document"),
     HttpApiEndpoint.post(

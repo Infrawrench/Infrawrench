@@ -13,7 +13,12 @@ import type { AddressInfo } from "node:net";
 import { type PlanSummary, SERVICE_TOKEN_PURPOSE } from "@infrawrench/git-terraform";
 import type { RepoAccess } from "../../src/auth/access";
 import { ANONYMOUS, type Principal } from "../../src/auth/principal";
-import { decideStateAuth, isServiceToken } from "../../src/terraform/access";
+import {
+  decidePlanAccess,
+  decideStateAuth,
+  isServiceToken,
+  stateHolder,
+} from "../../src/terraform/access";
 import { type StateClient, localStateClient } from "../../src/terraform/client";
 import {
   type TerraformDirectory,
@@ -39,36 +44,58 @@ const user = (userId: string, via: "session" | "token" = "session"): Principal =
   scopes: via === "token" ? ["repo:write"] : null,
   credentialId: via === "token" ? `pat-${userId}` : null,
 });
-const job = (runId: string, write: boolean, repositoryId = REPOSITORY_ID): Principal => ({
+const job = (
+  runId: string,
+  write: boolean,
+  options: { readonly repositoryId?: string; readonly workspaceId?: string | null } = {},
+): Principal => ({
   kind: "job",
-  repositoryId,
+  repositoryId: options.repositoryId ?? REPOSITORY_ID,
   write,
   runId,
+  workspaceId: options.workspaceId === undefined ? WORKSPACE_ID : options.workspaceId,
 });
 
 /** Passwords the fixture knows. Obviously fake, and in no real token format. */
 export const PASSWORDS = {
   admin: "password-of-an-admin",
   writer: "password-of-a-writer",
+  /** A personal access token of the admin, with `repo:write`: what a person's Terraform uses. */
   token: "password-of-a-personal-token",
+  /** The admin's token with `repo:read` only. */
+  readToken: "password-of-a-read-only-personal-token",
+  /** A member's token: `write` on the repository, which is every member. */
+  writerToken: "password-of-a-writer-token",
   reader: "password-of-a-reader",
+  /** The live apply's token: bound to the workspace, `write`. */
   job: "password-of-the-live-job",
   otherJob: "password-of-another-job",
-  readJob: "password-of-a-read-only-job",
+  /** The live run's token as a plan gets it: bound to the workspace, `read`. */
+  planJob: "password-of-a-plan-job",
   foreignJob: "password-of-another-repository-job",
+  /** The live run's id on a token of another workspace of the same repository. */
+  otherWorkspaceJob: "password-of-another-workspace-job",
+  /** A repository `write` token with no workspace: what a Terraform run used to get. */
+  unboundJob: "password-of-an-unbound-job",
   service: "password-of-the-app",
+  unboundService: "password-of-an-unbound-app",
 } as const;
 
 const PRINCIPALS: Record<string, Principal> = {
   [PASSWORDS.admin]: user("admin"),
   [PASSWORDS.writer]: user("writer"),
-  [PASSWORDS.token]: user("writer", "token"),
+  [PASSWORDS.token]: user("admin", "token"),
+  [PASSWORDS.readToken]: { ...user("admin", "token"), scopes: ["repo:read"] } as Principal,
+  [PASSWORDS.writerToken]: user("writer", "token"),
   [PASSWORDS.reader]: user("reader"),
   [PASSWORDS.job]: job(LIVE_CI_RUN, true),
   [PASSWORDS.otherJob]: job("ci-run-9", true),
-  [PASSWORDS.readJob]: job(LIVE_CI_RUN, false),
-  [PASSWORDS.foreignJob]: job(LIVE_CI_RUN, true, "repo-2"),
+  [PASSWORDS.planJob]: job(LIVE_CI_RUN, false),
+  [PASSWORDS.foreignJob]: job(LIVE_CI_RUN, true, { repositoryId: "repo-2" }),
+  [PASSWORDS.otherWorkspaceJob]: job(LIVE_CI_RUN, true, { workspaceId: "ws-2" }),
+  [PASSWORDS.unboundJob]: job(LIVE_CI_RUN, true, { workspaceId: null }),
   [PASSWORDS.service]: job(SERVICE_TOKEN_PURPOSE, false),
+  [PASSWORDS.unboundService]: job(SERVICE_TOKEN_PURPOSE, false, { workspaceId: null }),
 };
 
 /** `repoAccess` for the fixture's people: the repository is public, so a stranger reads. */
@@ -116,18 +143,24 @@ export async function startTerraformServer(): Promise<TerraformServer> {
     },
     workspace: async (owner, repo, name, principal) => {
       if (owner !== "acme" || repo !== "infra" || name !== "prod") return null;
-      const level = principal.kind === "user" ? (ACCESS[principal.userId] ?? "none") : "none";
-      // A personal token is capped at `write`, and an archived repository at `read`.
-      const capped: RepoAccess =
-        principal.kind === "user" && principal.via === "token" && level === "admin"
-          ? "write"
-          : level;
+      // What `repoAccess` answers: a personal token is capped by its scopes
+      // and never passes `write`, and an archived repository is `read`.
+      const levelOf = (who: Principal): RepoAccess => {
+        if (who.kind !== "user") return "none";
+        const level = ACCESS[who.userId] ?? "none";
+        if (who.scopes === null) return level;
+        const cap: RepoAccess = who.scopes.includes("repo:write") ? "write" : "read";
+        return level === "admin" || level === "write" ? cap : level;
+      };
+      const decisionOf = (who: Principal) => {
+        const level = levelOf(who);
+        return { access: state.archived && level !== "none" ? "read" : level, unarchived: level };
+      };
       const auth = decideStateAuth(principal, {
         repositoryId: REPOSITORY_ID,
-        access:
-          principal.kind === "job"
-            ? null
-            : { access: state.archived && capped !== "none" ? "read" : capped, unarchived: capped },
+        workspaceId: WORKSPACE_ID,
+        access: principal.kind === "job" ? null : decisionOf(principal),
+        holder: principal.kind === "job" ? null : decisionOf(stateHolder(principal)),
         liveRun:
           principal.kind === "job" && !isServiceToken(principal)
             ? state.live && principal.runId === LIVE_CI_RUN
@@ -138,15 +171,19 @@ export async function startTerraformServer(): Promise<TerraformServer> {
     recordHead: async (_workspaceId, report, principal) => {
       state.heads.push({ report, principal });
     },
-    planAccess: async (_workspaceId, runId, principal) => {
-      if (principal.kind !== "job" || principal.repositoryId !== REPOSITORY_ID) {
-        return { kind: "none" };
-      }
-      if (isServiceToken(principal)) return { kind: "service" };
-      return principal.write && state.live && principal.runId === LIVE_CI_RUN && runId === LIVE_RUN
-        ? { kind: "job", ciRunId: LIVE_CI_RUN }
-        : { kind: "none" };
-    },
+    planAccess: async (workspaceId, runId, principal) =>
+      decidePlanAccess(
+        principal,
+        {
+          repositoryId: REPOSITORY_ID,
+          workspaceId,
+          liveRunId:
+            principal.kind === "job" && state.live && principal.runId === LIVE_CI_RUN
+              ? LIVE_RUN
+              : null,
+        },
+        runId,
+      ),
     recordPlan: async ({ runId, ciRunId, summary }) => {
       state.plans.push({ runId, ciRunId, summary });
       return true;

@@ -16,11 +16,15 @@
  *   workspace and a reader of a public repository all get the same answer.
  *   It is never 404 or 204: Terraform reads both on a `GET` as "no state
  *   yet" and plans to create everything.
- * - **Reading and writing take `write`** on the repository (a state holds
- *   every secret its workspace manages), a personal access token needs
- *   `repo:write`, and a job token works for the workspace of its own run
- *   while that run is live. Deleting the state and unlocking without the
- *   lock's id take `admin`.
+ * - **Reading and writing take `admin`** on the repository (a state holds
+ *   every secret its workspace manages, and every member of an organisation
+ *   has `write`). A personal access token works for an administrator and
+ *   needs `repo:write`; a job token works when it names this workspace and
+ *   its run is live, a plan's to read and lock, an apply's to write as well.
+ *   Deleting the state and unlocking without the lock's id take `admin` too,
+ *   and no personal access token administers (`access.ts` has the table).
+ * - **Tokens only.** The session cookie is never read here: Terraform sends
+ *   none, and a page elsewhere must not be able to use one.
  *
  * Everything that touches Postgres is behind {@link TerraformDirectory}, as
  * the Git transports' is, so the tests run these routes with the real
@@ -99,8 +103,12 @@ export interface PlanRouteInput {
   readonly runId: string;
 }
 
-/** The most a posted plan may be. A plan of a few thousand resources is a few megabytes. */
-export const MAX_PLAN_BYTES = 32 * 1024 * 1024;
+/**
+ * The most a posted plan may be. A plan of a few thousand resources is a few
+ * megabytes, and the document is parsed here, in the front Worker, where its
+ * parsed form is several times its size in a 128 MB isolate.
+ */
+export const MAX_PLAN_BYTES = 16 * 1024 * 1024;
 
 const CHALLENGE = 'Basic realm="git.infrawrench.com", charset="UTF-8"';
 
@@ -132,6 +140,15 @@ const stateRouteOf = (rest: readonly string[]): StateRoute | null => {
   return null;
 };
 
+/** The request as authentication sees it here: its `Authorization`, never its cookie. */
+const withoutCookie = (request: Request): RequestLike => ({
+  url: request.url,
+  method: request.method,
+  headers: {
+    get: (name) => (name.toLowerCase() === "cookie" ? null : request.headers.get(name)),
+  },
+});
+
 type Resolved =
   | { readonly ok: true; readonly principal: Principal; readonly workspace: ResolvedWorkspace }
   | { readonly ok: false; readonly response: Response };
@@ -141,7 +158,7 @@ const resolve = async (
   input: { readonly owner: string; readonly repo: string; readonly workspace: string },
   directory: TerraformDirectory,
 ): Promise<Resolved> => {
-  const { principal, refused } = await directory.authenticate(request);
+  const { principal, refused } = await directory.authenticate(withoutCookie(request));
   if (refused || principal.kind === "anonymous") return { ok: false, response: unauthorized() };
   const workspace = await directory.workspace(input.owner, input.repo, input.workspace, principal);
   if (!workspace) return { ok: false, response: forbidden() };
@@ -161,7 +178,7 @@ export const terraformState = async (
   if (route === null) return json(400, { error: "There is no such state address." });
   const { principal, workspace } = resolved;
   const { auth } = workspace;
-  if (!auth.canRead && !auth.canWrite && !auth.canAdmin) return forbidden();
+  if (!auth.canRead && !auth.canLock && !auth.canWrite && !auth.canAdmin) return forbidden();
 
   const response = await deps.client(workspace.id).serve(request, { auth, route });
   const report = decodeHeader<StateHeadReport>(response.headers.get(STATE_HEAD_HEADER));
