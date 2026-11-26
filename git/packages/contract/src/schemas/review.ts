@@ -412,6 +412,7 @@ export const MergedFinding = Schema.Struct({
   side: FindingSide,
   startLine: Schema.NullOr(Schema.Int),
   endLine: Schema.NullOr(Schema.Int),
+  commitOid: Oid.annotate({ description: "The commit its lines are numbered in." }),
   linesAtHead: Schema.Boolean.annotate({
     description:
       "Its lines are numbered in the branch's last commit, the one that was merged. False for a finding last seen on an older version.",

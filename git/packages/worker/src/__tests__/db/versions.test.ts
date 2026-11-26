@@ -668,10 +668,11 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     ]);
     expect(review.body.review.findings).toMatchObject([
       {
+        commitOid: two.newOid,
         linesAtHead: true,
         override: { by: { username: alice.username }, reason: "Tracked for the next release" },
       },
-      { linesAtHead: false, fixedInVersion: 2, override: null },
+      { commitOid: one.newOid, linesAtHead: false, fixedInVersion: 2, override: null },
       {
         dismissedBy: { username: bob.username },
         dismissalReason: "Seconds are what clients read",

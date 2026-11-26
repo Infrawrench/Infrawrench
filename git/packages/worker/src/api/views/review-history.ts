@@ -54,6 +54,7 @@ export const mergedReviewViews = async (
           side: row.side,
           startLine: row.startLine,
           endLine: row.endLine,
+          commitOid: row.commitOid,
           linesAtHead: row.commitOid === page.headOid,
           status: row.status,
           version: row.versionNumber,
