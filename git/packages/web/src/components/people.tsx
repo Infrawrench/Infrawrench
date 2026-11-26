@@ -1,6 +1,6 @@
 /** People and time, as rows name them. */
 import { useEffect, useState } from "react";
-import type { Signature, UserRef } from "@infrawrench/git-contract";
+import type { CommitSummary, Signature, UserRef } from "@infrawrench/git-contract";
 import { formatDateTime, relativeTime } from "../lib/format";
 import { paths } from "../lib/paths";
 import { imageSrc } from "../lib/safe-url";
@@ -120,6 +120,73 @@ export function CommitAuthor({
       <span className="truncate" title={author.email}>
         {author.name}
       </span>
+    </span>
+  );
+}
+
+/** Someone a commit names: the Infrawrench user when the email is theirs, the written name otherwise. */
+function CommitPersonName({
+  name,
+  email,
+  user,
+}: {
+  name: string;
+  email: string;
+  user: UserRef | null;
+}) {
+  if (user !== null) return <UserLink user={user} />;
+  return (
+    <span className="truncate font-medium text-on-surface" title={email}>
+      {name}
+    </span>
+  );
+}
+
+const nameOf = (name: string, user: UserRef | null): string =>
+  user?.username ?? user?.displayName ?? name;
+
+/**
+ * A commit's author and the people its `Co-authored-by:` trailers name, as
+ * GitHub shows them: the faces side by side, then "ada and grace", or "ada
+ * and 3 others" with every name on hover.
+ */
+export function CommitAuthors({
+  commit,
+}: {
+  commit: Pick<CommitSummary, "author" | "authorUser" | "coAuthors">;
+}) {
+  // A summary stored before co-authors were read has none.
+  const coAuthors = (commit.coAuthors as CommitSummary["coAuthors"] | undefined) ?? [];
+  if (coAuthors.length === 0)
+    return <CommitAuthor author={commit.author} user={commit.authorUser} />;
+  const people = [
+    { name: commit.author.name, email: commit.author.email, user: commit.authorUser },
+    ...coAuthors,
+  ];
+  const everyone = people.map((person) => nameOf(person.name, person.user)).join(", ");
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <span className="flex shrink-0 -space-x-1" aria-hidden="true">
+        {people.slice(0, 3).map((person) => (
+          <span key={person.email} className="rounded-full ring-2 ring-surface-raised">
+            <Avatar
+              name={person.user?.displayName ?? person.name}
+              src={person.user?.avatarUrl ?? null}
+              size={16}
+            />
+          </span>
+        ))}
+      </span>
+      <CommitPersonName {...people[0]!} />
+      <span className="shrink-0 text-on-surface-muted">and</span>
+      {coAuthors.length === 1 ? (
+        <CommitPersonName {...coAuthors[0]!} />
+      ) : (
+        <span className="shrink-0 font-medium text-on-surface" title={everyone}>
+          {coAuthors.length} others
+          <span className="sr-only">: {everyone}</span>
+        </span>
+      )}
     </span>
   );
 }

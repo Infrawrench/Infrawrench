@@ -13,6 +13,7 @@ export * from "./http/errors";
 export * from "./names";
 export * from "./limits";
 export * from "./urls";
+export * from "./trailers";
 export * from "./schemas/common";
 export * from "./schemas/people";
 export * from "./schemas/repository";

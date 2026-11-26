@@ -8,7 +8,7 @@ import { ButtonLink, buttonClass } from "../../components/Button";
 import { SearchInput } from "../../components/forms";
 import { Icon } from "../../components/icons";
 import { Page, Panel, PanelHeader } from "../../components/Panel";
-import { CommitAuthor, RelativeTime } from "../../components/people";
+import { CommitAuthors, RelativeTime } from "../../components/people";
 import { RepoList } from "../../components/RepoList";
 import { EmptyState, Loading, QueryView } from "../../components/states";
 import { shortOid } from "../../lib/format";
@@ -236,7 +236,7 @@ function RecentPushes({ repositories }: { repositories: ReadonlyArray<Repository
               <ul className="divide-y divide-border">
                 {commits.map((commit) => (
                   <li key={commit.oid} className="flex items-center gap-2 px-3 py-1.5 text-xs">
-                    <CommitAuthor author={commit.author} user={commit.authorUser} />
+                    <CommitAuthors commit={commit} />
                     <AppLink
                       href={paths.commit(repo, commit.oid)}
                       className="min-w-0 flex-1 truncate text-on-surface-secondary hover:underline"

@@ -83,6 +83,7 @@ export const fakeStorage = (): FakeStorage => {
       author: signature,
       committer: signature,
       authorUser: null,
+      coAuthors: [],
       parents: [],
       status: null,
     };

@@ -15,7 +15,7 @@ import { Breadcrumbs, CopyButton, Segmented, type Crumb } from "../../components
 import { prefetchEntry } from "./requests";
 import { Icon } from "../../components/icons";
 import { Popover } from "../../components/Menu";
-import { CommitAuthor, RelativeTime } from "../../components/people";
+import { CommitAuthors, RelativeTime } from "../../components/people";
 import { RefPicker } from "../../components/RefPicker";
 import { ErrorState, Loading } from "../../components/states";
 import { shortOid } from "../../lib/format";
@@ -134,7 +134,7 @@ export function CommitStrip({
 }) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2 text-xs">
-      <CommitAuthor author={commit.author} user={commit.authorUser} />
+      <CommitAuthors commit={commit} />
       <AppLink
         href={paths.commit(repo, commit.oid)}
         className="min-w-0 flex-1 truncate text-on-surface-secondary hover:underline"

@@ -10,7 +10,7 @@ import { Checkbox, Field, Input } from "../../components/forms";
 import { Icon } from "../../components/icons";
 import { MarkdownEditor } from "../../components/MarkdownEditor";
 import { Page, Panel, PanelHeader } from "../../components/Panel";
-import { CommitAuthor, RelativeTime } from "../../components/people";
+import { CommitAuthors, RelativeTime } from "../../components/people";
 import { RefPicker } from "../../components/RefPicker";
 import { EmptyState, ErrorState, InlineError, Loading } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
@@ -310,7 +310,7 @@ export function NewPullPage({
                     key={commit.oid}
                     className="flex items-center gap-3 border-t border-border px-3 py-1.5 text-xs first:border-t-0"
                   >
-                    <CommitAuthor author={commit.author} user={commit.authorUser} />
+                    <CommitAuthors commit={commit} />
                     <AppLink
                       href={paths.commit(headRepo, commit.oid)}
                       className="min-w-0 flex-1 truncate text-on-surface hover:underline"

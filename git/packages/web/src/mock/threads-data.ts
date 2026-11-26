@@ -331,6 +331,7 @@ function seedInfra(repo: RepositoryRecord, store: RepoThreads): void {
       author: commit.author,
       committer: commit.committer,
       authorUser: null,
+      coAuthors: [],
       parents: commit.parents,
       status: null,
     };

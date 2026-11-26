@@ -11,7 +11,7 @@ import { ConfirmDialog, Dialog, Segmented } from "../../components/controls";
 import { Field, Input, SearchInput } from "../../components/forms";
 import { Icon } from "../../components/icons";
 import { Page, PageHeader, Panel, Table, Td, Th, Tr } from "../../components/Panel";
-import { CommitAuthor, RelativeTime } from "../../components/people";
+import { CommitAuthors, RelativeTime } from "../../components/people";
 import { RefPicker } from "../../components/RefPicker";
 import { EmptyState, ErrorState, InlineError, Loading, LoadMore } from "../../components/states";
 import { paths, type RepoRef } from "../../lib/paths";
@@ -238,7 +238,7 @@ export function BranchesPage() {
                   </Td>
                   <Td className="text-on-surface-muted">
                     <span className="flex items-center gap-1.5">
-                      <CommitAuthor author={branch.commit.author} user={branch.commit.authorUser} />
+                      <CommitAuthors commit={branch.commit} />
                       <RelativeTime iso={branch.commit.committer.when} />
                     </span>
                   </Td>

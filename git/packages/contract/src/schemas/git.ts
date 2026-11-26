@@ -29,6 +29,16 @@ export const StatusState = Schema.Literals(STATUS_STATES).annotate({
 export type StatusState = typeof StatusState.Type;
 
 /** A commit in a list: a history row, a tree entry's last change, a blame gutter. */
+/** Someone a `Co-authored-by:` trailer names (`coAuthorsOf`). */
+export const CoAuthor = Schema.Struct({
+  name: Schema.String,
+  email: Schema.String,
+  user: Schema.NullOr(UserRef).annotate({
+    description: "The Infrawrench user the email belongs to, when one does.",
+  }),
+}).annotate({ identifier: "CoAuthor" });
+export type CoAuthor = typeof CoAuthor.Type;
+
 export const CommitSummary = Schema.Struct({
   oid: Oid,
   summary: Schema.String.annotate({ description: "The message's first line." }),
@@ -39,6 +49,10 @@ export const CommitSummary = Schema.Struct({
   committer: Signature,
   authorUser: Schema.NullOr(UserRef).annotate({
     description: "The Infrawrench user the author's email belongs to, when one does.",
+  }),
+  coAuthors: Schema.Array(CoAuthor).annotate({
+    description:
+      "The people the message's `Co-authored-by:` trailers name, besides the author. At most 20.",
   }),
   parents: Schema.Array(Oid),
   status: Schema.NullOr(StatusState).annotate({

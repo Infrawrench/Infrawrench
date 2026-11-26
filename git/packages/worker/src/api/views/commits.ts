@@ -43,6 +43,10 @@ export interface CommitDecorator {
  * `statuses` is for lists a person reads as history; a tree listing leaves
  * them null, as the contract allows.
  */
+/** A summary written down before `coAuthors` existed (a stored timeline) has none. */
+const coAuthorsOf_ = (commit: CommitSummary): CommitSummary["coAuthors"] =>
+  (commit.coAuthors as CommitSummary["coAuthors"] | undefined) ?? [];
+
 export const commitDecorator = async (
   repositoryId: string,
   commits: ReadonlyArray<CommitSummary | null | undefined>,
@@ -50,7 +54,13 @@ export const commitDecorator = async (
 ): Promise<CommitDecorator> => {
   const known = commits.filter((commit): commit is CommitSummary => Boolean(commit));
   const [people, states] = await Promise.all([
-    usersByEmail(known.flatMap((commit) => [commit.author.email, commit.committer.email])),
+    usersByEmail(
+      known.flatMap((commit) => [
+        commit.author.email,
+        commit.committer.email,
+        ...coAuthorsOf_(commit).map((person) => person.email),
+      ]),
+    ),
     options.statuses
       ? combinedStatesFor(repositoryId, [...new Set(known.map((commit) => commit.oid))])
       : Promise.resolve(new Map<string, CommitSummary["status"]>()),
@@ -59,6 +69,7 @@ export const commitDecorator = async (
   const decorate = <C extends CommitSummary>(commit: C): C => ({
     ...commit,
     authorUser: user(commit.author.email),
+    coAuthors: coAuthorsOf_(commit).map((person) => ({ ...person, user: user(person.email) })),
     ...("committerUser" in commit ? { committerUser: user(commit.committer.email) } : {}),
     status: states.get(commit.oid) ?? null,
   });

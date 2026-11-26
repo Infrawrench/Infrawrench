@@ -9,7 +9,7 @@ import { ButtonLink } from "../../components/Button";
 import { CopyButton } from "../../components/controls";
 import { Icon } from "../../components/icons";
 import { Page, Panel } from "../../components/Panel";
-import { CommitAuthor, RelativeTime } from "../../components/people";
+import { CommitAuthor, CommitAuthors, RelativeTime } from "../../components/people";
 import { QueryView } from "../../components/states";
 import { shortOid } from "../../lib/format";
 import { paths } from "../../lib/paths";
@@ -106,7 +106,11 @@ export function CommitPage({ sha }: { sha: string }) {
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-2 text-xs text-on-surface-muted">
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                    <Person signature={commit.author} user={commit.authorUser} verb="authored" />
+                    <span className="inline-flex items-center gap-1.5">
+                      <CommitAuthors commit={commit} />
+                      <span>authored</span>
+                      <RelativeTime iso={commit.author.when} />
+                    </span>
                     {sameCommitter ? null : (
                       <Person
                         signature={commit.committer}

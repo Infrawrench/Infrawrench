@@ -16,6 +16,7 @@ import type {
   ResolvedRef,
   Signature,
 } from "@infrawrench/git-contract";
+import { coAuthorsOf } from "@infrawrench/git-contract";
 import {
   type Commit as GitCommit,
   GitError,
@@ -344,6 +345,10 @@ export const summaryOf = (oid: ObjectId, commit: GitCommit): CommitSummary => {
     author: signatureOf(commit.author),
     committer: signatureOf(commit.committer),
     authorUser: null,
+    coAuthors: coAuthorsOf(commit.message, commit.author.email).map((person) => ({
+      ...person,
+      user: null,
+    })),
     parents: [...commit.parents],
     status: null,
   };

@@ -5,7 +5,7 @@ import { AppLink } from "../../components/AppLink";
 import { CommitStatusIcon } from "../../components/Badge";
 import { CopyButton } from "../../components/controls";
 import { Panel, PanelHeader } from "../../components/Panel";
-import { CommitAuthor, RelativeTime } from "../../components/people";
+import { CommitAuthors, RelativeTime } from "../../components/people";
 import { EmptyState, ErrorState, Loading, LoadMore } from "../../components/states";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { dayKey, formatDate, groupConsecutive, shortOid } from "../../lib/format";
@@ -49,7 +49,7 @@ export function CommitsTab() {
                     {showBidi(commit.summary)}
                   </AppLink>
                   <div className="mt-0.5 flex items-center gap-1.5 text-xs text-on-surface-muted">
-                    <CommitAuthor author={commit.author} user={commit.authorUser} />
+                    <CommitAuthors commit={commit} />
                     <span>
                       committed <RelativeTime iso={commit.committer.when} />
                     </span>

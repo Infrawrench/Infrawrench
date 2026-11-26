@@ -19,6 +19,7 @@ import type {
   TreeEntry,
   UserRef,
 } from "@infrawrench/git-contract";
+import { coAuthorsOf } from "@infrawrench/git-contract";
 import { mockError, notFound } from "./define";
 import { buildHunks, countChanges, diffLines } from "./diff";
 import edgeRouterJson from "./fixtures/edge-router.generated.json";
@@ -235,6 +236,10 @@ export function summarize(fx: GitFixture, oid: string): CommitSummary {
     author: commit.author,
     committer: commit.committer,
     authorUser: FIXTURE_PEOPLE[commit.author.email] ?? null,
+    coAuthors: coAuthorsOf(commit.message, commit.author.email).map((person) => ({
+      ...person,
+      user: FIXTURE_PEOPLE[person.email] ?? null,
+    })),
     parents: commit.parents,
     status: statusOf(fx, commit.oid),
   };

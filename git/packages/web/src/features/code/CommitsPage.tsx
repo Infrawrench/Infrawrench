@@ -8,7 +8,7 @@ import { ButtonLink } from "../../components/Button";
 import { CopyButton } from "../../components/controls";
 import { Icon } from "../../components/icons";
 import { Page, Panel, PanelHeader } from "../../components/Panel";
-import { CommitAuthor, RelativeTime } from "../../components/people";
+import { CommitAuthors, RelativeTime } from "../../components/people";
 import { EmptyState, ErrorState, Loading, LoadMore } from "../../components/states";
 import { dayKey, formatDate, groupConsecutive, shortOid } from "../../lib/format";
 import { paths, type RepoRef } from "../../lib/paths";
@@ -44,7 +44,7 @@ export function CommitRow({
           ) : null}
         </p>
         <p className="mt-0.5 flex items-center gap-1.5 text-xs text-on-surface-muted">
-          <CommitAuthor author={commit.author} user={commit.authorUser} />
+          <CommitAuthors commit={commit} />
           <span>committed</span>
           <RelativeTime iso={commit.committer.when} />
         </p>
