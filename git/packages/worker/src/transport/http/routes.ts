@@ -208,6 +208,30 @@ function requestBody(
 }
 
 /**
+ * `stream`, passed through this Worker's own code rather than handed to the
+ * runtime as it is.
+ *
+ * A request whose answer is another request's body, untouched, ends as soon
+ * as it is returned: the runtime moves the bytes from then on, and what is
+ * still running for it (the upload going on to the repository's object) gets
+ * the 30 seconds Cloudflare allows after a request ends, then is cancelled. A
+ * push the object takes longer than that to read was cut off halfway
+ * ("client disconnected" in the object, "internal error" in git). Carried
+ * through a transform of our own, both the upload and the answer keep the
+ * request open until the answer is complete. Local `wrangler dev` does not
+ * apply the 30 seconds, so only production showed it.
+ */
+export function carried(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
+  return stream.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+}
+
+/**
  * The request as authentication sees it on the smart HTTP routes: without
  * the session cookie. `git` authenticates with a token; a cookie here could
  * only have been sent by a browser.
@@ -328,14 +352,17 @@ export async function gitHttp(
       // The rules are only needed once refs are about to move.
       policy: push && !advertise ? await repository.pushPolicy() : null,
     },
-    input.body,
+    input.body === null ? null : carried(input.body),
     request.signal,
   );
   if (!response.ok) return text(502, "The repository could not be reached.\n");
-  return new Response(response.body, {
-    headers: {
-      "Content-Type": advertise ? advertisementContentType(service) : resultContentType(service),
-      ...NO_CACHE_HEADERS,
+  return new Response(
+    advertise || response.body === null ? response.body : carried(response.body),
+    {
+      headers: {
+        "Content-Type": advertise ? advertisementContentType(service) : resultContentType(service),
+        ...NO_CACHE_HEADERS,
+      },
     },
-  });
+  );
 }
