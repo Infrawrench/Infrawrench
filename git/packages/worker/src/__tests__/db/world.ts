@@ -43,6 +43,8 @@ export interface CallOptions {
   readonly as?: Person | undefined;
   /** Call with a personal access token of these scopes instead of a session. */
   readonly scopes?: ReadonlyArray<"repo:read" | "repo:write">;
+  /** Call as this principal (a CI job, an API key), whatever `as` says. */
+  readonly principal?: Principal;
   readonly body?: unknown;
 }
 
@@ -85,7 +87,10 @@ export const makeWorld = (): World => {
   const people = new Map<string, Person>();
   const organizationIds: string[] = [];
 
+  const principals = new Map<string, Principal>();
   const principalOf = (request: Request): Principal => {
+    const given = principals.get(request.headers.get("x-test-principal") ?? "");
+    if (given) return given;
     const userId = request.headers.get("x-test-user");
     if (!userId) return ANONYMOUS;
     const scopes = request.headers.get("x-test-scopes");
@@ -154,6 +159,11 @@ export const makeWorld = (): World => {
       const headers = new Headers();
       if (options.as) headers.set("x-test-user", options.as.id);
       if (options.scopes) headers.set("x-test-scopes", options.scopes.join(","));
+      if (options.principal) {
+        const key = newId();
+        principals.set(key, options.principal);
+        headers.set("x-test-principal", key);
+      }
       if (options.body !== undefined) headers.set("content-type", "application/json");
       const response = await api.handle(
         new Request(`https://git.example.test${path}`, {

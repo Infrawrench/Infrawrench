@@ -85,14 +85,15 @@ export default {
     await consumeGitEvents(batch, env, ctx);
   },
 
-  /** The cron trigger (`wrangler.jsonc`): versions whose thirty days are up (`review/prune.ts`). */
+  /** The cron trigger (`wrangler.jsonc`): versions whose thirty days are up, and traces no push claimed (`review/prune.ts`). */
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    const [{ withDb }, { pruneVersions }] = await Promise.all([
+    const [{ withDb }, { pruneVersions, pruneStaleTraces }] = await Promise.all([
       database(),
       import("./review/prune"),
     ]);
     await withDb(env, ctx, async () => {
       await pruneVersions(env);
+      await pruneStaleTraces();
     });
   },
 
