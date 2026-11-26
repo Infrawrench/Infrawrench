@@ -91,6 +91,8 @@ export interface NewFinding {
   readonly side: GitDiffSide;
   readonly startLine: number | null;
   readonly endLine: number | null;
+  /** Resolved already (`review/needs-code.ts`). A later report's value replaces an earlier one's. */
+  readonly needsCode: boolean;
   readonly evidence: readonly GitFindingEvidence[];
 }
 
@@ -128,6 +130,7 @@ export const upsertFinding = async (
     side: finding.side,
     startLine: finding.startLine,
     endLine: finding.endLine,
+    needsCode: finding.needsCode,
     commitOid: version.tipOid,
     evidence: [...finding.evidence],
   };

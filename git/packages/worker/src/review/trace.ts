@@ -27,6 +27,7 @@ import type {
   GitTraceKind,
 } from "@infrawrench/server-core/db/schema";
 import { maskSecrets } from "./masking";
+import { resolveNeedsCode, traceCodeAnchor } from "./needs-code";
 
 export const TRACE_LIMITS = {
   /** One entry's markdown. */
@@ -88,6 +89,8 @@ export interface TraceEntryInput {
   readonly kind: GitTraceKind;
   readonly body: string;
   readonly anchors?: readonly GitTraceAnchor[] | undefined;
+  /** Left out, it is resolved from the anchors (`./needs-code.ts`). */
+  readonly needsCode?: boolean | undefined;
   readonly evidence?: GitTraceEvidence | null | undefined;
 }
 
@@ -96,6 +99,7 @@ export interface PreparedTraceEntry {
   readonly kind: GitTraceKind;
   readonly body: string;
   readonly anchors: GitTraceAnchor[];
+  readonly needsCode: boolean;
   readonly evidence: GitTraceEvidence | null;
 }
 
@@ -136,18 +140,20 @@ export const prepareTraceEntries = (
   for (const [index, entry] of entries.entries()) {
     const body = maskSecrets(entry.body);
     if (byteLength(body) > TRACE_LIMITS.bodyBytes) return { reason: "body_too_large", index };
+    const anchors = (entry.anchors ?? []).map((anchor) => ({
+      path: maskSecrets(anchor.path),
+      startLine: anchor.startLine ?? null,
+      // A range that ends before it starts is one line.
+      endLine:
+        anchor.endLine == null || anchor.startLine == null
+          ? (anchor.endLine ?? null)
+          : Math.max(anchor.startLine, anchor.endLine),
+    }));
     prepared.push({
       kind: entry.kind,
       body,
-      anchors: (entry.anchors ?? []).map((anchor) => ({
-        path: maskSecrets(anchor.path),
-        startLine: anchor.startLine ?? null,
-        // A range that ends before it starts is one line.
-        endLine:
-          anchor.endLine == null || anchor.startLine == null
-            ? (anchor.endLine ?? null)
-            : Math.max(anchor.startLine, anchor.endLine),
-      })),
+      anchors,
+      needsCode: resolveNeedsCode(entry.needsCode, traceCodeAnchor(anchors)),
       evidence: entry.evidence == null ? null : prepareEvidence(entry.evidence),
     });
   }

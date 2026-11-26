@@ -58,6 +58,7 @@ export const insertTraceEntries = async (input: {
         kind: entry.kind,
         body: entry.body,
         anchors: entry.anchors,
+        needsCode: entry.needsCode,
         evidence: entry.evidence,
         authorUserId: input.authorUserId,
         agent: input.agent,

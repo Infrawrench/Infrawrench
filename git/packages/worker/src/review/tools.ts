@@ -178,6 +178,11 @@ export const REVIEW_TOOLS: Anthropic.Tool[] = [
           enum: ["LEFT", "RIGHT"],
           description: "`LEFT` only for lines this change removes.",
         },
+        needs_code: {
+          type: "boolean",
+          description:
+            "Set true only when a reader has to see the code at `path` and its lines to understand this finding (it then shows those lines beside the text). Leave false for a finding that stands on its own. Defaults to true when a line is given, false otherwise.",
+        },
         evidence: {
           type: "array",
           items: {
@@ -221,6 +226,13 @@ const line = (input: Input, key: string): number | undefined => {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
     throw new ToolRefusal(`\`${key}\` must be a line number, 1 or more`);
   }
+  return value;
+};
+
+const flag = (input: Input, key: string): boolean | undefined => {
+  const value = input[key];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "boolean") throw new ToolRefusal(`\`${key}\` must be true or false`);
   return value;
 };
 
@@ -566,6 +578,7 @@ const reportFinding = async (
         side,
         startLine: line(input, "start_line"),
         endLine: line(input, "end_line"),
+        needsCode: flag(input, "needs_code"),
         evidence,
         fingerprint: await fingerprintOf(cx.kind, path, title),
       },

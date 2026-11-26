@@ -26,6 +26,7 @@ import {
 } from "../db/findings";
 import { getAgentLink } from "../db/review";
 import { maskSecrets } from "./masking";
+import { findingCodeAnchor, resolveNeedsCode } from "./needs-code";
 
 /** Whether a reviewer is one the forge runs itself. Nobody else may report as one. */
 export const isForgeReviewer = (kind: string): kind is ReviewerKind =>
@@ -62,6 +63,8 @@ export interface FindingInput {
   readonly side?: "LEFT" | "RIGHT" | undefined;
   readonly startLine?: number | null | undefined;
   readonly endLine?: number | null | undefined;
+  /** Left out, it is resolved from the path and the lines (`./needs-code.ts`). */
+  readonly needsCode?: boolean | undefined;
   readonly evidence?: readonly GitFindingEvidence[] | undefined;
   readonly fingerprint?: string | undefined;
 }
@@ -95,6 +98,7 @@ export const prepareFinding = async (
     side: input.side ?? "RIGHT",
     startLine,
     endLine,
+    needsCode: resolveNeedsCode(input.needsCode, findingCodeAnchor({ path, startLine, endLine })),
     evidence: (input.evidence ?? []).slice(0, 32).map((evidence) => ({
       kind: evidence.kind.slice(0, 64),
       text: cut(maskSecrets(evidence.text), 16_384),

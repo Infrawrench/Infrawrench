@@ -38,6 +38,7 @@ describe("a finding as it is stored", () => {
       path: "src/a.ts",
       startLine: 4,
       endLine: 9,
+      needsCode: true,
       side: "RIGHT",
       title: "Token in log: API_KEY=***",
       body: 'Sends `Authorization: Bearer ***` and password: "***"',
@@ -59,10 +60,41 @@ describe("a finding as it is stored", () => {
       path: null,
       startLine: null,
       endLine: null,
+      needsCode: false,
       body: "",
       evidence: [],
       fingerprint: "their-own",
     });
+  });
+});
+
+describe("whether a finding's reader needs the code", () => {
+  const flag = async (input: Record<string, unknown>) =>
+    (await prepareFinding("general", { severity: "note", title: "T", ...input })).needsCode;
+
+  it("is true with a line and false without, when the reporter says nothing", async () => {
+    expect(await flag({ path: "src/a.ts", startLine: 3 })).toBe(true);
+    expect(await flag({ path: "src/a.ts", endLine: 3 })).toBe(true);
+    expect(await flag({ path: "src/a.ts" })).toBe(false);
+    expect(await flag({})).toBe(false);
+    // A line without a file is no line.
+    expect(await flag({ startLine: 3 })).toBe(false);
+  });
+
+  it("is what the reporter said, except true with no file", async () => {
+    expect(await flag({ path: "src/a.ts", startLine: 3, needsCode: false })).toBe(false);
+    expect(await flag({ path: "src/a.ts", needsCode: true })).toBe(true);
+    expect(await flag({ needsCode: true })).toBe(false);
+    expect(await flag({ path: "", startLine: 3, needsCode: true })).toBe(false);
+  });
+
+  it("is the reviewer's to say, and its prompt says when", () => {
+    const report = REVIEW_TOOLS.find((tool) => tool.name === "report_finding")!;
+    const properties = (report.input_schema as { properties: Record<string, any> }).properties;
+    expect(properties["needs_code"]).toMatchObject({ type: "boolean" });
+    expect(properties["needs_code"].description).toContain("Defaults to true when a line is given");
+    expect((report.input_schema as { required: string[] }).required).not.toContain("needs_code");
+    expect(systemPrompt("general")).toContain("needs_code");
   });
 });
 

@@ -267,6 +267,10 @@ export const TraceEntry = Schema.Struct({
   kind: TraceKind,
   body: Schema.String,
   anchors: Schema.Array(TraceAnchor),
+  needsCode: Schema.Boolean.annotate({
+    description:
+      "The reader has to see the anchored lines to understand the entry: they are shown beside it. False for an entry that stands on its own.",
+  }),
   evidence: Schema.NullOr(TraceEvidence),
   author: Schema.NullOr(UserRef),
   agent: Schema.NullOr(AgentIdentity),
@@ -282,6 +286,12 @@ export const TraceEntryCreate = Schema.Struct({
   kind: TraceKind,
   body: NonEmptyMarkdown,
   anchors: Schema.optionalKey(Schema.Array(TraceAnchor).check(Schema.isMaxLength(64))),
+  needsCode: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "The reader has to see the anchored lines to understand the entry. True when omitted and an anchor names a line, false otherwise. True with no anchor is stored as false: there is no code to show.",
+    }),
+  ),
   evidence: Schema.optionalKey(Schema.NullOr(TraceEvidence)),
 }).annotate({ identifier: "TraceEntryCreate" });
 export type TraceEntryCreate = typeof TraceEntryCreate.Type;
@@ -334,6 +344,10 @@ export const ReviewFinding = Schema.Struct({
   side: FindingSide,
   startLine: Schema.NullOr(Schema.Int),
   endLine: Schema.NullOr(Schema.Int),
+  needsCode: Schema.Boolean.annotate({
+    description:
+      "The reader has to see the lines it is about to understand it: they are shown beside it. False for a finding that stands on its own.",
+  }),
   commitOid: Oid.annotate({ description: "The commit its lines are numbered in." }),
   evidence: Schema.Array(FindingEvidence),
   status: FindingStatus,
@@ -375,6 +389,12 @@ export const FindingCreate = Schema.Struct({
   side: Schema.optionalKey(FindingSide),
   startLine: Schema.optionalKey(Schema.NullOr(Line)),
   endLine: Schema.optionalKey(Schema.NullOr(Line)),
+  needsCode: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "The reader has to see the lines it is about to understand it. True when omitted and the finding has a path and a line, false otherwise. True with no path is stored as false: there is no code to show.",
+    }),
+  ),
   evidence: Schema.optionalKey(Schema.Array(FindingEvidence).check(Schema.isMaxLength(32))),
   fingerprint: Schema.optionalKey(
     Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)).annotate({

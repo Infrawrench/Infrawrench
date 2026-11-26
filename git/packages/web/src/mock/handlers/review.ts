@@ -162,6 +162,7 @@ function pushVersion(
     kind: "evidence",
     body: "The change formats and validates.",
     anchors: [{ path: touched }],
+    needsCode: false,
     evidence: {
       command: "terraform fmt -check -recursive && terraform validate",
       exitCode: 0,
@@ -247,6 +248,7 @@ function advance(repo: RepositoryRecord, thread: ThreadRecord, state: ReviewStat
         kind: "step",
         body: `Working on: ${work.note.split("\n")[0]}`,
         anchors: [],
+        needsCode: false,
         evidence: null,
         author: state.agent.connectedBy,
         agent: identityOf(state.agent),
@@ -550,6 +552,12 @@ export default defineMockHandlers({
         kind: item.kind,
         body: item.body,
         anchors: [...(item.anchors ?? [])],
+        // The server's rule: said or not, there is code to show only on a line.
+        needsCode:
+          (item.needsCode ?? true) &&
+          (item.anchors ?? []).some(
+            (anchor) => anchor.startLine !== undefined && anchor.startLine !== null,
+          ),
         evidence: item.evidence ?? null,
         author: user,
         agent:
@@ -645,6 +653,10 @@ export default defineMockHandlers({
           side: item.side ?? "RIGHT",
           startLine: item.startLine ?? null,
           endLine: item.endLine ?? item.startLine ?? null,
+          needsCode:
+            (item.needsCode ?? true) &&
+            (item.path ?? null) !== null &&
+            ((item.startLine ?? null) !== null || (item.endLine ?? null) !== null),
           commitOid: version.tipOid,
           evidence: [...(item.evidence ?? [])],
           status: "open",
@@ -946,6 +958,7 @@ export default defineMockHandlers({
           kind: "ask",
           body: ask,
           anchors: [],
+          needsCode: false,
           evidence: null,
           author: user,
           agent: identityOf(state.agent),

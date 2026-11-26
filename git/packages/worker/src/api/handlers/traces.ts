@@ -122,6 +122,7 @@ const traceViews = async (rows: readonly TraceEntryRow[]): Promise<TraceEntry[]>
       startLine: anchor.startLine ?? null,
       endLine: anchor.endLine ?? null,
     })),
+    needsCode: row.needsCode,
     evidence: row.evidence
       ? {
           command: row.evidence.command ?? null,

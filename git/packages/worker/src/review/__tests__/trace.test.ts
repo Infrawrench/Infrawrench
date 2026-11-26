@@ -60,6 +60,7 @@ describe("prepareTraceEntries", () => {
         kind: "evidence",
         body: `pushed with ${MASK}`,
         anchors: [{ path: `secrets/${MASK}.txt`, startLine: 3, endLine: null }],
+        needsCode: true,
         evidence: {
           command: `gh auth login --with-token ${MASK}`,
           exitCode: 1,
@@ -105,16 +106,48 @@ describe("prepareTraceEntries", () => {
 
   it("defaults what an entry left out", () => {
     expect(prepareTraceEntries([{ kind: "step", body: "did it", evidence: null }])).toEqual([
-      { kind: "step", body: "did it", anchors: [], evidence: null },
+      { kind: "step", body: "did it", anchors: [], needsCode: false, evidence: null },
     ]);
     expect(prepareTraceEntries([{ kind: "evidence", body: "ran", evidence: {} }])).toEqual([
       {
         kind: "evidence",
         body: "ran",
         anchors: [],
+        needsCode: false,
         evidence: { command: null, exitCode: null, output: null, ciRunId: null, url: null },
       },
     ]);
+  });
+
+  it("says whether the reader needs the code: from the anchors, unless the writer said", () => {
+    const flags = (entries: Parameters<typeof prepareTraceEntries>[0]) => {
+      const prepared = prepareTraceEntries(entries);
+      if (!Array.isArray(prepared)) throw new Error("refused");
+      return prepared.map((entry) => entry.needsCode);
+    };
+    const line = [{ path: "src/a.ts", startLine: 4, endLine: 9 }];
+    const file = [{ path: "src/a.ts" }];
+    // Left out: true with a line, false with a file alone or nothing.
+    expect(
+      flags([
+        { kind: "step", body: "b", anchors: line },
+        { kind: "step", body: "b", anchors: file },
+        { kind: "step", body: "b" },
+        { kind: "step", body: "b", anchors: [...file, ...line] },
+      ]),
+    ).toEqual([true, false, false, true]);
+    // Said false: kept, even with lines.
+    expect(flags([{ kind: "decision", body: "b", anchors: line, needsCode: false }])).toEqual([
+      false,
+    ]);
+    // Said true: kept with a file, and not with nothing to show.
+    expect(
+      flags([
+        { kind: "step", body: "b", anchors: file, needsCode: true },
+        { kind: "step", body: "b", needsCode: true },
+        { kind: "step", body: "b", anchors: [], needsCode: true },
+      ]),
+    ).toEqual([true, false, false]);
   });
 });
 

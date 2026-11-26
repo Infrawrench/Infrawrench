@@ -296,7 +296,13 @@ describe.skipIf(!configured)("review agents, against a real Postgres", () => {
           MUST_FIX,
           {
             name: "report_finding",
-            input: { severity: "note", title: "Is the cache key stable?", body: "" },
+            // Nothing to show: said true, stored false.
+            input: {
+              severity: "note",
+              title: "Is the cache key stable?",
+              body: "",
+              needs_code: true,
+            },
           },
           // A must-fix has to say how it is known.
           {
@@ -330,6 +336,7 @@ describe.skipIf(!configured)("review agents, against a real Postgres", () => {
         severity: "note",
         title: "Is the cache key stable?",
         path: null,
+        needsCode: false,
         evidence: [],
         status: "open",
         viewerCanDismiss: false,
@@ -340,6 +347,8 @@ describe.skipIf(!configured)("review agents, against a real Postgres", () => {
         path: "src/retry.ts",
         startLine: 12,
         endLine: 14,
+        // Lines, and the reviewer said nothing.
+        needsCode: true,
         version: 1,
         lastSeenVersion: 1,
         overridden: false,
@@ -831,8 +840,10 @@ describe.skipIf(!configured)("review agents, against a real Postgres", () => {
         version: 1,
         startLine: 1,
         endLine: 1,
+        needsCode: true,
         runId: null,
       });
+      expect(first.body.findings[1]).toMatchObject({ path: null, needsCode: false });
       expect(first.body.findings[0].evidence[0].text).toBe("license-check src/new.ts\nTOKEN=***");
       expect(await blockers(pull.path)).toContain("must_fix_findings");
 
@@ -840,12 +851,14 @@ describe.skipIf(!configured)("review agents, against a real Postgres", () => {
       await push("feature");
       const second = await report({
         reviewerKind: "licenses",
-        findings: [{ ...finding, startLine: 3 }],
+        // The newest report's word replaces the first one's.
+        findings: [{ ...finding, startLine: 3, needsCode: false }],
         complete: true,
       });
       expect(second.body.findings[0]).toMatchObject({
         id: first.body.findings[0].id,
         startLine: 3,
+        needsCode: false,
         version: 1,
         lastSeenVersion: 2,
       });

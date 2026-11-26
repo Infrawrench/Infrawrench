@@ -149,6 +149,7 @@ describe.skipIf(!configured)("traces, against a real Postgres", () => {
       agent: { kind: "mcp", name: "Claude Code", sessionRef: "session-1" },
       evidence: null,
       anchors: [],
+      needsCode: false,
     });
     // A range that ends before it starts is one line.
     expect(answer.body.entries[2].anchors).toEqual([
@@ -162,12 +163,43 @@ describe.skipIf(!configured)("traces, against a real Postgres", () => {
       url: null,
     });
 
+    // The decision points at lines and said nothing: the reader is shown them.
+    expect(answer.body.entries.map((e: any) => e.needsCode)).toEqual([
+      false,
+      false,
+      true,
+      false,
+      false,
+    ]);
+
     const listed = await world.call("GET", `${repo}/traces?branch=feature`, { as: carol });
     expect(listed.status).toBe(200);
     expect(listed.body.items.map((e: any) => e.id)).toEqual(
       answer.body.entries.map((e: any) => e.id),
     );
     expect(listed.body.nextCursor).toBeNull();
+  });
+
+  it("stores whether the reader needs the code, as said or from the anchors", async () => {
+    const line = [{ path: "src/a.ts", startLine: 3, endLine: 5 }];
+    const file = [{ path: "src/a.ts" }];
+    const answer = await record({
+      branch: "feature",
+      entries: [
+        { kind: "step", body: "lines, unsaid", anchors: line },
+        { kind: "step", body: "a file, unsaid", anchors: file },
+        { kind: "decision", body: "lines, said false", anchors: line, needsCode: false },
+        { kind: "step", body: "a file, said true", anchors: file, needsCode: true },
+        { kind: "doubt", body: "nothing, said true", needsCode: true },
+        { kind: "note", body: "nothing, said false", needsCode: false },
+      ],
+    });
+    expect(answer.status).toBe(200);
+    const wanted = [true, false, false, true, false, false];
+    expect(answer.body.entries.map((e: any) => e.needsCode)).toEqual(wanted);
+    expect((await stored()).map((row) => row.needsCode)).toEqual(wanted);
+    const listed = await world.call("GET", `${repo}/traces?branch=feature`, { as: carol });
+    expect(listed.body.items.map((e: any) => e.needsCode)).toEqual(wanted);
   });
 
   it("stores nothing unmasked", async () => {

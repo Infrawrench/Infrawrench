@@ -203,6 +203,11 @@ export const gitTraceEntries = pgTable(
     /** Markdown. */
     body: text("body").notNull(),
     anchors: jsonb("anchors").$type<GitTraceAnchor[]>().notNull().default([]),
+    /**
+     * The reader has to see the anchored lines to understand the entry.
+     * Resolved when the entry is written (the worker's `review/needs-code.ts`).
+     */
+    needsCode: boolean("needs_code").notNull().default(false),
     evidence: jsonb("evidence").$type<GitTraceEvidence>(),
     /** The person whose credential wrote it. Null for a CI job. */
     authorUserId: text("author_user_id").references(() => users.id, { onDelete: "set null" }),
@@ -288,6 +293,11 @@ export const gitReviewFindings = pgTable(
     side: text("side").$type<GitDiffSide>().notNull().default("RIGHT"),
     startLine: integer("start_line"),
     endLine: integer("end_line"),
+    /**
+     * The reader has to see the lines above to understand the finding.
+     * Resolved when it is reported (the worker's `review/needs-code.ts`).
+     */
+    needsCode: boolean("needs_code").notNull().default(false),
     /** The commit the lines above are numbered in. */
     commitOid: text("commit_oid").notNull(),
     severity: text("severity").$type<GitFindingSeverity>().notNull(),

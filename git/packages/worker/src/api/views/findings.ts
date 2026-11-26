@@ -41,6 +41,7 @@ export const findingViews = async (
     side: row.side,
     startLine: row.startLine,
     endLine: row.endLine,
+    needsCode: row.needsCode,
     commitOid: row.commitOid,
     evidence: row.evidence.map((evidence) => ({
       kind: evidence.kind,

@@ -112,7 +112,7 @@ function entry(
   version: number | null,
   hours: number,
   body: string,
-  rest: Partial<Pick<TraceEntry, "anchors" | "evidence">> & {
+  rest: Partial<Pick<TraceEntry, "anchors" | "evidence" | "needsCode">> & {
     branch: string;
     agent: AgentIdentity;
   },
@@ -122,6 +122,12 @@ function entry(
     kind,
     body,
     anchors: rest.anchors ?? [],
+    // As the server decides it when the writer does not say: a line is code to show.
+    needsCode:
+      rest.needsCode ??
+      (rest.anchors ?? []).some(
+        (anchor) => anchor.startLine !== undefined && anchor.startLine !== null,
+      ),
     evidence: rest.evidence ?? null,
     author: person("jonas"),
     agent: rest.agent,
@@ -154,6 +160,10 @@ function finding(
     runId: null,
     createdAt: hoursAgo(hours),
     updatedAt: hoursAgo(hours),
+    needsCode:
+      fields.path !== undefined &&
+      fields.path !== null &&
+      ((fields.startLine ?? null) !== null || (fields.endLine ?? null) !== null),
     ...fields,
   };
 }
@@ -260,7 +270,12 @@ function seedPeering(fx: GitFixture): ReviewState {
       1,
       72.1,
       "Nothing here accepts the connection on the shared services side. I could not tell whether that account accepts automatically.",
-      { ...by, anchors: [{ path: "modules/network/main.tf", startLine: 108, endLine: 118 }] },
+      {
+        ...by,
+        // It is about what is missing, not what these lines say.
+        needsCode: false,
+        anchors: [{ path: "modules/network/main.tf", startLine: 108, endLine: 118 }],
+      },
     ),
     entry("step", 2, 50.4, "Staging peers with shared services in `eu-central-1`.", {
       ...by,

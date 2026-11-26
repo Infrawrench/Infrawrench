@@ -56,6 +56,7 @@ The JSON API of git.infrawrench.com as Effect `HttpApi` definitions. The worker 
   - Fields added to shapes that existed are optional keys (`BranchPageSummary.latestVersion`, `ReviewThread.version` and `answeredInVersion`, `ReviewComment.version`, `Mergeability.findings`), so a client built before them still decodes. `MERGE_BLOCKERS` gained `must_fix_findings`.
   - Lists that grow on the server (`reviewerKind`, an agent identity's `kind`, `deliveredVia`) are strings with their known values documented.
   - `traces.record` is the one write annotated `read` without `RequiresUser`: a CI job's token has `read`, and the handler takes a person with `write` or the job. The contract test names it (`JOB_WRITES`).
+  - `needsCode` on `TraceEntry` and `ReviewFinding` is required on the read shapes and an optional key on `TraceEntryCreate` and `FindingCreate`: the worker resolves it when the row is written (true with a line, false without; true with no file at all is stored false) and stores it, so a reader never applies the default itself. `MergedFinding` does not carry it: it is a summary with no body, linked to the page that has the finding whole.
   - The `t3` group is session only in the worker, and its OAuth redirect is a URL, not an endpoint (`AUTH_PATHS.t3Callback`).
 
 ## Not here yet

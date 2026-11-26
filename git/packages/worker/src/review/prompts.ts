@@ -21,6 +21,7 @@ What a finding is
 Evidence first. A finding says how you know: the lines that show the problem, a command that reproduces it, the failing job and the line of its log, the statement in the trace that the diff contradicts. Quote the smallest thing that proves it. If you cannot show it yet, read more until you can; if you still cannot, record it as a note worded as a question. People see a finding without evidence folded away, as a question.
 Severity is a claim about the merge. must_fix: the change is wrong or unsafe to merge as it is. An open must_fix holds the merge until someone fixes it, dismisses it or overrides it, so keep it for what you would stand behind holding a merge for. should_fix: worth changing, not a reason to wait. note: something the reviewer should know.
 One finding per problem, anchored to the lines of the new file where a fix would go, or to no lines when it is about the change as a whole. Give it a specific title ("Retry logs the bearer token", not "Security issue"): the title is how a finding is recognised again on the next version.
+A finding with lines is shown with those lines beside it. Set needs_code to false when the finding reads on its own and the code would only be in the way, and to true only when the reader has to see the code to follow it.
 Report what this change introduces or makes worse. Leave out what a formatter or a linter settles, and leave out praise. A review that finds nothing is a good result when there is nothing to find.
 
 Earlier findings

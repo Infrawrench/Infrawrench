@@ -403,6 +403,11 @@ const TRACE_ENTRY = object(
         ["path"],
       ),
     },
+    needs_code: {
+      type: "boolean",
+      description:
+        "Set true only when a reader has to see the code at the anchor to understand this entry (it then shows those lines beside the text). Leave false for reasoning that stands on its own: most decisions and doubts. Defaults to true when a line is given, false otherwise.",
+    },
     evidence: object({
       command: { type: "string", maxLength: 8192, description: "What you ran, as you ran it." },
       exit_code: { type: "integer" },
@@ -480,6 +485,7 @@ const recordTrace: ToolDefinition = {
       return {
         kind: entry["kind"],
         body: entry["body"],
+        ...(typeof entry["needs_code"] === "boolean" ? { needsCode: entry["needs_code"] } : {}),
         ...(Array.isArray(entry["anchors"])
           ? {
               anchors: entry["anchors"].map((anchor) => {
@@ -748,6 +754,11 @@ const reportFinding: ToolDefinition = {
             },
             start_line: { type: "integer", minimum: 1 },
             end_line: { type: "integer", minimum: 1 },
+            needs_code: {
+              type: "boolean",
+              description:
+                "Set true only when a reader has to see the code at `path` and its lines to understand this finding (it then shows those lines beside the text). Leave false for a finding that stands on its own. Defaults to true when a line is given, false otherwise.",
+            },
             evidence: {
               type: "array",
               maxItems: 32,
@@ -783,9 +794,10 @@ const reportFinding: ToolDefinition = {
     const repo = repositoryPath(input["repository"], cx.origin);
     const found = await pageOf(input, repo, cx);
     const findings = (Array.isArray(input["findings"]) ? input["findings"] : []).map((raw) => {
-      const { start_line, end_line, ...rest } = record(raw);
+      const { start_line, end_line, needs_code, ...rest } = record(raw);
       return {
         ...rest,
+        ...(typeof needs_code === "boolean" ? { needsCode: needs_code } : {}),
         ...(start_line === undefined ? {} : { startLine: start_line }),
         ...(end_line === undefined ? {} : { endLine: end_line }),
       };

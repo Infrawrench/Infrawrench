@@ -214,6 +214,22 @@ describe.each(["legacy", "modern"] as const)("the %s protocol era", (era) => {
       "list_instructions",
       "list_findings",
     ]);
+    // An agent may say whether a reader needs the code, and need not.
+    const properties = (schema: unknown): Record<string, any> =>
+      (schema as { properties: Record<string, any> }).properties;
+    const traceEntry = properties(tools.find((tool) => tool.name === "record_trace")!.inputSchema)[
+      "entries"
+    ].items;
+    const finding = properties(tools.find((tool) => tool.name === "report_finding")!.inputSchema)[
+      "findings"
+    ].items;
+    for (const item of [traceEntry, finding]) {
+      expect(item.properties["needs_code"]).toMatchObject({ type: "boolean" });
+      expect(item.properties["needs_code"].description).toContain(
+        "Defaults to true when a line is given, false otherwise.",
+      );
+      expect(item.required).not.toContain("needs_code");
+    }
     // Listing asks the forge nothing.
     expect(site.apiCalls).toEqual([]);
   });
@@ -510,6 +526,13 @@ describe("the tools", () => {
           kind: "decision",
           body: "Count by principal",
           anchors: [{ path: "src/http/admission.ts", start_line: 10, end_line: 20 }],
+          needs_code: false,
+        },
+        {
+          kind: "step",
+          body: "Moved the counter",
+          anchors: [{ path: "src/http/admission.ts" }],
+          needs_code: true,
         },
         {
           kind: "evidence",
@@ -529,7 +552,14 @@ describe("the tools", () => {
         {
           kind: "decision",
           body: "Count by principal",
+          needsCode: false,
           anchors: [{ path: "src/http/admission.ts", startLine: 10, endLine: 20 }],
+        },
+        {
+          kind: "step",
+          body: "Moved the counter",
+          needsCode: true,
+          anchors: [{ path: "src/http/admission.ts" }],
         },
         {
           kind: "evidence",
@@ -538,7 +568,9 @@ describe("the tools", () => {
         },
       ],
     });
-    expect(result.structuredContent).toMatchObject({ recorded: 3, branch: "feature" });
+    // Left out, it is not sent: the forge decides.
+    expect("needsCode" in received.entries[0]).toBe(false);
+    expect(result.structuredContent).toMatchObject({ recorded: 4, branch: "feature" });
     expect((result.structuredContent as any).next).toContain("next push");
 
     await call("record_trace", {
@@ -628,8 +660,10 @@ describe("the tools", () => {
           path: "src/http.ts",
           start_line: 12,
           end_line: 14,
+          needs_code: true,
           evidence: [{ kind: "code", text: "await request.text()" }],
         },
+        { severity: "note", title: "Named oddly" },
       ],
     });
     expect(result.structuredContent).toEqual({ branch: "feature", findings: [finding] });
@@ -645,8 +679,10 @@ describe("the tools", () => {
           path: "src/http.ts",
           startLine: 12,
           endLine: 14,
+          needsCode: true,
           evidence: [{ kind: "code", text: "await request.text()" }],
         },
+        { severity: "note", title: "Named oddly" },
       ],
     });
     expect(sent().filter((line) => line !== `GET ${PAGE_PATH}`)).toEqual([
