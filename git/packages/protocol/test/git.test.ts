@@ -4,7 +4,7 @@
  */
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, expect, it } from "vitest";
-import { MemoryBackend, type ReceiveUpdate } from "../src";
+import { MemoryBackend, type ReceiveUpdate, type RepositoryBackend } from "../src";
 import {
   type TestServer,
   allObjects,
@@ -393,5 +393,50 @@ describeGit.each([
     expect(backend.refs.get("refs/heads/main")).toBe(before);
     expect(backend.packs.length).toBe(packs);
     expect(server.errors).toEqual([]);
+  });
+});
+
+describeGit.each([
+  { name: "http", url: (s: TestServer) => s.httpUrl, whole: true },
+  { name: "stream", url: (s: TestServer) => s.streamUrl, whole: false },
+])("a push the server takes a while to store, over $name", ({ url, whole }) => {
+  it("keeps the connection alive with empty packets, which git accepts", async () => {
+    const inner = new MemoryBackend();
+    const arrivals: boolean[] = [];
+    let keepalivesDue = 0;
+    // Stores the pack, says it is in, then takes ten keepalive periods more.
+    const slow = Object.create(inner) as RepositoryBackend & { ingestPack: unknown };
+    slow.ingestPack = async (
+      pack: ReadableStream<Uint8Array>,
+      options?: { readonly whole: boolean; readonly onReceived: () => void },
+    ) => {
+      const ingested = await inner.ingestPack(pack);
+      arrivals.push(options?.whole ?? false);
+      options?.onReceived();
+      keepalivesDue = 10;
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return ingested;
+    };
+    const server = await startServer(slow, { limits: { keepAliveMs: 20 } });
+    try {
+      const source = await initRepo("slow-push");
+      const head = await commitFile(source, "a.txt", "a\n", "first");
+      const result = await git(["push", url(server), "main"], {
+        cwd: source,
+        env: { GIT_TRACE_PACKET: "1" },
+      });
+      expect(result.status).toBe(0);
+      // The empty data-band packets arrived before the report: git traces each as `\1`.
+      const keepalives = result.stderr
+        .split("\n")
+        .filter((line) => /(sideband|push)< \\1$/.test(line) || /packet: +\w+< \\1$/.test(line));
+      expect(keepalives.length).toBeGreaterThanOrEqual(3);
+      expect(inner.refs.get("refs/heads/main")).toBe(head);
+      expect(arrivals).toEqual([whole]);
+      expect(keepalivesDue).toBe(10);
+      expect(server.errors).toEqual([]);
+    } finally {
+      await server.close();
+    }
   });
 });

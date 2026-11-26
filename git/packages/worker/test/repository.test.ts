@@ -8,7 +8,13 @@
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { ZERO_OID, parseCommit, serializeCommit, serializeTree } from "@infrawrench/git-core";
+import {
+  ZERO_OID,
+  buildPack,
+  parseCommit,
+  serializeCommit,
+  serializeTree,
+} from "@infrawrench/git-core";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { tarArchive } from "../src/repo/do/archive";
 import { Repository } from "../src/repo/do/repository";
@@ -633,5 +639,49 @@ describe("a repository's first moments", () => {
         })
       ).commit,
     ).toBeNull();
+  });
+});
+
+describe("a pack that arrives whole (HTTPS)", () => {
+  const streamOf = (...chunks: Uint8Array[]): ReadableStream<Uint8Array> =>
+    new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(chunk);
+        controller.close();
+      },
+    });
+
+  const fresh = () => {
+    const bucket = new MemoryBucket();
+    const repository = new Repository({ bucket, storage: nodeStorage(), events: null });
+    repository.open("repo-whole");
+    return { bucket, repository };
+  };
+
+  it("is stored, said to be in, then indexed", async () => {
+    const { repository } = fresh();
+    const blob = new TextEncoder().encode("hello\n");
+    const { pack } = await buildPack([{ type: "blob", data: blob }]);
+    const order: string[] = [];
+    const staged = await repository.ingest(streamOf(pack), false, undefined, true, {
+      whole: true,
+      onReceived: () => order.push("received"),
+    });
+    order.push("indexed");
+    expect(order).toEqual(["received", "indexed"]);
+    expect(staged.objectCount).toBe(1);
+  });
+
+  it("refuses bytes after the pack's end and leaves nothing behind", async () => {
+    const { bucket, repository } = fresh();
+    const { pack } = await buildPack([{ type: "blob", data: new TextEncoder().encode("x\n") }]);
+    await expect(
+      repository.ingest(streamOf(pack, new Uint8Array([1, 2, 3])), false, undefined, true, {
+        whole: true,
+        onReceived: () => undefined,
+      }),
+    ).rejects.toThrow(/data after the end of the pack/);
+    expect(bucket.objects.size).toBe(0);
+    expect(bucket.openUploads.size).toBe(0);
   });
 });

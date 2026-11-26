@@ -128,6 +128,32 @@ async function validate(
   return null;
 }
 
+/**
+ * An empty side-band packet on the data band (`0005\x01`): what git's
+ * receive-pack sends for `receive.keepAlive`. The client adds nothing to the
+ * report for it.
+ */
+const KEEPALIVE = new Uint8Array([0x30, 0x30, 0x30, 0x35, 0x01]);
+
+/** Whether `promise` settles (either way) within `ms`. Never rejects. */
+async function settledWithin(promise: Promise<unknown>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), ms);
+  });
+  try {
+    return await Promise.race([
+      promise.then(
+        () => true,
+        () => true,
+      ),
+      timeout,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function* receivePack(ctx: Context): AsyncGenerator<Uint8Array, void, void> {
   const { backend, request: serve } = ctx;
   const listing = await listRefs(backend);
@@ -160,7 +186,24 @@ export async function* receivePack(ctx: Context): AsyncGenerator<Uint8Array, voi
   let unpackError: string | null = null;
   if (commands.some((command) => command.kind !== "delete")) {
     try {
-      ingested = await backend.ingestPack(ctx.reader.restStream());
+      let received = false;
+      const pending = backend.ingestPack(ctx.reader.restStream(), {
+        whole: ctx.request.statelessRpc,
+        onReceived: () => {
+          received = true;
+        },
+      });
+      // Indexing a large pack takes longer than receiving it, and a
+      // connection that carries nothing for a minute is dropped by proxies
+      // on the way. Once the pack is in, say something every few seconds.
+      if (sideBand > 0) {
+        for (;;) {
+          const settled = await settledWithin(pending, ctx.limits.keepAliveMs);
+          if (settled) break;
+          if (received) yield KEEPALIVE;
+        }
+      }
+      ingested = await pending;
       ctx.stats.objectsReceived += ingested.objectCount;
       ctx.stats.packBytesReceived += ingested.size;
     } catch (error) {

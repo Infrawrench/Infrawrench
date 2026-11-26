@@ -67,6 +67,7 @@ export const DEFAULT_LIMITS: Required<ServeLimits> = {
   maxArgumentBytes: 8 * 1024 * 1024,
   maxCommands: 1_000,
   maxPushOptions: 1_000,
+  keepAliveMs: 5_000,
 };
 
 export interface RefListing {

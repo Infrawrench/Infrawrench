@@ -41,6 +41,22 @@ export interface PackRequest {
   readonly ofsDelta: boolean;
 }
 
+export interface IngestPackOptions {
+  /**
+   * The stream ends where the pack ends (stateless HTTP), so the backend may
+   * store it whole before indexing it, which lets the client finish its
+   * upload at the network's pace. Over SSH the stream stays open after the
+   * pack and this is false.
+   */
+  readonly whole: boolean;
+  /**
+   * Called once every byte of the pack has been read from the client. From
+   * then on the server owes the client nothing but an answer, and keeps the
+   * connection alive while it works (`ServeLimits.keepAliveMs`).
+   */
+  readonly onReceived: () => void;
+}
+
 export interface RepositoryBackend extends ObjectReader {
   listRefs(): Promise<Ref[]>;
   /**
@@ -57,7 +73,7 @@ export interface RepositoryBackend extends ObjectReader {
    * nor the repository has, so every stored object's history is complete.
    * Throws a `GitError` for a pack it refuses.
    */
-  ingestPack(pack: ReadableStream<Uint8Array>): Promise<IngestedPack>;
+  ingestPack(pack: ReadableStream<Uint8Array>, options?: IngestPackOptions): Promise<IngestedPack>;
   /**
    * Compare-and-swap each ref against its `oldOid`; all or nothing when
    * `atomic`. `pack` is published in the same step when at least one update
@@ -162,4 +178,11 @@ export interface ServeLimits {
   readonly maxCommands?: number;
   /** Push option lines in one push; the first 64 are kept. Default 1 000. */
   readonly maxPushOptions?: number;
+  /**
+   * Once a push's pack is received, how long the server may go without
+   * sending anything while it indexes and checks the pack: past it an empty
+   * side-band packet is sent, as git's `receive.keepAlive` does, so no proxy
+   * on the way drops a connection that looks idle. Default 5 000 ms.
+   */
+  readonly keepAliveMs?: number;
 }

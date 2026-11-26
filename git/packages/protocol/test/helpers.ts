@@ -16,6 +16,7 @@ import {
   type GitServiceName,
   type ReceiveHooks,
   type RepositoryBackend,
+  type ServeLimits,
   type ServeStats,
   advertisementContentType,
   httpServeRequest,
@@ -173,7 +174,11 @@ function listen(server: HttpServer | NetServer): Promise<number> {
   });
 }
 
-export async function startServer(backend: RepositoryBackend): Promise<TestServer> {
+export async function startServer(
+  backend: RepositoryBackend,
+  options: { readonly limits?: ServeLimits } = {},
+): Promise<TestServer> {
+  const limits = options.limits ? { limits: options.limits } : {};
   const requests: ServedRequest[] = [];
   const errors: unknown[] = [];
   const sockets = new Set<Socket>();
@@ -205,7 +210,7 @@ export async function startServer(backend: RepositoryBackend): Promise<TestServe
       });
       res.writeHead(200, { "Content-Type": advertisementContentType(service) });
       res.write(infoRefsPreamble(request));
-      pipe(serve({ backend, request, input: [], stats, onError }));
+      pipe(serve({ backend, request, input: [], stats, onError, ...limits }));
       return;
     }
     const service = url.pathname.split("/").pop();
@@ -231,6 +236,7 @@ export async function startServer(backend: RepositoryBackend): Promise<TestServe
           input,
           stats,
           onError,
+          ...limits,
           ...(state.hooks ? { hooks: state.hooks } : {}),
         }),
       );
@@ -272,6 +278,7 @@ export async function startServer(backend: RepositoryBackend): Promise<TestServe
         input: socketInput(socket),
         stats,
         onError,
+        ...limits,
         ...(state.hooks ? { hooks: state.hooks } : {}),
       });
       Readable.fromWeb(output as import("node:stream/web").ReadableStream)

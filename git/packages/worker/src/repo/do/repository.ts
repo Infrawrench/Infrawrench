@@ -27,6 +27,7 @@ import {
 } from "@infrawrench/git-core";
 import {
   CommitGraph,
+  type IngestPackOptions,
   type IngestedPack,
   type PackRequest,
   type ReceiveHooks,
@@ -351,6 +352,8 @@ export class Repository {
     maxPackBytes = this.limits.maxPackBytes,
     /** A push: held to git's object checks (`IngestOptions.fsck`). */
     fsck = false,
+    /** How the pack arrives: whole (HTTPS) or followed by more (SSH), and who to tell once it is in. */
+    arrival: IngestPackOptions | null = null,
   ): Promise<StagedPack> {
     const store = this.packs;
     const live = await store.live();
@@ -366,6 +369,7 @@ export class Repository {
       maxInflatedBytes: this.limits.maxInflatedBytes,
       trusted,
       fsck,
+      ...(arrival ? { whole: arrival.whole, onReceived: arrival.onReceived } : {}),
     });
     const visible = ingested.handle ? [...live, ingested.handle] : live;
     return {
@@ -578,7 +582,8 @@ export class Repository {
       has: (oid) => this.hasObject(oid),
       listRefs: async () => this.listRefs(),
       head: async () => this.head(),
-      ingestPack: (pack) => this.ingest(pack, false, this.limits.maxPackBytes, true),
+      ingestPack: (pack, arrival) =>
+        this.ingest(pack, false, this.limits.maxPackBytes, true, arrival ?? null),
       updateRefs: (updates, options) => this.updateRefs(updates, options),
       discardPack: (pack) => this.discard(pack),
       packObjects: (request: PackRequest) => {

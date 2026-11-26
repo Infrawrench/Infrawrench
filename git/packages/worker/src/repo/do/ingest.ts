@@ -1,6 +1,12 @@
 /**
- * Receiving a pack: the bytes go to R2 as they arrive while the indexer
- * reads them, so a pack is never held in memory. What comes out is a pack
+ * Receiving a pack: the bytes go to R2 as they arrive, so a pack is never
+ * held in memory. Over SSH the indexer reads them on the way, because the
+ * stream stays open after the pack and only parsing finds its end. Over
+ * HTTPS the request ends where the pack does (`IngestOptions.whole`), so the
+ * pack is stored first, at the network's pace, and indexed from R2 after:
+ * indexing is slower than an upload, and a client held back that long has
+ * its connection dropped by Cloudflare's edge (about a minute in, for an
+ * 88 MiB push). What comes out is a pack
  * in R2 with its `.idx` beside it, verified, and still outside the
  * repository: publishing it is `updateRefs`' job.
  */
@@ -61,7 +67,18 @@ export interface IngestOptions {
    * terabytes of work. Unbounded when absent.
    */
   readonly maxInflatedBytes?: number;
+  /**
+   * `source` ends where the pack ends (a request over HTTPS), so it is
+   * stored whole before it is indexed. Over SSH the stream stays open after
+   * the pack, and only indexing finds where it ends.
+   */
+  readonly whole?: boolean;
+  /** Called once every byte of the pack has been read from `source`. */
+  readonly onReceived?: () => void;
 }
+
+/** Parts uploading at once while a whole pack is stored: 15 MiB in flight beside the one filling. */
+const WHOLE_PART_CONCURRENCY = 3;
 
 export interface Ingested {
   /** Null when the pack held no objects: nothing was stored. */
@@ -111,6 +128,8 @@ export async function ingestPack(
 
   let upload: MultipartUpload | null = null;
   const parts: UploadedPart[] = [];
+  const inflight = new Set<Promise<void>>();
+  const concurrency = options.whole === true ? WHOLE_PART_CONCURRENCY : 1;
   let buffer = new Uint8Array(PART_BYTES);
   let filled = 0;
   let total = 0;
@@ -118,12 +137,32 @@ export async function ingestPack(
   let memory: Uint8Array | null = null;
   let stored = false;
 
+  let partCount = 0;
+  /** The first part upload that failed: it fails the push at the next part or at the end. */
+  let partFailure: { readonly error: unknown } | null = null;
   const flushPart = async (bytes: Uint8Array): Promise<void> => {
+    if (partFailure) throw partFailure.error;
     if (!upload) {
       upload = await bucket.createMultipartUpload(key);
       sql.exec("UPDATE packs SET upload_id = ? WHERE id = ?", upload.uploadId, id);
     }
-    parts.push(await upload.uploadPart(parts.length + 1, bytes));
+    const number = ++partCount;
+    const sending: Promise<void> = (upload as MultipartUpload).uploadPart(number, bytes).then(
+      (part) => {
+        parts[number - 1] = part;
+      },
+      (error: unknown) => {
+        partFailure ??= { error };
+      },
+    );
+    const tracked: Promise<void> = sending.finally(() => inflight.delete(tracked));
+    inflight.add(tracked);
+    if (inflight.size >= concurrency) await Promise.race([...inflight]);
+    if (partFailure) throw (partFailure as { readonly error: unknown }).error;
+  };
+  const drain = async (): Promise<void> => {
+    await Promise.all([...inflight]);
+    if (partFailure) throw (partFailure as { readonly error: unknown }).error;
   };
   const append = async (chunk: Uint8Array): Promise<void> => {
     total += chunk.length;
@@ -171,6 +210,7 @@ export async function ingestPack(
   });
 
   const cleanup = async (): Promise<void> => {
+    await Promise.allSettled([...inflight]);
     const pending = upload as MultipartUpload | null;
     if (pending && !stored) await pending.abort().catch(() => undefined);
     await store.deleteFiles(id).catch(() => undefined);
@@ -178,35 +218,80 @@ export async function ingestPack(
     store.forget(id);
   };
 
-  try {
-    const reader = source.getReader();
-    try {
-      while (!indexer.done) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const extra = indexer.write(value);
-        await append(extra > 0 ? value.subarray(0, value.length - extra) : value);
-        await indexer.settle();
-      }
-    } finally {
-      await reader.cancel().catch(() => undefined);
-      reader.releaseLock();
-    }
-    if (!indexer.done) throw new GitError("bad-pack", "pack is cut short");
-
+  /** Stores what has been appended: one `put` when it fits a part, else the multipart upload. */
+  const storeAppended = async (): Promise<void> => {
     if (upload === null) {
       memory = buffer.slice(0, filled);
       await bucket.put(key, memory);
       range = memoryRangeReader(memory);
     } else {
       if (filled > 0) await flushPart(buffer.subarray(0, filled));
+      await drain();
       await (upload as MultipartUpload).complete(parts);
     }
     stored = true;
-    // Free the part buffer before the indexer's second pass needs the room.
+    // Free the part buffer before the indexer needs the room.
     buffer = new Uint8Array(0);
-
     if (memory === null) range = rangeFetcher(bucket, key, total);
+  };
+
+  try {
+    if (options.whole === true) {
+      // Everything the client sends, to R2 at the network's pace, then indexed from there.
+      const reader = source.getReader();
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          await append(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      await storeAppended();
+      options.onReceived?.();
+      const saved =
+        memory !== null
+          ? new Blob([memory as Uint8Array<ArrayBuffer>]).stream()
+          : (await bucket.get(key))?.body;
+      if (!saved) throw new Error(`${key} is missing from storage`);
+      const replay = saved.getReader();
+      try {
+        while (!indexer.done) {
+          const { done, value } = await replay.read();
+          if (done) break;
+          if (indexer.write(value) > 0) {
+            throw new GitError("bad-pack", "data after the end of the pack");
+          }
+          await indexer.settle();
+        }
+        if (indexer.done && !(await replay.read()).done) {
+          throw new GitError("bad-pack", "data after the end of the pack");
+        }
+      } finally {
+        await replay.cancel().catch(() => undefined);
+        replay.releaseLock();
+      }
+      if (!indexer.done) throw new GitError("bad-pack", "pack is cut short");
+    } else {
+      const reader = source.getReader();
+      try {
+        while (!indexer.done) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const extra = indexer.write(value);
+          await append(extra > 0 ? value.subarray(0, value.length - extra) : value);
+          await indexer.settle();
+        }
+      } finally {
+        await reader.cancel().catch(() => undefined);
+        reader.releaseLock();
+      }
+      if (!indexer.done) throw new GitError("bad-pack", "pack is cut short");
+      await storeAppended();
+      options.onReceived?.();
+    }
+
     const result = await indexer.finish();
     if (result.objectCount === 0) {
       await cleanup();
