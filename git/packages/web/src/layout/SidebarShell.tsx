@@ -121,6 +121,111 @@ function Group({
   );
 }
 
+/** How many of each a selected repository lists under its name. */
+const RECENT_COUNT = 5;
+
+/** One folding list under the selected repository: a small heading and up to five links. */
+function RecentList({
+  id,
+  title,
+  items,
+  loading,
+  empty,
+}: {
+  id: string;
+  title: string;
+  items: ReadonlyArray<{ key: string; href: string; label: string; active: boolean }>;
+  loading: boolean;
+  empty: string;
+}) {
+  const [open, setOpen] = useStoredFlag(`git-sidebar:recent:${id}`, true);
+  const panel = useId();
+  return (
+    <li>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panel}
+        onClick={() => setOpen(!open)}
+        className="flex h-6 w-full min-w-0 items-center gap-1 rounded-md pl-9 pr-2 text-xs text-on-surface-muted hover:text-on-surface"
+      >
+        <span className="truncate">{title}</span>
+        <Icon name={open ? "chevronDown" : "chevronRight"} size={12} />
+      </button>
+      {open ? (
+        <ul id={panel} className="space-y-px">
+          {loading ? (
+            <li className="pl-9 pr-2 py-1 text-xs text-on-surface-faint">Loading</li>
+          ) : items.length === 0 ? (
+            <li className="pl-9 pr-2 py-1 text-xs text-on-surface-faint">{empty}</li>
+          ) : (
+            items.map((item) => (
+              <li key={item.key}>
+                <AppLink
+                  href={item.href}
+                  aria-current={item.active ? "page" : undefined}
+                  title={item.label}
+                  className={`flex h-7 min-w-0 items-center rounded-md pl-9 pr-2 text-[13px] ${
+                    item.active
+                      ? "bg-accent-muted font-medium text-accent-on-muted"
+                      : "text-on-surface-secondary hover:bg-surface-sunken hover:text-on-surface"
+                  }`}
+                >
+                  <span className="truncate">{item.label}</span>
+                </AppLink>
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
+    </li>
+  );
+}
+
+/** Under the selected repository: its recently updated issues and branches. */
+function RepositoryRecent({ owner, name }: { owner: string; name: string }) {
+  const { pathname } = useLocation();
+  const repo = { owner, repo: name };
+  const recent = { sort: "updated", direction: "desc", limit: RECENT_COUNT } as const;
+  const issues = useQuery({
+    ...queries.issues.list({ params: repo, query: { ...recent, state: "open" } }),
+    staleTime: 30_000,
+  });
+  const branches = useQuery({
+    ...queries.branches.list({ params: repo, query: { ...recent, state: "all" } }),
+    staleTime: 30_000,
+  });
+  return (
+    <ul aria-label={`Recent in ${name}`} className="mt-0.5 space-y-px">
+      <RecentList
+        id="issues"
+        title="Recent issues"
+        loading={issues.isPending}
+        empty="No open issues"
+        items={(issues.data?.items ?? []).map((issue) => {
+          const href = paths.issue(repo, issue.number);
+          return { key: href, href, label: issue.title, active: pathname === href };
+        })}
+      />
+      <RecentList
+        id="branches"
+        title="Recently edited branches"
+        loading={branches.isPending}
+        empty="No branches yet"
+        items={(branches.data?.items ?? []).map((page) => {
+          const href = paths.branchPage(repo, page.key);
+          return {
+            key: href,
+            href,
+            label: page.title !== "" ? page.title : page.headRef,
+            active: pathname === href || pathname.startsWith(`${href}/`),
+          };
+        })}
+      />
+    </ul>
+  );
+}
+
 /** A repository in the sidebar: its name, a mark while an agent works in it, a lock when private. */
 function RepositoryItem({
   owner,
@@ -161,6 +266,7 @@ function RepositoryItem({
           ) : null}
         </span>
       </AppLink>
+      {active ? <RepositoryRecent owner={owner} name={name} /> : null}
     </li>
   );
 }
