@@ -2,8 +2,9 @@
  * The branch pages against the dev mock, through the real router: a page by
  * its key (slashes, a fork's, an earlier page of a name), the version rail,
  * dismissing a finding, the old numbered addresses, proposing a fork's
- * branch, starting work, the inbox, and a server that does not serve
- * traces, findings and instructions yet.
+ * branch, starting work, the inbox, a server that does not serve traces,
+ * findings and instructions yet, findings in a repository whose review
+ * agents are off, and a merged branch whose versions are pruned.
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -345,6 +346,97 @@ describe("the branch page", () => {
     expect(screen.queryByRole("heading", { name: "Instructions" })).toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("region", { name: "Merge" })).toBeTruthy();
+  });
+});
+
+describe("findings from a reviewer outside the forge", () => {
+  const HEALTH = "/acme/edge-router/branches/feature/health-checks";
+
+  it("are listed where the repository's review agents are off", async () => {
+    serve();
+    const state = await api.versions.branchState({
+      params: { owner: "acme", repo: "edge-router", branch: "feature/health-checks" },
+    });
+    expect(state.settings.reviewAgentsEnabled).toBe(false);
+
+    open(HEALTH);
+    const panel = (await screen.findByRole("heading", { name: "Findings" }, wait)).closest(
+      "#findings",
+    ) as HTMLElement;
+    expect(within(panel).getAllByRole("listitem")).toHaveLength(3);
+    expect(panel.textContent).toContain("Nothing asks whether an upstream is healthy");
+    expect(panel.textContent).toContain("claude-review");
+    expect(panel.textContent).toContain("1 must fix");
+    // The forge's own agents are off, so there is nothing of theirs to ask again.
+    expect(within(panel).queryByRole("button", { name: /Review again/ })).toBeNull();
+    // The line under the title and the rail's card count them like any others.
+    expect(screen.getByText("1 must-fix finding to settle")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Version 1" }).getAttribute("title")).toContain(
+      "3 findings",
+    );
+  });
+
+  it("leave no empty list where there are none and the agents are off", async () => {
+    serve();
+    open("/acme/edge-router/branches/jonas/edge-router:fix/lowercase-hosts");
+    expect(await screen.findByRole("region", { name: "Merge" }, wait)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Findings" })).toBeNull();
+  });
+});
+
+describe("a merged branch whose versions are pruned", () => {
+  const FLOW_LOGS = "/acme/infra/branches/feature/flow-logs";
+
+  it("keeps its versions, trace and findings, and reads the whole change from the merge", async () => {
+    serve();
+    open(FLOW_LOGS);
+    const rail = await screen.findByRole("navigation", { name: "Versions" }, wait);
+    const cards = within(rail).getAllByRole("button");
+    expect(cards.map((card) => card.getAttribute("aria-label"))).toEqual([
+      "Version 1",
+      "Version 2",
+    ]);
+    expect(cards[0]!.getAttribute("title")).toBe(
+      "Pushed by Claude Code · 3 findings · Has a trace · Commits no longer kept",
+    );
+    // The newest version is what was merged, and the merge commit still has it.
+    const note = await screen.findByRole("note", {}, wait);
+    expect(note.textContent).toContain(
+      "The commits of v2 are no longer kept. This is the change as it was merged",
+    );
+    expect(within(note).getByRole("link").getAttribute("href")).toBe(
+      "/acme/infra/commit/28324628b9350fd4337ff45c37b7a89d40a5079b",
+    );
+    expect(await screen.findByText("v2 against its base", { exact: false }, wait)).toBeTruthy();
+    // Merged long ago and the list is still there, each finding with an address of its own.
+    const panel = (await screen.findByRole("heading", { name: "Findings" }, wait)).closest(
+      "#findings",
+    ) as HTMLElement;
+    const rows = within(panel).getAllByRole("listitem");
+    expect(rows).toHaveLength(4);
+    expect(rows.every((row) => row.id.startsWith("finding-"))).toBe(true);
+    expect(panel.textContent).toContain("Merge allowed past it");
+  });
+
+  it("says so plainly when a pruned version's own diff is gone, and still shows its trace", async () => {
+    serve();
+    open(`${FLOW_LOGS}?v=1&diff=whole`);
+    const note = await screen.findByRole("note", {}, wait);
+    expect(note.textContent).toContain(
+      "The change at v1 cannot be shown: its commits were removed 30 days after the branch was merged.",
+    );
+    expect(note.textContent).toContain("The change as merged is commit 2832462");
+    expect(screen.queryByRole("alert")).toBeNull();
+    const recorded = screen.getByRole("list", { name: "Recorded for v1" });
+    expect(recorded.textContent).toContain("Let an environment send its VPC flow logs");
+    expect(recorded.textContent).toContain("One aws_flow_log with a count");
+
+    cleanup();
+    queryClient.clear();
+    open(`${FLOW_LOGS}?v=2&diff=step`);
+    expect((await screen.findByRole("note", {}, wait)).textContent).toContain(
+      "What v2 changed since an earlier version cannot be shown",
+    );
   });
 });
 
