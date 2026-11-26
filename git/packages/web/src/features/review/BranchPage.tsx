@@ -5,7 +5,7 @@
  * lines, then what review agents found, the merge box and the conversation,
  * with the agent and the people beside those.
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { BranchPageState } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
@@ -27,6 +27,7 @@ import { refreshBranchPage, useBranchPage } from "../branch-page/BranchLayout";
 import { ReviewButton } from "../branch-page/ReviewForm";
 import { countThreads } from "../branch-page/review-threads";
 import { AgentPanel } from "./Agent";
+import { EMPTY_VIEW } from "./diff/focus";
 import { Ask } from "./Ask";
 import { DIFF_MODES, defaultSelection, isLive, showsFindings, type DiffMode } from "./branch";
 import { LIVE_MS, useBranchState } from "./BranchNeeds";
@@ -76,6 +77,8 @@ export function BranchPage({
   const reviews = useQuery(queries.branches.listReviews({ params }));
   const threads = useQuery(queries.branches.listThreads({ params }));
   const allThreads = useMemo(() => threads.data?.threads ?? [], [threads.data]);
+  // Which files are open, and how far: kept while the page is, across versions and views.
+  const [diffView, setDiffView] = useState(EMPTY_VIEW);
   const counts = countThreads(allThreads);
 
   // A push, a recorded step or an answer shows in the state first: everything else follows it.
@@ -244,6 +247,8 @@ export function BranchPage({
               threads={allThreads}
               lead={compare}
               actions={reviewedMark}
+              view={diffView}
+              onView={setDiffView}
             />
           )
         ) : null}

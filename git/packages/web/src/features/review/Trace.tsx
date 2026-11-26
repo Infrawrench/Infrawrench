@@ -4,7 +4,8 @@
  * explains, above its file, and in the list of what is about the whole
  * change.
  */
-import type { TraceEntry, TraceKind } from "@infrawrench/git-contract";
+import type { ReactNode } from "react";
+import type { TraceAnchor, TraceEntry, TraceKind } from "@infrawrench/git-contract";
 import { AppLink } from "../../components/AppLink";
 import { Badge } from "../../components/Badge";
 import { diffFileId } from "../../components/DiffView";
@@ -77,10 +78,16 @@ function Evidence({ evidence }: { evidence: NonNullable<TraceEntry["evidence"]> 
 export function TraceEntryView({
   entry,
   where = false,
+  renderWhere,
+  children,
 }: {
   entry: TraceEntry;
   /** Name the files and lines it is about: wherever it is not drawn on them. */
   where?: boolean;
+  /** How a file and its lines are named, when not as a link to the file's place in the diff. */
+  renderWhere?: (anchor: TraceAnchor) => ReactNode;
+  /** What goes under its text: the lines it is about. */
+  children?: ReactNode;
 }) {
   const look = KIND[entry.kind];
   return (
@@ -91,6 +98,13 @@ export function TraceEntryView({
           <span className="font-semibold text-on-surface">{look.label}</span>
           {where
             ? entry.anchors.map((anchor) => {
+                if (renderWhere !== undefined) {
+                  return (
+                    <span key={`${anchor.path}:${anchor.startLine ?? ""}`} className="min-w-0">
+                      {renderWhere(anchor)}
+                    </span>
+                  );
+                }
                 const lines = describeLines(anchor.startLine, anchor.endLine);
                 return (
                   <a
@@ -107,6 +121,7 @@ export function TraceEntryView({
         </p>
         <Markdown source={entry.body} />
         {entry.evidence !== null ? <Evidence evidence={entry.evidence} /> : null}
+        {children}
       </div>
     </div>
   );
@@ -117,16 +132,19 @@ export function TraceBlock({
   entries,
   where = false,
   label = "From the agent's trace",
+  idOf,
 }: {
   entries: ReadonlyArray<TraceEntry>;
   where?: boolean;
   label?: string;
+  /** An id for each entry's row, where something links to it. */
+  idOf?: (entry: TraceEntry) => string;
 }) {
   if (entries.length === 0) return null;
   return (
     <ul aria-label={label} className="divide-y divide-border border-l-2 border-notice bg-surface">
       {entries.map((entry) => (
-        <li key={entry.id}>
+        <li key={entry.id} {...(idOf === undefined ? {} : { id: idOf(entry) })}>
           <TraceEntryView entry={entry} where={where} />
         </li>
       ))}

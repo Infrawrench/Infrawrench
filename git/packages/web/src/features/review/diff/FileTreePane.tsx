@@ -12,6 +12,8 @@ import type { DiffFile } from "@infrawrench/git-contract";
 
 export interface FileTreePaneProps {
   readonly files: ReadonlyArray<DiffFile>;
+  /** The files with something on them, and whether it is something that must be fixed. */
+  readonly marked?: ReadonlyMap<string, "must_fix" | "noted">;
   readonly onPick: (path: string) => void;
 }
 
@@ -46,7 +48,11 @@ const STYLE = {
   "--trees-density-override": 0.8,
 } as CSSProperties;
 
-export default function FileTreePane({ files, onPick }: FileTreePaneProps) {
+const NO_MARKS: ReadonlyMap<string, "must_fix" | "noted"> = new Map();
+
+export default function FileTreePane({ files, marked = NO_MARKS, onPick }: FileTreePaneProps) {
+  const marks = useRef(marked);
+  marks.current = marked;
   const byPath = useMemo(() => new Map(files.map((file) => [file.path, file])), [files]);
   // The model is made once and reads these through refs, so it always has the newest.
   const lookup = useRef(byPath);
@@ -75,14 +81,24 @@ export default function FileTreePane({ files, onPick }: FileTreePaneProps) {
     },
     renderRowDecoration: ({ item }) => {
       const file = item.kind === "file" ? lookup.current.get(item.path) : undefined;
-      if (file === undefined || file.binary) return null;
+      if (file === undefined) return null;
+      const mark = marks.current.get(file.path);
       const parts = [
-        ...(file.additions > 0
-          ? [{ text: `+${file.additions}`, color: "var(--color-success)" }]
-          : []),
-        ...(file.deletions > 0
-          ? [{ text: `-${file.deletions}`, color: "var(--color-danger)" }]
-          : []),
+        // A dot on a file with something on it: red when it must be fixed.
+        ...(mark === undefined
+          ? []
+          : [
+              {
+                text: "\u25cf",
+                color: mark === "must_fix" ? "var(--color-danger)" : "var(--color-notice)",
+              },
+            ]),
+        ...(file.binary || file.additions === 0
+          ? []
+          : [{ text: `+${file.additions}`, color: "var(--color-success)" }]),
+        ...(file.binary || file.deletions === 0
+          ? []
+          : [{ text: `-${file.deletions}`, color: "var(--color-danger)" }]),
       ];
       if (parts.length === 0) return null;
       return {
@@ -101,7 +117,7 @@ export default function FileTreePane({ files, onPick }: FileTreePaneProps) {
     }
     model.resetPaths(pathList);
     model.setGitStatus(statuses);
-  }, [model, pathList, statuses]);
+  }, [model, pathList, statuses, marked]);
 
   // Every row shows: the list scrolls with its column, not inside itself.
   return (

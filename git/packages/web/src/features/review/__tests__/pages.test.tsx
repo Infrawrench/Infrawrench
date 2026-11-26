@@ -544,3 +544,148 @@ describe("repository review settings", () => {
     });
   });
 });
+
+describe("a version's notes and its files", () => {
+  const WHOLE = `${PEERING}?v=3&diff=whole`;
+  const MAIN = "modules/network/main.tf";
+  const toggles = () =>
+    screen.getAllByRole("button", { name: /^(Show|Hide) (docs|modules|environments)\// });
+
+  it("tells the change before its code: doubts and decisions first, code only where it is needed", async () => {
+    serve();
+    open(WHOLE);
+    const notes = await screen.findByRole("region", { name: "Review notes" }, wait);
+    const first = within(notes).getByRole("region", { name: "Doubts and decisions" });
+    const cards = within(first).getAllByRole("listitem");
+    expect(cards.map((card) => card.getAttribute("data-kind"))).toEqual([
+      "doubt",
+      "doubt",
+      "doubt",
+      "decision",
+    ]);
+    // Each names its file and lines. The first says the code is not needed: text alone.
+    expect(within(cards[0]!).getByRole("link", { name: `${MAIN}:108-118` })).toBeTruthy();
+    expect(
+      within(cards[1]!).getByRole("link", { name: "environments/staging/main.tf:31" }),
+    ).toBeTruthy();
+    await waitFor(() => expect(cards[1]!.querySelector(".code-surface")).not.toBeNull(), wait);
+    await waitFor(() => expect(cards[3]!.querySelector(".code-surface")).not.toBeNull(), wait);
+    expect(cards[0]!.querySelector(".code-surface")).toBeNull();
+    // Findings, what people said on its lines, then the rest of the trace in its order.
+    expect(
+      within(within(notes).getByRole("region", { name: "Findings" })).getByRole("link", {
+        name: `${MAIN}:108-118`,
+      }),
+    ).toBeTruthy();
+    expect(within(notes).getByRole("region", { name: "Comments" })).toBeTruthy();
+    const steps = within(within(notes).getByRole("region", { name: "Steps" })).getAllByRole(
+      "listitem",
+    );
+    expect(steps[0]!.textContent).toContain("Ask");
+    expect(steps[1]!.textContent).toContain("modules/network/variables.tf:35-43");
+    // An entry about no file has no place to name.
+    expect(within(steps[0]!).queryByRole("link")).toBeNull();
+  });
+
+  it("lists the files closed, what must be fixed first, then the trace's order", async () => {
+    serve();
+    open(WHOLE);
+    await screen.findByRole("region", { name: MAIN }, wait);
+    expect(toggles().map((button) => button.getAttribute("aria-label"))).toEqual([
+      `Show ${MAIN}`,
+      "Show modules/network/variables.tf",
+      "Show environments/staging/main.tf",
+      "Show docs/peering.md",
+      "Show docs/images/network.png",
+    ]);
+    expect(toggles().every((button) => button.getAttribute("aria-expanded") === "false")).toBe(
+      true,
+    );
+    expect(screen.getByRole("region", { name: MAIN }).textContent).toContain("8 notes");
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(toggles().every((button) => button.getAttribute("aria-expanded") === "true")).toBe(true);
+    expect(screen.getByRole("button", { name: "Expand all" })).toHaveProperty("disabled", true);
+    // One closed by hand stays closed; the rest follow "Collapse all".
+    fireEvent.click(screen.getByRole("button", { name: "Hide docs/peering.md" }));
+    expect(screen.getByRole("button", { name: "Show docs/peering.md" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all" }));
+    expect(toggles().every((button) => button.getAttribute("aria-expanded") === "false")).toBe(
+      true,
+    );
+  });
+
+  it("opens a file on what its notes are about, says how much more there is, and shows it when asked", async () => {
+    serve();
+    const router = open(WHOLE);
+    const notes = await screen.findByRole("region", { name: "Review notes" }, wait);
+    // A card's lines open its file there.
+    fireEvent.click(within(notes).getByRole("link", { name: `${MAIN}:181` }));
+    const file = within(screen.getByRole("region", { name: MAIN }));
+    expect(file.getByRole("button", { name: `Hide ${MAIN}` })).toBeTruthy();
+    expect(await file.findByText("Showing 37 of 77 changed lines", {}, wait)).toBeTruthy();
+    // What hangs on its lines is there, and the doubt that does not need the code is not.
+    expect(await file.findByText("A security group per peer", { exact: false }, wait)).toBeTruthy();
+    expect(file.queryByText("Nothing here accepts the connection", { exact: false })).toBeNull();
+    const gap = file.getByRole("button", { name: "Show 40 more changed lines" });
+
+    // The whole diff, and back to the lines in focus.
+    fireEvent.click(file.getByRole("button", { name: "Show full diff" }));
+    expect(file.getByText("All 77 changed lines")).toBeTruthy();
+    expect(file.queryByRole("button", { name: /more changed lines/ })).toBeNull();
+    fireEvent.click(file.getByRole("button", { name: "Show less" }));
+    expect(file.getByText("Showing 37 of 77 changed lines")).toBeTruthy();
+
+    // Showing the gap leaves nothing left out: the file is whole.
+    fireEvent.click(
+      gap.isConnected ? gap : file.getByRole("button", { name: /more changed lines/ }),
+    );
+    await waitFor(() => expect(file.queryByText(/^Showing /)).toBeNull(), wait);
+    expect(file.queryByRole("button", { name: /more changed lines/ })).toBeNull();
+
+    // Another view of the same page keeps what was opened.
+    fireEvent.click(screen.getByRole("button", { name: "Split" }));
+    expect(screen.getByRole("button", { name: `Hide ${MAIN}` })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "This step" }));
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ diff: "step" }), wait);
+    expect(await screen.findByRole("button", { name: `Hide ${MAIN}` }, wait)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Unified" }));
+  });
+
+  it("opens the file an address names", async () => {
+    serve();
+    open(`${WHOLE}#diff-docs%2Fpeering.md`);
+    expect(await screen.findByRole("button", { name: "Hide docs/peering.md" }, wait)).toBeTruthy();
+    expect(screen.getByRole("button", { name: `Show ${MAIN}` })).toBeTruthy();
+  });
+
+  it("decides whether an entry needs its code when the writer does not say", async () => {
+    serve();
+    const params = { owner: "acme", repo: "infra" };
+    const recorded = await api.traces.record({
+      params,
+      payload: {
+        branch: "feature/vpc-peering",
+        entries: [
+          { kind: "decision", body: "On a line.", anchors: [{ path: MAIN, startLine: 120 }] },
+          { kind: "decision", body: "On a file.", anchors: [{ path: MAIN }] },
+          { kind: "doubt", body: "On nothing." },
+          {
+            kind: "doubt",
+            body: "On a line, said not to need it.",
+            needsCode: false,
+            anchors: [{ path: MAIN, startLine: 120 }],
+          },
+          { kind: "note", body: "Said to need it, with nothing to show.", needsCode: true },
+        ],
+      },
+    });
+    expect(recorded.entries.map((entry) => entry.needsCode)).toEqual([
+      true,
+      false,
+      false,
+      false,
+      false,
+    ]);
+  });
+});

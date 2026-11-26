@@ -3,7 +3,7 @@
  * and in the list), with its evidence, and what a person can do about it:
  * dismiss it with a reason, reopen it, or send it to the agent.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { FindingSeverity, ReviewFinding, ReviewRunStatus } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
@@ -112,12 +112,18 @@ export function FindingCard({
   branchKey,
   where = true,
   startOpen,
+  whereLink,
+  code,
 }: {
   finding: ReviewFinding;
   branchKey: string;
   /** Name the file and lines: everywhere but under its own line. */
   where?: boolean;
   startOpen?: boolean;
+  /** The file and lines named another way than as a link to the file's place in the diff. */
+  whereLink?: ReactNode;
+  /** The lines it is about, shown with what it says. */
+  code?: ReactNode;
 }) {
   const repo = useRepoRef();
   const sent = useInstructions();
@@ -156,7 +162,9 @@ export function FindingCard({
           {finding.title}
         </span>
         <span className="text-on-surface-muted">{finding.reviewerKind}</span>
-        {where && finding.path !== null ? (
+        {whereLink !== undefined ? (
+          whereLink
+        ) : where && finding.path !== null ? (
           <a
             href={`#${diffFileId(finding.path)}`}
             className="min-w-0 truncate font-mono text-[11px] text-on-surface-muted hover:underline"
@@ -181,6 +189,7 @@ export function FindingCard({
       {open ? (
         <div className="space-y-2 px-3 pb-2.5 pl-10">
           {finding.body.trim() !== "" ? <Markdown source={finding.body} /> : null}
+          {code}
           {finding.evidence.map((item, index) => (
             <div key={index} className="overflow-hidden rounded border border-border bg-surface">
               <div className="flex items-center gap-2 bg-surface-inset px-2 py-1 text-[11px] text-on-surface-muted">

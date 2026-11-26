@@ -313,6 +313,18 @@ export function placeOnDiff(
   };
 }
 
+/** `main.tf:101`, `main.tf:97-103`, or the path alone for a whole file. */
+export function whereLabel(
+  path: string,
+  start: number | null | undefined,
+  end: number | null | undefined,
+): string {
+  const first = start ?? end ?? null;
+  const last = end ?? start ?? null;
+  if (first === null || last === null) return path;
+  return first === last ? `${path}:${first}` : `${path}:${first}-${last}`;
+}
+
 /** `Line 12`, `Lines 12 to 15`, or nothing for an anchor on a whole file. */
 export function describeLines(
   start: number | null | undefined,

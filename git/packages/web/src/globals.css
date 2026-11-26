@@ -204,6 +204,14 @@ body {
   white-space: normal;
 }
 
+/* A doubt or a decision among the notes above a diff: marked down its side. */
+.diff-note[data-kind="doubt"] {
+  border-left: 3px solid var(--color-warning);
+}
+.diff-note[data-kind="decision"] {
+  border-left: 3px solid var(--color-notice);
+}
+
 /* The ask reads as the page's opening text, a size up from a comment. */
 .branch-ask .markdown {
   font-size: 0.9375rem;
