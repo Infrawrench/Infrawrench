@@ -63,9 +63,13 @@ Six are required: `wrangler deploy` refuses without them (`secrets.required`), a
 | `CI_PROXY_KEY`           | Optional. The key that proxy takes.                                                                                                           | `app_env`, uploaded by each deploy when set.           | As without `CI_PROXY_URL`.                                                                                                                                                                   |
 | `APP_URL`                | Optional. The app's origin as the server knows it: where runners report a run's progress to, and the link a commit status carries to its run. | `app_env`, uploaded by each deploy when set.           | Runs sent from here are followed by the poller alone, and their statuses have no link.                                                                                                       |
 
+| `CLOUDFLARE_ACCOUNT_ID` | Optional. The Cloudflare account of the app's AI Gateway, which the review agents call Claude through. | `app_env`, uploaded by each deploy when set. | Review agents do not run: a push queues no run, and asking for one answers 422 saying they are not set up. Everything else about review (versions, findings a reviewer of your own reports, the merge block) works. |
+| `AI_GATEWAY_ID` | Optional. That gateway's name. | `app_env`, uploaded by each deploy when set. | As without `CLOUDFLARE_ACCOUNT_ID`: all three or none. |
+| `AI_GATEWAY_TOKEN` | Optional. A Cloudflare API token with the AI Gateway Run permission. The Worker holds no Anthropic key. | `app_env`, uploaded by each deploy when set. | As without `CLOUDFLARE_ACCOUNT_ID`. |
+
 Nothing else the app has is given to this Worker: the deploy passes on those keys of the edge-env secret and no others. `CI_ARTIFACT_SIGNING_KEY` and the `GITHUB_APP_*` variables are read by server-core modules the bundle includes but this Worker never reaches (a run's downloads and GitHub repositories are the app's).
 
-The six required ones are the whole of a working forge; the three optional ones are CI's. To rotate one of the app's, change `app_env`, `terraform apply`, and run `git-deploy` again (a deploy adds to a Worker's secrets and never removes one). To set one by hand: `pnpm --filter @infrawrench/git-worker exec wrangler secret put <NAME>`.
+The six required ones are the whole of a working forge; of the optional ones three are CI's and three the review agents'. The Worker has no Stripe key: what review agents use is written to the organisation's AI spend and sent to the meter by the app's poller. To rotate one of the app's, change `app_env`, `terraform apply`, and run `git-deploy` again (a deploy adds to a Worker's secrets and never removes one). To set one by hand: `pnpm --filter @infrawrench/git-worker exec wrangler secret put <NAME>`.
 
 ## The bundle
 

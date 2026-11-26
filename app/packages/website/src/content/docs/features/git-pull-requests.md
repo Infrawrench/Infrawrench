@@ -55,9 +55,30 @@ On **Files changed**, click a line's number to comment on it. **Add single comme
 
 <insert [A pull request's Files changed tab in split view: the file tree on the left with comment counts, an inline comment thread under a changed line with Reply and Resolve, and the Finish review button showing two pending comments] here>
 
+### Review agents
+
+A repository's administrator can turn on review agents in its settings. From then on, each push to a branch with an open pull request is read by the reviewers the repository chose:
+
+| Reviewer      | What it looks for                                                                                              |
+| ------------- | -------------------------------------------------------------------------------------------------------------- |
+| **General**   | Whether the change is correct. Also whether the authoring agent's own account matches the diff and the checks. |
+| **Security**  | What the change makes exploitable, and how.                                                                    |
+| **Tests**     | Whether the tests exercise what changed, and whether CI ran them.                                              |
+| **Terraform** | What the plan would destroy, replace or expose.                                                                |
+| **Intent**    | Whether the change does what the pull request's description asked for.                                         |
+
+A reviewer leaves findings on the lines they are about, each **must fix**, **should fix** or a **note**, with its evidence: the code, a command that reproduces it, or the failing check and its log line. A finding with no evidence is shown folded, as a question. Reviewers never approve or merge.
+
+- An open must-fix finding holds the merge until it is fixed, dismissed, or an administrator overrides it with a reason. A repository can turn the hold off in its settings.
+- Dismiss a finding with a reason and it stays dismissed on later pushes. A finding the next push resolves is marked fixed in that version.
+- When an agent is named as the branch's author, a must-fix finding is sent back to it as an instruction.
+- A pull request from a fork is not reviewed on its own: someone with write access asks for the review.
+
+Review agents run for repositories an organization owns, and what they use counts toward that organization's [AI usage](../team-and-billing/billing-and-plans.md#ai-usage). When the organization has reached its AI budget for the month, a review is skipped and says so. A reviewer of your own can report findings through the API under its own name.
+
 ### Merge
 
-The merge box lists what stands in the way: missing approvals, failing required checks, conflicts with the base branch. When the base has moved on, **Update branch** brings it into the pull request.
+The merge box lists what stands in the way: missing approvals, failing required checks, conflicts with the base branch, open must-fix findings. When the base has moved on, **Update branch** brings it into the pull request.
 
 | Method           | What lands on the base branch                                                     |
 | ---------------- | --------------------------------------------------------------------------------- |
