@@ -6,6 +6,11 @@
       "why": "Checks the UI's static files carry the headers the Worker would have given them."
     },
     {
+      "files": ["git/packages/web/vite.config.ts"],
+      "from": ["src/mcp/__tests__/routes.test.ts"],
+      "why": "Checks the development server proxies the MCP and OAuth paths the Worker's router serves."
+    },
+    {
       "files": ["app/packages/server-core/edge/gateway-only-modules.json"],
       "from": ["test/e2e/harness.ts"],
       "why": "Bundles the Worker with the same gateway-only stubs as the app's edge build."

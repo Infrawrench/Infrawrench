@@ -30,6 +30,12 @@ export default defineConfig({
       "^/-/image(\\?|$)": WORKER,
       // Terraform writes and unlocks with a query (`state?ID=<lock>`), and Vite matches the URL with it.
       "^/[^/]+/[^/]+/terraform/[^/]+/state(/|\\?|$)": WORKER,
+      // The MCP server, the authorization server its clients sign in through, and where
+      // they find it (contract `urls.ts` `MCP_PATH`, `OAUTH_PATHS`, `WELL_KNOWN_PATHS`).
+      // Patterns, not prefixes: `/mcp` as a prefix would also take a person called `mcpherson`.
+      "^/mcp/?(\\?|$)": WORKER,
+      "^/oauth/": WORKER,
+      "^/\\.well-known/": WORKER,
     },
   },
   // Each Shiki grammar is its own lazy chunk, and the largest (C++) is about 800 kB.

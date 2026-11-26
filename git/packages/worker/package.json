@@ -22,11 +22,13 @@
     "@infrawrench/git-ssh": "workspace:*",
     "@infrawrench/git-terraform": "workspace:*",
     "@infrawrench/server-core": "workspace:*",
+    "@modelcontextprotocol/server": "^2.4.0",
     "drizzle-orm": "^0.45.2",
     "effect": "catalog:"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260808.1",
+    "@modelcontextprotocol/client": "^2.4.0",
     "@types/node": "^22.20.1",
     "typescript": "catalog:",
     "vitest": "^4.1.10",
