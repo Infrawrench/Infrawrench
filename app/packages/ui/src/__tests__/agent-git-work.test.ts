@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { env } from "node:process";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -129,7 +130,7 @@ describe("handing the VM its credential and prompt", () => {
   const run = (command: string, stdin: string) =>
     execFileSync("sh", ["-c", command], {
       input: stdin,
-      env: { PATH: process.env["PATH"] ?? "/usr/bin:/bin", HOME: home },
+      env: { PATH: env["PATH"] ?? "/usr/bin:/bin", HOME: home },
       encoding: "utf8",
     });
 
@@ -162,7 +163,7 @@ describe("handing the VM its credential and prompt", () => {
       execFileSync("git", ["credential", "fill"], {
         input: `protocol=https\nhost=${host}\n\n`,
         env: {
-          PATH: process.env["PATH"] ?? "/usr/bin:/bin",
+          PATH: env["PATH"] ?? "/usr/bin:/bin",
           HOME: home,
           GIT_TERMINAL_PROMPT: "0",
           GIT_CONFIG_NOSYSTEM: "1",

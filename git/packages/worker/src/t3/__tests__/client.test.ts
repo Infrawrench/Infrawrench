@@ -550,6 +550,6 @@ describe("what a T3 Code thread is told", () => {
     );
     expect(prompt).toContain("Git credentials this machine already has");
     expect(prompt).not.toMatch(/iw[gjk]_|Bearer|token=/);
-    expect(prompt).not.toContain("—");
+    expect(prompt).not.toContain(String.fromCharCode(0x2014));
   });
 });
