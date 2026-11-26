@@ -1,6 +1,4 @@
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { compareWranglerAliases } from "@infrawrench/server-core/edge/wrangler-aliases.mjs";
 import type { Env } from "../../env";
 import { mentionedNumbers } from "../../api/thread-edits";
 import { closingNumbers } from "../../events/consumer";
@@ -165,12 +163,5 @@ describe("what a commit message says about issues", () => {
 
   it("reads every mention, but not an anchor or an entity", () => {
     expect(mentionedNumbers("See #4 and (#5), not page#6, a/b#7 or &#8;")).toEqual([4, 5]);
-  });
-});
-
-describe("wrangler.jsonc", () => {
-  it("stubs exactly the libraries server-core lists as gateway-only", () => {
-    const config = fileURLToPath(new URL("../../../wrangler.jsonc", import.meta.url));
-    expect(compareWranglerAliases(config)).toEqual({ missing: [], extra: [] });
   });
 });

@@ -78,7 +78,7 @@ import type { CiEvent } from "./events.js";
 import { ownerKey, repoKey } from "./events.js";
 import { DownloadLinkError, downloadLink, toDownload } from "./downloads.js";
 import { CiProxyError, proxyFetch, proxyJson, runUsage, type ProxyRun } from "./proxy.js";
-import { pluginCodeAvailable } from "../plugin-loader.js";
+import { pluginCodeAvailable } from "../runtime/plugin-code.js";
 import type { CiConcurrencyEntry, CiJobAccess } from "../db/schema.js";
 import { noteRepository, runningCi, stillRunsCi } from "./schedules.js";
 import { lendGithubTokens } from "./github-token.js";
@@ -470,6 +470,20 @@ export function withPlatforms(
   return body;
 }
 
+/**
+ * The code that lends (`lend.ts`, `env-file.ts`), which reaches the plugin
+ * loader and the socket drivers, or null in a Worker built without plugin
+ * code. The ternary is load-bearing, as in `plugin-loader.ts`: esbuild drops
+ * the branch the constant rules out, *including its import()*, which a check
+ * of `pluginCodeAvailable()` and an early return do not do. That keeps both
+ * modules, and everything behind them, out of the forge's Worker.
+ */
+function lendingCode() {
+  return globalThis.__INFRAWRENCH_EDGE_PLUGINS__
+    ? Promise.resolve(null)
+    : Promise.all([import("./lend.js"), import("./env-file.js")]);
+}
+
 export async function dispatchRun(id: string): Promise<void> {
   const now = new Date();
   const [row] = await db
@@ -581,12 +595,16 @@ export async function dispatchRun(id: string): Promise<void> {
       return;
     }
     // Loaded here: lending reaches plugin code, which only this branch needs.
-    const { auditLends, buildLent, fitLent } = await import("./lend.js");
+    const lending = await lendingCode();
+    if (!lending) {
+      await deferToGateway(row);
+      return;
+    }
+    const [{ auditLends, buildLent, fitLent }, { lendEnvFiles }] = lending;
     const built = await buildLent(linkedAccounts ? { ...row, linkedAccounts } : row, access);
     if (built) {
       // `env-file:`: the file read at the run's commit, each reference
       // checked against the grants like the rest.
-      const { lendEnvFiles } = await import("./env-file.js");
       const files = await lendEnvFiles(row, access);
       if (files) {
         built.lent["env-files"] = files.entries;

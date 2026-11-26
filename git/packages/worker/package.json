@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "bundle": "mkdir -p ../web/dist && wrangler deploy --dry-run --outdir .wrangler/bundle",
+    "check:startup": "mkdir -p ../web/dist && wrangler check startup --outfile .wrangler/startup.cpuprofile",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:db": "vitest run --config vitest.db.config.ts"

@@ -14,42 +14,18 @@
   "observability": { "enabled": true },
   "limits": { "cpu_ms": 300000 },
 
-  // Bundle-time constants. `__INFRAWRENCH_EDGE_PLUGINS__` swaps the provider
-  // plugins for their metadata (server-core/src/plugin-loader.ts): the queue
-  // consumer and the CI tab call the app's CI (`server-core/src/ci/`), which
-  // reaches the plugin loader, and no plugin code belongs in this Worker.
+  // Bundle-time constants. `__INFRAWRENCH_EDGE_PLUGINS__` says this bundle
+  // carries no plugin code: server-core's CI dispatcher, which the queue
+  // consumer calls, then leaves a run that lends something to the app's
+  // gateway and drops the code that lends (`server-core/src/ci/runs.ts`
+  // `lendingCode`). With it nothing here reaches the plugin loader or a
+  // library that cannot run in a Worker, so there is no `alias` map to keep
+  // in step with server-core/edge/gateway-only-modules.json;
+  // `src/__tests__/import-graph.test.ts` bundles the Worker and fails when
+  // that stops being true.
   "define": {
     "process.env.NODE_ENV": "\"production\"",
     "globalThis.__INFRAWRENCH_EDGE_PLUGINS__": "true",
-  },
-
-  // The same reach pulls in libraries that cannot run in a Worker. Each
-  // resolves to the stub, which throws the moment it is used, as on the app's
-  // own Workers. `src/__tests__/aliases.test.ts` keeps this map in step with
-  // server-core/edge/gateway-only-modules.json.
-  "alias": {
-    "cpu-features": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "node-pty": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "ssh2": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "dockerode": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "@kubernetes/client-node": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "pg": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "mysql2": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "mysql2/promise": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "mssql": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "tedious": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "ioredis": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "memjs": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "mongodb": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "kafkajs": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "@nats-io/transport-node": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "@nats-io/jetstream": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "@nats-io/kv": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "@nats-io/obj": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "@libsql/client": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "typescript": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "@typescript/typescript6": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
-    "@jitl/quickjs-ng-wasmfile-release-asyncify": "@infrawrench/server-core/edge/gateway-only-stub.cjs",
   },
 
   // The built UI. The Worker runs first for every request, so `/api`, the
@@ -65,6 +41,14 @@
 
   "vars": {
     "SITE_ORIGIN": "https://git.infrawrench.com",
+    // The host in a repository's SSH clone URL, and the name the Spectrum
+    // application for port 22 is created under: `infra/git/setup.mjs` reads
+    // it from here, so the two cannot disagree. Whether one name can carry
+    // both this Worker's custom domain and a Spectrum application is not
+    // something Cloudflare documents; if the script's `spectrum` step is
+    // refused, make this `ssh.git.infrawrench.com` and run it again
+    // (infra/README.md "git.infrawrench.com").
+    "SSH_HOST": "git.infrawrench.com",
     "APP_ORIGIN": "https://app.infrawrench.com",
     // WorkOS's custom Authentication API domain, as the app uses. The redirect
     // URI `https://git.infrawrench.com/auth/callback` and the sign-out
