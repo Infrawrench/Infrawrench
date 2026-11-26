@@ -229,6 +229,20 @@ describeGit("versions of a branch", () => {
     ]);
     expect(versionRefs()).toEqual([`1/2/feature ${two}`]);
     expect(await repo.repository.isReachable(one)).toBe(false);
+    // Its row is kept by the caller, but its diff is not served: the objects are stored and no ref reaches them.
+    await expect(
+      reader.versionDiff(
+        { from: null, to: { tipOid: one, baseOid: main }, reachableOnly: true },
+        { limit: 10 },
+      ),
+    ).rejects.toMatchObject({ code: "ref_not_found" });
+    // A version something still reaches is read as before.
+    expect(
+      await reader.versionDiff(
+        { from: null, to: { tipOid: two, baseOid: main }, reachableOnly: true },
+        { limit: 10 },
+      ),
+    ).toMatchObject({ exact: true, diff: { stats: { filesChanged: 1 } } });
     // A clone still walks: what the pruned version held is stored, and nothing reaches it.
     const cloned = await clone();
     expect(repo.requests.at(-1)?.packSource).toBe("objects");

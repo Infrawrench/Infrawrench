@@ -7,7 +7,7 @@
  * reads those rows, and asks the head repository's reader for the diffs.
  */
 import { HttpApiBuilder } from "effect/http-api";
-import { GitApi, notFound, unprocessable } from "@infrawrench/git-contract";
+import { type Diff, GitApi, notFound, unprocessable } from "@infrawrench/git-contract";
 import { pageKeys } from "../../db/branch-pages";
 import { decodeCursor, pageSize } from "../../db/cursor";
 import type { PullRequestWithThread } from "../../db/pulls";
@@ -19,7 +19,7 @@ import {
   setReviewedMark,
   versionsForPull,
 } from "../../db/review";
-import type { RepoReader, VersionSide } from "../../repo/reader";
+import { type RepoReader, RepoReaderError, type VersionSide } from "../../repo/reader";
 import { pageOr404 } from "../branch-page";
 import { type RepoCx, locatorOf, op, repoOp } from "../context";
 import { headRepositoryOf, mayProposeTo } from "../repos";
@@ -51,6 +51,34 @@ const sideOf = (version: VersionRow): VersionSide => ({
 const versionReader = async (cx: RepoCx, found: PullRequestWithThread): Promise<RepoReader> => {
   const head = await headRepositoryOf(cx, found.pull.headRepositoryId);
   return head && mayProposeTo(cx.repo, head.repo) ? cx.reader(locatorOf(head.repo)) : cx.git;
+};
+
+/** What a diff that needs a pruned version's commit answers when nothing reaches it any more. */
+const versionPruned = (version: VersionRow) =>
+  unprocessable(
+    `The commits of v${version.number} are no longer kept: they were removed thirty days after the branch was merged or deleted`,
+    "version_pruned",
+  );
+
+/**
+ * The whole change of a merged page, read from what it was merged as: the
+ * merge commit or the squash against its first parent, which is the base
+ * branch as the merge found it. Null where that is not one commit's diff (a
+ * rebase lands several) or the commit can no longer be read.
+ */
+const mergedChange = async (
+  cx: RepoCx,
+  { pull }: PullRequestWithThread,
+  options: Parameters<RepoReader["commitDiff"]>[1],
+): Promise<Diff | null> => {
+  if (pull.mergeCommitOid === null) return null;
+  if (pull.mergeMethod !== "merge" && pull.mergeMethod !== "squash") return null;
+  try {
+    return await cx.git.commitDiff(pull.mergeCommitOid, options);
+  } catch (error) {
+    if (error instanceof RepoReaderError && error.code === "ref_not_found") return null;
+    throw error;
+  }
 };
 
 export const VersionsHandlers = HttpApiBuilder.group(GitApi, "versions", (handlers) =>
@@ -110,23 +138,53 @@ export const VersionsHandlers = HttpApiBuilder.group(GitApi, "versions", (handle
           }
         }
         const reader = await versionReader(cx, found);
-        const answer = await reader.versionDiff(
-          { from: from ? sideOf(from) : null, to: sideOf(to) },
-          {
-            cursor: query.cursor,
-            limit: pageSize(query.limit),
-            path: query.path,
-            context: query.context,
-            whitespace: query.whitespace,
-          },
-        );
+        const options = {
+          cursor: query.cursor,
+          limit: pageSize(query.limit),
+          path: query.path,
+          context: query.context,
+          whitespace: query.whitespace,
+        };
+        // A pruned version's ref is gone: its commit is read only while something else reaches it.
+        const pruned = to.prunedAt !== null || (from !== null && from.prunedAt !== null);
+        try {
+          const answer = await reader.versionDiff(
+            {
+              from: from ? sideOf(from) : null,
+              to: sideOf(to),
+              ...(pruned ? { reachableOnly: true } : {}),
+            },
+            options,
+          );
+          return {
+            ...answer.diff,
+            kind: from ? ("interdiff" as const) : ("whole" as const),
+            from: from?.number ?? null,
+            to: to.number,
+            rebased: answer.rebased,
+            exact: answer.exact,
+            source: "versions" as const,
+          };
+        } catch (error) {
+          if (!pruned || !(error instanceof RepoReaderError) || error.code !== "ref_not_found") {
+            throw error;
+          }
+        }
+        // What was merged is the last version's whole change, and the merge still has it.
+        const merged =
+          from === null && found.pull.mergedAt !== null && to.tipOid === found.pull.headOid
+            ? await mergedChange(cx, found, options)
+            : null;
+        if (merged === null)
+          throw versionPruned(from !== null && from.prunedAt !== null ? from : to);
         return {
-          ...answer.diff,
-          kind: from ? ("interdiff" as const) : ("whole" as const),
-          from: from?.number ?? null,
+          ...merged,
+          kind: "whole" as const,
+          from: null,
           to: to.number,
-          rebased: answer.rebased,
-          exact: answer.exact,
+          rebased: false,
+          exact: true,
+          source: "merge" as const,
         };
       }),
     )

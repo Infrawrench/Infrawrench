@@ -24,7 +24,7 @@ import {
 } from "../../db/review";
 import type { RepoCx } from "../context";
 import { mergeabilityDetail } from "./branch-pages";
-import { iso, peopleById } from "./repositories";
+import { iso, isoOrNull, peopleById } from "./repositories";
 
 export const versionViews = async (
   pullRequestId: string,
@@ -69,6 +69,7 @@ export const versionViews = async (
       hasTrace: (count?.traceEntries ?? 0) > 0,
       reviewStatus: count?.reviewStatus ?? null,
       createdAt: iso(row.createdAt),
+      prunedAt: isoOrNull(row.prunedAt),
     };
   });
 };
