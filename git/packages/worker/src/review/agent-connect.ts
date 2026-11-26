@@ -109,6 +109,7 @@ export const connectAgent = async (
   // Never what a client sent: these are the forge's to say.
   delete refs["launchError"];
   delete refs["startUrl"];
+  delete refs["threadStatus"];
 
   if (agent.kind === "infrawrench") {
     const organizationId = cx.repo.owner.organizationId;

@@ -83,8 +83,13 @@ export const AgentsHandlers = HttpApiBuilder.group(GitApi, "agents", (handlers) 
         const row = await getAgentLink(found.pull.issueId);
         if (!row) return { agent: null };
         const agent = await agentLinkView(row);
-        // What a T3 Code thread is doing, asked of its environment and kept a few seconds.
-        const status = row.kind === "t3" ? await threadState(cx.env, row.pullRequestId) : null;
+        // What a T3 Code thread is doing, asked of its environment and kept a few
+        // seconds. Only for somebody signed in: a visitor to a public repository
+        // does not get to make this site call a person's machine.
+        const status =
+          row.kind === "t3" && cx.userId !== null
+            ? await threadState(cx.env, row.pullRequestId)
+            : null;
         return {
           agent:
             status === null
