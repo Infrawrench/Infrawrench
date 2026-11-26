@@ -52,6 +52,8 @@ export const API_ROUTES = {
     listCommits: ["GET", "/api/repos/:owner/:repo/commits"],
     commit: ["GET", "/api/repos/:owner/:repo/commits/:sha"],
     commitDiff: ["GET", "/api/repos/:owner/:repo/commits/:sha/diff"],
+    commitReview: ["GET", "/api/repos/:owner/:repo/commits/:sha/review"],
+    pathReview: ["GET", "/api/repos/:owner/:repo/review-history"],
     compare: ["GET", "/api/repos/:owner/:repo/compare"],
     compareDiff: ["GET", "/api/repos/:owner/:repo/compare/diff"],
     blame: ["GET", "/api/repos/:owner/:repo/blame"],

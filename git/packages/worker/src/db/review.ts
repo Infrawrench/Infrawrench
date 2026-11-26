@@ -41,7 +41,7 @@ export type VersionRow = typeof gitBranchVersions.$inferSelect;
 export type AgentLinkRow = typeof gitAgentLinks.$inferSelect;
 export type ReviewSettingsRow = typeof gitReviewSettings.$inferSelect;
 
-/** How long a version outlives its branch being merged or deleted. */
+/** How long a version's commit outlives its branch being merged or deleted. The row stays. */
 export const VERSION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
@@ -132,7 +132,7 @@ export const keepLineage = async (
     );
 };
 
-/** The branch was merged or deleted: its versions go thirty days from `at`, unless already due. */
+/** The branch was merged or deleted: its versions' refs go thirty days from `at`, unless already due. */
 export const markBranchForPruning = async (
   repositoryId: string,
   branch: string,
@@ -146,22 +146,30 @@ export const markBranchForPruning = async (
         eq(gitBranchVersions.repositoryId, repositoryId),
         eq(gitBranchVersions.branch, branch),
         isNull(gitBranchVersions.pruneAfter),
+        isNull(gitBranchVersions.prunedAt),
       ),
     );
 };
 
-/** Versions whose time has come, oldest first. */
+/** Versions whose time has come and whose refs are still there, oldest first. */
 export const dueVersions = (now: Date, limit: number): Promise<VersionRow[]> =>
   db
     .select()
     .from(gitBranchVersions)
-    .where(lte(gitBranchVersions.pruneAfter, now))
+    .where(and(lte(gitBranchVersions.pruneAfter, now), isNull(gitBranchVersions.prunedAt)))
     .orderBy(asc(gitBranchVersions.pruneAfter))
     .limit(limit);
 
-export const deleteVersions = async (ids: readonly string[]): Promise<void> => {
+/**
+ * Their refs are gone. The rows stay as the record: the numbers, the trace
+ * entries, the findings and the review comments all still name them.
+ */
+export const markVersionsPruned = async (ids: readonly string[], at: Date): Promise<void> => {
   if (ids.length === 0) return;
-  await db.delete(gitBranchVersions).where(inArray(gitBranchVersions.id, [...ids]));
+  await db
+    .update(gitBranchVersions)
+    .set({ prunedAt: at })
+    .where(and(inArray(gitBranchVersions.id, [...ids]), isNull(gitBranchVersions.prunedAt)));
 };
 
 /**

@@ -182,8 +182,8 @@
 
   // Local development only; production TCP arrives through a Spectrum
   // application whose origin is this Worker (README "SSH").
-  // Hourly: versions of branches merged or deleted thirty days ago are pruned
-  // (`src/review/prune.ts`), and review runs nothing finished are sent again
+  // Hourly: versions of branches merged or deleted thirty days ago lose the refs
+  // that kept their commits (`src/review/prune.ts`), and review runs nothing finished are sent again
   // or failed (`src/review/queue.ts`).
   // Every two minutes: instructions still waiting for an agent the forge tells itself
   // (`src/review/instructions.ts` `sweepInstructions`; `src/index.ts` tells the two apart by expression).

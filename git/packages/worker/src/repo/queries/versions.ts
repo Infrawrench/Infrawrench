@@ -5,7 +5,9 @@
  *
  * The commit ids here come from the forge's own rows (`git_branch_versions`),
  * never from a caller, so they are read without asking whether a ref reaches
- * them. A version's ref keeps its commit until the version is pruned.
+ * them. A version's ref keeps its commit until the version is pruned; a
+ * pruned version's row is kept, and its commit is then read only while some
+ * other ref reaches it (`reachableOnly`).
  */
 import { GitError, type GitObject, type ObjectId } from "@infrawrench/git-core";
 import { ObjectCache, diffFile, mergeTrees, resolvePath } from "@infrawrench/git-ops";
@@ -19,7 +21,7 @@ import {
   type VersionDiffInput,
 } from "../reader";
 import { diffPage, treeOf } from "./diffs";
-import { type ReaderContext, type Session, openSession, unavailable } from "./session";
+import { type ReaderContext, type Session, openSession, reachable, unavailable } from "./session";
 
 export async function listVersions(
   cx: ReaderContext,
@@ -88,6 +90,14 @@ export async function versionDiff(
 ): Promise<ReaderVersionDiff> {
   const session = await openSession(cx);
   const { from, to } = input;
+  if (input.reachableOnly === true) {
+    // What a pruned version's ref held is a leftover unless something else keeps it.
+    for (const oid of from === null ? [to.tipOid] : [from.tipOid, to.tipOid]) {
+      if (!(await reachable(session, oid))) {
+        throw new RepoReaderError("ref_not_found", "That version's commits are no longer kept");
+      }
+    }
+  }
   const toTree = await treeOf(session, to.tipOid);
   if (from === null) {
     return {

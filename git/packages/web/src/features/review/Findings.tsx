@@ -3,7 +3,7 @@
  * and in the list), with its evidence, and what a person can do about it:
  * dismiss it with a reason, reopen it, or send it to the agent.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import type { FindingSeverity, ReviewFinding, ReviewRunStatus } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
@@ -265,6 +265,15 @@ export function FindingsPanel({
   });
   const busy = run === "queued" || run === "running";
   const summary = openBySeverity(findings);
+  // A link to one finding (`#finding-<id>`, from a commit or a blamed line) lands on it, opened.
+  const linked = window.location.hash.startsWith("#finding-")
+    ? window.location.hash.slice("#finding-".length)
+    : null;
+  const present = linked !== null && findings.some((finding) => finding.id === linked);
+  useEffect(() => {
+    if (!present) return;
+    document.getElementById(`finding-${linked}`)?.scrollIntoView?.({ block: "center" });
+  }, [present, linked]);
   return (
     <Panel id="findings" className="scroll-mt-24">
       <PanelHeader
@@ -305,8 +314,12 @@ export function FindingsPanel({
       ) : (
         <ul className="divide-y divide-border">
           {sortFindings(findings).map((finding) => (
-            <li key={finding.id}>
-              <FindingCard finding={finding} branchKey={branchKey} />
+            <li key={finding.id} id={`finding-${finding.id}`} className="scroll-mt-24">
+              <FindingCard
+                finding={finding}
+                branchKey={branchKey}
+                {...(finding.id === linked ? { startOpen: true } : {})}
+              />
             </li>
           ))}
         </ul>

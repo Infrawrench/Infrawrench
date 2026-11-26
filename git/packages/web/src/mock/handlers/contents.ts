@@ -1,4 +1,10 @@
-import { isValidRefName, type Branch, type FileBlob, type GitTag } from "@infrawrench/git-contract";
+import {
+  isValidRefName,
+  type Branch,
+  type FileBlob,
+  type GitTag,
+  type MergedReview,
+} from "@infrawrench/git-contract";
 import { badRequest, conflict, defineMockHandlers, mockError, ok, paginate } from "../define";
 import {
   currentUser,
@@ -10,7 +16,15 @@ import {
   type RepositoryRecord,
 } from "../db";
 import { copyObjects } from "../git-write";
-import { findPage, openPageOf, toBranchPageSummary } from "../threads-data";
+import { peekReview } from "../review-data";
+import {
+  findPage,
+  openPageOf,
+  pageKeyOf,
+  threadsOf,
+  toBranchPageSummary,
+  type ThreadRecord,
+} from "../threads-data";
 import {
   aheadBehind,
   blameOf,
@@ -87,6 +101,60 @@ function pageBadge(repo: RepositoryRecord, name: string) {
   }
   const page = toBranchPageSummary(repo, thread);
   return { key: page.key, title: page.title, state: page.state, draft: page.draft };
+}
+
+const SEVERITY_RANK = { must_fix: 0, should_fix: 1, note: 2 } as const;
+
+/** A merged page's review record: all of it, or only the findings on one path. */
+function mergedReview(repo: RepositoryRecord, thread: ThreadRecord, path?: string): MergedReview {
+  const page = thread.page!;
+  const merged = page.merged!;
+  const state = peekReview(repo, thread.number);
+  const findings = (state?.findings ?? [])
+    .filter((item) => path === undefined || item.path === path)
+    .sort(
+      (a, b) =>
+        SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
+        (a.path ?? "").localeCompare(b.path ?? "") ||
+        (a.startLine ?? 0) - (b.startLine ?? 0),
+    )
+    .map((item) => {
+      const override =
+        item.status === "open"
+          ? [...(state?.overrides ?? [])]
+              .reverse()
+              .find((each) => each.findingIds.includes(item.id))
+          : undefined;
+      return {
+        id: item.id,
+        reviewerKind: item.reviewerKind,
+        severity: item.severity,
+        title: item.title,
+        path: item.path,
+        side: item.side,
+        startLine: item.startLine,
+        endLine: item.endLine,
+        commitOid: item.commitOid,
+        linesAtHead: item.commitOid === page.frozenHeadOid,
+        status: item.status,
+        version: item.version,
+        fixedInVersion: item.fixedInVersion,
+        dismissedBy: item.dismissedBy,
+        dismissalReason: item.dismissalReason,
+        override: override ? { by: override.by, reason: override.reason } : null,
+      };
+    });
+  return {
+    page: { key: pageKeyOf(repo, thread), title: thread.title, branch: page.headRef },
+    mergeCommitOid: merged.commitOid,
+    mergeMethod: merged.method,
+    mergedAt: merged.at,
+    mergedBy: merged.by,
+    versions: state?.versions.length ?? 0,
+    ask:
+      path === undefined ? (state?.traces.find((item) => item.kind === "ask")?.body ?? null) : null,
+    findings,
+  };
 }
 
 /**
@@ -300,6 +368,30 @@ export default defineMockHandlers({
         branchPages: commit.summary.startsWith("Merge pull request #7")
           ? [{ key: "feature/flow-logs", title: "network: optional VPC flow logs" }]
           : [],
+      };
+    },
+    commitReview: ({ params }) => {
+      const repo = findRepository(params.owner, params.repo);
+      const sha = params.sha.toLowerCase();
+      const thread = threadsOf(repo).threads.find((item) => item.page?.merged?.commitOid === sha);
+      return { review: thread === undefined ? null : mergedReview(repo, thread) };
+    },
+    pathReview: ({ params, query }) => {
+      const repo = findRepository(params.owner, params.repo);
+      const limit = query.limit ?? 5;
+      const pages = threadsOf(repo)
+        .threads.filter(
+          (item) =>
+            item.page?.merged != null &&
+            (peekReview(repo, item.number)?.findings ?? []).some(
+              (found) => found.path === query.path,
+            ),
+        )
+        .sort((a, b) => b.page!.merged!.at.localeCompare(a.page!.merged!.at));
+      return {
+        path: query.path,
+        pages: pages.slice(0, limit).map((item) => mergedReview(repo, item, query.path)),
+        more: pages.length > limit,
       };
     },
     commitDiff: ({ params, query }) => {

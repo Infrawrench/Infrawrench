@@ -75,7 +75,7 @@ A reviewer leaves findings on the lines they are about, each **must fix**, **sho
 - When an agent is named as the branch's author, a must-fix finding is sent back to it as an instruction.
 - A branch proposed from a fork is not reviewed on its own: someone with write access asks for the review.
 
-Review agents run for repositories an organization owns, and what they use counts toward that organization's [AI usage](../team-and-billing/billing-and-plans.md#ai-usage). When the organization has reached its AI budget for the month, a review is skipped and says so. A reviewer of your own can report findings through the API under its own name.
+Review agents run for repositories an organization owns, and what they use counts toward that organization's [AI usage](../team-and-billing/billing-and-plans.md#ai-usage). When the organization has reached its AI budget for the month, a review is skipped and says so. A reviewer of your own can report findings through the API under its own name, in any repository: its findings are listed on the branch's page whether or not review agents are turned on.
 
 ### Merge
 
@@ -88,6 +88,24 @@ The merge box lists what stands in the way: missing approvals, failing required 
 | **Rebase**       | The branch's commits replayed on top of the base, with no merge commit. |
 
 You can edit the commit title and message before confirming a merge commit or a squash. **Delete branch after merge** removes the branch. An administrator chooses which methods a repository offers, and the default, under **Settings > General**.
+
+### After a merge
+
+A merged branch keeps its page, and the page keeps the record of the work: every version, the trace the agent recorded, the review comments, and every finding with how it was settled. A finding says whether it was fixed and in which version, dismissed and by whom with their reason, still open when the branch was merged, or merged past by an administrator with their reason.
+
+The same record is on the default branch, where the code is:
+
+| Where                 | What it shows                                                                                                                                          |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **The merged commit** | A **Review** section: the ask, how many versions the branch went through, and its findings by severity, each with how it was settled.                  |
+| **Blame**             | A dot beside the lines a merged branch's findings were about. Hover it for the severity and how the finding was settled; click it to open the finding. |
+| **A file**            | **Review history**: the findings merged branches left on that file, the most recent merge first.                                                       |
+
+<insert [A merged commit's page on git.infrawrench.com: the commit header, then the Review section with "2 versions", the ask, and findings grouped under Must fix, Should fix and Note, one marked "Fixed in v2", one "Merged past it" with the administrator's reason, one "Dismissed" with its reason] here>
+
+Blame marks a line only when it can tell the line is the one the finding was about. A finding whose lines have changed since is counted in the file's header instead, and listed under **Review history**.
+
+Thirty days after a branch is merged or deleted, the commits of its versions stop being kept. The versions stay in the strip with everything recorded on them. The newest version of a merged branch still shows the whole change, read from the commit it was merged as. An older version's own diff says that its commits are no longer kept.
 
 ## Protected branches
 

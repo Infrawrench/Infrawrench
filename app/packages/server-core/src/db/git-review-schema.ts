@@ -9,8 +9,10 @@
  *
  * The objects are not here. Each version's commit is kept alive in the
  * repository's Durable Object by a ref under `refs/infrawrench/versions/`,
- * which no client is shown and no push may write; a row pruned here has its
- * ref removed there (the worker's `review/prune.ts`).
+ * which no client is shown and no push may write. Thirty days after a branch
+ * is merged or deleted that ref is removed (the worker's `review/prune.ts`)
+ * and the row is marked `pruned_at`. The row stays, and with it everything
+ * that hangs off it: traces, findings, review comments and the numbers.
  *
  * Lives in its own module and is re-exported from `schema.ts`, the
  * satellite-schema convention.
@@ -127,10 +129,16 @@ export const gitBranchVersions = pgTable(
     /** When the push landed. */
     createdAt: timestamp("created_at").notNull().defaultNow(),
     /**
-     * When the row and its ref go: thirty days after the branch was merged
-     * or deleted. Null while the branch is alive.
+     * When the ref that keeps its commit goes: thirty days after the branch
+     * was merged or deleted. Null while the branch is alive.
      */
     pruneAfter: timestamp("prune_after"),
+    /**
+     * When that ref went. The row is the record from then on: its commit may
+     * no longer be readable, so a diff of it is only served when a branch or
+     * a tag still reaches both ends.
+     */
+    prunedAt: timestamp("pruned_at"),
   },
   (t) => ({
     numberIdx: uniqueIndex("git_branch_versions_number_idx").on(
@@ -140,10 +148,10 @@ export const gitBranchVersions = pgTable(
       t.number,
     ),
     pullIdx: index("git_branch_versions_pull_idx").on(t.pullRequestId, t.number),
-    // The pruning pass: what is due.
+    // The pruning pass: what is due and still has its ref.
     pruneIdx: index("git_branch_versions_prune_idx")
       .on(t.pruneAfter)
-      .where(sql`${t.pruneAfter} is not null`),
+      .where(sql`${t.pruneAfter} is not null and ${t.prunedAt} is null`),
   }),
 );
 
@@ -157,7 +165,7 @@ export const gitVersionReviews = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** Null once that version is pruned; the numbers below stay. */
+    /** The numbers below say the same, and outlive the row. */
     versionId: text("version_id").references(() => gitBranchVersions.id, { onDelete: "set null" }),
     lineage: integer("lineage").notNull(),
     versionNumber: integer("version_number").notNull(),
@@ -186,7 +194,10 @@ export const gitTraceEntries = pgTable(
       .notNull()
       .references(() => gitRepositories.id, { onDelete: "cascade" }),
     branch: text("branch").notNull(),
-    /** Null until the next push to the branch. Pruned with its version. */
+    /**
+     * Null until the next push to the branch. A version's row outlives its
+     * pruning, so its entries do too: they go only with the repository.
+     */
     versionId: text("version_id").references(() => gitBranchVersions.id, { onDelete: "cascade" }),
     kind: text("kind").$type<GitTraceKind>().notNull(),
     /** Markdown. */
@@ -218,7 +229,6 @@ export const gitReviewRuns = pgTable(
     pullRequestId: text("pull_request_id")
       .notNull()
       .references(() => gitPullRequests.issueId, { onDelete: "cascade" }),
-    /** Null once that version is pruned. */
     versionId: text("version_id").references(() => gitBranchVersions.id, { onDelete: "set null" }),
     versionNumber: integer("version_number").notNull(),
     /** The commit reviewed. */
@@ -265,7 +275,7 @@ export const gitReviewFindings = pgTable(
       .notNull()
       .references(() => gitPullRequests.issueId, { onDelete: "cascade" }),
     runId: text("run_id").references(() => gitReviewRuns.id, { onDelete: "set null" }),
-    /** The version it was first raised on. The id is null once that version is pruned. */
+    /** The version it was first raised on. */
     versionId: text("version_id").references(() => gitBranchVersions.id, { onDelete: "set null" }),
     versionNumber: integer("version_number").notNull(),
     /** The newest version it was seen on, while it stays open. */
@@ -301,6 +311,10 @@ export const gitReviewFindings = pgTable(
       t.pullRequestId,
       t.fingerprint,
     ),
+    // A file's review history: the findings of merged branch pages on its path.
+    pathIdx: index("git_review_findings_path_idx")
+      .on(t.repositoryId, t.path)
+      .where(sql`${t.path} is not null`),
   }),
 );
 
@@ -356,7 +370,7 @@ export const gitInstructions = pgTable(
     /** How it reached the agent: `infrawrench`, `t3`, `mcp` (the agent asked for it). */
     deliveredVia: text("delivered_via"),
     deliveredAt: timestamp("delivered_at"),
-    /** The version that answers it. The id is null once that version is pruned. */
+    /** The version that answers it. */
     answeredInVersionId: text("answered_in_version_id").references(() => gitBranchVersions.id, {
       onDelete: "set null",
     }),

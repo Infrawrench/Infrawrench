@@ -2,7 +2,8 @@
  * The versions of a branch as one slim strip, oldest first: each a small card
  * with its number, where the reader last reviewed, its age and its size. Who
  * pushed it and what it carries (comments, findings, a trace) are the card's
- * tooltip. Picking one shows it below.
+ * tooltip. Picking one shows it below. A version whose commits are no longer
+ * kept stays in the strip, marked, with everything it carries.
  *
  * The strip scrolls sideways inside the page and never past its edge: it
  * opens at its end, where the newest version is, and fades at whichever side
@@ -24,6 +25,7 @@ function detail(version: BranchVersion): string {
     ...(version.counts.comments > 0 ? [plural(version.counts.comments, "comment")] : []),
     ...(version.counts.findings > 0 ? [plural(version.counts.findings, "finding")] : []),
     ...(version.hasTrace ? ["Has a trace"] : []),
+    ...(version.prunedAt !== null ? ["Commits no longer kept"] : []),
   ].join(" · ");
 }
 
@@ -107,9 +109,16 @@ export function VersionRail({
                     : "border-border bg-surface hover:bg-surface-raised"
                 }`}
               >
-                <span className="font-mono text-[13px] font-semibold text-on-surface">
+                <span
+                  className={`font-mono text-[13px] font-semibold ${
+                    version.prunedAt === null ? "text-on-surface" : "text-on-surface-muted"
+                  }`}
+                >
                   v{version.number}
                 </span>
+                {version.prunedAt !== null ? (
+                  <Icon name="archive" size={11} className="text-on-surface-faint" />
+                ) : null}
                 {version.forced ? <Badge tone="warning">Forced</Badge> : null}
                 {version.number === reviewed ? (
                   <Badge tone="neutral">

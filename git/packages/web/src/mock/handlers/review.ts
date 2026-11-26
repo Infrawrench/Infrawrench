@@ -341,6 +341,7 @@ function presentVersion(
     hasTrace: traceEntries > 0,
     reviewStatus: run?.status ?? null,
     createdAt: version.createdAt,
+    prunedAt: version.prunedAt ?? null,
   };
 }
 
@@ -477,15 +478,38 @@ export default defineMockHandlers({
       if (from !== null && from.number > to.number) {
         throw unprocessable("The version to compare from is newer");
       }
-      const baseOid = from === null ? baseOf(repo, thread, to.tipOid) : from.tipOid;
-      const all = diffCommits(fx, baseOid, to.tipOid, {
+      // A pruned version's commit is gone. What was merged is still in the merge.
+      const pruned = to.prunedAt !== undefined || (from?.prunedAt ?? undefined) !== undefined;
+      const merged = thread.page!.merged;
+      const fromMerge =
+        pruned &&
+        from === null &&
+        merged !== null &&
+        merged.method !== "rebase" &&
+        to === state.versions[state.versions.length - 1];
+      if (pruned && !fromMerge) {
+        const gone = from?.prunedAt !== undefined ? from : to;
+        throw mockError(
+          422,
+          `The commits of v${gone.number} are no longer kept: they were removed thirty days after the branch was merged or deleted`,
+          "version_pruned",
+        );
+      }
+      const headOid = fromMerge ? merged.commitOid : to.tipOid;
+      const baseOid = fromMerge
+        ? (fx.commits[merged.commitOid]?.parents[0] ?? null)
+        : from === null
+          ? baseOf(repo, thread, to.tipOid)
+          : from.tipOid;
+      const all = diffCommits(fx, baseOid, headOid, {
         context: query?.context,
         path: query?.path,
       });
       const slice = paginate(all, query);
       return {
         baseOid,
-        headOid: to.tipOid,
+        headOid,
+        source: fromMerge ? ("merge" as const) : ("versions" as const),
         stats: statsOf(all.map(summaryOf)),
         files: slice.items,
         nextCursor: slice.nextCursor,

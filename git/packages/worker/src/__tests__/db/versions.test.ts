@@ -2,7 +2,8 @@
  * Versions of a branch against a real Postgres: the queue consumer copying
  * them from the storage (every push delivered twice), the branch page it
  * opens, review comments carried from version to version, the diffs and
- * marks the API serves over them, and pruning.
+ * marks the API serves over them, pruning, and the record a merged branch
+ * leaves on the default branch.
  */
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +11,7 @@ import {
   gitBranchVersions,
   gitMergeOverrides,
   gitReviewFindings,
+  gitTraceEntries,
 } from "@infrawrench/server-core/db/schema";
 import { db, newId } from "../../db/client";
 import { VERSION_RETENTION_MS } from "../../db/review";
@@ -483,7 +485,7 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     expect(kept!.pruneAfter!.getTime()).toBeGreaterThan(Date.now() + VERSION_RETENTION_MS - 60_000);
   });
 
-  it("prunes a branch's versions thirty days after it is deleted, and keeps a new lineage", async () => {
+  it("drops a branch's version refs thirty days after it is deleted, and keeps the rows and a new lineage", async () => {
     const day = 24 * 60 * 60 * 1000;
     const start = Date.now() - 40 * day;
     await push("gone", { at: start });
@@ -508,14 +510,212 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     expect(await rows("gone")).toHaveLength(3);
     expect(world.storage.repository(id).pruned).toEqual([]);
 
-    await pruneVersions(world.env, { ...options, now: new Date(start + 31 * day) });
-    expect((await rows("gone")).map((row) => [row.lineage, row.number])).toEqual([[2, 1]]);
+    const when = new Date(start + 31 * day);
+    expect(await pruneVersions(world.env, { ...options, now: when })).toEqual({
+      pruned: 2,
+      deferred: 0,
+    });
+    // The refs are gone from the storage; the rows are the record, marked.
+    expect((await rows("gone")).map((row) => [row.lineage, row.number, row.prunedAt])).toEqual([
+      [1, 1, when],
+      [1, 2, when],
+      [2, 1, null],
+    ]);
     expect(world.storage.repository(id).pruned).toEqual(["gone 1/1", "gone 1/2"]);
     // Nothing more is due, and the storage keeps the lineage that lives.
-    await pruneVersions(world.env, { ...options, now: new Date(start + 31 * day) });
+    expect(await pruneVersions(world.env, { ...options, now: new Date(start + 32 * day) })).toEqual(
+      { pruned: 0, deferred: 0 },
+    );
+    expect(world.storage.repository(id).pruned).toHaveLength(2);
     expect(world.storage.repository(id).versions.map((v) => `${v.lineage}/${v.number}`)).toEqual([
       "2/1",
     ]);
+  });
+
+  it("keeps a merged branch's versions, trace and findings after pruning, and shows them from the merge", async () => {
+    const day = 24 * 60 * 60 * 1000;
+    await world.call("POST", `${repo}/traces`, {
+      as: alice,
+      body: { branch: "feature", entries: [{ kind: "ask", body: "Add rate limits to the API" }] },
+    });
+    const one = await push("feature");
+    const two = await push("feature", { forced: true });
+    const [page] = await pullsOf("feature");
+    const pull = `${pagePath(repo, page!["key"])}`;
+    await world.call("PUT", `${pull}/draft`, { as: alice, body: { draft: false } });
+    const [v1] = await rows("feature");
+
+    const finding = (
+      values: Partial<typeof gitReviewFindings.$inferInsert> & { title: string },
+    ) => ({
+      id: newId(),
+      repositoryId: id,
+      pullRequestId: page!["id"] as string,
+      versionId: v1!.id,
+      versionNumber: 1,
+      lastSeenVersionNumber: 2,
+      reviewerKind: "claude-review",
+      fingerprint: values.title,
+      path: "src/limits.ts",
+      startLine: 4,
+      endLine: 6,
+      commitOid: two.newOid,
+      severity: "should_fix" as const,
+      ...values,
+    });
+    const open = finding({ title: "The limit is read once at start", severity: "must_fix" });
+    const fixed = finding({
+      title: "No test for the 429",
+      status: "fixed",
+      lastSeenVersionNumber: 1,
+      fixedInVersionNumber: 2,
+      commitOid: one.newOid,
+    });
+    const dismissed = finding({
+      title: "Retry-After could be a date",
+      severity: "note",
+      status: "dismissed",
+      dismissedByUserId: bob.id,
+      dismissedAt: new Date(),
+      dismissalReason: "Seconds are what clients read",
+      path: "src/headers.ts",
+      startLine: 2,
+      endLine: 2,
+    });
+    await db.insert(gitReviewFindings).values([open, fixed, dismissed]);
+    await db.insert(gitMergeOverrides).values({
+      id: newId(),
+      repositoryId: id,
+      pullRequestId: page!["id"],
+      userId: alice.id,
+      reason: "Tracked for the next release",
+      findingIds: [open.id],
+      headOid: two.newOid,
+    });
+
+    const merged = await world.call("POST", `${pull}/merge`, {
+      as: alice,
+      body: { method: "squash", deleteBranch: true },
+    });
+    expect(merged.status).toBe(200);
+    const mergeOid = world.storage.repository(id).branches.get("main")!;
+    const diff = (query = "") =>
+      world.call("GET", `${pull}/versions/latest/diff${query}`, { as: bob });
+    expect((await diff()).body).toMatchObject({ kind: "whole", to: 2, source: "versions" });
+
+    // Thirty days on the refs go. Nothing else reaches the branch's commits here.
+    world.storage.repository(id).pullRefs.clear();
+    await pruneVersions(world.env, {
+      readers: world.storage.readers,
+      now: new Date(Date.now() + 31 * day),
+    });
+    expect(world.storage.repository(id).pruned).toEqual(["feature 1/1", "feature 1/2"]);
+    expect((await rows("feature")).map((row) => row.prunedAt)).toEqual([
+      expect.any(Date),
+      expect.any(Date),
+    ]);
+
+    // The strip, the trace and the findings are all still there.
+    const listed = await versionsOf(page!["key"], bob);
+    expect(listed.versions).toMatchObject([
+      { number: 1, prunedAt: expect.any(String), counts: { traceEntries: 1, findings: 3 } },
+      { number: 2, prunedAt: expect.any(String), forced: true },
+    ]);
+    const traces = await world.call("GET", `${repo}/traces?branch=feature`, { as: bob });
+    expect(traces.body.items.map((entry: any) => [entry.body, entry.version])).toEqual([
+      ["Add rate limits to the API", 1],
+    ]);
+    expect(
+      await db.select().from(gitTraceEntries).where(eq(gitTraceEntries.versionId, v1!.id)),
+    ).toHaveLength(1);
+    expect((await world.call("GET", `${pull}/findings`, { as: bob })).body.findings).toHaveLength(
+      3,
+    );
+
+    // The whole change is read from the squash; a step between pruned versions says it is gone.
+    expect((await diff()).body).toMatchObject({
+      kind: "whole",
+      from: null,
+      to: 2,
+      headOid: mergeOid,
+      source: "merge",
+    });
+    expect(await diff("?from=previous")).toMatchObject({
+      status: 422,
+      body: { code: "version_pruned" },
+    });
+    expect(await world.call("GET", `${pull}/versions/1/diff`, { as: bob })).toMatchObject({
+      status: 422,
+      body: { code: "version_pruned" },
+    });
+
+    // The merged commit carries the record.
+    const review = await world.call("GET", `${repo}/commits/${mergeOid}/review`, { as: bob });
+    expect(review.body.review).toMatchObject({
+      page: { key: page!["key"], title: page!["title"], branch: "feature" },
+      mergeCommitOid: mergeOid,
+      mergeMethod: "squash",
+      mergedBy: { username: alice.username },
+      versions: 2,
+      ask: "Add rate limits to the API",
+    });
+    expect(
+      review.body.review.findings.map((each: any) => [each.severity, each.status, each.title]),
+    ).toEqual([
+      ["must_fix", "open", open.title],
+      ["should_fix", "fixed", fixed.title],
+      ["note", "dismissed", dismissed.title],
+    ]);
+    expect(review.body.review.findings).toMatchObject([
+      {
+        commitOid: two.newOid,
+        linesAtHead: true,
+        override: { by: { username: alice.username }, reason: "Tracked for the next release" },
+      },
+      { commitOid: one.newOid, linesAtHead: false, fixedInVersion: 2, override: null },
+      {
+        dismissedBy: { username: bob.username },
+        dismissalReason: "Seconds are what clients read",
+      },
+    ]);
+    // Any other commit, and a prefix of this one, name no page.
+    for (const sha of [one.newOid, mergeOid.slice(0, 12)]) {
+      expect((await world.call("GET", `${repo}/commits/${sha}/review`, { as: bob })).body).toEqual({
+        review: null,
+      });
+    }
+
+    // A file's history is the findings on its path, by page.
+    const history = await world.call(
+      "GET",
+      `${repo}/review-history?path=${encodeURIComponent("src/limits.ts")}`,
+    );
+    expect(history.body).toMatchObject({ path: "src/limits.ts", more: false });
+    expect(history.body.pages).toMatchObject([
+      { page: { key: page!["key"] }, mergeCommitOid: mergeOid, ask: null },
+    ]);
+    expect(history.body.pages[0].findings.map((each: any) => each.title)).toEqual([
+      open.title,
+      fixed.title,
+    ]);
+    expect(
+      (await world.call("GET", `${repo}/review-history?path=README.md`, { as: bob })).body.pages,
+    ).toEqual([]);
+  });
+
+  it("answers a private repository's review record as missing to those who cannot read it", async () => {
+    const hidden = await world.repository(
+      alice,
+      alice.username,
+      `hidden-history-${count}`,
+      "private",
+    );
+    const oid = "a".repeat(40);
+    for (const path of [`commits/${oid}/review`, "review-history?path=src/a.ts"]) {
+      expect((await world.call("GET", `${hidden.path}/${path}`, { as: alice })).status).toBe(200);
+      expect((await world.call("GET", `${hidden.path}/${path}`, { as: bob })).status).toBe(404);
+      expect((await world.call("GET", `${hidden.path}/${path}`)).status).toBe(404);
+    }
   });
 
   it("starts work from an ask: a branch, its draft page and the agent behind it", async () => {

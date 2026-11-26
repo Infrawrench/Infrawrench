@@ -17,7 +17,9 @@ import {
   needsNow,
   openBySeverity,
   placeOnDiff,
+  prunedNotice,
   seenOn,
+  showsFindings,
   sortFindings,
 } from "../branch";
 
@@ -261,5 +263,27 @@ describe("a branch name from an ask", () => {
       branchNameFor("Peer each environment's VPC with shared services so the cluster reaches it"),
     ).toBe("work/peer-each-environment-s-vpc-with-shared");
     expect(branchNameFor("   ")).toBe("");
+  });
+});
+
+describe("whether the page lists findings", () => {
+  it("does whenever there is a finding or a run, whatever the repository's setting", () => {
+    const off = { agentsEnabled: false, findings: 0, run: null };
+    expect(showsFindings(off)).toBe(false);
+    expect(showsFindings({ ...off, findings: 2 })).toBe(true);
+    expect(showsFindings({ ...off, run: "done" })).toBe(true);
+    // On, the empty list says nothing was found.
+    expect(showsFindings({ ...off, agentsEnabled: true })).toBe(true);
+  });
+});
+
+describe("a pruned version's diff", () => {
+  it("says what cannot be shown and why", () => {
+    expect(prunedNotice({ version: 1, mode: "whole", merged: true })).toBe(
+      "The change at v1 cannot be shown: its commits were removed 30 days after the branch was merged. What was recorded and found on it is kept.",
+    );
+    expect(prunedNotice({ version: 3, mode: "step", merged: false })).toBe(
+      "What v3 changed since an earlier version cannot be shown: its commits were removed 30 days after the branch was deleted. What was recorded and found on it is kept.",
+    );
   });
 });

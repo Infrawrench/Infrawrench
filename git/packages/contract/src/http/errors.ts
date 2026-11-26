@@ -120,6 +120,7 @@ export const ERROR_CODES = [
   "terraform_unavailable",
   "ci_unavailable",
   "must_fix_findings",
+  "version_pruned",
   "not_implemented",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

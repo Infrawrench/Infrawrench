@@ -368,6 +368,12 @@ export interface VersionDiffInput {
   /** The older version, for what `to` changed since it. Null: the whole change of `to`, base to tip. */
   readonly from: VersionSide | null;
   readonly to: VersionSide;
+  /**
+   * One of the versions is pruned: its ref is gone, so its commit is read
+   * only while a branch, a tag or another ref still reaches it. Otherwise
+   * `ref_not_found`, whether or not the objects are still stored.
+   */
+  readonly reachableOnly?: boolean;
 }
 
 export interface ReaderVersionDiff {

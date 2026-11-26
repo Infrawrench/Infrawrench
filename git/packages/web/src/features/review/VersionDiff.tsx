@@ -15,8 +15,9 @@ import type {
   ReviewThread,
   TraceEntry,
 } from "@infrawrench/git-contract";
-import { api } from "../../api/client";
+import { ApiError, api } from "../../api/client";
 import { usePages } from "../../api/queries";
+import { AppLink } from "../../components/AppLink";
 import { Segmented } from "../../components/controls";
 import { DiffStat, diffFileId, type DiffLayout } from "../../components/DiffView";
 import { Checkbox } from "../../components/forms";
@@ -24,7 +25,8 @@ import { Icon } from "../../components/icons";
 import { EmptyState, ErrorState, Loading, LoadMore } from "../../components/states";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { cursorQuery } from "../../lib/cursor";
-import { plural } from "../../lib/format";
+import { plural, shortOid } from "../../lib/format";
+import { paths } from "../../lib/paths";
 import { useDiffLayout } from "../code/DiffSection";
 import { useBranchPage } from "../branch-page/BranchLayout";
 import { ReviewCommentForm, ReviewThreadView } from "../branch-page/ReviewThreadView";
@@ -36,7 +38,15 @@ import {
   type FileNode,
   type LineAnchor,
 } from "../branch-page/review-threads";
-import { diffFrom, diffNotice, lineKey, placeOnDiff, seenOn, type DiffMode } from "./branch";
+import {
+  diffFrom,
+  diffNotice,
+  lineKey,
+  placeOnDiff,
+  prunedNotice,
+  seenOn,
+  type DiffMode,
+} from "./branch";
 import { rowAbove } from "./diff/patch";
 import type { DiffMark, DiffMarkKey, PickedLines } from "./diff/ReviewDiff";
 import { FindingCard } from "./Findings";
@@ -366,6 +376,41 @@ export function VersionDiff({
     </>
   );
 
+  if (diff.error instanceof ApiError && diff.error.code === "version_pruned") {
+    const recorded = traces.filter((entry) => entry.version === version.number);
+    return (
+      <section aria-label="Changes" className="space-y-4">
+        <DiffBar lead={lead}>{actions}</DiffBar>
+        <p
+          role="note"
+          className="flex items-start gap-2 rounded-md border border-border bg-surface-raised px-3 py-2 text-xs text-on-surface-secondary"
+        >
+          <Icon name="archive" size={13} className="mt-0.5 text-on-surface-muted" />
+          <span>
+            {prunedNotice({ version: version.number, mode, merged: page.state === "merged" })}
+            {page.mergeCommitOid !== null ? (
+              <>
+                {" "}
+                The change as merged is commit{" "}
+                <AppLink
+                  href={paths.commit(repo, page.mergeCommitOid)}
+                  className="font-mono text-on-surface hover:underline"
+                >
+                  {shortOid(page.mergeCommitOid)}
+                </AppLink>
+                .
+              </>
+            ) : null}
+          </span>
+        </p>
+        {recorded.length > 0 ? (
+          <div className="diff-note max-w-3xl">
+            <TraceBlock entries={recorded} where label={`Recorded for v${version.number}`} />
+          </div>
+        ) : null}
+      </section>
+    );
+  }
   if (diff.error) return <ErrorState error={diff.error} />;
   // The strip is built the same while the diff loads, so its buttons are the same ones after.
   if (diff.isLoading || first === undefined) {
@@ -403,6 +448,25 @@ export function VersionDiff({
       >
         {controls}
       </DiffBar>
+      {first.source === "merge" && page.mergeCommitOid !== null ? (
+        <p
+          role="note"
+          className="flex items-start gap-2 rounded-md border border-border bg-surface-raised px-3 py-2 text-xs text-on-surface-secondary"
+        >
+          <Icon name="archive" size={13} className="mt-0.5 text-on-surface-muted" />
+          <span>
+            The commits of v{first.to} are no longer kept. This is the change as it was merged, read
+            from commit{" "}
+            <AppLink
+              href={paths.commit(repo, page.mergeCommitOid)}
+              className="font-mono text-on-surface hover:underline"
+            >
+              {shortOid(page.mergeCommitOid)}
+            </AppLink>
+            .
+          </span>
+        </p>
+      ) : null}
       {notice !== null ? (
         <p
           role="note"

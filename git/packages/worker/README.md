@@ -33,7 +33,7 @@ Two settings there are about what the site exposes, and a test holds both: `prev
 
 ## Cron trigger
 
-`triggers.crons` runs the Worker's `scheduled` handler every hour (`17 * * * *`): versions of branches merged or deleted thirty days ago are pruned (`src/review/prune.ts`). Wrangler deploys the trigger with the Worker; nothing in `infra/git/setup.mjs` makes it.
+`triggers.crons` runs the Worker's `scheduled` handler every hour (`17 * * * *`): the commits of versions of branches merged or deleted thirty days ago stop being kept (`src/review/prune.ts`; the versions' rows stay). Wrangler deploys the trigger with the Worker; nothing in `infra/git/setup.mjs` makes it.
 
 ## Variables (`vars` in `wrangler.jsonc`)
 

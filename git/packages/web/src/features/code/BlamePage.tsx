@@ -1,5 +1,8 @@
-/** A file with, beside each run of lines, the commit that last changed them. */
-import { useMemo } from "react";
+/**
+ * A file with, beside each run of lines, the commit that last changed them,
+ * and a mark on the lines a merged branch page's findings were about.
+ */
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { BlameRange } from "@infrawrench/git-contract";
 import { queries } from "../../api/queries";
@@ -15,7 +18,10 @@ import { languageOfPath } from "../../lib/highlight";
 import { paths } from "../../lib/paths";
 import { usePageTitle } from "../../lib/title";
 import { useRepoRef } from "../../layout/RepoLayout";
+import { optional } from "../review/optional";
 import { useLineSelection } from "./BlobPage";
+import { BlameMark, ReviewHistory } from "./ReviewHistory";
+import { placeOnBlame } from "./review-history";
 import { CodeRefPicker, PathBreadcrumbs } from "./shared";
 import { showBidi } from "../../lib/bidi";
 
@@ -28,6 +34,20 @@ export function BlamePage({ refName, path }: { refName: string; path: string }) 
     `${repo.owner}/${repo.repo}`,
   );
   const { selected, select } = useLineSelection(blame.data !== undefined);
+  // One read for the whole file, beside the blame: it never holds the blame back.
+  const history = useQuery(
+    optional(queries.contents.pathReview({ params: repo, query: { path, limit: 50 } })),
+  );
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const placement = useMemo(
+    () => placeOnBlame(blame.data?.ranges ?? [], history.data?.pages ?? []),
+    [blame.data, history.data],
+  );
+  const marked = placement.starts.size > 0;
+  const showHistory = () => {
+    setHistoryOpen(true);
+    document.getElementById("review-history")?.scrollIntoView?.({ block: "nearest" });
+  };
 
   // The range that starts at each line, so the gutter draws one cell per range.
   const startOf = useMemo(() => {
@@ -68,13 +88,43 @@ export function BlamePage({ refName, path }: { refName: string; path: string }) 
                   {data.blob.lineCount !== null ? `${plural(data.blob.lineCount, "line")} · ` : ""}
                   {formatBytes(data.blob.size)}
                 </span>
+                {placement.unplaced.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={showHistory}
+                    aria-label={`${plural(placement.unplaced.length, "review finding")} not on a line`}
+                    title="Findings from merged branches whose lines have changed since. They are listed in the review history."
+                    className="inline-flex items-center gap-1 rounded px-1 hover:bg-surface-sunken hover:text-on-surface"
+                  >
+                    <Icon name="shield" size={12} />
+                    {placement.unplaced.length}
+                  </button>
+                ) : null}
               </PanelHeader>
+              <ReviewHistory
+                repo={repo}
+                pages={history.data?.pages ?? []}
+                more={history.data?.more ?? false}
+                open={historyOpen}
+                onToggle={setHistoryOpen}
+              />
               <CodeView
                 text={data.blob.text ?? ""}
                 language={languageOfPath(path)}
                 selected={selected}
                 onSelectLine={select}
                 label={`Blame of ${data.blob.name}`}
+                marker={
+                  marked
+                    ? (line) => (
+                        <BlameMark
+                          repo={repo}
+                          starts={placement.starts.get(line)}
+                          covered={placement.covered.get(line)}
+                        />
+                      )
+                    : undefined
+                }
                 gutter={(line) => {
                   const range = startOf.get(line);
                   if (!range) return null;
