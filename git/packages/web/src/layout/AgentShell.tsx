@@ -12,6 +12,7 @@ import { Icon, type IconName } from "../components/icons";
 import { Menu } from "../components/Menu";
 import { Avatar } from "../components/people";
 import { paths } from "../lib/paths";
+import { SidebarShellContext } from "../lib/shell";
 import { BrandMark } from "./AppShell";
 import { accountName, useAccountMenuItems } from "./account-menu";
 import { BarTitle, useBarSlot } from "./TopBar";
@@ -345,7 +346,9 @@ export function AgentShell({
           {bar.claimed ? null : <DefaultBar />}
         </header>
         <main id="main" className="min-w-0 flex-1">
-          {bar.provider(children)}
+          <SidebarShellContext.Provider value={true}>
+            {bar.provider(children)}
+          </SidebarShellContext.Provider>
         </main>
       </div>
     </div>
