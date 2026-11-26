@@ -79,6 +79,22 @@ Private GitHub repos picked this way clone on the VM with a short-lived token, a
 
 The desktop app shows the same picker when an organization is selected. In local-only mode the form has a free-text **Git URL** field and a **Local folder** picker instead.
 
+### Work on a pull request from git.infrawrench.com
+
+**Start work** on [git.infrawrench.com](./git-agents.md#start-work-from-an-ask) with Infrawrench as the agent opens the Agents tab on the web app with that pull request in place of the repository picker. **Create** then starts a terminal session that:
+
+- clones the forge repository and checks out the pull request's branch, instead of a generated `infrawrench/agent-*` branch;
+- starts your coding tool with the pull request's title and description as its first prompt, along with how to push, record what it does and read reviewer instructions;
+- shows on the pull request as its agent.
+
+You need `git:write` in the organization. The pull request must be open, in one of the organization's repositories, with its branch in that same repository.
+
+<insert [Agents tab on the web app opened from git.infrawrench.com, with the pull request line (number and repository) in place of the repository picker and the Dismiss button] here>
+
+The VM gets a credential that pushes that one branch and nothing else. It can't push another branch or a tag, delete the branch, or download archives. It lasts 6 hours. After that, pushes are refused until you **Open** the session again, which gives the VM a new one. The credential is also in the tool's environment as `INFRAWRENCH_GIT_TOKEN`, which the forge's trace and instruction endpoints take.
+
+The desktop app doesn't open these links yet. The work can only be started from the web app.
+
 ## Work with a session
 
 When you create a session, Infrawrench saves the repo, session name, a generated branch name, the account and the tool, then asks the provider to create the VM. The session name is the label in the Agents list. The workspace folder is named after the repo, so `/Users/alex/infrawrench` opens as `~/infrawrench` whatever you called the session. Once the provider accepts, the VM's id shows in the session row.

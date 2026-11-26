@@ -114,6 +114,7 @@ export type {
 export type {
   AgentClient,
   AgentCreateBody,
+  AgentGitWorkRequest,
   AgentLaunchDefaults,
   AgentOpenSessionResult,
   AgentRepoConfig,

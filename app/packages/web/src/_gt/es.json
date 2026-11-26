@@ -24096,5 +24096,7 @@
   "8d23e64b5fa8def4": "El token de acceso de la conexión como VERCEL_TOKEN, que lee la CLI de Vercel, y como VERCEL_API_TOKEN, que lee el proveedor de Vercel de Terraform. El job indica su proyecto como siempre (.vercel/project.json, VERCEL_ORG_ID con VERCEL_PROJECT_ID, o --scope).",
   "12864829c994334d": "Git activa Git en la aplicación para una organización y permite que sus miembros se registren en git.infrawrench.com.",
   "379192c9c065f94b": "Desactivar Git para {name}",
-  "2312882473a3e78b": "Activar Git para {name}"
+  "2312882473a3e78b": "Activar Git para {name}",
+  "a48c84d56863a173": "Pull request #{number} en {repository}",
+  "b0cfba65df36ff3a": "Se ejecuta en una sesión de terminal"
 }

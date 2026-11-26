@@ -37,8 +37,14 @@ import {
   agentToolLabel,
   bootstrapReportedComplete,
   buildAgentBootstrapCommand,
+  buildGitWorkCredentialCommand,
+  buildGitWorkPrompt,
+  buildGitWorkPromptWriteCommand,
   isCloneableGitRepo,
 } from "@infrawrench/ui/agents/launch-command";
+import { GIT_JOB_TOKEN_MAX_TTL_SECONDS } from "@infrawrench/client-core";
+import { gitBaseUrl, mintGitJobToken } from "@infrawrench/server-core/ci/source";
+import { gitWorkForSession, type GitWork } from "@infrawrench/server-core/git/agent-work";
 import {
   buildT3CodeBootstrapCommand,
   buildT3CodeLogoutCommand,
@@ -338,6 +344,8 @@ async function runAgentVmSetup(
   const nibbletsLinked = isNibbletsSurface(row.surface)
     ? await deliverNibbletsAppLink(row, target, privateKey)
     : false;
+  // Before the bootstrap, which clones with the credential this hands over.
+  await deliverAgentGitWork(row, organizationId, target, privateKey, { prompt: true });
   const logger = createAgentSetupOutputLogger(row.id);
   const bootstrapCommand = isNibbletsSurface(row.surface)
     ? buildNibbletsBootstrapCommand({ withAppLinks: nibbletsLinked })
@@ -408,6 +416,115 @@ async function deliverNibbletsAppLink(
     "setting-up",
   );
   return true;
+}
+
+/**
+ * The forge pull request a terminal session works on, or null. Only a
+ * session whose repository is on the forge is looked up, so every other
+ * session costs nothing here.
+ */
+async function agentGitWork(row: SessionRow, organizationId: string): Promise<GitWork | null> {
+  if (isNibbletsSurface(row.surface) || isT3CodeSurface(row.surface)) return null;
+  if (!row.repo.startsWith(`${gitBaseUrl()}/`)) return null;
+  return gitWorkForSession(organizationId, row.id);
+}
+
+/**
+ * Hand a session that works on a forge pull request its credential and, the
+ * first time, its first prompt.
+ *
+ * The credential is a write job token bound to the pull request's head
+ * branch (`ref`): the forge lets it read the repository and create or update
+ * that branch, and refuses it everywhere else. It lives for the longest a job
+ * token may, six hours (`GIT_JOB_TOKEN_MAX_TTL_SECONDS`); after that the
+ * agent's pushes and forge API calls answer 401 until the session is opened
+ * again, which calls this to write a fresh one ({@link renewAgentGitCredential}).
+ * It travels on the SSH channel's stdin, never in a command line, and the
+ * script writing it prints nothing, so it never reaches the session's logs.
+ *
+ * A pull request that has closed, or a server without `GIT_JOB_TOKEN_KEY`,
+ * gets no token: the clone is then anonymous, and the log says why.
+ */
+async function deliverAgentGitWork(
+  row: SessionRow,
+  organizationId: string,
+  target: AgentSshTarget,
+  privateKey: string,
+  opts: { prompt: boolean },
+): Promise<boolean> {
+  const work = await agentGitWork(row, organizationId);
+  if (!work) return false;
+  let token: string;
+  try {
+    token = await mintGitJobToken(work.repositoryId, `agent:${row.id}`, {
+      access: "write",
+      ttlSeconds: GIT_JOB_TOKEN_MAX_TTL_SECONDS,
+      ref: work.ref,
+    });
+  } catch (error) {
+    await appendAgentSessionLog(
+      row.id,
+      `Warning: no credential for the pull request's branch: ${formatErrorMessage(error)}`,
+      "setting-up",
+    );
+    return false;
+  }
+  const written = await agentSshExec(
+    target,
+    privateKey,
+    buildGitWorkCredentialCommand(work.forgeOrigin),
+    undefined,
+    token,
+  );
+  if (written.code !== 0) throw new Error(formatCommandFailure(written));
+  if (opts.prompt) {
+    const prompt = buildGitWorkPrompt({
+      owner: work.owner,
+      repo: work.repo,
+      pull: work.pull,
+      branch: work.branch,
+      title: work.title,
+      body: work.body,
+      pullUrl: work.pullUrl,
+      forgeOrigin: work.forgeOrigin,
+      sessionId: row.id,
+    });
+    const sent = await agentSshExec(
+      target,
+      privateKey,
+      buildGitWorkPromptWriteCommand(),
+      undefined,
+      prompt,
+    );
+    if (sent.code !== 0) throw new Error(formatCommandFailure(sent));
+    await appendAgentSessionLog(
+      row.id,
+      `Handed the VM a credential that pushes ${work.branch} for 6 hours, and the pull request as its first prompt.`,
+      "setting-up",
+    );
+  }
+  return true;
+}
+
+/**
+ * Write a fresh branch token to a set-up session that works on a forge pull
+ * request (its six hours may have run out). Nothing for any other session,
+ * nor for one whose VM cannot be reached right now.
+ */
+export async function renewAgentGitCredential(
+  sessionId: string,
+  organizationId: string,
+): Promise<void> {
+  const [row] = await db
+    .select()
+    .from(agentSessions)
+    .where(and(eq(agentSessions.id, sessionId), eq(agentSessions.organizationId, organizationId)))
+    .limit(1);
+  if (!row?.vmResourceId || !(await agentGitWork(row, organizationId))) return;
+  const target = await resolveAgentSshTargetNow(row, organizationId);
+  if (!target) return;
+  const privateKey = await loadOrgAgentSshPrivateKey(organizationId);
+  await deliverAgentGitWork(row, organizationId, target, privateKey, { prompt: false });
 }
 
 function sessionTool(row: Pick<SessionRow, "tool">): AgentTool {
@@ -891,8 +1008,13 @@ async function agentSshExec(
  * short-lived GitHub installation token in the clone URL, which git repeats
  * in its error messages) before persisting.
  */
-function redactUrlCredentials(message: string): string {
-  return message.replace(/\/\/([^/@:\s]+):([^@\s]+)@/g, "//$1:***@");
+export function redactUrlCredentials(message: string): string {
+  return (
+    message
+      .replace(/\/\/([^/@:\s]+):([^@\s]+)@/g, "//$1:***@")
+      // A forge job token (`iwj_<payload>.<signature>`), wherever it appears.
+      .replace(/iwj_[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)?/g, "iwj_***")
+  );
 }
 
 async function appendAgentSessionLog(

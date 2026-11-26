@@ -24074,5 +24074,7 @@
   "8d23e64b5fa8def4": "接続のアクセストークンを、Vercel CLI が読み取る VERCEL_TOKEN と、Terraform の Vercel プロバイダーが読み取る VERCEL_API_TOKEN として渡します。ジョブはいつもどおりプロジェクトを指定します（.vercel/project.json、VERCEL_ORG_ID と VERCEL_PROJECT_ID、または --scope）。",
   "12864829c994334d": "Git は、組織のアプリ内で Git をオンにし、そのメンバーが git.infrawrench.com でサインアップできるようにします。",
   "379192c9c065f94b": "{name} の Git をオフにする",
-  "2312882473a3e78b": "{name} の Git をオンにする"
+  "2312882473a3e78b": "{name} の Git をオンにする",
+  "a48c84d56863a173": "{repository} のプルリクエスト #{number}",
+  "b0cfba65df36ff3a": "ターミナルセッションで実行されます"
 }

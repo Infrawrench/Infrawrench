@@ -26,6 +26,7 @@ import { useUIStore } from "../store/ui.store.js";
 import type { GitIntegration, GitRepoOption } from "../workflows/types.js";
 import type {
   AgentClient,
+  AgentGitWorkRequest,
   AgentSession,
   AgentSettings,
   AgentSurface,
@@ -49,6 +50,14 @@ interface AgentsPanelProps {
    * stays a free-text input.
    */
   gitIntegration?: GitIntegration;
+  /**
+   * A pull request on git.infrawrench.com to start the next session on (the
+   * forge's "Start work with Infrawrench" links here). Replaces the
+   * repository controls until the session is created or the work is
+   * dismissed, when `onGitWorkDone` is called.
+   */
+  gitWork?: AgentGitWorkRequest | null;
+  onGitWorkDone?: () => void;
 }
 
 function statusLabel(
@@ -61,7 +70,13 @@ function statusLabel(
   return gtData(status.charAt(0).toUpperCase() + status.slice(1));
 }
 
-export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: AgentsPanelProps) {
+export function AgentsPanel({
+  client,
+  openWorkspaceTarget,
+  gitIntegration,
+  gitWork = null,
+  onGitWorkDone,
+}: AgentsPanelProps) {
   const gt = useGT();
   const gtData = useDataString();
   const [accounts, setAccounts] = useState<AgentVmAccount[]>([]);
@@ -315,6 +330,17 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   const needsRepo = agentSurfaceRequiresRepo(selectedSurface);
   const nibblets = isNibbletsSurface(selectedSurface);
   const linkNibblets = nibblets && linkToOrg && Array.isArray(linkableScopes);
+  // Work on a forge pull request: its repository and branch come from the
+  // pull request, so the repository controls give way to it. Only a terminal
+  // session can take it (the one surface that clones a repository).
+  const workRepo = gitWork ? `${gitWork.owner}/${gitWork.repo}` : "";
+  const repoReady = gitWork ? needsRepo : !needsRepo || !!repo.trim();
+
+  // Name the agent after the pull request, unless a name was already typed.
+  useEffect(() => {
+    if (!gitWork) return;
+    setAgentName((current) => current || `${gitWork.repo}-${gitWork.pull}`);
+  }, [gitWork]);
 
   async function updateAccount(value: string) {
     const account = accounts.find((a) => accountKey(a) === value);
@@ -432,28 +458,33 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
   }
 
   async function createSession() {
-    if (!settings || !agentName.trim()) return;
-    if (needsRepo && !repo.trim()) return;
+    if (!settings || !agentName.trim() || !repoReady) return;
     setBusy(true);
     setMessage(null);
     setSaveNotice(false);
     try {
       const created = await client.createSession({
-        repo: needsRepo ? repo.trim() : "",
+        repo: needsRepo && !gitWork ? repo.trim() : "",
         projectName: agentName.trim(),
-        workspaceName: needsRepo
-          ? workspaceNameFromRepo(repo.trim())
-          : nibblets
-            ? NIBBLETS_DIR
-            : T3_CODE_PROJECTS_DIR,
+        workspaceName: gitWork
+          ? gitWork.repo
+          : needsRepo
+            ? workspaceNameFromRepo(repo.trim())
+            : nibblets
+              ? NIBBLETS_DIR
+              : T3_CODE_PROJECTS_DIR,
         settings,
         ...(linkNibblets ? { nibbletsLink: { scopes: [...linkScopes] } } : {}),
+        ...(gitWork
+          ? { gitWork: { owner: gitWork.owner, repo: gitWork.repo, pull: gitWork.pull } }
+          : {}),
       });
       if (sessionHasVm(created)) {
         setSessions((prev) => [created, ...prev]);
       }
       setAgentName("");
       setRepo("");
+      if (gitWork) onGitWorkDone?.();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : String(e));
     } finally {
@@ -752,7 +783,7 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                       busy ||
                       !settings ||
                       !agentName.trim() ||
-                      (needsRepo && !repo.trim()) ||
+                      !repoReady ||
                       (linkNibblets && linkScopes.size === 0)
                     }
                     onClick={() => void createSession()}
@@ -775,7 +806,32 @@ export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: Age
                     the repository controls don't apply to it. Left out of the
                     tree rather than hidden with CSS: a hidden-but-focusable
                     URL field is still reachable by keyboard. */}
-                {needsRepo && (
+                {gitWork && (
+                  <div className="flex flex-wrap items-center gap-2 rounded border border-border bg-surface px-2 py-1.5 text-sm">
+                    <span className="min-w-0 flex-1 truncate">
+                      {gt("Pull request #{number} in {repository}", {
+                        number: gitWork.pull,
+                        repository: workRepo,
+                      })}
+                    </span>
+                    {!needsRepo && (
+                      <span className="text-xs text-warning">
+                        {gt("Runs in a terminal session")}
+                      </span>
+                    )}
+                    {onGitWorkDone && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={onGitWorkDone}
+                        className="shrink-0 rounded border border-border-strong px-2 py-1 text-xs text-on-surface-secondary hover:bg-surface-sunken disabled:opacity-50"
+                      >
+                        {gt("Dismiss")}
+                      </button>
+                    )}
+                  </div>
+                )}
+                {needsRepo && !gitWork && (
                   <div className="flex flex-col gap-2 md:flex-row">
                     <div className="flex shrink-0 rounded-md border border-border-strong bg-surface p-0.5">
                       <button

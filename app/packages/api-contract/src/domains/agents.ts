@@ -224,11 +224,37 @@ export const AgentSession = Schema.Struct({
   updatedAt: IsoDateTime,
 }).annotate({ identifier: "AgentSession" });
 
+/**
+ * A pull request on git.infrawrench.com for the session to work on
+ * ("Start work with Infrawrench"). Shared with the handler, which decodes it.
+ */
+export const AgentGitWork = Schema.Struct({
+  owner: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)).annotate({
+    description: "The repository's namespace on the forge.",
+  }),
+  repo: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)).annotate({
+    description: "The repository's name on the forge.",
+  }),
+  pull: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 2_147_483_647 })).annotate({
+    description: "The pull request's number.",
+  }),
+}).annotate({
+  identifier: "AgentGitWork",
+  description:
+    "Terminal sessions only: work on this open pull request of one of the organization's repositories on " +
+    "git.infrawrench.com. The session clones that repository, checks out the pull request's head branch, can " +
+    "push that branch and nothing else (a job token bound to the branch that lasts at most 6 hours, renewed " +
+    "when the session is opened), starts the coding tool with the pull request's title and body as its first " +
+    "prompt, and is recorded as the pull request's agent. `repo` is ignored. Needs `git:write`. A pull request " +
+    "that is missing, closed, from a fork or not the organization's is one refusal (400).",
+});
+
 /** Documented; the handler reads the body raw. */
 const CreateAgentSession = Schema.Struct({
   // Required for terminal sessions; a "t3-code" session provisions a bare
   // server that manages its own projects, so it is omitted there.
   repo: Schema.optionalKey(Schema.String),
+  gitWork: Schema.optionalKey(AgentGitWork),
   projectName: Schema.optionalKey(Schema.String),
   workspaceName: Schema.optionalKey(Schema.String),
   settings: AgentSettings,

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.132.0",
+    "version": "1.133.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -78826,6 +78826,9 @@
           "repo": {
             "type": "string"
           },
+          "gitWork": {
+            "$ref": "#/components/schemas/AgentGitWork"
+          },
           "projectName": {
             "type": "string"
           },
@@ -78930,6 +78933,36 @@
           "fields"
         ],
         "additionalProperties": false
+      },
+      "AgentGitWork": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "The repository's namespace on the forge."
+          },
+          "repo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "The repository's name on the forge."
+          },
+          "pull": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647,
+            "description": "The pull request's number."
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "pull"
+        ],
+        "additionalProperties": false,
+        "description": "Terminal sessions only: work on this open pull request of one of the organization's repositories on git.infrawrench.com. The session clones that repository, checks out the pull request's head branch, can push that branch and nothing else (a job token bound to the branch that lasts at most 6 hours, renewed when the session is opened), starts the coding tool with the pull request's title and body as its first prompt, and is recorded as the pull request's agent. `repo` is ignored. Needs `git:write`. A pull request that is missing, closed, from a fork or not the organization's is one refusal (400)."
       },
       "AgentLinkableScopes": {
         "type": "object",
