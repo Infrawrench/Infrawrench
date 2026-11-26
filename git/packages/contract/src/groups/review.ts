@@ -4,8 +4,8 @@
  * `/api/repos/:owner/:repo/branches/:branch`: the versions a branch has been
  * through and the diffs between them, what review agents found, what
  * reviewers sent back to the agent, and the agent itself. Traces are written
- * to a branch (it may not have a branch page, or exist, yet). The inbox,
- * the viewer's review mode and their T3 Code environments have no
+ * to a branch (it may not have a branch page, or exist, yet). The inbox
+ * and the viewer's T3 Code environments have no
  * repository in the path.
  *
  * Who writes what:

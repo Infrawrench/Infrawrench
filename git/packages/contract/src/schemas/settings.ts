@@ -34,7 +34,7 @@ export const ProtectedBranch = Schema.Struct({
       "A branch name or glob: `*` matches within a path segment, `**` across them (`main`, `release/*`).",
   }),
   requireBranchPage: Schema.Boolean.annotate({
-    description: "Changes arrive by branch page only: direct pushes are refused.",
+    description: "Changes arrive through a branch page only: direct pushes are refused.",
   }),
   requiredApprovals: Schema.Int.annotate({
     description: "Approving reviews of the current head a merge needs. 0 for none.",

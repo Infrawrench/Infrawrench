@@ -98,6 +98,7 @@ export const ActivityEvent = Schema.Struct({
     description: "The agent that pushed, by name, when one did.",
   }),
   repository: RepositoryRef,
+  key: BranchKey,
   number: Schema.Int,
   title: Schema.String,
   version: Schema.NullOr(Schema.Int),
