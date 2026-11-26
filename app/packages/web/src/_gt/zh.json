@@ -24080,5 +24080,7 @@
   "8d23e64b5fa8def4": "连接的访问令牌作为 Vercel CLI 读取的 VERCEL_TOKEN，以及 Terraform 的 Vercel 提供程序读取的 VERCEL_API_TOKEN。作业照常指定其项目（.vercel/project.json、VERCEL_ORG_ID 与 VERCEL_PROJECT_ID，或 --scope）。",
   "12864829c994334d": "Git 会为组织在应用中开启 Git，并允许其成员在 git.infrawrench.com 上注册。",
   "379192c9c065f94b": "为 {name} 关闭 Git",
-  "2312882473a3e78b": "为 {name} 开启 Git"
+  "2312882473a3e78b": "为 {name} 开启 Git",
+  "a48c84d56863a173": "{repository} 中的拉取请求 #{number}",
+  "b0cfba65df36ff3a": "在终端会话中运行"
 }

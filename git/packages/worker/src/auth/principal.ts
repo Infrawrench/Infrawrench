@@ -65,6 +65,14 @@ export interface JobPrincipal {
    * only the Terraform routes authenticate one at all.
    */
   readonly workspaceId?: string | null;
+  /**
+   * Set on a token bound to one branch (a full ref name): an agent session
+   * working on a pull request. It reads the repository like any job, and its
+   * pushes are confined to creating or updating that branch by the push
+   * policy (`onlyRef`, `repo/do/policy.ts`). Only smart HTTP and the API
+   * authenticate one at all; the archive, raw files and Terraform refuse it.
+   */
+  readonly ref?: string | null;
 }
 
 export type Principal =

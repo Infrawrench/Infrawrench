@@ -613,4 +613,7 @@
 // false. Additive.
 // 1.132.0: `GET /org/{orgId}/git` answers `reservedNamesAllowed`, true for a
 // platform admin, who may claim a reserved namespace name. Additive.
-export const API_VERSION = "1.132.0";
+// 1.133.0: `POST /org/{orgId}/agents/sessions` takes `gitWork` (`AgentGitWork`:
+// `owner`, `repo`, `pull`), a pull request on git.infrawrench.com for a
+// terminal session to work on, with `git:write`. Additive.
+export const API_VERSION = "1.133.0";

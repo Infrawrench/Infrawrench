@@ -24095,5 +24095,7 @@
   "8d23e64b5fa8def4": "Le jeton d'accès de la connexion dans VERCEL_TOKEN, que la CLI Vercel lit, et dans VERCEL_API_TOKEN, que le fournisseur Vercel de Terraform lit. Le job désigne son projet comme d'habitude (.vercel/project.json, VERCEL_ORG_ID avec VERCEL_PROJECT_ID, ou --scope).",
   "12864829c994334d": "Git active Git dans l'application pour une organisation et permet à ses membres de s'inscrire sur git.infrawrench.com.",
   "379192c9c065f94b": "Désactiver Git pour {name}",
-  "2312882473a3e78b": "Activer Git pour {name}"
+  "2312882473a3e78b": "Activer Git pour {name}",
+  "a48c84d56863a173": "Pull request #{number} dans {repository}",
+  "b0cfba65df36ff3a": "S'exécute dans une session de terminal"
 }

@@ -34,6 +34,9 @@ const git = async (request: Request, env: Env, ctx: Ctx): Promise<Response> =>
 const database = lazy(() => import("./db/client"));
 const terraform = lazy(() => import("./terraform/mount"));
 
+/** The cron expression of the instruction sweep, as `wrangler.jsonc` spells it. */
+const INSTRUCTIONS_CRON = "*/2 * * * *";
+
 const routes: Routes = {
   api: async (request, env, ctx) => {
     const [{ withDb }, handler] = await Promise.all([database(), api()]);
@@ -44,14 +47,20 @@ const routes: Routes = {
     const signIn = await import("./auth/sign-in");
     if (route.action === "sign-in") return signIn.handleSignIn(request, env);
     if (route.action === "sign-out") return signIn.handleSignOut(request, env);
-    // A T3 Code environment's OAuth redirect (`t3/callback.ts`).
-    if (route.action === "t3-callback") {
-      return (await import("./t3/callback")).handleT3Callback(request, env);
-    }
     const [{ withDb }, { provisionSignedInUser }] = await Promise.all([
       database(),
       import("./db/users"),
     ]);
+    // A T3 Code environment's OAuth redirect (`t3/callback.ts`): the session says whose sign-in it is.
+    if (route.action === "t3-callback") {
+      const [{ handleT3Callback }, { authenticateRequest }] = await Promise.all([
+        import("./t3/callback"),
+        import("./auth/authenticate"),
+      ]);
+      return withDb(env, ctx, () =>
+        handleT3Callback(request, env, { authenticate: authenticateRequest }),
+      );
+    }
     return withDb(env, ctx, () =>
       signIn.handleCallback(request, env, { provision: provisionSignedInUser }),
     );
@@ -101,12 +110,21 @@ export default {
   },
 
   /**
-   * The cron trigger (`wrangler.jsonc`): versions whose thirty days are up
-   * (`review/prune.ts`), and review runs nothing finished (`review/queue.ts`).
+   * The cron triggers (`wrangler.jsonc`). Hourly: versions whose thirty days
+   * are up (`review/prune.ts`), and review runs nothing finished
+   * (`review/queue.ts`). Every two minutes: instructions still waiting for an
+   * agent the forge can tell itself (`review/instructions.ts`).
    */
-  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    const [{ withDb }, { pruneVersions }, { sweepReviewRuns }] = await Promise.all([
-      database(),
+  async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const { withDb } = await database();
+    if (event.cron === INSTRUCTIONS_CRON) {
+      const { sweepInstructions } = await import("./review/instructions");
+      await withDb(env, ctx, async () => {
+        await sweepInstructions(env);
+      });
+      return;
+    }
+    const [{ pruneVersions }, { sweepReviewRuns }] = await Promise.all([
       import("./review/prune"),
       import("./review/queue"),
     ]);

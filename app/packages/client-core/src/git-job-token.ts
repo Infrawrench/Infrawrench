@@ -17,7 +17,8 @@
  * that archive alone. One minted for a Terraform run or for the app's own
  * read of a state names the workspace, and is good for that workspace's
  * state and plans alone: it clones nothing and writes nothing to the
- * repository.
+ * repository. One minted for an agent's work names a branch (`ref`): it
+ * clones the repository and pushes that one branch, and nothing else.
  *
  * Git sends it as the password of Basic auth, with any user name (the
  * runner sends `x-access-token`); every other route takes it as a Bearer
@@ -61,7 +62,25 @@ export interface GitJobTokenClaims {
    * push with it.
    */
   workspace?: string;
+  /**
+   * Set on a token that pushes one branch only (a full ref name,
+   * `refs/heads/<branch>`): what an agent session that works on a pull
+   * request holds. It reads the whole repository like any job token, and the
+   * forge lets it create or update that branch and nothing else: no other
+   * branch, no tag, and never a deletion. A verifier that does not say it
+   * enforces that (`expect.ref`) refuses such a token, so it opens no
+   * archive, no raw file, no Terraform state and nothing it was not meant
+   * for. Cannot be combined with `commit` or `workspace`.
+   */
+  ref?: string;
 }
+
+/**
+ * For `expect.ref`: the verifier serves ref-bound tokens and confines a push
+ * to the token's ref itself (the forge's push policy), because it learns
+ * which refs a push names only after it has authenticated.
+ */
+export const ANY_GIT_JOB_TOKEN_REF = Symbol.for("infrawrench.git-job-token.any-ref");
 
 /**
  * For `expect.workspace`: the verifier serves Terraform workspaces and
@@ -86,6 +105,18 @@ const MAX_FIELD_LENGTH = 200;
 const MIN_KEY_LENGTH = 32;
 
 const COMMIT = /^[0-9a-f]{40}$/;
+/**
+ * A branch's full ref name. Deliberately narrower than what Git allows: no
+ * `..`, no `@{`, no control characters or spaces, no leading or trailing
+ * slash or dot in a component, no `.lock` suffix.
+ */
+const BRANCH_REF =
+  /^refs\/heads\/(?!.*\.\.)(?!.*\/\.)(?!.*\/\/)(?!.*\.lock$)(?!.*[/.]$)[A-Za-z0-9][A-Za-z0-9._\/-]*$/;
+
+/** Whether `ref` is a branch name a ref-bound token may carry. */
+export function isGitJobTokenRef(ref: string): boolean {
+  return ref.length <= MAX_FIELD_LENGTH && BRANCH_REF.test(ref);
+}
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -151,6 +182,14 @@ export async function signGitJobToken(
   if (claims.workspace !== undefined && claims.commit !== undefined) {
     throw new Error("A git job token is for a commit's archive or for a workspace, not both.");
   }
+  if (claims.ref !== undefined && !isGitJobTokenRef(claims.ref)) {
+    throw new Error("A git job token's ref is a branch's full ref name.");
+  }
+  if (claims.ref !== undefined && (claims.commit !== undefined || claims.workspace !== undefined)) {
+    throw new Error(
+      "A git job token bound to a branch is not also bound to a commit or a workspace.",
+    );
+  }
   const nowSeconds = Math.floor(now / 1000);
   if (
     !Number.isSafeInteger(claims.expiresAt) ||
@@ -169,6 +208,7 @@ export async function signGitJobToken(
         exp: claims.expiresAt,
         ...(claims.commit !== undefined ? { sha: claims.commit } : {}),
         ...(claims.workspace !== undefined ? { ws: claims.workspace } : {}),
+        ...(claims.ref !== undefined ? { ref: claims.ref } : {}),
       }),
     ),
   );
@@ -192,8 +232,13 @@ export function isGitJobToken(text: string): boolean {
  * {@link ANY_GIT_JOB_TOKEN_WORKSPACE}, for a verifier that compares the
  * claim itself): every caller that is not serving a workspace's state or
  * plans leaves `workspace` out and so refuses it. A verifier that names a
- * workspace refuses a token without the claim. The claims of a refused token
- * are never returned, so nothing is decided from an unsigned payload.
+ * workspace refuses a token without the claim. A token bound to a branch
+ * passes only for `expect.ref` equal to it (or {@link ANY_GIT_JOB_TOKEN_REF},
+ * for a verifier that confines the push itself): every caller that does not
+ * enforce the branch leaves `ref` out and so refuses it. Unlike a workspace,
+ * naming `ref` does not refuse a token without the claim, which may already
+ * write any branch. The claims of a refused token are never returned, so
+ * nothing is decided from an unsigned payload.
  */
 export async function verifyGitJobToken(
   secret: string,
@@ -203,6 +248,7 @@ export async function verifyGitJobToken(
     access?: GitJobTokenAccess;
     commit?: string;
     workspace?: string | typeof ANY_GIT_JOB_TOKEN_WORKSPACE;
+    ref?: string | typeof ANY_GIT_JOB_TOKEN_REF;
   } = {},
   now: number = Date.now(),
 ): Promise<GitJobTokenResult> {
@@ -235,7 +281,7 @@ export async function verifyGitJobToken(
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     return refused("malformed");
   }
-  const { v, repo, access, run, exp, sha, ws } = parsed as Record<string, unknown>;
+  const { v, repo, access, run, exp, sha, ws, ref } = parsed as Record<string, unknown>;
   if (
     v !== 1 ||
     !validField(repo) ||
@@ -244,7 +290,9 @@ export async function verifyGitJobToken(
     typeof exp !== "number" ||
     !Number.isSafeInteger(exp) ||
     (sha !== undefined && (typeof sha !== "string" || !COMMIT.test(sha))) ||
-    (ws !== undefined && (!validField(ws) || sha !== undefined))
+    (ws !== undefined && (!validField(ws) || sha !== undefined)) ||
+    (ref !== undefined &&
+      (typeof ref !== "string" || !isGitJobTokenRef(ref) || sha !== undefined || ws !== undefined))
   ) {
     return refused("malformed");
   }
@@ -265,6 +313,11 @@ export async function verifyGitJobToken(
   } else if (expect.workspace !== undefined) {
     return refused("access");
   }
+  // A branch token goes only where the push is confined to its branch.
+  if (ref !== undefined) {
+    if (expect.ref === undefined) return refused("access");
+    if (expect.ref !== ANY_GIT_JOB_TOKEN_REF && expect.ref !== ref) return refused("access");
+  }
   return {
     ok: true,
     claims: {
@@ -274,6 +327,7 @@ export async function verifyGitJobToken(
       expiresAt: exp,
       ...(sha !== undefined ? { commit: sha } : {}),
       ...(ws !== undefined ? { workspace: ws } : {}),
+      ...(ref !== undefined ? { ref } : {}),
     },
   };
 }

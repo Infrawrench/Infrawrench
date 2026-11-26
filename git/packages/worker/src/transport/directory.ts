@@ -39,8 +39,16 @@ export interface RequestLike {
 }
 
 export interface GitDirectory {
-  /** Who an HTTP request is from: Basic or Bearer with one of our tokens, or nobody. */
-  authenticate(request: RequestLike): Promise<HttpAuthentication>;
+  /**
+   * Who an HTTP request is from: Basic or Bearer with one of our tokens, or
+   * nobody. A job token bound to one branch is a refused credential unless
+   * `refTokens` says the caller confines a push to that branch, which only
+   * the smart HTTP routes do (through `pushPolicy`'s `onlyRef`).
+   */
+  authenticate(
+    request: RequestLike,
+    options?: { readonly refTokens?: boolean },
+  ): Promise<HttpAuthentication>;
   /**
    * The job token of an archive link (`?token=`), which is bound to one
    * commit and good for nothing else. Null when it does not verify.

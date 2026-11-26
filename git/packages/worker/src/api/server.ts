@@ -17,7 +17,7 @@ import {
   type RequestErrors,
 } from "@infrawrench/git-contract";
 import { currentRequestScope } from "@infrawrench/server-core/runtime/request-scope";
-import { type Authenticated, authenticateRequest } from "../auth/authenticate";
+import { type Authenticated, apiAcceptsRefTokens, authenticateRequest } from "../auth/authenticate";
 import { type Admit, admissionFor } from "../http/admission";
 import type { Env } from "../env";
 import { type RepoReaderFactory, repoReaderFor } from "../repo/select";
@@ -120,7 +120,14 @@ export const makeGitApi = (options: GitApiOptions = {}): GitApiHandler => {
         waitUntil: (promise) => ctx.waitUntil(promise),
         scope: currentRequestScope(),
         readers: options.readers ?? repoReaderFor,
-        authenticate: options.authenticate ?? authenticateRequest,
+        // A job token bound to a branch is taken only on its trace and
+        // instructions paths; `JOB_GROUPS` (middleware.ts) still applies.
+        authenticate:
+          options.authenticate ??
+          ((incoming, environment) =>
+            authenticateRequest(incoming, environment, {
+              refTokens: apiAcceptsRefTokens(new URL(incoming.url).pathname),
+            })),
         admit:
           options.admit ?? ((counted, principal) => admissionFor(env).admit(counted, principal)),
         cookies: [],

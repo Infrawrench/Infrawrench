@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ANY_GIT_JOB_TOKEN_REF,
   ANY_GIT_JOB_TOKEN_WORKSPACE,
   GIT_JOB_TOKEN_MAX_TTL_SECONDS,
   GIT_JOB_TOKEN_PREFIX,
   isGitJobToken,
+  isGitJobTokenRef,
   signGitJobToken,
   verifyGitJobToken,
   type GitJobTokenClaims,
@@ -191,6 +193,85 @@ describe("git job tokens", () => {
     await expect(
       signGitJobToken(KEY, claims({ workspace, commit: "c".repeat(40) }), NOW),
     ).rejects.toThrow();
+  });
+
+  it("keeps a token bound to a branch where the push is confined to it", async () => {
+    const ref = "refs/heads/work/fix-login";
+    const token = await signGitJobToken(KEY, claims({ ref, access: "write" }), NOW);
+    const bound = { ok: true, claims: claims({ ref, access: "write" }) };
+    // Smart HTTP and the API confine the push themselves, so they name any ref.
+    expect(await verifyGitJobToken(KEY, token, { ref: ANY_GIT_JOB_TOKEN_REF }, NOW)).toEqual(bound);
+    expect(await verifyGitJobToken(KEY, token, { ref }, NOW)).toEqual(bound);
+    expect(await verifyGitJobToken(KEY, token, { ref: "refs/heads/main" }, NOW)).toEqual({
+      ok: false,
+      reason: "access",
+    });
+    // Everything that does not enforce the branch refuses it: an archive, a
+    // raw file, a workspace's state.
+    const elsewhere: Array<Parameters<typeof verifyGitJobToken>[2]> = [
+      {},
+      { access: "read" },
+      { commit: "c".repeat(40) },
+      { workspace: ANY_GIT_JOB_TOKEN_WORKSPACE },
+    ];
+    for (const expected of elsewhere) {
+      expect(await verifyGitJobToken(KEY, token, expected, NOW)).toEqual({
+        ok: false,
+        reason: "access",
+      });
+    }
+    // A token without the claim is not refused where branch tokens are served.
+    const plain = await signGitJobToken(KEY, claims({ access: "write" }), NOW);
+    expect((await verifyGitJobToken(KEY, plain, { ref: ANY_GIT_JOB_TOKEN_REF }, NOW)).ok).toBe(
+      true,
+    );
+  });
+
+  it("refuses a branch token whose ref was changed, or that is bound to anything else too", async () => {
+    const ref = "refs/heads/work/a";
+    const token = await signGitJobToken(KEY, claims({ ref }), NOW);
+    const [payload, signature] = token.slice(GIT_JOB_TOKEN_PREFIX.length).split(".");
+    const changed = btoa(
+      atob(payload!.replace(/-/g, "+").replace(/_/g, "/")).replace(ref, "refs/heads/main"),
+    )
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    expect(
+      await verifyGitJobToken(
+        KEY,
+        `${GIT_JOB_TOKEN_PREFIX}${changed}.${signature}`,
+        { ref: ANY_GIT_JOB_TOKEN_REF },
+        NOW,
+      ),
+    ).toEqual({ ok: false, reason: "signature" });
+    await expect(
+      signGitJobToken(KEY, claims({ ref, commit: "c".repeat(40) }), NOW),
+    ).rejects.toThrow();
+    await expect(signGitJobToken(KEY, claims({ ref, workspace: "ws-1" }), NOW)).rejects.toThrow();
+    for (const bad of ["main", "refs/tags/v1", "refs/heads/", "refs/heads/a..b", "refs/heads/a/"]) {
+      await expect(signGitJobToken(KEY, claims({ ref: bad }), NOW), bad).rejects.toThrow();
+    }
+  });
+
+  it("takes only plain branch names as a token's ref", () => {
+    for (const good of ["refs/heads/main", "refs/heads/work/fix-1", "refs/heads/a.b_c-d"]) {
+      expect(isGitJobTokenRef(good), good).toBe(true);
+    }
+    for (const bad of [
+      "refs/tags/v1",
+      "refs/pull/1/head",
+      "refs/heads/.hidden",
+      "refs/heads/a/.b",
+      "refs/heads/a//b",
+      "refs/heads/a.lock",
+      "refs/heads/a b",
+      "refs/heads/a@{1}",
+      "refs/heads/a.",
+      `refs/heads/${"a".repeat(200)}`,
+    ]) {
+      expect(isGitJobTokenRef(bad), bad).toBe(false);
+    }
   });
 
   it("does not sign what no verifier would take", async () => {

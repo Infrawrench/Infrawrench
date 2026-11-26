@@ -18,15 +18,17 @@ import { getRepository, getRepositoryById, toRepoForAccess } from "../db/reposit
 import { userRefs } from "../db/users";
 import { gitPushRefusal } from "@infrawrench/server-core/git/quota";
 import type { Env } from "../env";
-import type { PushPolicy } from "../repo/do/policy";
+import { onlyRefOf, type PushPolicy } from "../repo/do/policy";
 import type { GitDirectory } from "./directory";
 
 export function databaseDirectory(env: Env, ctx: WaitUntil): GitDirectory {
   const run = <T>(fn: () => Promise<T>): Promise<T> => withDb(env, ctx, fn);
   return {
-    authenticate: (request) =>
+    authenticate: (request, options) =>
       run(async () => {
-        const { principal, refused } = await authenticateRequest(request, env);
+        const { principal, refused } = await authenticateRequest(request, env, {
+          refTokens: options?.refTokens === true,
+        });
         return { principal, refused };
       }),
 
@@ -74,6 +76,7 @@ export function databaseDirectory(env: Env, ctx: WaitUntil): GitDirectory {
               userId: userIdOf(principal),
               admin: hasAccess(access, "admin"),
               quotaRefusal: await gitPushRefusal(found.owner, found.repository.visibility),
+              onlyRef: onlyRefOf(principal),
             })),
         };
       }),

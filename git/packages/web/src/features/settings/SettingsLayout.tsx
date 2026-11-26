@@ -55,6 +55,11 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
                 href: paths.settings("tokens"),
                 icon: <Icon name="lock" size={13} />,
               },
+              {
+                label: "T3 Code",
+                href: paths.settings("t3"),
+                icon: <Icon name="code" size={13} />,
+              },
             ]}
           />
           <a

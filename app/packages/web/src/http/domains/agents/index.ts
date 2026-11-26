@@ -26,6 +26,12 @@ import { buildNibbletsSignInCommand, isNibbletsSurface } from "@infrawrench/ui/a
 import { AGENT_SCOPES } from "@infrawrench/ui/settings/api-key-scopes";
 import { grantablePermissions } from "@infrawrench/server-core/agent-links/links";
 import {
+  GitWorkUnavailable,
+  resolveGitWork,
+  type GitWork,
+} from "@infrawrench/server-core/git/agent-work";
+import {
+  AgentGitWork,
   AgentLinkableScopes,
   AgentOpenCommand,
   AgentReconcile,
@@ -49,13 +55,15 @@ import {
   applyT3CodePolicyToSessions,
   ensureAgentVmSetupForSession,
   hasAgentSetupComplete,
+  renewAgentGitCredential,
   revokeT3CodeLinkOnVm,
 } from "../../../services/agent-setup";
 import { makeDomain } from "../../domain";
 import { HttpFailure } from "../../errors";
 import { decodeAsPayload, fieldsOf, readJson, readJsonOr } from "../../request-body";
 import { fireAndForget, legacy } from "../../legacy";
-import { OrgPrincipal } from "../../principal";
+import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+import { missingPermission, OrgPrincipal } from "../../principal";
 import { respond } from "../../response";
 import {
   authorizeT3Policy,
@@ -108,7 +116,11 @@ const CreateSessionBody = Schema.Struct({
     t3Access: OptionalString,
   }),
   nibbletsLink: Schema.optionalKey(Schema.Unknown),
+  gitWork: Schema.optionalKey(Schema.NullOr(AgentGitWork)),
 });
+
+/** What writes an organisation's repositories on git.infrawrench.com, as the forge decides it. */
+const GIT_WRITE_PERMISSIONS = ["git:write", "git:admin"] as const;
 
 /** A refusal whose body carries more than `error` (`issues`, `code`, `scopes`), sent as-is. */
 const refuse = (status: number, body: Readonly<Record<string, unknown>>) =>
@@ -286,7 +298,27 @@ const AgentsHandlers = HttpApiBuilder.group(AgentsApi, "agents", (handlers) =>
         );
         const tool = toolOf(body.settings.tool);
         const surface: AgentSurface = agentSurfaceOrDefault(body.settings.surface);
-        const repo = body.repo?.trim() ?? "";
+        // Work on a pull request of the forge: its repository and head branch
+        // replace `repo` and the generated branch.
+        let work: GitWork | null = null;
+        if (body.gitWork) {
+          const request = body.gitWork;
+          if (isT3CodeSurface(surface) || isNibbletsSurface(surface)) {
+            return yield* badRequest("Work on a pull request runs in a terminal session");
+          }
+          const { permissions } = yield* OrgPrincipal;
+          if (!GIT_WRITE_PERMISSIONS.some((permission) => hasPermission(permissions, permission))) {
+            return yield* missingPermission("git:write");
+          }
+          work = yield* legacy(() =>
+            resolveGitWork(organizationId, request).catch((error: unknown) => {
+              if (error instanceof GitWorkUnavailable) return null;
+              throw error;
+            }),
+          );
+          if (!work) return yield* badRequest(new GitWorkUnavailable().message);
+        }
+        const repo = work ? work.cloneUrl : (body.repo?.trim() ?? "");
         // T3 Code servers manage their own projects, so they are provisioned
         // without a repository; every other surface still requires one.
         if (agentSurfaceRequiresRepo(surface)) {
@@ -393,6 +425,7 @@ const AgentsHandlers = HttpApiBuilder.group(AgentsApi, "agents", (handlers) =>
             t3Access,
             t3Policy,
             linkScopes,
+            work,
           }),
         );
         if (outcome.kind === "provision-failed") {
@@ -451,6 +484,16 @@ const AgentsHandlers = HttpApiBuilder.group(AgentsApi, "agents", (handlers) =>
             cwd,
             ...key,
           });
+        }
+        // A session working on a forge pull request holds a branch token that
+        // lasts at most 6 hours: opening it again hands the VM a fresh one.
+        // A setup run that is starting now does so itself.
+        if (setupComplete) {
+          yield* fireAndForget(() =>
+            renewAgentGitCredential(row.id, organizationId).catch((error: unknown) => {
+              console.warn(`Could not renew the forge credential of ${row.id}`, error);
+            }),
+          );
         }
         return yield* respond(AgentOpenCommand)({
           command: buildAgentLaunchCommand({

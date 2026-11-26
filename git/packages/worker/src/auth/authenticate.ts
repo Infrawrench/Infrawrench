@@ -68,6 +68,14 @@ export interface AuthenticateOptions {
    * reads through the API.
    */
   readonly workspaceTokens?: boolean;
+  /**
+   * The caller accepts a job token bound to one branch: smart HTTP, whose
+   * push policy confines the push to that branch (`onlyRef`), and the JSON
+   * API, where a job reaches only its repository's statuses, traces and
+   * instructions. Everywhere else (the archive, raw files, Terraform) such a
+   * token is a refused credential.
+   */
+  readonly refTokens?: boolean;
 }
 
 const fromAuthorization = async (
@@ -116,6 +124,7 @@ const fromAuthorization = async (
     case "job-token": {
       const claims = await verifyJobToken(env.GIT_JOB_TOKEN_KEY, credential.secret, undefined, {
         workspace: options.workspaceTokens === true,
+        ref: options.refTokens === true,
       });
       if (!claims) return anonymous(true);
       return {
@@ -125,6 +134,7 @@ const fromAuthorization = async (
           write: claims.write,
           runId: claims.runId,
           workspaceId: claims.workspaceId,
+          ref: claims.ref,
         },
         refused: false,
         setCookies: [],
@@ -169,6 +179,23 @@ const fromCookie = async (
     email: outcome.session.email,
   };
 };
+
+const SEGMENT = "[^/]+";
+/**
+ * The JSON API paths a job token bound to a branch is taken on: its agent's
+ * trace and a pull request's instructions. Not commit statuses, though a
+ * plain job token reports those: a status is what a protected branch's
+ * required checks read, and an agent's credential must not be able to pass
+ * another change's checks.
+ */
+const REF_TOKEN_API_PATHS = [
+  new RegExp(`^/api/repos/${SEGMENT}/${SEGMENT}/traces(?:/.*)?$`),
+  new RegExp(`^/api/repos/${SEGMENT}/${SEGMENT}/pulls/\\d+/instructions(?:/.*)?$`),
+];
+
+/** Whether the API takes a branch-bound job token on this path (`refTokens`). */
+export const apiAcceptsRefTokens = (pathname: string): boolean =>
+  REF_TOKEN_API_PATHS.some((path) => path.test(pathname));
 
 /** Who an HTTP request is from. */
 export const authenticateRequest = async (

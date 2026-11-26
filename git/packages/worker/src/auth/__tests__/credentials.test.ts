@@ -2,7 +2,7 @@ import { signGitJobToken } from "@infrawrench/client-core";
 import { ACCESS_TOKEN_PREFIX as CONTRACT_PREFIX } from "@infrawrench/git-contract";
 import { describe, expect, it } from "vitest";
 import type { Env } from "../../env";
-import { authenticateRequest } from "../authenticate";
+import { apiAcceptsRefTokens, authenticateRequest } from "../authenticate";
 import {
   ACCESS_TOKEN_PREFIX,
   parseAuthorization,
@@ -215,6 +215,7 @@ describe("CI job tokens", () => {
       runId: "run_1",
       expiresAt: NOW + 3600,
       workspaceId: null,
+      ref: null,
     });
   });
 
@@ -328,6 +329,29 @@ describe("CI job tokens", () => {
     const plain = await mintJobToken(KEY, { repositoryId: "repo_1", write: true, now: NOW });
     expect(await verifyJobToken(KEY, plain, NOW, { workspace: true })).toBe(null);
   });
+
+  it("takes a branch's token only where the push is confined to the branch", async () => {
+    const ref = "refs/heads/work/fix";
+    const token = await mintJobToken(KEY, {
+      repositoryId: "repo_1",
+      write: true,
+      runId: "agent:session_1",
+      ref,
+      now: NOW,
+    });
+    expect(await verifyJobToken(KEY, token, NOW)).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { commit: "c".repeat(40) })).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { workspace: true })).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { ref: true })).toMatchObject({
+      repositoryId: "repo_1",
+      write: true,
+      workspaceId: null,
+      ref,
+    });
+    // A plain token is not refused where branch tokens are taken.
+    const plain = await mintJobToken(KEY, { repositoryId: "repo_1", write: true, now: NOW });
+    expect(await verifyJobToken(KEY, plain, NOW, { ref: true })).toMatchObject({ ref: null });
+  });
 });
 
 describe("authenticateRequest before any credential is looked up", () => {
@@ -431,5 +455,47 @@ describe("authenticateRequest before any credential is looked up", () => {
       refused: false,
       principal: { kind: "job", repositoryId: "repo_1", write: true, workspaceId: "ws_1" },
     });
+  });
+
+  it("takes an agent's branch token on smart HTTP and its API paths, and nowhere else", async () => {
+    const ref = "refs/heads/work/fix";
+    const job = await mintJobToken(env.GIT_JOB_TOKEN_KEY, {
+      repositoryId: "repo_1",
+      write: true,
+      runId: "agent:session_1",
+      ref,
+    });
+    const basic = { authorization: `Basic ${toBase64(utf8(`x-access-token:${job}`))}` };
+    const bearer = { authorization: `Bearer ${job}` };
+    // Without `refTokens` (the archive, raw files, Terraform): a refused credential.
+    for (const options of [{}, { workspaceTokens: true }]) {
+      for (const headers of [basic, bearer]) {
+        const result = await authenticateRequest(
+          new Request("https://git.example.test/acme/infra/terraform/prod/state", { headers }),
+          env,
+          options,
+        );
+        expect(result).toMatchObject({ refused: true, principal: { kind: "anonymous" } });
+      }
+    }
+    const taken = await authenticateRequest(
+      request({ ...basic, "git-protocol": "version=2" }),
+      env,
+      { refTokens: true },
+    );
+    expect(taken).toMatchObject({
+      refused: false,
+      principal: { kind: "job", repositoryId: "repo_1", write: true, ref },
+    });
+    // The API takes it on the trace and instructions paths, never on statuses.
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/traces")).toBe(true);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/pulls/4/instructions")).toBe(true);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/pulls/4/instructions/i_1/answered")).toBe(
+      true,
+    );
+    expect(apiAcceptsRefTokens(`/api/repos/acme/infra/statuses/${"c".repeat(40)}`)).toBe(false);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/pulls/4/merge")).toBe(false);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/pulls/4/instructionsx")).toBe(false);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/ci/runs")).toBe(false);
   });
 });

@@ -570,7 +570,10 @@ export const findingsCount = async (pullRequestId: string): Promise<FindingsCoun
   };
 };
 
-/** Instructions that are with the agent or on their way: queued or delivered. */
+/**
+ * Instructions that are with the agent or on their way: queued, delivered,
+ * or answered by a version it has not pushed yet (`db/instructions.ts`).
+ */
 export const openInstructionCount = async (pullRequestId: string): Promise<number> => {
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -578,7 +581,13 @@ export const openInstructionCount = async (pullRequestId: string): Promise<numbe
     .where(
       and(
         eq(gitInstructions.pullRequestId, pullRequestId),
-        inArray(gitInstructions.status, ["queued", "delivered"]),
+        or(
+          inArray(gitInstructions.status, ["queued", "delivered"]),
+          and(
+            eq(gitInstructions.status, "answered"),
+            isNull(gitInstructions.answeredInVersionNumber),
+          ),
+        ),
       ),
     );
   return row?.count ?? 0;

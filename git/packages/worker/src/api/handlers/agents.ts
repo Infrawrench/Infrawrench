@@ -6,11 +6,16 @@
  * pull request whose body is the ask. The branch has nothing of its own yet,
  * so the storage records no version for it (`repo/do/versions.ts`); the
  * agent's first push is version 1.
+ *
+ * Naming an agent can also start it (`review/agent-connect.ts`): a T3 Code
+ * thread is launched in the caller's environment, and an Infrawrench agent's
+ * link carries where the app starts its session. A T3 Code thread's state is
+ * read from its environment when the agent is asked for (`externalRefs`
+ * `threadStatus`), and only there: the branch page's state stays a read of
+ * Postgres.
  */
-import { and, eq } from "drizzle-orm";
 import { HttpApiBuilder } from "effect/http-api";
 import {
-  type AgentLinkSet,
   GitApi,
   REVIEWER_KINDS,
   badRequest,
@@ -20,9 +25,7 @@ import {
   ok,
   unprocessable,
 } from "@infrawrench/git-contract";
-import { gitT3Environments } from "@infrawrench/server-core/db/schema";
 import { principalActor } from "../../auth/principal";
-import { db } from "../../db/client";
 import { listProtectedBranches, protectionFor } from "../../db/policy";
 import { type PullRequestWithThread, createPullRequest, getPullRequest } from "../../db/pulls";
 import {
@@ -30,9 +33,10 @@ import {
   getAgentLink,
   getReviewSettings,
   removeAgentLink,
-  setAgentLink,
   updateReviewSettings,
 } from "../../db/review";
+import { connectAgent, prepareAgent } from "../../review/agent-connect";
+import { threadState } from "../../t3/work";
 import { RepoReaderError } from "../../repo/reader";
 import { type RepoCx, repoOp } from "../context";
 import { mayPush } from "../protection";
@@ -44,30 +48,6 @@ const pullOr404 = async (cx: RepoCx, number: number): Promise<PullRequestWithThr
   const found = await getPullRequest(cx.repo.repository.id, number);
   if (!found) throw notFound("No such pull request");
   return found;
-};
-
-/** Names the agent of a pull request. A T3 Code environment has to be the caller's own. */
-const link = async (cx: RepoCx, found: PullRequestWithThread, agent: AgentLinkSet) => {
-  const environmentId = agent.t3EnvironmentId ?? null;
-  if (environmentId !== null) {
-    const [mine] = await db
-      .select({ id: gitT3Environments.id })
-      .from(gitT3Environments)
-      .where(
-        and(eq(gitT3Environments.id, environmentId), eq(gitT3Environments.userId, cx.userId ?? "")),
-      )
-      .limit(1);
-    if (!mine) throw unprocessable("That is not one of your T3 Code environments");
-  }
-  return setAgentLink({
-    pullRequestId: found.pull.issueId,
-    repositoryId: found.pull.repositoryId,
-    kind: agent.kind,
-    displayName: agent.displayName,
-    externalRefs: { ...(agent.externalRefs ?? {}) },
-    t3EnvironmentId: environmentId,
-    connectedByUserId: cx.userId,
-  });
 };
 
 /** The ask's first line, without Markdown's heading marks, as a title. */
@@ -101,14 +81,28 @@ export const AgentsHandlers = HttpApiBuilder.group(GitApi, "agents", (handlers) 
       repoOp(async (cx, { params }) => {
         const found = await pullOr404(cx, params.number);
         const row = await getAgentLink(found.pull.issueId);
-        return { agent: row ? await agentLinkView(row) : null };
+        if (!row) return { agent: null };
+        const agent = await agentLinkView(row);
+        // What a T3 Code thread is doing, asked of its environment and kept a few
+        // seconds. Only for somebody signed in: a visitor to a public repository
+        // does not get to make this site call a person's machine.
+        const status =
+          row.kind === "t3" && cx.userId !== null
+            ? await threadState(cx.env, row.pullRequestId)
+            : null;
+        return {
+          agent:
+            status === null
+              ? agent
+              : { ...agent, externalRefs: { ...agent.externalRefs, threadStatus: status } },
+        };
       }),
     )
     .handle(
       "set",
       repoOp(async (cx, { params, payload }) => {
         const found = await pullOr404(cx, params.number);
-        return { agent: await agentLinkView(await link(cx, found, payload)) };
+        return { agent: await agentLinkView(await connectAgent(cx, found, payload)) };
       }),
     )
     .handle(
@@ -131,6 +125,8 @@ export const AgentsHandlers = HttpApiBuilder.group(GitApi, "agents", (handlers) 
         if (payload.branch !== undefined && !isValidRefName(payload.branch)) {
           throw badRequest("That is not a valid branch name", "name_invalid");
         }
+        // Whatever the agent can refuse, it refuses before a branch exists.
+        const prepared = payload.agent ? await prepareAgent(cx, payload.agent) : undefined;
         const rules = await listProtectedBranches(repository.id);
         const generated = branchFrom(title);
         let branch: string | null = null;
@@ -183,7 +179,9 @@ export const AgentsHandlers = HttpApiBuilder.group(GitApi, "agents", (handlers) 
           oid: base.commit.oid,
         });
         await noteMentions(created.thread, `${title}\n${payload.ask}`, cx.userId);
-        const agent = payload.agent ? await link(cx, created, payload.agent) : null;
+        const agent = payload.agent
+          ? await connectAgent(cx, created, payload.agent, prepared)
+          : null;
         return {
           pullRequest: await pullDetail(cx, created),
           branch,

@@ -23,6 +23,7 @@ import {
   findOpenPullRequest,
   reanchorThread,
 } from "../db/pulls";
+import { settleAnswered } from "../db/instructions";
 import { getRepositoryById } from "../db/repositories";
 import {
   type VersionRow,
@@ -137,6 +138,8 @@ export const recordVersions = async (
     copied.push(row);
     await keepLineage(repository.id, branch, row.lineage, row.createdAt);
     await claimTraceEntries(row);
+    // What the agent said its next push would answer, this version answers.
+    await settleAnswered(row);
   }
   return copied;
 };

@@ -19,6 +19,7 @@ import { Route as OnboardingUsernameRouteImport } from './routes/onboarding.user
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsKeysRouteImport } from './routes/settings.keys'
 import { Route as SettingsReviewRouteImport } from './routes/settings.review'
+import { Route as SettingsT3RouteImport } from './routes/settings.t3'
 import { Route as SettingsTokensRouteImport } from './routes/settings.tokens'
 import { Route as OwnerRepoIndexRouteImport } from './routes/$owner/$repo/index'
 import { Route as OwnerRepoBranchesRouteImport } from './routes/$owner/$repo/branches'
@@ -112,6 +113,11 @@ const SettingsKeysRoute = SettingsKeysRouteImport.update({
 const SettingsReviewRoute = SettingsReviewRouteImport.update({
   id: '/review',
   path: '/review',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsT3Route = SettingsT3RouteImport.update({
+  id: '/t3',
+  path: '/t3',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsTokensRoute = SettingsTokensRouteImport.update({
@@ -360,6 +366,7 @@ export interface FileRoutesByFullPath {
   '/onboarding/username': typeof OnboardingUsernameRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/review': typeof SettingsReviewRoute
+  '/settings/t3': typeof SettingsT3Route
   '/settings/tokens': typeof SettingsTokensRoute
   '/$owner/': typeof OwnerIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -414,6 +421,7 @@ export interface FileRoutesByTo {
   '/onboarding/username': typeof OnboardingUsernameRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/review': typeof SettingsReviewRoute
+  '/settings/t3': typeof SettingsT3Route
   '/settings/tokens': typeof SettingsTokensRoute
   '/$owner': typeof OwnerIndexRoute
   '/settings': typeof SettingsIndexRoute
@@ -468,6 +476,7 @@ export interface FileRoutesById {
   '/onboarding/username': typeof OnboardingUsernameRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/review': typeof SettingsReviewRoute
+  '/settings/t3': typeof SettingsT3Route
   '/settings/tokens': typeof SettingsTokensRoute
   '/$owner/': typeof OwnerIndexRoute
   '/settings/': typeof SettingsIndexRoute
@@ -526,6 +535,7 @@ export interface FileRouteTypes {
     | '/onboarding/username'
     | '/settings/keys'
     | '/settings/review'
+    | '/settings/t3'
     | '/settings/tokens'
     | '/$owner/'
     | '/settings/'
@@ -580,6 +590,7 @@ export interface FileRouteTypes {
     | '/onboarding/username'
     | '/settings/keys'
     | '/settings/review'
+    | '/settings/t3'
     | '/settings/tokens'
     | '/$owner'
     | '/settings'
@@ -633,6 +644,7 @@ export interface FileRouteTypes {
     | '/onboarding/username'
     | '/settings/keys'
     | '/settings/review'
+    | '/settings/t3'
     | '/settings/tokens'
     | '/$owner/'
     | '/settings/'
@@ -761,6 +773,13 @@ declare module '@tanstack/react-router' {
       path: '/review'
       fullPath: '/settings/review'
       preLoaderRoute: typeof SettingsReviewRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/t3': {
+      id: '/settings/t3'
+      path: '/t3'
+      fullPath: '/settings/t3'
+      preLoaderRoute: typeof SettingsT3RouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/tokens': {
@@ -1077,6 +1096,7 @@ declare module '@tanstack/react-router' {
 interface SettingsRouteChildren {
   SettingsKeysRoute: typeof SettingsKeysRoute
   SettingsReviewRoute: typeof SettingsReviewRoute
+  SettingsT3Route: typeof SettingsT3Route
   SettingsTokensRoute: typeof SettingsTokensRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
 }
@@ -1084,6 +1104,7 @@ interface SettingsRouteChildren {
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsKeysRoute: SettingsKeysRoute,
   SettingsReviewRoute: SettingsReviewRoute,
+  SettingsT3Route: SettingsT3Route,
   SettingsTokensRoute: SettingsTokensRoute,
   SettingsIndexRoute: SettingsIndexRoute,
 }

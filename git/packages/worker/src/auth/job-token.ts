@@ -5,6 +5,7 @@
  * module only maps those claims onto the shape the forge's principals use.
  */
 import {
+  ANY_GIT_JOB_TOKEN_REF,
   ANY_GIT_JOB_TOKEN_WORKSPACE,
   GIT_JOB_TOKEN_MAX_TTL_SECONDS,
   signGitJobToken,
@@ -25,6 +26,13 @@ export interface JobTokenClaims {
    * `write` then says whether it may write the state.
    */
   readonly workspaceId: string | null;
+  /**
+   * The one branch (a full ref name, `refs/heads/...`) the token may push,
+   * or null for a token that may push any. A bound token reads the whole
+   * repository; the push policy (`repo/do/policy.ts`, `onlyRef`) confines
+   * what it writes to creating or updating that branch.
+   */
+  readonly ref: string | null;
 }
 
 export interface MintJobTokenOptions {
@@ -36,6 +44,8 @@ export interface MintJobTokenOptions {
   readonly now?: number;
   /** Binds the token to one Terraform workspace (its id). */
   readonly workspaceId?: string;
+  /** Binds the token to one branch (its full ref name). */
+  readonly ref?: string;
 }
 
 export interface VerifyJobTokenOptions {
@@ -48,6 +58,13 @@ export interface VerifyJobTokenOptions {
    * and pushes nothing.
    */
   readonly workspace?: boolean;
+  /**
+   * The caller confines a push to the token's branch (smart HTTP, through
+   * the push policy) or reaches nothing a branch could widen (the API groups
+   * a job may call). Everything else leaves this out, and a branch-bound
+   * token is then refused: no archive, no raw file, no Terraform state.
+   */
+  readonly ref?: boolean;
 }
 
 /** Mint a token. The app mints the ones runs use; this exists for tests and forge-side jobs. */
@@ -65,6 +82,7 @@ export const mintJobToken = async (key: string, options: MintJobTokenOptions): P
       runId: options.runId ?? "forge",
       expiresAt: now + ttl,
       ...(options.workspaceId !== undefined ? { workspace: options.workspaceId } : {}),
+      ...(options.ref !== undefined ? { ref: options.ref } : {}),
     },
     now * 1000,
   );
@@ -74,7 +92,8 @@ export const mintJobToken = async (key: string, options: MintJobTokenOptions): P
  * The claims of a valid token, or null. A token minted for one commit's
  * archive (it travels in a URL) verifies only when `commit` names that commit,
  * so it never authenticates a clone or any other read. A token minted for a
- * Terraform workspace verifies only for a caller that serves workspaces.
+ * Terraform workspace verifies only for a caller that serves workspaces, and
+ * one minted for a branch only for a caller that confines it to the branch.
  */
 export const verifyJobToken = async (
   key: string,
@@ -88,6 +107,7 @@ export const verifyJobToken = async (
     {
       ...(expect.commit ? { commit: expect.commit } : {}),
       ...(expect.workspace ? { workspace: ANY_GIT_JOB_TOKEN_WORKSPACE } : {}),
+      ...(expect.ref ? { ref: ANY_GIT_JOB_TOKEN_REF } : {}),
     },
     now * 1000,
   );
@@ -102,5 +122,6 @@ export const verifyJobToken = async (
     runId: claims.runId === "forge" ? null : claims.runId,
     expiresAt: claims.expiresAt,
     workspaceId: claims.workspace ?? null,
+    ref: claims.ref ?? null,
   };
 };

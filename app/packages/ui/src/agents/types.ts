@@ -230,6 +230,21 @@ export interface AgentCreateBody {
    * agent link approved by the caller up to `scopes`. Needs `team:invite`.
    */
   nibbletsLink?: { scopes: string[] };
+  /**
+   * Terminal sessions only: work on this pull request of the organization's
+   * repository on git.infrawrench.com, on its head branch, starting from its
+   * title and body. `repo` is then ignored.
+   */
+  gitWork?: AgentGitWorkRequest;
+}
+
+/** A pull request on git.infrawrench.com for a new agent session to work on. */
+export interface AgentGitWorkRequest {
+  /** The repository's namespace and name on the forge. */
+  owner: string;
+  repo: string;
+  /** The pull request's number. */
+  pull: number;
 }
 
 export interface AgentClient {
