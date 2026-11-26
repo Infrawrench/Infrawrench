@@ -34,17 +34,50 @@ The **Branches** tab lists the pages of the repository, open, merged and closed,
 
 <insert [A repository's Branches tab on git.infrawrench.com: the top bar reading "acme / infra" with a lock and Branches current, the open, merged and closed filter, two one-line rows of open branches with their state icons, and one row marked "from fork"] here>
 
-A branch's page is at its name: `git.infrawrench.com/acme/infra/branches/feature/rate-limits`. From the top it shows the title, what the branch needs next, the ask it was started from, its versions (one for each push), and the diff with the changed files beside it. Findings, the merge box and the conversation follow, with the agent, instructions, reviewers and labels beside them. The page has three tabs:
+A branch's page is at its name: `git.infrawrench.com/acme/infra/branches/feature/rate-limits`. From the top it shows the title, what the branch needs next, the ask it was started from, its versions (one for each push), the notes on the picked version, and its changed files with a tree of them beside. Findings, the merge box and the conversation follow, with the agent, instructions, reviewers and labels beside them. The page has three tabs:
 
-| Tab         | What it shows                                                         |
-| ----------- | --------------------------------------------------------------------- |
-| **Review**  | The versions, the diff, findings, the merge box and the conversation. |
-| **Commits** | The commits it would merge.                                           |
-| **Checks**  | [CI](./ci.md) runs and commit statuses for its latest commit.         |
+| Tab         | What it shows                                                           |
+| ----------- | ----------------------------------------------------------------------- |
+| **Review**  | The versions, the notes, the files, the merge box and the conversation. |
+| **Commits** | The commits it would merge.                                             |
+| **Checks**  | [CI](./ci.md) runs and commit statuses for its latest commit.           |
 
-<insert [A branch's page on git.infrawrench.com: the title and the line under it with the branch and its base, the version strip with three versions, the diff with the file tree beside it and an inline comment thread, and below it the merge box showing "1 of 1 required approval" and "No conflicts with main"] here>
+<insert [A branch's page on git.infrawrench.com: the title and the line under it with the branch and its base, the version strip with three versions, the notes with "Doubts and decisions" first, the list of files all closed with the file tree beside it, and below it the merge box showing "1 of 1 required approval" and "No conflicts with main"] here>
 
 Each push to the branch makes a new version and updates the page: its commits, its diff and whether it still merges cleanly. The diff can show the whole change, what one version changed, or everything since the version you last marked as reviewed.
+
+### Notes before the code
+
+Above the files, the page lists what there is to read about the version, so you can follow the change before opening any of it:
+
+| Group                    | What it holds                                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------------------------------- |
+| **Doubts and decisions** | What the agent was unsure of, then the choices it made. They come first and are marked down the side. |
+| **Findings**             | What reviewers found on this version, open ones first.                                                |
+| **Comments**             | Review comments on lines of this diff.                                                                |
+| **Steps**                | The rest of the agent's record, in the order it was written: the ask, steps, evidence and notes.      |
+
+A note about a file names it, with its lines when it has them: `modules/network/main.tf:101` or `modules/network/main.tf:97-103`. Click that to open the file at those lines.
+
+A note shows the lines it is about under its text when the code is needed to follow it. An agent says so when it records the note; when it does not say, a note on a line shows its code and a note on a whole file or on nothing does not. Review comments always show their lines.
+
+<insert [The notes on a version of a branch page: under "Doubts and decisions" a doubt with only its text and the label "modules/network/main.tf:108-118", a doubt with three lines of code under it, and a decision marked in another colour with the lines 120 to 125 it is about] here>
+
+### Files
+
+Every file starts closed, as one line: its path, how many notes it has, and its added and removed lines. Files with something to settle come first: the ones with an open must-fix finding, then the files of the agent's record in the order it went through them, then other files with a finding or a comment, then the rest by path. The tree beside them puts a dot on a file with notes, red when one must be fixed.
+
+Click a file's line to open it, or pick it in the tree. **Expand all** and **Collapse all** do it for every file. What you open stays open while you are on the page, across versions and layouts.
+
+A file with notes opens on the lines they are about, with three lines around each. The rest is counted, not shown:
+
+- The bar under the file's name says how much you are looking at, such as **Showing 37 of 77 changed lines**, and **Show full diff** shows all of it. **Show less** goes back.
+- Between two parts, a row such as **40 more changed lines** stands for the changed lines left out there. Click it to show them.
+- A note that needs its code hangs on its lines here too: an agent's entry above the lines it explains, a finding or a comment under its line.
+
+A file with no notes opens whole. Commenting on a line never closes what you had open around it.
+
+<insert [A file opened on a branch page: the bar reading "Showing 37 of 77 changed lines" with the "Show full diff" button, an agent's step above line 131, a row reading "40 more changed lines" with "Show" between two parts of the diff, a doubt above line 181, and four more files closed below with their note counts] here>
 
 ### Review
 

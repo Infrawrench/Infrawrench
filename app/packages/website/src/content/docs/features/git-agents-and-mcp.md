@@ -129,7 +129,9 @@ Tools take a repository as `owner/name` and a branch by its name.
 | `doubt`    | Something it is not sure of, or did not do.                                           |
 | `note`     | Anything else a reviewer should know.                                                 |
 
-An entry can point at files and lines, so it shows beside them in the diff.
+An entry can point at files and lines. The branch's page then names them on the entry, and goes there.
+
+Set `needs_code` on an entry when a reader has to see the code at those lines to understand it. The page then shows the lines under the entry's text, and hangs the entry on them in the file's diff. Leave it off for reasoning that stands on its own, as most decisions and doubts do. When you do not say, an entry on a line shows its code and any other does not. `report_finding` takes the same flag for each finding.
 
 Entries wait on the branch until the next push, and then belong to the version that push made. The branch does not have to exist yet. Entries nobody pushes after are dropped after 30 days.
 
