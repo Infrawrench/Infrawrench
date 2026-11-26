@@ -129,7 +129,9 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
         const base = { signInUrl: AUTH_PATHS.signIn, appUrl: appOrigin(cx.env) };
         const userId = cx.principal.kind === "user" ? cx.principal.userId : null;
         const user = userId ? await getUser(userId) : null;
-        if (!user) return { user: null, onboarding: null, organizations: [], ...base };
+        if (!user) {
+          return { user: null, onboarding: null, personal: null, organizations: [], ...base };
+        }
         const [gitUser, namespace, viewer] = await Promise.all([
           getGitUser(user.id),
           getNamespaceForUser(user.id),
@@ -138,6 +140,11 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
         const organizations = await Promise.all(
           viewer.organizations.map(async (organization) => {
             const permissions = gitPermissionsOf(organization.permissions);
+            // Whether one more private repository fits the plan right now, and why not.
+            const refusal = await gitPrivateRepositoryRefusal({
+              organizationId: organization.id,
+              userId: null,
+            });
             return {
               id: organization.id,
               name: organization.name,
@@ -145,15 +152,16 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
               permissions,
               canClaimNamespace:
                 organization.namespace === null && permissions.includes("git:admin"),
-              // Whether one more private repository fits the plan right now.
-              privateRepositories:
-                (await gitPrivateRepositoryRefusal({
-                  organizationId: organization.id,
-                  userId: null,
-                })) === null,
+              privateRepositories: refusal === null,
+              privateRepositoryRefusal: refusal,
+              defaultVisibility: organization.defaultVisibility ?? "private",
             };
           }),
         );
+        const personalRefusal =
+          namespace === null
+            ? null
+            : await gitPrivateRepositoryRefusal({ organizationId: null, userId: user.id });
         return {
           user: {
             id: user.id,
@@ -173,6 +181,14 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
                   ])
                 : null,
           },
+          personal:
+            namespace === null
+              ? null
+              : {
+                  privateRepositories: personalRefusal === null,
+                  privateRepositoryRefusal: personalRefusal,
+                  defaultVisibility: namespace.defaultVisibility,
+                },
           organizations,
           ...base,
         };

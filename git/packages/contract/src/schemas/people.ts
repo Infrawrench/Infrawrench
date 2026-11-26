@@ -3,7 +3,7 @@
  */
 import { Schema } from "effect";
 import { GIT_PERMISSIONS } from "../http/annotations";
-import { IsoDateTime } from "./common";
+import { IsoDateTime, Visibility } from "./common";
 
 /**
  * A person, wherever one is named: an author, an assignee, a reviewer. `id`
@@ -99,7 +99,15 @@ export const SessionOrganization = Schema.Struct({
     description: "Holds `git:admin` and the organisation has no namespace yet.",
   }),
   privateRepositories: Schema.Boolean.annotate({
-    description: "The organisation's plan allows private repositories.",
+    description: "One more private repository fits the organisation's plan.",
+  }),
+  privateRepositoryRefusal: Schema.NullOr(Schema.String).annotate({
+    description:
+      "Why not, as the sentence `create` would refuse with. Null when `privateRepositories` is true.",
+  }),
+  defaultVisibility: Visibility.annotate({
+    description:
+      "What a new repository in its namespace starts as, set in the app (Settings > Git).",
   }),
 }).annotate({ identifier: "SessionOrganization" });
 export type SessionOrganization = typeof SessionOrganization.Type;
@@ -130,6 +138,20 @@ export const Session = Schema.Struct({
       }),
     }),
   ).annotate({ description: "Null when signed out." }),
+  personal: Schema.NullOr(
+    Schema.Struct({
+      privateRepositories: Schema.Boolean.annotate({
+        description: "One more private repository fits the person's own namespace.",
+      }),
+      privateRepositoryRefusal: Schema.NullOr(Schema.String).annotate({
+        description: "Why not, as a sentence. Null when `privateRepositories` is true.",
+      }),
+      defaultVisibility: Visibility,
+    }),
+  ).annotate({
+    description:
+      "What the person's own namespace may take. Null when signed out or without a username.",
+  }),
   organizations: Schema.Array(SessionOrganization),
   signInUrl: Schema.String.annotate({
     description: "Where to send a signed-out browser (`/auth/sign-in`); add `?returnTo=`.",

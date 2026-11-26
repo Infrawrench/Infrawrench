@@ -20,6 +20,10 @@ export type Uuid = typeof Uuid.Type;
 export const IsoDateTime = Schema.String.annotate({ format: "date-time" });
 export type IsoDateTime = typeof IsoDateTime.Type;
 
+export const VISIBILITIES = ["public", "private"] as const;
+export const Visibility = Schema.Literals(VISIBILITIES).annotate({ identifier: "Visibility" });
+export type Visibility = typeof Visibility.Type;
+
 /** `{ ok: true }`, what every delete and fire-and-forget write answers. */
 export const Ok = Schema.Struct({ ok: Schema.Literal(true) }).annotate({ identifier: "Ok" });
 export type Ok = typeof Ok.Type;

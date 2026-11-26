@@ -14,7 +14,15 @@ import {
 import { Authentication, RepositoryAccess } from "../http/auth";
 import { BadRequest, Conflict, NotFound, UnprocessableEntity } from "../http/errors";
 import { CommitSha, Ok, Page, PageQuery, RefQuery, RepoParams } from "../schemas/common";
-import { CiEvent, CiRepositoryStatus, CiRun, CiRunDetail, CiRunStatus } from "../schemas/ci";
+import {
+  CiEvent,
+  CiRepositorySettings,
+  CiRepositorySettingsUpdate,
+  CiRepositoryStatus,
+  CiRun,
+  CiRunDetail,
+  CiRunStatus,
+} from "../schemas/ci";
 import { CombinedStatus, CommitStatus, CommitStatusCreate } from "../schemas/git";
 import {
   TerraformManagedResource,
@@ -70,6 +78,27 @@ export class CiGroup extends HttpApiGroup.make("ci")
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "Whether CI runs for a repository, and its pipelines")
       .annotate(SuccessDescription, "CI status"),
+    HttpApiEndpoint.get("settings", "/ci/settings", {
+      params: RepoParams,
+      success: CiRepositorySettings,
+    })
+      .annotate(RequiredAccess, "admin")
+      .annotate(AllowedWhenArchived, true)
+      .annotate(OpenApi.Summary, "A repository's CI switch")
+      .annotate(SuccessDescription, "The switch"),
+    HttpApiEndpoint.put("updateSettings", "/ci/settings", {
+      params: RepoParams,
+      payload: CiRepositorySettingsUpdate,
+      success: CiRepositorySettings,
+      error: [BadRequest, UnprocessableEntity],
+    })
+      .annotate(RequiredAccess, "admin")
+      .annotate(OpenApi.Summary, "Switch CI on or off for a repository")
+      .annotate(
+        OpenApi.Description,
+        "Runs already started finish. Secrets, variables and approvals are the organisation's, in the app. 422 `ci_unavailable` for a repository in a personal namespace.",
+      )
+      .annotate(SuccessDescription, "The switch"),
     HttpApiEndpoint.get("listRuns", "/ci/runs", {
       params: RepoParams,
       query: {

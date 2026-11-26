@@ -17,7 +17,9 @@
 import { and, eq, sql } from "drizzle-orm";
 import {
   GIT_FORGE_LIMITS,
+  GIT_FORGE_UPGRADE as UPGRADE,
   formatGitForgeBytes,
+  gitPrivateRepositoryLimitMessage,
   type GitForgeLimits,
   type GitForgePlan,
   type GitForgeUsage,
@@ -96,19 +98,16 @@ export function gitNamespaceQuota(owner: GitQuotaOwner): Promise<GitQuota> {
   throw new Error("A namespace is owned by a user or an organisation");
 }
 
-const UPGRADE = "upgrade under Settings > Billing in the Infrawrench app";
-
 /**
  * Why the namespace may not take one more private repository, or null when
  * it may. A sentence for a person: the forge sends it as the 402's `error`.
  */
 export function privateRepositoryRefusal(quota: GitQuota): string | null {
-  const limit = quota.limits.privateRepositories;
-  if (limit === null || quota.usage.privateRepositories < limit) return null;
-  const count = `${limit} private ${limit === 1 ? "repository" : "repositories"}`;
-  return quota.plan === "personal"
-    ? `A personal namespace includes ${count}. Make this one public, or keep it in an organisation`
-    : `The free plan includes ${count}. Make this one public, or ${UPGRADE}`;
+  return gitPrivateRepositoryLimitMessage(
+    quota.plan,
+    quota.usage.privateRepositories,
+    quota.limits,
+  );
 }
 
 /**

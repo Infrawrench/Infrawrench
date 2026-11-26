@@ -7,6 +7,7 @@ import { Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
 import {
   AllowedWhenArchived,
+  HandlerGate,
   RequiredAccess,
   RequiresUser,
   SuccessDescription,
@@ -27,16 +28,17 @@ import {
   QueryFlag,
   RepoParams,
   SortDirection,
+  Visibility,
 } from "../schemas/common";
 import { UserRef } from "../schemas/people";
 import {
   Repository,
   RepositoryCreate,
   RepositoryListType,
+  RepositoryNameAvailability,
   RepositorySort,
   RepositorySummary,
   RepositoryUpdate,
-  Visibility,
 } from "../schemas/repository";
 
 const listQuery = {
@@ -62,6 +64,23 @@ export class RepositoryListsGroup extends HttpApiGroup.make("repositoryLists")
         "In the caller's own namespace, or an organisation's where they hold `git:write`. 409 `name_taken`; 402 `plan_required` for a private repository the owner's plan does not allow.",
       )
       .annotate(SuccessDescription, "The repository"),
+    HttpApiEndpoint.get("nameAvailability", "/namespaces/:namespace/repository-name-availability", {
+      params: { namespace: NamespaceSlug },
+      query: { name: Schema.String },
+      success: RepositoryNameAvailability,
+      error: NotFound,
+    })
+      .annotate(RequiresUser, true)
+      .annotate(
+        HandlerGate,
+        "The caller's own namespace, or an organisation's they hold `git:write` in.",
+      )
+      .annotate(OpenApi.Summary, "Whether a new repository can take a name")
+      .annotate(
+        OpenApi.Description,
+        "Answers what `create` would: the name rules, then whether the namespace has a repository by that name. Only for someone who may create there (403 otherwise), who can read every repository of the namespace, so a private repository's name is told to nobody new.",
+      )
+      .annotate(SuccessDescription, "Availability"),
     HttpApiEndpoint.get("listForNamespace", "/namespaces/:namespace/repos", {
       params: { namespace: NamespaceSlug },
       query: {
@@ -154,6 +173,19 @@ export class RepositoriesGroup extends HttpApiGroup.make("repositories")
       .annotate(RequiredAccess, "admin")
       .annotate(OpenApi.Summary, "Rename a repository")
       .annotate(SuccessDescription, "The repository, at its new name"),
+    HttpApiEndpoint.get("renameAvailability", "/rename-availability", {
+      params: RepoParams,
+      query: { name: Schema.String },
+      success: RepositoryNameAvailability,
+    })
+      .annotate(RequiredAccess, "admin")
+      .annotate(AllowedWhenArchived, true)
+      .annotate(OpenApi.Summary, "Whether a repository can be renamed to a name")
+      .annotate(
+        OpenApi.Description,
+        "Answers what `rename` would, to the people who may rename it. Its own name, in any case, is available.",
+      )
+      .annotate(SuccessDescription, "Availability"),
     HttpApiEndpoint.post("transfer", "/transfer", {
       params: RepoParams,
       payload: Schema.Struct({

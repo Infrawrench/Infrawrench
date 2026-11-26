@@ -8,6 +8,7 @@ The JSON API of git.infrawrench.com as Effect `HttpApi` definitions. The worker 
 - `src/schemas/`: every request and response shape, by subject. `git.ts` is the content the UI draws directly.
 - `src/groups/`: the endpoints. `src/api.ts` assembles `GitApi` (everything) and the per-group APIs.
 - `src/names.ts`, `src/urls.ts`: pure functions both sides use (name rules and the reserved list; clone, raw, archive and sign-in paths).
+- `src/limits.ts`: the plan limits and the sentence that refuses one more private repository, re-exported from client-core (`git-forge.ts`), where the app's Settings > Git words the same numbers.
 
 ## Conventions
 
@@ -40,6 +41,9 @@ The JSON API of git.infrawrench.com as Effect `HttpApi` definitions. The worker 
 - **CI is read-only here.** Retrying, cancelling and approving a run happen in the app (`CiRun.appUrl`), where `ci:approve` lives. The CI status lists repeat client-core's `ci.ts`; a status added there is added to `schemas/ci.ts`.
 - **Terraform, with the runtime.** `terraform.listAccounts` is the picker of a workspace's accounts (the organisation's, for a person with `accounts:read`; empty otherwise). `terraform.createRun` starts a run by hand. `terraform.downloadStateVersion` answers the document as text (`write`: it holds secrets) and `terraform.restoreStateVersion` the new current version. `terraform.approveRun` is annotated `read` with `RequiresUser` and gated in its handler (a signed-in admin of the repository, or `ci:approve` in the organisation); `viewerCanApprove` on a waiting run tells the UI. `skipped` is a run status (a fork's pull request), and `terraform_run` a timeline item. A workspace's and a resource's `monthlyCost` is the last thirty days' spend as the caller may see it.
 - **Terraform shapes follow the tables.** State documents are never served by this API (they hold secrets), only their metadata (`sha256`, not an MD5). Costs are null for callers who may not see costs in the app, and a run's cost change carries the monthly delta alone (`monthlyBefore` and `monthlyAfter` are null) until the totals are stored. A workspace's name is a URL segment and part of an R2 key: lowercase letters, digits, `-` and `_`. `forget` is an action beside `delete`: removed from state, not destroyed.
+- **A name's availability is told to nobody its creation would not tell.** `repositoryLists.nameAvailability` answers for a namespace only to someone who may create there (the handler's gate, the same refusal `create` gives), and such a person can read every repository of the namespace; `repositories.renameAvailability` takes the `admin` that `rename` takes. Neither says more than the 409 of the write it stands in front of. A stranger gets the same 403 for a private repository's name as for a free one.
+- **What a new repository starts as is on the session.** `SessionOrganization.defaultVisibility` (set in the app, Settings > Git), `privateRepositories` and `privateRepositoryRefusal` (the quota's own sentence, the one the 402 carries), and the same three for the person's own namespace under `Session.personal`.
+- **The CI switch is the repository's.** `ci.settings` and `ci.updateSettings` take `admin` on the repository. `available` is false in a personal namespace, where the update answers 422 `ci_unavailable`. Whether runs start is still `ci.status`, which also reads the owner's plan. Secrets and variables are not here.
 - **Token scopes are `repo:read` and `repo:write` only.** A token never reaches settings or credentials: `AccountGroup` is session only.
 
 ## Not here yet

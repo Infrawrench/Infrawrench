@@ -3,12 +3,8 @@
  */
 import { Schema } from "effect";
 import { REPO_ACCESS_LEVELS } from "../http/annotations";
-import { IsoDateTime } from "./common";
+import { IsoDateTime, Visibility } from "./common";
 import { NamespaceRef } from "./people";
-
-export const VISIBILITIES = ["public", "private"] as const;
-export const Visibility = Schema.Literals(VISIBILITIES).annotate({ identifier: "Visibility" });
-export type Visibility = typeof Visibility.Type;
 
 export const MERGE_METHODS = ["merge", "squash", "rebase"] as const;
 export const MergeMethod = Schema.Literals(MERGE_METHODS).annotate({
@@ -176,6 +172,17 @@ export type RepositorySort = typeof RepositorySort.Type;
 export const REPOSITORY_LIST_TYPES = ["all", "sources", "forks", "archived", "private"] as const;
 export const RepositoryListType = Schema.Literals(REPOSITORY_LIST_TYPES);
 export type RepositoryListType = typeof RepositoryListType.Type;
+
+/** Whether a repository may take a name, for the forms that ask before they submit. */
+export const RepositoryNameAvailability = Schema.Struct({
+  name: Schema.String,
+  available: Schema.Boolean,
+  reason: Schema.NullOr(Schema.Literals(["taken", "invalid"])),
+  message: Schema.NullOr(Schema.String).annotate({
+    description: "Why not, as a sentence. Null when available.",
+  }),
+}).annotate({ identifier: "RepositoryNameAvailability" });
+export type RepositoryNameAvailability = typeof RepositoryNameAvailability.Type;
 
 export const COLLABORATOR_ROLES = ["read", "triage", "write", "admin"] as const;
 export const CollaboratorRole = Schema.Literals(COLLABORATOR_ROLES).annotate({

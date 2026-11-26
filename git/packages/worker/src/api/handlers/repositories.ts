@@ -9,6 +9,7 @@ import {
   GitApi,
   PaymentRequired,
   REPOSITORY_NAME_MAX_LENGTH,
+  type RepositoryNameAvailability,
   type RepositoryUpdate,
   accessAtLeast,
   badRequest,
@@ -33,6 +34,7 @@ import {
   createRepository,
   deleteRepository,
   getRepositoryById,
+  isRepositoryNameTaken,
   listStargazerIds,
   recordPush,
   starRepository,
@@ -101,6 +103,31 @@ const checkPrivateAllowed = async (namespace: {
 }): Promise<void> => {
   const refusal = await gitPrivateRepositoryRefusal(namespace);
   if (refusal !== null) throw new PaymentRequired({ error: refusal, code: "plan_required" });
+};
+
+/** What `create` and `rename` would say of a name, without doing either. */
+const nameAvailability = async (
+  namespaceId: string,
+  name: string,
+  exceptId?: string,
+): Promise<RepositoryNameAvailability> => {
+  const problem = repositoryNameProblem(name);
+  if (problem !== null) {
+    return {
+      name,
+      available: false,
+      reason: "invalid",
+      message: nameProblemMessage(problem, REPOSITORY_NAME_MAX_LENGTH),
+    };
+  }
+  return (await isRepositoryNameTaken(namespaceId, name, exceptId))
+    ? {
+        name,
+        available: false,
+        reason: "taken",
+        message: "A repository with that name exists here",
+      }
+    : { name, available: true, reason: null, message: null };
 };
 
 const identityOf = async (cx: Cx) => {
@@ -196,6 +223,14 @@ export const RepositoryListsHandlers = HttpApiBuilder.group(GitApi, "repositoryL
           throw error;
         }
         return reload(cx, row.id);
+      }),
+    )
+    .handle(
+      "nameAvailability",
+      op(async (cx, { params, query }) => {
+        // The same gate as `create`: only someone who may create here is told what is taken.
+        const namespace = await targetNamespace(cx, params.namespace, "write");
+        return nameAvailability(namespace.id, query.name);
       }),
     )
     .handle(
@@ -367,6 +402,12 @@ export const RepositoriesHandlers = HttpApiBuilder.group(GitApi, "repositories",
         }
         return reload(cx, cx.repo.repository.id);
       }),
+    )
+    .handle(
+      "renameAvailability",
+      repoOp((cx, { query }) =>
+        nameAvailability(cx.repo.repository.namespaceId, query.name, cx.repo.repository.id),
+      ),
     )
     .handle(
       "transfer",

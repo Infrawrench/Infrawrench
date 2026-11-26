@@ -115,6 +115,8 @@ export interface UserOrganization {
   /** Its namespace's slug, or null while unclaimed. */
   readonly namespace: string | null;
   readonly namespaceId: string | null;
+  /** What a new repository in its namespace starts as. Null while unclaimed. */
+  readonly defaultVisibility: "public" | "private" | null;
 }
 
 /** The organisations a person belongs to, oldest membership first, with each one's namespace. */
@@ -125,6 +127,7 @@ export const listUserOrganizations = (userId: string): Promise<UserOrganization[
       name: organizations.displayName,
       namespace: gitNamespaces.slug,
       namespaceId: gitNamespaces.id,
+      defaultVisibility: gitNamespaces.defaultVisibility,
     })
     .from(organizationMembers)
     .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))

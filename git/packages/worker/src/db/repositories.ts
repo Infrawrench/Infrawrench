@@ -74,6 +74,29 @@ export const getRepository = async (
   return row ?? null;
 };
 
+/**
+ * Whether a namespace has a repository by this name, compared as the unique
+ * index compares it. `exceptId` leaves one repository out: its own name is
+ * not taken from it.
+ */
+export const isRepositoryNameTaken = async (
+  namespaceId: string,
+  name: string,
+  exceptId?: string,
+): Promise<boolean> => {
+  const [row] = await db
+    .select({ id: gitRepositories.id })
+    .from(gitRepositories)
+    .where(
+      and(
+        eq(gitRepositories.namespaceId, namespaceId),
+        eq(gitRepositories.nameLower, name.toLowerCase()),
+      ),
+    )
+    .limit(1);
+  return row !== undefined && row.id !== exceptId;
+};
+
 export const getRepositoryById = async (id: string): Promise<RepositoryWithOwner | null> => {
   const [row] = await db
     .select({ repository: gitRepositories, owner: ownerColumns })

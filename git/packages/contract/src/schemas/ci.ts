@@ -108,3 +108,21 @@ export const CiRepositoryStatus = Schema.Struct({
   }),
 }).annotate({ identifier: "CiRepositoryStatus" });
 export type CiRepositoryStatus = typeof CiRepositoryStatus.Type;
+
+/** The repository's own CI switch, for its settings. */
+export const CiRepositorySettings = Schema.Struct({
+  enabled: Schema.Boolean.annotate({
+    description:
+      "The repository's switch. On until someone turns it off; whether runs start also follows the owner's plan (`CiRepositoryStatus`).",
+  }),
+  available: Schema.Boolean.annotate({
+    description:
+      "An organisation owns the repository. A personal namespace runs no CI and has no switch to change.",
+  }),
+}).annotate({ identifier: "CiRepositorySettings" });
+export type CiRepositorySettings = typeof CiRepositorySettings.Type;
+
+export const CiRepositorySettingsUpdate = Schema.Struct({
+  enabled: Schema.Boolean,
+}).annotate({ identifier: "CiRepositorySettingsUpdate" });
+export type CiRepositorySettingsUpdate = typeof CiRepositorySettingsUpdate.Type;

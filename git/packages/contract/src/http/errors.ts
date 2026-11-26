@@ -116,6 +116,7 @@ export const ERROR_CODES = [
   "last_admin",
   "terraform_locked",
   "terraform_unavailable",
+  "ci_unavailable",
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];
 

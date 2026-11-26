@@ -5,18 +5,21 @@ import {
   AllowedWhenArchived,
   Authentication,
   Diff,
+  FORGE_LIMITS,
   GitApi,
   HandlerGate,
   RepositoryAccess,
   RequiredAccess,
   RequiredOrgPermission,
   RequiresUser,
+  Session,
   TimelineItem,
   accessAtLeast,
   archivePath,
   httpCloneUrl,
   isValidRefName,
   namespaceSlugProblem,
+  privateRepositoryRefusal,
   rawPath,
   repositoryNameProblem,
   sshCloneUrl,
@@ -139,10 +142,73 @@ describe("GitApi", () => {
     }
   });
 
+  it("tells a repository's name to nobody its creation would not", () => {
+    const gate = (id: string) => {
+      const found = endpoints.find((e) => `${e.group}.${e.name}` === id);
+      expect(found, id).toBeDefined();
+      return found!;
+    };
+    const create = gate("repositoryLists.nameAvailability");
+    expect(create.method).toBe("GET");
+    expect(Context.get(create.annotations, RequiresUser)).toBe(true);
+    expect(Context.get(create.annotations, HandlerGate)).toMatch(/git:write/);
+    expect(Context.get(gate("repositories.renameAvailability").annotations, RequiredAccess)).toBe(
+      Context.get(gate("repositories.rename").annotations, RequiredAccess),
+    );
+  });
+
+  it("leaves a repository's CI switch to its administrators", () => {
+    for (const name of ["settings", "updateSettings"]) {
+      const found = endpoints.find((e) => e.group === "ci" && e.name === name);
+      expect(Context.get(found!.annotations, RequiredAccess), name).toBe("admin");
+    }
+  });
+
   it("builds an OpenAPI document", () => {
     const spec = OpenApi.fromApi(GitApi);
     expect(Object.keys(spec.paths).length).toBeGreaterThan(60);
     expect(spec.paths["/api/repos/{owner}/{repo}/pulls/{number}/merge"]?.post).toBeDefined();
+  });
+});
+
+describe("plan limits", () => {
+  it("refuses one more private repository with the plan's own numbers", () => {
+    expect(privateRepositoryRefusal("paid", 10_000)).toBeNull();
+    expect(privateRepositoryRefusal("free", FORGE_LIMITS.free.privateRepositories! - 1)).toBeNull();
+    expect(privateRepositoryRefusal("free", FORGE_LIMITS.free.privateRepositories!)).toContain(
+      `${FORGE_LIMITS.free.privateRepositories} private repositories`,
+    );
+    expect(
+      privateRepositoryRefusal("personal", FORGE_LIMITS.personal.privateRepositories!),
+    ).toContain("personal namespace");
+  });
+
+  it("carries the form's defaults on the session", () => {
+    const session = Schema.decodeSync(Session)({
+      user: null,
+      onboarding: null,
+      personal: {
+        privateRepositories: false,
+        privateRepositoryRefusal: "A personal namespace includes 5 private repositories",
+        defaultVisibility: "private",
+      },
+      organizations: [
+        {
+          id: "org",
+          name: "Acme",
+          namespace: "acme",
+          permissions: ["git:write"],
+          canClaimNamespace: false,
+          privateRepositories: true,
+          privateRepositoryRefusal: null,
+          defaultVisibility: "public",
+        },
+      ],
+      signInUrl: "/auth/sign-in",
+      appUrl: "https://app.example.test",
+    });
+    expect(session.organizations[0]?.defaultVisibility).toBe("public");
+    expect(session.personal?.privateRepositories).toBe(false);
   });
 });
 

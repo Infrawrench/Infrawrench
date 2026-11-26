@@ -25,6 +25,7 @@ import {
   discoverTerraformRoots,
   isWorkspaceName,
 } from "@infrawrench/git-terraform";
+import { setCiGitRepository } from "@infrawrench/server-core/ci/git-repositories";
 import type { GitTerraformRunStatus } from "@infrawrench/server-core/db/schema";
 import { planAccess } from "@infrawrench/server-core/entitlements";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
@@ -205,6 +206,34 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
                 ? "CI needs a paid plan"
                 : null;
         return { enabled: reason === null, pipelines: await pipelinesOf(cx), reason };
+      }),
+    )
+    .handle(
+      "settings",
+      repoOp(async (cx) => ({
+        enabled: !(await ciSwitchedOff(cx.repo.repository.id)),
+        available: cx.repo.owner.organizationId !== null,
+      })),
+    )
+    .handle(
+      "updateSettings",
+      repoOp(async (cx, { payload }) => {
+        const { repository, owner } = cx.repo;
+        if (owner.organizationId === null) {
+          throw unprocessable("CI runs for an organisation's repositories", "ci_unavailable");
+        }
+        const saved = await setCiGitRepository(
+          {
+            id: repository.id,
+            namespace: owner.slug,
+            name: repository.name,
+            defaultBranch: repository.defaultBranch,
+            organizationId: owner.organizationId,
+          },
+          payload.enabled,
+          cx.userId,
+        );
+        return { enabled: saved.ciEnabled, available: true };
       }),
     )
     .handle(

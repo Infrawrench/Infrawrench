@@ -110,6 +110,27 @@ export interface GitForgeRepositoryList {
   repositories: GitForgeRepository[];
 }
 
+/** Where a refusal that a paid plan lifts sends its reader. */
+export const GIT_FORGE_UPGRADE = "upgrade under Settings > Billing in the Infrawrench app";
+
+/**
+ * Why a namespace may not take one more private repository, or null when it
+ * may. A sentence for a person: the forge sends it as the 402's `error` and
+ * shows it beside the choice it rules out.
+ */
+export function gitPrivateRepositoryLimitMessage(
+  plan: GitForgePlan,
+  privateRepositories: number,
+  limits: GitForgeLimits = GIT_FORGE_LIMITS[plan],
+): string | null {
+  const limit = limits.privateRepositories;
+  if (limit === null || privateRepositories < limit) return null;
+  const count = `${limit} private ${limit === 1 ? "repository" : "repositories"}`;
+  return plan === "personal"
+    ? `A personal namespace includes ${count}. Make this one public, or keep it in an organisation`
+    : `The free plan includes ${count}. Make this one public, or ${GIT_FORGE_UPGRADE}`;
+}
+
 /** `GET /git`: the namespace (or null), the plan's limits and the usage. */
 export async function fetchGitForgeOverview(
   api: CloudFetch,
