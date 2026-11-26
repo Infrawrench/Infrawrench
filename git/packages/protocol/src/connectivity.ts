@@ -51,6 +51,11 @@ export class ConnectivityCheck {
     return this.needed.size;
   }
 
+  /** Whether some object of the pack names `oid`. One that none names is a root of the pack. */
+  needs(oid: ObjectId): boolean {
+    return this.needed.has(oid);
+  }
+
   /**
    * The first id that neither side has, or null when the pack is complete.
    * `inPack` is asked first: for most ids it is the answer, and it is a

@@ -52,7 +52,7 @@ const output = serve({
 - **Which commits to send** (`selectCommits`): wants and haves are walked together, newest first, and the walk ends when nothing wanted is left. Clocks that run backwards can make it send a commit the client has; that costs bytes and nothing else.
 - **Which objects** (`selectObjects`): the trees of the commits the client has right below what is sent (the edges) are marked first, then every tree and blob of the commits being sent that is not marked. Marked objects are also what `packObjects` may use as thin-pack bases.
 - **Shallow.** `deepen` is a breadth-first cut; `deepen-since` and `deepen-not` a filtered walk. The client's own shallow commits stop the have side (it does not have their parents) and, in a fetch that does not deepen, the want side too. A commit being unshallowed is passed through: the client has it, so it is not sent, and its parents are.
-- **A full clone asks the backend for everything** (`packEverything`) when the client has nothing, is not shallow, and wants every branch and tag. The backend can then answer without any walk, and for a repository that is one pack, with the stored file. The cost: such a pack also holds objects no branch or tag reaches, which is what is left behind by a forced push and what only `refs/pull/*` reach, until a repack that prunes exists. A backend that minds returns null and gets asked for the objects by id.
+- **A full clone asks the backend for everything** (`packEverything`) when the client has nothing, is not shallow, and wants every branch and tag. The backend can then answer without any walk, and for a repository that is one pack, with the stored file. **It may only do so while every object it would send is reachable from a branch or a tag**: what a forced push left behind, what only `refs/pull/*` reach and what was copied in from a fork must never go out in a clone. A backend that cannot say so returns null and gets asked for the objects by id.
 - **Every object of a pushed pack is checked**, not only what the new tips reach (`ConnectivityCheck`): each commit, tree and tag must name only objects the pack or the repository has. That keeps one invariant true of the whole store, an object that exists has its history, which is what lets every later walk stop at the first object it already knows. Git's own check (walk from the new tips until existing refs are reached) would let a pack bring an object with missing history that a later push could point a ref at.
 - **`ReceiveHooks.check` gets each update classified**: `kind` (create, update, delete) and `forced` (the new commit does not descend from the old one). Only the protocol and the backend can know that, and the host's policy needs it (protected branches, the push event).
 - **A branch can only point at a commit**, a ref can be updated once per push, and the branch `HEAD` names cannot be deleted. Everything else about refs is the backend's compare-and-swap.
@@ -70,7 +70,7 @@ const output = serve({
 
 ## Limits
 
-`ServeLimits`: 10 000 wants, 50 000 haves and 10 000 ref updates a request, 20 000 commits looked at to end a negotiation. 64 push options are kept. A packet is at most 65 520 bytes, which the reader enforces.
+`ServeLimits`: 10 000 wants, 50 000 haves and 10 000 ref updates a request, 20 000 commits looked at to end a negotiation. Every list a client can grow is counted as it is read, not after: also `maxShallows`, `maxDeepenNots`, `maxRefPrefixes` (past it every ref is listed, as git does), `maxArgumentBytes` for one v2 command, `maxCommands` on one stream, `maxPushOptions`, and `maxConversationCommits` for a stateful negotiation as a whole. A packet is at most 65 520 bytes, which the reader enforces.
 
 Memory is the walk's: a `Map` entry per commit visited and 28 bytes per object selected. A fetch that walks a million commits holds about 100 MB of commit nodes, which is past what a Durable Object has; the full-clone path does not walk.
 
@@ -102,3 +102,9 @@ The push is the core indexer's speed. The clone is a copy on our side (well unde
 - A shallow client's `shallow` lines on a push are read and ignored: the pack is judged against what the repository has, so a push that would make the repository itself shallow is refused as missing objects.
 - `multi_ack` without `_detailed`, and `no-done`.
 - The repository's own history being shallow is not supported.
+
+## After the security review
+
+- **A shallow line only counts when the wants reach it.** `shallow <id>` with a deepen used to be taken as a commit the client has, and its history was sent: any commit by id, reachable or not. `planShallow` now keeps only shallow commits the wants reach (`reachableAmong`, one walk). `test/reach.test.ts`.
+- **Wants that are not tips are checked in one walk**, not one each.
+- The limits above. Over SSH there is no request size to stop a client that keeps sending lines.

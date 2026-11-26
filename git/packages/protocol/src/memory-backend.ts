@@ -42,6 +42,13 @@ export class MemoryBackend implements RepositoryBackend {
   headRef: string | null = "refs/heads/main";
   /** Whether `packEverything` may answer with the stored pack. Tests turn it off to force a walk. */
   serveStoredPack = true;
+  /**
+   * Cleared once a ref is deleted, moved or made outside branches and tags:
+   * from then on the stored pack may hold what no branch or tag reaches, so
+   * a clone walks. (A pack pushed with objects nothing names is not caught
+   * here; the worker's backend checks that too.)
+   */
+  private everythingReachable = true;
   private readonly cache = new Map<ObjectId, GitObject>();
   private cached = 0;
 
@@ -157,6 +164,9 @@ export class MemoryBackend implements RepositoryBackend {
     if (staged) this.packs.push(staged);
     updates.forEach((update, index) => {
       if (results[index]!.error !== null) return;
+      const branchOrTag =
+        update.name.startsWith("refs/heads/") || update.name.startsWith("refs/tags/");
+      if (update.oldOid !== ZERO_OID || !branchOrTag) this.everythingReachable = false;
       if (update.newOid === ZERO_OID) this.refs.delete(update.name);
       else this.refs.set(update.name, update.newOid);
     });
@@ -171,7 +181,8 @@ export class MemoryBackend implements RepositoryBackend {
     const only = this.packs.length === 1 ? this.packs[0]! : null;
     // One pack that stands alone is already the answer. A client without
     // `ofs-delta` could not read it as stored.
-    if (!this.serveStoredPack || !only || !only.selfContained || !options.ofsDelta) return null;
+    if (!this.serveStoredPack || !this.everythingReachable) return null;
+    if (!only || !only.selfContained || !options.ofsDelta) return null;
     const chunks: Uint8Array[] = [];
     for (let at = 0; at < only.bytes.length; at += 1 << 20) {
       chunks.push(only.bytes.subarray(at, at + (1 << 20)));

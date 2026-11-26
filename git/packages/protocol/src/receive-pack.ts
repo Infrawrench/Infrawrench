@@ -146,9 +146,12 @@ export async function* receivePack(ctx: Context): AsyncGenerator<Uint8Array, voi
 
   const pushOptions: string[] = [];
   if (capabilities.has("push-options")) {
-    for (;;) {
+    for (let lines = 1; ; lines++) {
       const pkt = await ctx.reader.read();
       if (pkt === null || pkt.type !== "data") break;
+      if (lines > ctx.limits.maxPushOptions) {
+        throw new ProtocolError("receive-pack: too many push options");
+      }
       if (pushOptions.length < 64) pushOptions.push(lineOf(pkt.data));
     }
   }

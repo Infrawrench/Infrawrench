@@ -101,13 +101,27 @@ function parseSince(text: string): number {
   return since;
 }
 
+/** A `want` line's id, counted against the limit as it is read rather than after. */
+function addWant(ctx: Context, request: FetchRequest, text: string): void {
+  if (request.wants.length >= ctx.limits.maxWants) {
+    throw new ProtocolError("upload-pack: too many wants");
+  }
+  request.wants.push(parseOid(text, "want"));
+}
+
 /** A line both protocols share: `shallow`, `deepen`, `deepen-since`, `deepen-not`. */
-function parseShallowLine(line: string, request: FetchRequest): boolean {
+function parseShallowLine(ctx: Context, line: string, request: FetchRequest): boolean {
   if (line.startsWith("shallow ")) {
+    if (request.clientShallow.length >= ctx.limits.maxShallows) {
+      throw new ProtocolError("upload-pack: too many shallow lines");
+    }
     request.clientShallow.push(parseOid(line.slice(8), "shallow"));
   } else if (line.startsWith("deepen-since ")) {
     request.deepenSince = parseSince(line.slice(13));
   } else if (line.startsWith("deepen-not ")) {
+    if (request.deepenNot.length >= ctx.limits.maxDeepenNots) {
+      throw new ProtocolError("upload-pack: too many deepen-not lines");
+    }
     request.deepenNot.push(line.slice(11));
   } else if (line.startsWith("deepen ")) {
     request.depth = parseDepth(line.slice(7));
@@ -137,6 +151,28 @@ async function prepare(
   return { graph, plan: { wants, shallow } };
 }
 
+/**
+ * `wantsCovered` within this round's budget and what is left of the
+ * conversation's. A conversation that has spent it all is answered ready at
+ * once: more rounds could only make the pack smaller, and over SSH a client
+ * could otherwise keep the object walking for as long as it liked.
+ */
+async function covered(
+  ctx: Context,
+  graph: CommitGraph,
+  wants: readonly ObjectId[],
+  common: ReadonlySet<ObjectId>,
+): Promise<boolean> {
+  const budget = { left: Math.min(ctx.limits.maxNegotiationCommits, ctx.negotiationLeft) };
+  if (budget.left <= 0) return true;
+  const start = budget.left;
+  try {
+    return await wantsCovered(graph, wants, common, budget);
+  } finally {
+    ctx.negotiationLeft -= start - Math.max(budget.left, 0);
+  }
+}
+
 function shallowLines(plan: FetchPlan): Uint8Array[] {
   return [
     ...plan.shallow.shallow.map((oid) => encodePktLine(`shallow ${oid}\n`)),
@@ -160,7 +196,7 @@ async function readWantsV0(
     }
     const line = lineOf(pkt.data);
     if (line.startsWith("want ")) {
-      request.wants.push(parseOid(line.slice(5, 45), "want"));
+      addWant(ctx, request, line.slice(5, 45));
       if (first) {
         first = false;
         const caps = parseCapabilities(line.slice(45));
@@ -174,7 +210,7 @@ async function readWantsV0(
         else if (caps.has("side-band")) request.sideBand = SIDE_BAND_MAX_LENGTH;
         if (caps.has("filter")) throw new ProtocolError("upload-pack: filter is not supported");
       }
-    } else if (!parseShallowLine(line, request)) {
+    } else if (!parseShallowLine(ctx, line, request)) {
       throw new ProtocolError(`upload-pack: expected want, got '${line.slice(0, 40)}'`);
     }
   }
@@ -215,7 +251,7 @@ export async function* uploadPackV0(ctx: Context): AsyncGenerator<Uint8Array, vo
         multiAck === 2 &&
         !sentReady &&
         common.length > 0 &&
-        (await wantsCovered(graph, plan.wants.commits, commonSet, ctx.limits.maxNegotiationCommits))
+        (await covered(ctx, graph, plan.wants.commits, commonSet))
       ) {
         out.push(encodePktLine(`ACK ${common[common.length - 1]} ready\n`));
         sentReady = true;
@@ -288,6 +324,8 @@ async function* lsRefs(
     else if (arg.startsWith("ref-prefix ")) prefixes.push(arg.slice(11));
     else throw new ProtocolError(`ls-refs: unexpected argument '${arg.slice(0, 40)}'`);
   }
+  // Each prefix is tried against each ref; past the limit, list everything and let the client filter.
+  if (prefixes.length > ctx.limits.maxRefPrefixes) prefixes.length = 0;
   const matches = (name: string): boolean =>
     prefixes.length === 0 || prefixes.some((prefix) => name.startsWith(prefix));
   const listing = await listRefs(ctx.backend);
@@ -313,18 +351,21 @@ async function* fetchV2(
   const request = emptyFetchRequest();
   request.sideBand = SIDE_BAND_64K_MAX_LENGTH;
   for (const arg of args) {
-    if (arg.startsWith("want ")) request.wants.push(parseOid(arg.slice(5), "want"));
-    else if (arg.startsWith("have ")) request.haves.push(parseOid(arg.slice(5), "have"));
-    else if (arg === "done") request.done = true;
+    if (arg.startsWith("want ")) addWant(ctx, request, arg.slice(5));
+    else if (arg.startsWith("have ")) {
+      if (request.haves.length >= ctx.limits.maxHaves) {
+        throw new ProtocolError("fetch: too many haves");
+      }
+      request.haves.push(parseOid(arg.slice(5), "have"));
+    } else if (arg === "done") request.done = true;
     else if (arg === "thin-pack") request.thinPack = true;
     else if (arg === "ofs-delta") request.ofsDelta = true;
     else if (arg === "no-progress") request.noProgress = true;
     else if (arg === "include-tag") request.includeTag = true;
     else if (arg === "deepen-relative") request.deepenRelative = true;
-    else if (parseShallowLine(arg, request)) continue;
+    else if (parseShallowLine(ctx, arg, request)) continue;
     else throw new ProtocolError(`fetch: unexpected argument '${arg.slice(0, 40)}'`);
   }
-  if (request.haves.length > ctx.limits.maxHaves) throw new ProtocolError("fetch: too many haves");
   if (request.wants.length === 0) {
     // Nothing wanted is not an error: the client is only closing the round.
     yield FLUSH_PKT;
@@ -346,12 +387,7 @@ async function* fetchV2(
     out.push(encodePktLine("acknowledgments\n"));
     if (common.length === 0) out.push(encodePktLine("NAK\n"));
     for (const oid of common) out.push(encodePktLine(`ACK ${oid}\n`));
-    const ready = await wantsCovered(
-      graph,
-      plan.wants.commits,
-      commonSet,
-      ctx.limits.maxNegotiationCommits,
-    );
+    const ready = await covered(ctx, graph, plan.wants.commits, commonSet);
     if (!ready) {
       out.push(FLUSH_PKT);
       yield concatBytes(out);
@@ -378,15 +414,18 @@ export async function* uploadPackV2(ctx: Context): AsyncGenerator<Uint8Array, vo
   const { request: serve } = ctx;
   if (!serve.statelessRpc || serve.advertiseOnly) yield advertiseCapabilitiesV2(ctx);
   if (serve.advertiseOnly) return;
-  for (;;) {
+  for (let commands = 1; ; commands++) {
     const first = await ctx.reader.read();
     // A flush where a command would start is the client saying goodbye.
     if (first === null || first.type !== "data") return;
+    if (commands > ctx.limits.maxCommands) throw new ProtocolError("too many commands");
     const command = lineOf(first.data);
     if (!command.startsWith("command=")) {
       throw new ProtocolError(`expected a command, got '${command.slice(0, 40)}'`);
     }
     const args: string[] = [];
+    // The arguments are all read before any is looked at, so they are bounded here, in bytes.
+    let argBytes = 0;
     let inArgs = false;
     for (;;) {
       const pkt = await ctx.reader.read();
@@ -397,8 +436,13 @@ export async function* uploadPackV2(ctx: Context): AsyncGenerator<Uint8Array, vo
       }
       if (pkt.type !== "data") throw new ProtocolError("unexpected packet in a command");
       const line = lineOf(pkt.data);
-      if (inArgs) args.push(line);
-      else if (line.startsWith("object-format=") && line !== "object-format=sha1") {
+      if (inArgs) {
+        argBytes += pkt.data.length;
+        if (argBytes > ctx.limits.maxArgumentBytes) {
+          throw new ProtocolError("too many arguments to one command");
+        }
+        args.push(line);
+      } else if (line.startsWith("object-format=") && line !== "object-format=sha1") {
         throw new ProtocolError(`unsupported object format '${line.slice(14)}'`);
       }
     }

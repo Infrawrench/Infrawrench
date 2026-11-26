@@ -51,6 +51,8 @@ export interface Context {
    * the side-band packet limit, once a response has switched to side-band.
    */
   errorBand: number;
+  /** What is left of `limits.maxConversationCommits`. */
+  negotiationLeft: number;
 }
 
 export const DEFAULT_LIMITS: Required<ServeLimits> = {
@@ -58,6 +60,13 @@ export const DEFAULT_LIMITS: Required<ServeLimits> = {
   maxHaves: 50_000,
   maxRefUpdates: 10_000,
   maxNegotiationCommits: 20_000,
+  maxConversationCommits: 200_000,
+  maxShallows: 50_000,
+  maxDeepenNots: 100,
+  maxRefPrefixes: 1_000,
+  maxArgumentBytes: 8 * 1024 * 1024,
+  maxCommands: 1_000,
+  maxPushOptions: 1_000,
 };
 
 export interface RefListing {

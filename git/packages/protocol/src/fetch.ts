@@ -20,7 +20,7 @@ import {
   CommitGraph,
   ancestorsOf,
   peelWant,
-  reachableFromAny,
+  reachableAmong,
   selectCommits,
   selectObjects,
   shallowByDepth,
@@ -106,21 +106,26 @@ export async function resolveWants(
     trees: ObjectId[];
     blobs: ObjectId[];
   };
-  const tipList = [...tips];
+  const notTips: ObjectId[] = [];
   for (const want of new Set(wants)) {
     const peeled = await peelWant(graph.reader, want);
     if (!peeled) throw new ProtocolError(`upload-pack: not our ref ${want}`);
     if (!tips.has(want)) {
-      const reachable =
-        peeled.type === "commit" &&
-        peeled.tags.length === 0 &&
-        (await reachableFromAny(graph, tipList, want));
-      if (!reachable) throw new ProtocolError(`upload-pack: not our ref ${want}`);
+      if (peeled.type !== "commit" || peeled.tags.length > 0) {
+        throw new ProtocolError(`upload-pack: not our ref ${want}`);
+      }
+      notTips.push(want);
     }
     resolved.tags.push(...peeled.tags);
     if (peeled.type === "commit") resolved.commits.push(peeled.oid);
     else if (peeled.type === "tree") resolved.trees.push(peeled.oid);
     else resolved.blobs.push(peeled.oid);
+  }
+  if (notTips.length > 0) {
+    // One walk for all of them: a request may name thousands.
+    const reachable = await reachableAmong(graph, [...tips], notTips);
+    const stray = notTips.find((want) => !reachable.has(want));
+    if (stray !== undefined) throw new ProtocolError(`upload-pack: not our ref ${stray}`);
   }
   return resolved;
 }
@@ -145,17 +150,21 @@ export async function planShallow(
     // An ordinary fetch into a shallow clone: its history stays cut where it is.
     return { wantStops: clientShallow, shallow: [], unshallow: [] };
   }
+  // A shallow line is the client's word that it has a commit. Deepening
+  // sends what lies below one, so only those the wants reach count: any
+  // other id the repository happens to hold (what a forced push left, a
+  // commit copied in from another repository) would otherwise have its
+  // history sent to whoever names it.
+  const ours =
+    clientShallow.size === 0
+      ? new Set<ObjectId>()
+      : await reachableAmong(graph, wantCommits, [...clientShallow]);
   if (request.depth !== null && request.depth >= INFINITE_DEPTH) {
-    const unshallow: ObjectId[] = [];
-    for (const oid of clientShallow) if (await graph.get(oid)) unshallow.push(oid);
-    return { wantStops: new Set(), shallow: [], unshallow };
+    return { wantStops: new Set(), shallow: [], unshallow: [...ours] };
   }
   let cut;
   if (request.depth !== null) {
-    const known: ObjectId[] = [];
-    if (request.deepenRelative) {
-      for (const oid of clientShallow) if (await graph.get(oid)) known.push(oid);
-    }
+    const known: ObjectId[] = request.deepenRelative ? [...ours] : [];
     // `deepen-relative` counts from the client's current boundary, which is itself at depth 1.
     cut =
       known.length > 0
@@ -180,9 +189,7 @@ export async function planShallow(
     }
   }
   const shallow = [...cut.boundary].filter((oid) => !clientShallow.has(oid));
-  const unshallow = [...clientShallow].filter(
-    (oid) => cut.included.has(oid) && !cut.boundary.has(oid),
-  );
+  const unshallow = [...ours].filter((oid) => cut.included.has(oid) && !cut.boundary.has(oid));
   return { wantStops: cut.boundary, shallow, unshallow };
 }
 

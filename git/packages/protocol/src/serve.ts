@@ -57,15 +57,17 @@ export function newServeStats(): ServeStats {
  * error: the transport has already sent its 200.
  */
 export function serve(options: ServeOptions): ReadableStream<Uint8Array> {
+  const limits = { ...DEFAULT_LIMITS, ...options.limits };
   const ctx: Context = {
     backend: options.backend,
     request: options.request,
     reader: new PktLineReader(options.request.advertiseOnly ? [] : options.input),
     hooks: options.hooks ?? null,
-    limits: { ...DEFAULT_LIMITS, ...options.limits },
+    limits,
     agent: options.agent ?? DEFAULT_AGENT,
     stats: options.stats ?? newServeStats(),
     errorBand: 0,
+    negotiationLeft: limits.maxConversationCommits,
   };
   async function* run(): AsyncGenerator<Uint8Array, void, void> {
     try {

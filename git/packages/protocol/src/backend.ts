@@ -77,11 +77,13 @@ export interface RepositoryBackend extends ObjectReader {
   packObjects?(request: PackRequest): ReadableStream<Uint8Array>;
   /**
    * Optional fast path for a full clone: a pack of every object the
-   * repository stores, without walking history. It may hold objects no
-   * branch or tag reaches (a pull request's commits, what a forced push left
-   * behind); the protocol only asks when the client wants every branch and
-   * tag and has nothing. Null when the backend would rather be asked for the
-   * objects by id.
+   * repository stores, without walking history. The protocol only asks when
+   * the client wants every branch and tag and has nothing, so the answer
+   * must hold nothing that no branch or tag reaches: not what a forced push
+   * or a deleted branch left behind, not what only `refs/pull/*` reaches,
+   * not objects copied in from another repository. A backend that cannot
+   * say that of its store returns null, and the protocol walks from the
+   * wants instead.
    */
   packEverything?(options: {
     readonly ofsDelta: boolean;
@@ -139,4 +141,25 @@ export interface ServeLimits {
    * Default 20 000.
    */
   readonly maxNegotiationCommits?: number;
+  /**
+   * The same, added up over every round of one conversation (SSH, where a
+   * client can keep a negotiation going). Past it every round answers
+   * ready. Default 200 000.
+   */
+  readonly maxConversationCommits?: number;
+  /** `shallow` lines in one request. Default 50 000. */
+  readonly maxShallows?: number;
+  /** `deepen-not` lines in one request. Default 100. */
+  readonly maxDeepenNots?: number;
+  /**
+   * `ref-prefix` arguments of one `ls-refs`. Past it every ref is listed,
+   * which is what git does, and the client filters. Default 1 000.
+   */
+  readonly maxRefPrefixes?: number;
+  /** Bytes of one protocol v2 command's arguments. Default 8 MiB. */
+  readonly maxArgumentBytes?: number;
+  /** Protocol v2 commands in one conversation (SSH). Default 1 000. */
+  readonly maxCommands?: number;
+  /** Push option lines in one push; the first 64 are kept. Default 1 000. */
+  readonly maxPushOptions?: number;
 }

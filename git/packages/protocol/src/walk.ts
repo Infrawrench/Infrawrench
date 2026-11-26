@@ -375,29 +375,46 @@ export async function reachableFromAny(
   tips: readonly ObjectId[],
   target: ObjectId,
 ): Promise<boolean> {
-  const wanted = await graph.get(target);
-  if (!wanted) return false;
-  const floor = wanted.time - 30 * 86400;
+  return (await reachableAmong(graph, tips, [target])).has(target);
+}
+
+/**
+ * Which of the commits `targets` are reachable from `tips`, in one walk for
+ * all of them. It goes newest first and gives up below the oldest target's
+ * date less a month, the allowance for clocks that disagree, so a target it
+ * misses is only ever refused, never wrongly let through. One walk rather
+ * than one per target: a request can name thousands.
+ */
+export async function reachableAmong(
+  graph: CommitGraph,
+  tips: readonly ObjectId[],
+  targets: readonly ObjectId[],
+): Promise<Set<ObjectId>> {
+  const found = new Set<ObjectId>();
+  const wanted = new Set<ObjectId>();
+  let floor = Infinity;
+  for (const target of new Set(targets)) {
+    const node = await graph.get(target);
+    if (!node) continue;
+    wanted.add(target);
+    floor = Math.min(floor, node.time - 30 * 86400);
+  }
+  if (wanted.size === 0) return found;
   const seen = new Set<ObjectId>();
   const queue = new DateQueue();
-  for (const tip of tips) {
-    if (tip === target) return true;
-    if (seen.has(tip)) continue;
-    seen.add(tip);
-    const node = await graph.get(tip);
-    if (node && node.time >= floor) queue.push(tip, node.time);
-  }
-  while (queue.size > 0) {
+  const reach = async (oid: ObjectId): Promise<void> => {
+    if (seen.has(oid)) return;
+    seen.add(oid);
+    if (wanted.has(oid)) found.add(oid);
+    const node = await graph.get(oid);
+    if (node && node.time >= floor) queue.push(oid, node.time);
+  };
+  for (const tip of tips) await reach(tip);
+  while (queue.size > 0 && found.size < wanted.size) {
     const node = (await graph.get(queue.pop()))!;
-    for (const parent of node.parents) {
-      if (parent === target) return true;
-      if (seen.has(parent)) continue;
-      seen.add(parent);
-      const parentNode = await graph.get(parent);
-      if (parentNode && parentNode.time >= floor) queue.push(parent, parentNode.time);
-    }
+    for (const parent of node.parents) await reach(parent);
   }
-  return false;
+  return found;
 }
 
 /**
@@ -410,15 +427,16 @@ export async function wantsCovered(
   graph: CommitGraph,
   wants: readonly ObjectId[],
   common: ReadonlySet<ObjectId>,
-  budget: number,
+  budget: number | { left: number },
 ): Promise<boolean> {
+  // An object is a budget shared with the caller, which then sees what was spent.
+  const counter = typeof budget === "number" ? { left: budget } : budget;
   if (common.size === 0) return false;
   let oldest = Infinity;
   for (const oid of common) {
     const node = await graph.get(oid);
     if (node) oldest = Math.min(oldest, node.time);
   }
-  let left = budget;
   const cleared = new Set<ObjectId>();
   for (const want of wants) {
     const seen = new Set<ObjectId>([want]);
@@ -430,7 +448,7 @@ export async function wantsCovered(
         found = true;
         break;
       }
-      if (left-- <= 0) return true;
+      if (counter.left-- <= 0) return true;
       const node = await graph.get(oid);
       // Not a commit (a tag's blob, say): nothing a have could cover.
       if (!node) continue;
