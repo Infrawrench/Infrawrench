@@ -1,7 +1,8 @@
 /**
- * The pull request a link from git.infrawrench.com asks the Agents tab to
- * start a session on: `/org/{orgId}/agents?git={owner}/{repo}&pull={number}`
- * ("Start work with Infrawrench").
+ * The branch a link from git.infrawrench.com asks the Agents tab to start a
+ * session on: `/org/{orgId}/agents?git={owner}/{repo}&branch={key}`, the key
+ * being the branch page's (client-core's `git-branch-key.ts`) ("Start work
+ * with Infrawrench").
  *
  * The route reads the two search parameters and leaves them here; the Agents
  * panel (which renders in the workspace viewport, not in the route) shows the
@@ -10,20 +11,23 @@
  * should remember or restore, and the tab's URL drops it once it is taken.
  */
 import { useSyncExternalStore } from "react";
+import { parseGitBranchKey } from "@infrawrench/client-core";
 import type { AgentGitWorkRequest } from "@infrawrench/ui";
 
 const NAME = /^[A-Za-z0-9._-]{1,100}$/;
-const MAX_PULL = 2_147_483_647;
+/** The server's bound on a key (`AgentGitWork.branch`). */
+const MAX_BRANCH_KEY_LENGTH = 512;
 
 export interface AgentsSearch {
   git?: string;
-  pull?: number;
+  branch?: string;
 }
 
 /**
- * `validateSearch` of `/org/$orgId/agents`: `git` as `owner/repo` and `pull`
- * as a positive whole number (the router hands a number over as one, and a
- * hand-typed `"3"` is taken too). Anything else is dropped.
+ * `validateSearch` of `/org/$orgId/agents`: `git` as `owner/repo` and
+ * `branch` as a branch page's key. The router reads a value that parses as
+ * JSON as JSON, so a branch named `123` or `true` arrives as a number or a
+ * boolean and is turned back into its name. Anything else is dropped.
  */
 export function validateAgentsSearch(search: Record<string, unknown>): AgentsSearch {
   const out: AgentsSearch = {};
@@ -32,20 +36,29 @@ export function validateAgentsSearch(search: Record<string, unknown>): AgentsSea
     const [owner, repo, ...rest] = git.split("/");
     if (rest.length === 0 && owner && repo && NAME.test(owner) && NAME.test(repo)) out.git = git;
   }
-  const raw = search["pull"];
-  const pull = typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : raw;
-  if (typeof pull === "number" && Number.isSafeInteger(pull) && pull >= 1 && pull <= MAX_PULL) {
-    out.pull = pull;
+  const raw = search["branch"];
+  const branch =
+    typeof raw === "string"
+      ? raw
+      : (typeof raw === "number" && Number.isFinite(raw)) || typeof raw === "boolean"
+        ? String(raw)
+        : undefined;
+  if (
+    branch !== undefined &&
+    branch.length <= MAX_BRANCH_KEY_LENGTH &&
+    parseGitBranchKey(branch) !== null
+  ) {
+    out.branch = branch;
   }
   return out;
 }
 
 /** The work a validated search names, or null when it does not name both halves. */
 export function agentGitWorkFromSearch(search: AgentsSearch): AgentGitWorkRequest | null {
-  if (!search.git || search.pull === undefined) return null;
+  if (!search.git || search.branch === undefined) return null;
   const [owner, repo] = search.git.split("/");
   if (!owner || !repo) return null;
-  return { owner, repo, pull: search.pull };
+  return { owner, repo, branch: search.branch };
 }
 
 interface Pending {
@@ -68,7 +81,7 @@ export function setPendingAgentGitWork(orgId: string, work: AgentGitWorkRequest)
     current.orgId === orgId &&
     current.work.owner === work.owner &&
     current.work.repo === work.repo &&
-    current.work.pull === work.pull
+    current.work.branch === work.branch
   ) {
     return;
   }

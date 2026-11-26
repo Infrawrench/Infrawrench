@@ -58,7 +58,9 @@ const Repositories = wire<GitForgeRepositoryList>()(
         visibility: Schema.String,
         archived: Schema.Boolean,
         pushedAt: Schema.NullOr(Schema.String),
-        openPullRequests: Schema.Finite,
+        // A server from before `openBranches` sends the count as `openPullRequests`.
+        openBranches: Schema.optionalKey(Schema.Finite),
+        openPullRequests: Schema.optionalKey(Schema.Finite),
         sizeBytes: Schema.Finite,
         ci: Schema.NullOr(Schema.Struct({ status: Schema.String })),
       }),
@@ -173,7 +175,11 @@ const repos = Command.make(
         value: (r) => (r.visibility === "public" ? safe(r.visibility) : c.dim(safe(r.visibility))),
       },
       { header: "ci", value: (r) => ciCell(r.ci?.status) },
-      { header: "open prs", value: (r) => String(r.openPullRequests), align: "right" },
+      {
+        header: "open branches",
+        value: (r) => String(r.openBranches ?? r.openPullRequests ?? 0),
+        align: "right",
+      },
       {
         header: "last push",
         value: (r) => c.dim(r.pushedAt ? formatChangeTime(r.pushedAt) : "never"),
@@ -185,7 +191,7 @@ const repos = Command.make(
   }),
 ).pipe(
   Command.withDescription(
-    "The organization's repositories on git.infrawrench.com: visibility, CI, open PRs & last push",
+    "The organization's repositories on git.infrawrench.com: visibility, CI, open branches & last push",
   ),
 );
 

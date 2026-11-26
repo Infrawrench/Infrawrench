@@ -541,10 +541,13 @@ function RunSource({ run }: { run: CiRun }) {
   if (run.pullNumber !== null) {
     return (
       <span>
-        {gt("Pull request #{number} from {branch}", {
-          number: String(run.pullNumber),
-          branch: run.headRef,
-        })}
+        {ciRunSource(run) === "git"
+          ? // git.infrawrench.com has branch pages, not pull requests.
+            gt("Branch page of {branch}", { branch: run.headRef })
+          : gt("Pull request #{number} from {branch}", {
+              number: String(run.pullNumber),
+              branch: run.headRef,
+            })}
         {run.fromFork ? (
           <span className="ml-1 rounded bg-warning/15 px-1 text-[10px] text-warning">
             {run.headRepoFullName
@@ -760,9 +763,13 @@ function RunDetailView({
           {run.status === "awaiting_approval" ? (
             <Notice tone="warning">
               <p className="mb-2">
-                {gt(
-                  "This pull request comes from a fork. CI runs only once a maintainer approves this commit, and it runs without your secrets.",
-                )}
+                {ciRunSource(run) === "git"
+                  ? gt(
+                      "This branch comes from a fork. CI runs only once a maintainer approves this commit, and it runs without your secrets.",
+                    )
+                  : gt(
+                      "This pull request comes from a fork. CI runs only once a maintainer approves this commit, and it runs without your secrets.",
+                    )}
               </p>
               {canApprove ? (
                 <ApprovalButtons

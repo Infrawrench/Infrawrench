@@ -23884,5 +23884,10 @@
   "c0c0172dc78f8dbd": "接続文字列を DATABASE_URL、パスワードを MYSQL_PASSWORD として渡し、~/.my.cnf に接続名のオプショングループを書き込みます。MYSQL_GROUP_SUFFIX がそれを選択するので、mysql は引数なしで接続できます。Terraform の MySQL プロバイダーは、パスワードに加えて MYSQL_ENDPOINT と MYSQL_USERNAME を読み取ります。接続に CA 証明書がある場合は、MYSQL_TLS_CA_CERT がその場所を示します。",
   "8d23e64b5fa8def4": "接続のアクセストークンを、Vercel CLI が読み取る VERCEL_TOKEN と、Terraform の Vercel プロバイダーが読み取る VERCEL_API_TOKEN として渡します。ジョブはいつもどおりプロジェクトを指定します（.vercel/project.json、VERCEL_ORG_ID と VERCEL_PROJECT_ID、または --scope）。",
   "a48c84d56863a173": "{repository} のプルリクエスト #{number}",
-  "b0cfba65df36ff3a": "ターミナルセッションで実行されます"
+  "b0cfba65df36ff3a": "ターミナルセッションで実行されます",
+  "2508a75dcb29332b": "{repository} のブランチ {branch}",
+  "fe878c98b0edb6e7": "ブランチ {branch} のページ",
+  "841a1e8baa49bf07": "このブランチはフォークからのものです。CI はメンテナーがこのコミットを承認した後にのみ実行され、シークレットなしで実行されます。",
+  "795c16e01f8abc54": "トリガー: ブランチ {branch} のページ",
+  "04dbb16d9b692feb": "オープンなブランチ"
 }

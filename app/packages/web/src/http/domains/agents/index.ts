@@ -298,13 +298,13 @@ const AgentsHandlers = HttpApiBuilder.group(AgentsApi, "agents", (handlers) =>
         );
         const tool = toolOf(body.settings.tool);
         const surface: AgentSurface = agentSurfaceOrDefault(body.settings.surface);
-        // Work on a pull request of the forge: its repository and head branch
-        // replace `repo` and the generated branch.
+        // Work on a branch of the forge: its repository and branch replace
+        // `repo` and the generated branch.
         let work: GitWork | null = null;
         if (body.gitWork) {
           const request = body.gitWork;
           if (isT3CodeSurface(surface) || isNibbletsSurface(surface)) {
-            return yield* badRequest("Work on a pull request runs in a terminal session");
+            return yield* badRequest("Work on a forge branch runs in a terminal session");
           }
           const { permissions } = yield* OrgPrincipal;
           if (!GIT_WRITE_PERMISSIONS.some((permission) => hasPermission(permissions, permission))) {
@@ -485,7 +485,7 @@ const AgentsHandlers = HttpApiBuilder.group(AgentsApi, "agents", (handlers) =>
             ...key,
           });
         }
-        // A session working on a forge pull request holds a branch token that
+        // A session working on a forge branch holds a branch token that
         // lasts at most 6 hours: opening it again hands the VM a fresh one.
         // A setup run that is starting now does so itself.
         if (setupComplete) {

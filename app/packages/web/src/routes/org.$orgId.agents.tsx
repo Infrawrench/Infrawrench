@@ -7,15 +7,15 @@ import {
 } from "@/lib/agent-git-work";
 
 export const Route = createFileRoute("/org/$orgId/agents")({
-  // `git` and `pull`: a pull request on git.infrawrench.com to start a session
-  // on ("Start work with Infrawrench" on the forge links here).
+  // `git` and `branch`: a branch on git.infrawrench.com to start a session on
+  // ("Start work with Infrawrench" on the forge links here).
   validateSearch: validateAgentsSearch,
   component: AgentsRoute,
 });
 
 /**
  * The tab's content renders in the workspace viewport; the route only hands
- * a pull request named in the URL to the Agents panel.
+ * a forge branch named in the URL to the Agents panel.
  */
 function AgentsRoute() {
   const { orgId } = Route.useParams();
@@ -23,9 +23,11 @@ function AgentsRoute() {
   const work = agentGitWorkFromSearch(search);
   const owner = work?.owner;
   const repo = work?.repo;
-  const pull = work?.pull;
+  const branch = work?.branch;
   useEffect(() => {
-    if (owner && repo && pull !== undefined) setPendingAgentGitWork(orgId, { owner, repo, pull });
-  }, [orgId, owner, repo, pull]);
+    if (owner && repo && branch !== undefined) {
+      setPendingAgentGitWork(orgId, { owner, repo, branch });
+    }
+  }, [orgId, owner, repo, branch]);
   return null;
 }

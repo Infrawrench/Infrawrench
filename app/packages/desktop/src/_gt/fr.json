@@ -23905,5 +23905,10 @@
   "c0c0172dc78f8dbd": "La chaîne de connexion dans DATABASE_URL, son mot de passe dans MYSQL_PASSWORD, et un groupe d'options à son nom dans ~/.my.cnf que MYSQL_GROUP_SUFFIX sélectionne, pour que mysql se connecte sans arguments. Le fournisseur MySQL de Terraform lit MYSQL_ENDPOINT et MYSQL_USERNAME en plus du mot de passe, et MYSQL_TLS_CA_CERT désigne le certificat d'autorité de la connexion lorsqu'elle en a un.",
   "8d23e64b5fa8def4": "Le jeton d'accès de la connexion dans VERCEL_TOKEN, que la CLI Vercel lit, et dans VERCEL_API_TOKEN, que le fournisseur Vercel de Terraform lit. Le job désigne son projet comme d'habitude (.vercel/project.json, VERCEL_ORG_ID avec VERCEL_PROJECT_ID, ou --scope).",
   "a48c84d56863a173": "Pull request #{number} dans {repository}",
-  "b0cfba65df36ff3a": "S'exécute dans une session de terminal"
+  "b0cfba65df36ff3a": "S'exécute dans une session de terminal",
+  "2508a75dcb29332b": "Branche {branch} dans {repository}",
+  "fe878c98b0edb6e7": "Page de la branche {branch}",
+  "841a1e8baa49bf07": "Cette branche provient d'un fork. La CI ne s'exécute qu'une fois ce commit approuvé par un mainteneur, et sans vos secrets.",
+  "795c16e01f8abc54": "Déclenché par : page de la branche {branch}",
+  "04dbb16d9b692feb": "Branches ouvertes"
 }

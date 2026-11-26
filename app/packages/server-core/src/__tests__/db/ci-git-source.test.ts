@@ -412,7 +412,9 @@ describe.skipIf(!configured)(
         `https://git.infrawrench.com/${namespace}/web/commit/${pushed?.sha}`,
       );
       const pulled = listed.find((r) => r.pullNumber === 13);
-      expect(pulled?.sourceUrl).toBe(`https://git.infrawrench.com/${namespace}/web/pull/13`);
+      expect(pulled?.sourceUrl).toBe(
+        `https://git.infrawrench.com/${namespace}/web/branches/feature/y`,
+      );
     });
 
     it("retries a run as a run of the same repository", async () => {

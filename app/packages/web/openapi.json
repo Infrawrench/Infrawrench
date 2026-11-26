@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.133.0",
+    "version": "1.134.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -44237,10 +44237,11 @@
             ],
             "description": "Null until something is pushed."
           },
-          "openPullRequests": {
+          "openBranches": {
             "type": "integer",
             "minimum": -9007199254740991,
-            "maximum": 9007199254740991
+            "maximum": 9007199254740991,
+            "description": "The repository's open branch pages: its branches under review, and the ones forks propose to it."
           },
           "openIssues": {
             "type": "integer",
@@ -44291,7 +44292,7 @@
           "isFork",
           "defaultBranch",
           "pushedAt",
-          "openPullRequests",
+          "openBranches",
           "openIssues",
           "sizeBytes",
           "ci"
@@ -78949,20 +78950,20 @@
             "maxLength": 100,
             "description": "The repository's name on the forge."
           },
-          "pull": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 2147483647,
-            "description": "The pull request's number."
+          "branch": {
+            "type": "string",
+            "description": "The branch page's key: the branch's name (`work/fix-login`), or `<name>~<n>` for an earlier page of a name used again, as the forge writes it in the page's address.",
+            "minLength": 1,
+            "maxLength": 512
           }
         },
         "required": [
           "owner",
           "repo",
-          "pull"
+          "branch"
         ],
         "additionalProperties": false,
-        "description": "Terminal sessions only: work on this open pull request of one of the organization's repositories on git.infrawrench.com. The session clones that repository, checks out the pull request's head branch, can push that branch and nothing else (a job token bound to the branch that lasts at most 6 hours, renewed when the session is opened), starts the coding tool with the pull request's title and body as its first prompt, and is recorded as the pull request's agent. `repo` is ignored. Needs `git:write`. A pull request that is missing, closed, from a fork or not the organization's is one refusal (400)."
+        "description": "Terminal sessions only: work on this branch of one of the organization's repositories on git.infrawrench.com, whose page is open. The session clones that repository, checks out the branch, can push that branch and nothing else (a job token bound to the branch that lasts at most 6 hours, renewed when the session is opened), starts the coding tool with the page's title and description as its first prompt, and is recorded as the page's agent. `repo` is ignored. Needs `git:write`. A branch page that is missing, closed, from a fork or not the organization's is one refusal (400)."
       },
       "AgentLinkableScopes": {
         "type": "object",

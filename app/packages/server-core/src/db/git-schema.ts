@@ -118,7 +118,7 @@ export const gitUsers = pgTable("git_users", {
   /** The WorkOS profile picture at last sign-in, shown until the namespace has its own. */
   avatarUrl: text("avatar_url"),
   lastSeenAt: timestamp("last_seen_at"),
-  /** Which page a branch opens as for this person (`git-review-schema.ts`). */
+  /** No longer read: there is one UI, and every branch has a page. Kept, unread, in storage. */
   reviewMode: text("review_mode").$type<GitReviewMode>().notNull().default("agent"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -152,6 +152,7 @@ export const gitRepositories = pgTable(
     /** No branch yet: nothing has been pushed. */
     isEmpty: boolean("is_empty").notNull().default(true),
     hasIssues: boolean("has_issues").notNull().default(true),
+    /** No longer read: every branch has a page. Kept, unread, in storage. */
     hasPullRequests: boolean("has_pull_requests").notNull().default(true),
     allowMergeCommit: boolean("allow_merge_commit").notNull().default(true),
     allowSquash: boolean("allow_squash").notNull().default(true),

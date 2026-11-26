@@ -616,4 +616,10 @@
 // 1.133.0: `POST /org/{orgId}/agents/sessions` takes `gitWork` (`AgentGitWork`:
 // `owner`, `repo`, `pull`), a pull request on git.infrawrench.com for a
 // terminal session to work on, with `git:write`. Additive.
-export const API_VERSION = "1.133.0";
+// 1.134.0: git.infrawrench.com has branch pages, not pull requests.
+// `AgentGitWork` names the page by its key, `branch` (`work/fix-login`, or
+// `work/fix-login~2` for an earlier page of a name used again), in place of
+// `pull`, and `GitForgeRepository.openPullRequests` is `openBranches`. A
+// minor bump by decision: both shipped days ago behind a per-organization
+// flag, and the only client of `gitWork` is the forge's own start link.
+export const API_VERSION = "1.134.0";

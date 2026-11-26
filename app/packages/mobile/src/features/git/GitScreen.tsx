@@ -12,15 +12,14 @@ import {
 import { colors } from "@/lib/theme";
 import { useGitForge } from "./useGitForge";
 
-/** `private · CI passed · 2 open PRs · pushed 12 Nov`: what fits under a repository's name. */
+/** `private · CI passed · 2 open branches · pushed 12 Nov`: what fits under a repository's name. */
 function repositorySubtitle(repository: GitForgeRepository): string {
   const parts: string[] = [repository.visibility];
   if (repository.archived) parts.push("archived");
   if (repository.ci) parts.push(`CI ${repository.ci.status.replace(/_/g, " ")}`);
-  if (repository.openPullRequests > 0) {
-    parts.push(
-      `${repository.openPullRequests} open PR${repository.openPullRequests === 1 ? "" : "s"}`,
-    );
+  const { openBranches } = repository;
+  if (openBranches > 0) {
+    parts.push(`${openBranches} open branch${openBranches === 1 ? "" : "es"}`);
   }
   parts.push(
     repository.pushedAt

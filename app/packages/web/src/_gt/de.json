@@ -24096,5 +24096,10 @@
   "379192c9c065f94b": "Git für {name} deaktivieren",
   "2312882473a3e78b": "Git für {name} aktivieren",
   "a48c84d56863a173": "Pull-Request #{number} in {repository}",
-  "b0cfba65df36ff3a": "Läuft in einer Terminalsitzung"
+  "b0cfba65df36ff3a": "Läuft in einer Terminalsitzung",
+  "2508a75dcb29332b": "Branch {branch} in {repository}",
+  "fe878c98b0edb6e7": "Branch-Seite von {branch}",
+  "841a1e8baa49bf07": "Dieser Branch stammt aus einem Fork. CI läuft erst, wenn ein Maintainer diesen Commit genehmigt, und ohne Ihre Secrets.",
+  "795c16e01f8abc54": "Ausgelöst durch: Branch-Seite von {branch}",
+  "04dbb16d9b692feb": "Offene Branches"
 }

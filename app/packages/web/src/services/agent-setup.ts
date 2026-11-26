@@ -419,7 +419,7 @@ async function deliverNibbletsAppLink(
 }
 
 /**
- * The forge pull request a terminal session works on, or null. Only a
+ * The forge branch page a terminal session works on, or null. Only a
  * session whose repository is on the forge is looked up, so every other
  * session costs nothing here.
  */
@@ -430,11 +430,11 @@ async function agentGitWork(row: SessionRow, organizationId: string): Promise<Gi
 }
 
 /**
- * Hand a session that works on a forge pull request its credential and, the
- * first time, its first prompt.
+ * Hand a session that works on a forge branch its credential and, the first
+ * time, its first prompt.
  *
- * The credential is a write job token bound to the pull request's head
- * branch (`ref`): the forge lets it read the repository and create or update
+ * The credential is a write job token bound to the branch (`ref`): the
+ * forge lets it read the repository and create or update
  * that branch, and refuses it everywhere else. It lives for the longest a job
  * token may, six hours (`GIT_JOB_TOKEN_MAX_TTL_SECONDS`); after that the
  * agent's pushes and forge API calls answer 401 until the session is opened
@@ -442,7 +442,7 @@ async function agentGitWork(row: SessionRow, organizationId: string): Promise<Gi
  * It travels on the SSH channel's stdin, never in a command line, and the
  * script writing it prints nothing, so it never reaches the session's logs.
  *
- * A pull request that has closed, or a server without `GIT_JOB_TOKEN_KEY`,
+ * A branch page that has closed, or a server without `GIT_JOB_TOKEN_KEY`,
  * gets no token: the clone is then anonymous, and the log says why.
  */
 async function deliverAgentGitWork(
@@ -464,7 +464,7 @@ async function deliverAgentGitWork(
   } catch (error) {
     await appendAgentSessionLog(
       row.id,
-      `Warning: no credential for the pull request's branch: ${formatErrorMessage(error)}`,
+      `Warning: no credential for the branch: ${formatErrorMessage(error)}`,
       "setting-up",
     );
     return false;
@@ -481,11 +481,11 @@ async function deliverAgentGitWork(
     const prompt = buildGitWorkPrompt({
       owner: work.owner,
       repo: work.repo,
-      pull: work.pull,
+      key: work.key,
       branch: work.branch,
       title: work.title,
       body: work.body,
-      pullUrl: work.pullUrl,
+      pageUrl: work.pageUrl,
       forgeOrigin: work.forgeOrigin,
       sessionId: row.id,
     });
@@ -499,7 +499,7 @@ async function deliverAgentGitWork(
     if (sent.code !== 0) throw new Error(formatCommandFailure(sent));
     await appendAgentSessionLog(
       row.id,
-      `Handed the VM a credential that pushes ${work.branch} for 6 hours, and the pull request as its first prompt.`,
+      `Handed the VM a credential that pushes ${work.branch} for 6 hours, and the branch page as its first prompt.`,
       "setting-up",
     );
   }
@@ -507,8 +507,8 @@ async function deliverAgentGitWork(
 }
 
 /**
- * Write a fresh branch token to a set-up session that works on a forge pull
- * request (its six hours may have run out). Nothing for any other session,
+ * Write a fresh branch token to a set-up session that works on a forge
+ * branch (its six hours may have run out). Nothing for any other session,
  * nor for one whose VM cannot be reached right now.
  */
 export async function renewAgentGitCredential(

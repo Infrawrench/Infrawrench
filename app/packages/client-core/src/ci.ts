@@ -148,7 +148,10 @@ export interface CiRun {
   githubUrl: string;
   /** Where the repository lives. Absent from servers before API 1.127.0, which only ran GitHub's. */
   source?: CiSource;
-  /** The commit or pull request on the repository's forge. Absent as `source` is. */
+  /**
+   * The commit, the pull request (GitHub) or the branch page
+   * (git.infrawrench.com) on the repository's forge. Absent as `source` is.
+   */
   sourceUrl?: string;
   /** The run this one retries, when it is a retry. */
   retryOfRunId?: string | null;

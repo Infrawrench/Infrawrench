@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGT } from "gt-react";
 import {
   ciLiveJobKey,
+  ciRunSource,
   emptyCiLiveRun,
   reduceCiLogEvents,
   type CiCloudJob,
@@ -540,7 +541,9 @@ export function CiRunView({
   );
   const subtitle =
     run.event === "pull-request"
-      ? gt("On: pull request #{number}", { number: String(run.pullNumber ?? "") })
+      ? ciRunSource(run) === "git"
+        ? gt("On: branch page of {branch}", { branch: run.headRef })
+        : gt("On: pull request #{number}", { number: String(run.pullNumber ?? "") })
       : run.event === "schedule"
         ? gt("On: schedule, on {branch}", { branch: run.headRef })
         : run.event === "manual"

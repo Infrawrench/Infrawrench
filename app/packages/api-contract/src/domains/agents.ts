@@ -7,6 +7,7 @@
  * The request bodies are documented, not decoded: the handlers read them raw,
  * as the Hono routes did (`index.ts`).
  */
+import { parseGitBranchKey } from "@infrawrench/client-core";
 import { Schema } from "effect";
 import { HttpApi, HttpApiEndpoint, HttpApiGroup, HttpApiSchema, OpenApi } from "effect/http-api";
 import { minLength } from "../schemas";
@@ -225,8 +226,8 @@ export const AgentSession = Schema.Struct({
 }).annotate({ identifier: "AgentSession" });
 
 /**
- * A pull request on git.infrawrench.com for the session to work on
- * ("Start work with Infrawrench"). Shared with the handler, which decodes it.
+ * A branch on git.infrawrench.com for the session to work on ("Start work
+ * with Infrawrench"). Shared with the handler, which decodes it.
  */
 export const AgentGitWork = Schema.Struct({
   owner: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)).annotate({
@@ -235,17 +236,25 @@ export const AgentGitWork = Schema.Struct({
   repo: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(100)).annotate({
     description: "The repository's name on the forge.",
   }),
-  pull: Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 2_147_483_647 })).annotate({
-    description: "The pull request's number.",
-  }),
+  branch: Schema.String.annotate({
+    description:
+      "The branch page's key: the branch's name (`work/fix-login`), or `<name>~<n>` for an earlier page of " +
+      "a name used again, as the forge writes it in the page's address.",
+  }).check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(512),
+    Schema.makeFilter((key) =>
+      parseGitBranchKey(key) === null ? "branch must be a branch page's key" : undefined,
+    ),
+  ),
 }).annotate({
   identifier: "AgentGitWork",
   description:
-    "Terminal sessions only: work on this open pull request of one of the organization's repositories on " +
-    "git.infrawrench.com. The session clones that repository, checks out the pull request's head branch, can " +
+    "Terminal sessions only: work on this branch of one of the organization's repositories on " +
+    "git.infrawrench.com, whose page is open. The session clones that repository, checks out the branch, can " +
     "push that branch and nothing else (a job token bound to the branch that lasts at most 6 hours, renewed " +
-    "when the session is opened), starts the coding tool with the pull request's title and body as its first " +
-    "prompt, and is recorded as the pull request's agent. `repo` is ignored. Needs `git:write`. A pull request " +
+    "when the session is opened), starts the coding tool with the page's title and description as its first " +
+    "prompt, and is recorded as the page's agent. `repo` is ignored. Needs `git:write`. A branch page " +
     "that is missing, closed, from a fork or not the organization's is one refusal (400).",
 });
 
