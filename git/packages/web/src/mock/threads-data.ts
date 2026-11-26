@@ -28,6 +28,7 @@ import { accessTo, currentUser, gitOf, repositories, type RepositoryRecord } fro
 import { aheadBehind, ancestors, diffCommits, mergeBase, statsOf, type GitFixture } from "./git";
 import { combine, statusesFor } from "./ci-data";
 import { mergeCommits } from "./git-write";
+import { findingsGate } from "./review-data";
 import { hoursAgo, newId, person, ruleFor } from "./settings-data";
 import { terraformOf } from "./terraform-data";
 
@@ -1237,6 +1238,14 @@ export function mergeabilityOf(repo: RepositoryRecord, thread: ThreadRecord): Me
       block("push_restricted", `Only some people may merge into ${pull.baseRef}`);
     }
   }
+  // What review agents hold the merge on: never one of the soft blockers.
+  const gate = findingsGate(repo, thread.number);
+  if (open && !pull.merged && gate !== null && gate.blocks && gate.mustFixOpen > 0) {
+    block(
+      "must_fix_findings",
+      `${gate.mustFixOpen} must-fix ${gate.mustFixOpen === 1 ? "finding is" : "findings are"} open`,
+    );
+  }
   const soft = new Set([
     "checks_failed",
     "checks_pending",
@@ -1269,6 +1278,7 @@ export function mergeabilityOf(repo: RepositoryRecord, thread: ThreadRecord): Me
       : (allowedMethods[0] ?? "merge"),
     canUpdateBranch:
       open && viewer.canWrite && refs.headRefExists && behindBy > 0 && conflictFiles.length === 0,
+    ...(gate === null ? {} : { findings: { ...gate, canOverride: viewer.isAdmin } }),
   };
 }
 

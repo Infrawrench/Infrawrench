@@ -19,6 +19,7 @@ import milestones from "../handlers/milestones";
 import pulls from "../handlers/pulls";
 import repositories from "../handlers/repositories";
 import repoSettings from "../handlers/repo-settings";
+import review from "../handlers/review";
 import sessionHandlers from "../handlers/session";
 import settings from "../handlers/settings";
 
@@ -225,6 +226,15 @@ describe("pull requests", () => {
   });
 
   it("is mergeable when approved and green, and names what blocks the other", async () => {
+    // A review agent's must-fix finding holds it until an administrator merges past it.
+    const held = (await P.get!({ params: { ...repo, number: 12 } })).mergeability;
+    expect(held.blockers.map((blocker) => blocker.code)).toEqual(["must_fix_findings"]);
+    expect(held.findings).toEqual({ mustFixOpen: 1, blocks: true, canOverride: true });
+    expect(deriveMergeBox(held, "main").action.mode).toBe("blocked");
+    await review.findings!.override!({
+      params: { ...repo, number: 12 },
+      payload: { reason: "The shared services account accepts on its side" },
+    });
     const ready = (await P.get!({ params: { ...repo, number: 12 } })).mergeability;
     expect(ready).toMatchObject({ state: "clean", behindBy: 3, canMerge: true, blockers: [] });
     expect(ready.checks.required).toEqual([
