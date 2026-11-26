@@ -67,7 +67,14 @@ export function LinkTabs({
 }) {
   const pathname = useLocation({ select: (location) => location.pathname });
   return (
-    <nav aria-label={label} className={`flex overflow-x-auto ${className}`}>
+    // Scrolls sideways on a narrow screen. Each tab's underline sits 1px over
+    // the border below (`-mb-px`); the bar's own `pb-px -mb-px` keeps that
+    // pixel inside it, so nothing overflows downwards and no vertical
+    // scrollbar appears where the system always shows them.
+    <nav
+      aria-label={label}
+      className={`-mb-px flex overflow-x-auto overflow-y-hidden pb-px ${className}`}
+    >
       {tabs.map((tab) => {
         const path = tab.href.split("?")[0]!;
         const active = tab.match
