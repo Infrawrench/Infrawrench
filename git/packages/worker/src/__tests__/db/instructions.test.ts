@@ -198,6 +198,29 @@ describe.skipIf(!configured)("instructions, against a real Postgres", () => {
       ).status,
     ).toBe(403);
     expect((await world.call("GET", `${pull}/instructions`, { as: carol })).status).toBe(200);
+    // A token bound to a branch answers for that branch's pull request only.
+    const [only] = await listed();
+    const bound = (ref: string) => ({ job: { repositoryId: id, write: true, ref }, body: {} });
+    for (const mark of ["delivered", "answered"]) {
+      expect(
+        (
+          await world.call(
+            "PUT",
+            `${pull}/instructions/${only!["id"]}/${mark}`,
+            bound("refs/heads/another"),
+          )
+        ).status,
+      ).toBe(403);
+    }
+    expect(
+      (
+        await world.call(
+          "PUT",
+          `${pull}/instructions/${only!["id"]}/delivered`,
+          bound("refs/heads/feature"),
+        )
+      ).body,
+    ).toMatchObject({ status: "delivered" });
     expect(
       (await world.call("GET", `${pull}/instructions`, { job: { repositoryId: id, write: false } }))
         .body.instructions,

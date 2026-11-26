@@ -90,6 +90,20 @@ const peopleOnly = (cx: RepoCx): void => {
   }
 };
 
+/**
+ * A job token bound to one branch (an agent session's) answers for that
+ * branch's pull request and no other: it has the repository's `write` for
+ * the gate, and this is what keeps it to its own work.
+ */
+const ownBranchOnly = (cx: RepoCx, found: PullRequestWithThread): void => {
+  const { principal } = cx;
+  if (principal.kind !== "job" || principal.ref == null) return;
+  const own =
+    found.pull.headRepositoryId === cx.repo.repository.id &&
+    principal.ref === `refs/heads/${found.pull.headRef}`;
+  if (!own) throw forbidden("This token answers instructions on its own branch only");
+};
+
 export const InstructionsHandlers = HttpApiBuilder.group(GitApi, "instructions", (handlers) =>
   handlers
     .handle(
@@ -150,6 +164,7 @@ export const InstructionsHandlers = HttpApiBuilder.group(GitApi, "instructions",
       "markDelivered",
       repoOp(async (cx, { params, payload }) => {
         const found = await pullOr404(cx, params.number);
+        ownBranchOnly(cx, found);
         const row = await instructionOr404(found, params.instructionId);
         if (row.status === "dismissed") throw unprocessable("That instruction was withdrawn");
         // Told twice is told once: the first delivery stands.
@@ -163,6 +178,7 @@ export const InstructionsHandlers = HttpApiBuilder.group(GitApi, "instructions",
       "markAnswered",
       repoOp(async (cx, { params, payload }) => {
         const found = await pullOr404(cx, params.number);
+        ownBranchOnly(cx, found);
         const row = await instructionOr404(found, params.instructionId);
         if (row.status === "dismissed") throw unprocessable("That instruction was withdrawn");
         let version = null;
