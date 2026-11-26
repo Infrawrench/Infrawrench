@@ -26,17 +26,17 @@ const TONE_ICON: Record<Tone, IconName> = {
   neutral: "circleDot",
 };
 
-export function useBranchState(number: number) {
+export function useBranchState(branchKey: string) {
   const repo = useRepoRef();
   return useQuery({
-    ...queries.versions.branchState({ params: { ...repo, number } }),
+    ...queries.versions.branchState({ params: { ...repo, branch: branchKey } }),
     refetchInterval: (query) => (isLive(query.state.data) ? LIVE_MS : false),
   });
 }
 
 /** The line under a branch's title: what it needs now. */
-export function BranchNeeds({ number }: { number: number }) {
-  const state = useBranchState(number);
+export function BranchNeeds({ branchKey }: { branchKey: string }) {
+  const state = useBranchState(branchKey);
   if (state.data === undefined) return null;
   const { tone, text } = needsNow(state.data);
   return (

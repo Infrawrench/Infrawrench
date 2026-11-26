@@ -1,10 +1,10 @@
 /**
- * The mock's work across repositories: what the home page of someone in
- * agent mode, the Changes list and the Mentions list are answered from. Acme
- * is a team of five with fifteen open branches in three repositories, some
- * written by agents; Tidewater has two, and mara's own namespace none.
+ * The mock's work across repositories: what the home page, the Changes
+ * list and the Mentions list are answered from. Acme is a team of five with
+ * fifteen open branches in three repositories, some written by agents;
+ * Tidewater has two, and mara's own namespace none.
  *
- * `acme/infra` #12 and #14 and `acme/edge-router` #4 are the pull requests
+ * `acme/infra` #12 and #14 and `acme/edge-router` #4 are the branch pages
  * `threads-data.ts` holds, so their rows open a real page. The rest exist
  * only here: there are more branches in a team's week than the fixtures have
  * histories for.
@@ -337,6 +337,7 @@ const ME = "mara";
 function toChange(seed: Seed): ChangeSummary {
   return {
     repository: repositoryRef(...seed.repo),
+    key: seed.branch,
     number: seed.number,
     title: seed.title,
     branch: seed.branch,
@@ -473,6 +474,11 @@ const EVENTS: EventSeed[] = [
   { repo: ACME_BILLING, number: 11, type: "merged", hours: 144, by: "jonas" },
 ];
 
+/** The key of a branch the list names by number: its branch. */
+const branchOf = (repo: Seed["repo"], number: number): string =>
+  SEEDS.find((seed) => seed.repo.join("/") === repo.join("/") && seed.number === number)?.branch ??
+  `work/${number}`;
+
 const titleOf = (repo: Seed["repo"], number: number): string =>
   SEEDS.find((seed) => seed.repo.join("/") === repo.join("/") && seed.number === number)?.title ??
   `#${number}`;
@@ -490,6 +496,7 @@ export function mockActivity(namespace: string | undefined, days: number): Activ
     agent: event.agent === undefined ? null : AGENTS[event.agent]!.displayName,
     repository: repositoryRef(...event.repo),
     number: event.number,
+    key: branchOf(event.repo, event.number),
     title: titleOf(event.repo, event.number),
     version: event.version ?? null,
     findings: event.findings ?? null,
@@ -521,7 +528,7 @@ interface MentionSeed {
   repo: Seed["repo"];
   number: number;
   title?: string;
-  pull: boolean;
+  page: boolean;
   kind: Mention["kind"];
   by: keyof typeof PEOPLE;
   excerpt: string;
@@ -532,7 +539,7 @@ const MENTIONS: MentionSeed[] = [
   {
     repo: ACME_INFRA,
     number: 12,
-    pull: true,
+    page: true,
     kind: "review_comment",
     by: "jonas",
     excerpt: "@mara the route table ids come from the shared account now, is that what you meant?",
@@ -541,7 +548,7 @@ const MENTIONS: MentionSeed[] = [
   {
     repo: ACME_BILLING,
     number: 13,
-    pull: true,
+    page: true,
     kind: "comment",
     by: "tomas",
     excerpt: "@mara could you look at the dedupe window before Thursday's close?",
@@ -550,7 +557,7 @@ const MENTIONS: MentionSeed[] = [
   {
     repo: ACME_EDGE,
     number: 9,
-    pull: true,
+    page: true,
     kind: "review_comment",
     by: "jonas",
     excerpt: "This invalidates on every reload. @mara, key it on the file's hash instead.",
@@ -560,7 +567,7 @@ const MENTIONS: MentionSeed[] = [
     repo: ACME_INFRA,
     number: 15,
     title: "Rotate the database master password",
-    pull: false,
+    page: false,
     kind: "comment",
     by: "priya",
     excerpt: "cc @mara, this needs the same maintenance window as the backup change.",
@@ -569,7 +576,7 @@ const MENTIONS: MentionSeed[] = [
   {
     repo: ACME_EDGE,
     number: 11,
-    pull: true,
+    page: true,
     kind: "comment",
     by: "aiko",
     excerpt: "@mara does the router already forward traceparent, or only the request id?",
@@ -578,7 +585,7 @@ const MENTIONS: MentionSeed[] = [
   {
     repo: ACME_BILLING,
     number: 11,
-    pull: true,
+    page: true,
     kind: "comment",
     by: "priya",
     excerpt: "Merged. Thanks @mara and @jonas for the load numbers.",
@@ -593,7 +600,7 @@ export function mockMentions(): Mention[] {
     repository: repositoryRef(...mention.repo),
     number: mention.number,
     title: mention.title ?? titleOf(mention.repo, mention.number),
-    isPullRequest: mention.pull,
+    branch: mention.page ? branchOf(mention.repo, mention.number) : null,
     author: PEOPLE[mention.by]!,
     excerpt: mention.excerpt,
     createdAt: hoursAgo(mention.hours),

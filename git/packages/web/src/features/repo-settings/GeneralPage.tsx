@@ -222,11 +222,6 @@ function Toggles({ repository }: { repository: Repository }) {
           <SettingsRow title="Issues">
             {toggle("Issues", features.issues, (issues) => update.mutate({ features: { issues } }))}
           </SettingsRow>
-          <SettingsRow title="Pull requests">
-            {toggle("Pull requests", features.pullRequests, (pullRequests) =>
-              update.mutate({ features: { pullRequests } }),
-            )}
-          </SettingsRow>
         </Panel>
       </SettingsSection>
       <SettingsSection title="Merging">
@@ -451,7 +446,7 @@ function DangerZone({ repository }: { repository: Repository }) {
       >
         <p>
           {nextVisibility === "public"
-            ? "Anyone will be able to read and clone the code, its history, issues and pull requests."
+            ? "Anyone will be able to read and clone the code, its history, issues and branches."
             : "Only people with access will be able to read it. Stars from people who lose access are removed."}
         </p>
       </TypedConfirm>
@@ -470,8 +465,8 @@ function DangerZone({ repository }: { repository: Repository }) {
       >
         <p>
           {repository.archived
-            ? "Pushes, issues and pull requests work again."
-            : "Nobody can push, comment, or open issues and pull requests until it is unarchived."}
+            ? "Pushes, issues and branch pages work again."
+            : "Nobody can push, comment, or open issues until it is unarchived."}
         </p>
         <InlineError error={archive.error} />
       </Dialog>
@@ -509,7 +504,7 @@ function DangerZone({ repository }: { repository: Repository }) {
         onConfirm={() => remove.mutate()}
       >
         <p>
-          The code, issues, pull requests and Terraform state of {fullName} are deleted. This cannot
+          The code, issues, branch pages and Terraform state of {fullName} are deleted. This cannot
           be undone.
         </p>
       </TypedConfirm>

@@ -191,7 +191,7 @@ export function ChangeRow({
   const repo = { owner: change.repository.owner, repo: change.repository.name };
   return (
     <WorkRow
-      href={href ?? paths.pull(repo, change.number)}
+      href={href ?? paths.branchPage(repo, change.key)}
       icon={<ChangeStateIcon state={change.state} draft={change.draft} />}
       title={change.title}
       // Named by nothing but its commits: the commit says which.
@@ -221,7 +221,7 @@ export function SuggestedRow({ change }: { change: SuggestedReview }) {
       // Opens on what is new to them: the newest version against the one they reviewed.
       href={paths.branchPage(
         repo,
-        change.number,
+        change.key,
         change.reviewedVersion === null || change.latestVersion === null
           ? {}
           : { v: change.latestVersion, diff: "since" },

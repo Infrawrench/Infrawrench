@@ -1,4 +1,4 @@
-/** Changes to a mock thread that an issue and a pull request share, each leaving its event. */
+/** Changes to a mock thread that an issue and a branch page share, each leaving its event. */
 import type { UserRef } from "@infrawrench/git-contract";
 import { unprocessable } from "./define";
 import { requireUser, type RepositoryRecord } from "./db";
@@ -80,7 +80,7 @@ export function applyThreadChange(
   }
   if (change.state !== undefined && change.state !== thread.state) {
     if (change.state === "closed") {
-      const stateReason = thread.pull ? null : (change.stateReason ?? "completed");
+      const stateReason = thread.page ? null : (change.stateReason ?? "completed");
       thread.state = "closed";
       thread.stateReason = stateReason;
       thread.closedAt = now;

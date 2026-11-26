@@ -62,7 +62,7 @@ function seed(repo: RepositoryRecord): RepoSettings {
         {
           id: "rule_main",
           pattern: "main",
-          requirePullRequest: true,
+          requireBranchPage: true,
           requiredApprovals: 1,
           dismissStaleApprovals: true,
           requiredStatusContexts: ["Infrawrench CI / fmt", "Infrawrench CI / validate"],
@@ -78,7 +78,7 @@ function seed(repo: RepositoryRecord): RepoSettings {
         {
           id: "rule_release",
           pattern: "release/*",
-          requirePullRequest: true,
+          requireBranchPage: true,
           requiredApprovals: 2,
           dismissStaleApprovals: false,
           requiredStatusContexts: ["Infrawrench CI / validate"],

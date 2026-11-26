@@ -1,7 +1,6 @@
 /**
  * Which repository a comparison's head is in: the base repository itself, or
- * one of its forks the viewer can read. A fork's owner opens a pull request
- * to the parent by picking their fork here.
+ * one of its forks the viewer can read.
  */
 import { useQuery } from "@tanstack/react-query";
 import type { RepositorySummary } from "@infrawrench/git-contract";

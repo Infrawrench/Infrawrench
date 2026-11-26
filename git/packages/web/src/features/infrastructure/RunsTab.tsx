@@ -65,12 +65,13 @@ export function RunsTab() {
                   </div>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-on-surface-muted">
                     <span>{triggerLabel(run)}</span>
-                    {run.pullNumber !== null ? (
+                    {run.branchPage !== null ? (
                       <AppLink
-                        href={paths.pull(repo, run.pullNumber)}
+                        href={paths.branchPage(repo, run.branchPage)}
                         className="inline-flex items-center gap-1 hover:text-on-surface hover:underline"
                       >
-                        <Icon name="gitPullRequest" size={11} />#{run.pullNumber}
+                        <Icon name="fileDiff" size={11} />
+                        Branch page
                       </AppLink>
                     ) : null}
                     <span className="inline-flex items-center gap-1 font-mono text-[11px]">

@@ -1,5 +1,5 @@
 /**
- * What the merge box shows, worked out from a pull request's `Mergeability`
+ * What the merge box shows, worked out from a branch page's `Mergeability`
  * and nothing else: one row each for reviews, checks and the branch, and what
  * the button at the bottom may do.
  */
@@ -29,7 +29,7 @@ export type MergeAction =
   | { readonly mode: "bypass"; readonly reasons: ReadonlyArray<string> }
   /** Something the viewer cannot override: the reason is shown instead of a button. */
   | { readonly mode: "blocked"; readonly reasons: ReadonlyArray<string> }
-  /** The viewer has no say here (read access, a merged or closed pull request). */
+  /** The viewer has no say here (read access, a merged or closed branch). */
   | { readonly mode: "none" };
 
 export interface MergeBoxModel {
@@ -182,7 +182,7 @@ export function deriveMergeBox(mergeability: Mergeability, baseRef: string): Mer
 }
 
 export const MERGE_BUTTON: Record<"merge" | "squash" | "rebase", string> = {
-  merge: "Merge pull request",
+  merge: "Merge",
   squash: "Squash and merge",
   rebase: "Rebase and merge",
 };

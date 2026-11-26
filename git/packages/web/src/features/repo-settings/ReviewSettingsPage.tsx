@@ -78,18 +78,6 @@ export function ReviewSettingsPage() {
           <SettingsSection title="Review">
             <Panel className="divide-y divide-border">
               <SettingsRow
-                title="Branch pages"
-                detail="A draft pull request at a branch's first push"
-              >
-                <Switch
-                  label="Branch pages"
-                  on={current.autoOpenBranchPages}
-                  busy={saving("autoOpenBranchPages")}
-                  disabled={locked}
-                  onChange={(next) => change.mutate({ autoOpenBranchPages: next })}
-                />
-              </SettingsRow>
-              <SettingsRow
                 title="Must-fix findings block merging"
                 detail="Until fixed, dismissed, or overridden by an administrator"
               >

@@ -1,20 +1,22 @@
 /**
- * Home for someone in agent mode: how many branches are active, where work
- * was pushed lately, the reader's own branches beside everyone else's, the
- * ones suggested for their review, and what happened.
+ * Home: how many branches are active, where work was pushed lately, the
+ * reader's own branches beside everyone else's, the ones suggested for their
+ * review, and what happened. A reader with nothing of their own here is sent
+ * to Explore.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ActivityEvent, WorkspaceHome } from "@infrawrench/git-contract";
 import { queries } from "../../api/queries";
-import { AppLink } from "../../components/AppLink";
+import { AppLink, useGo } from "../../components/AppLink";
 import { ButtonLink } from "../../components/Button";
 import { Icon } from "../../components/icons";
 import { Menu } from "../../components/Menu";
 import { Avatar, ShortAge } from "../../components/people";
-import { EmptyState, ErrorState, Skeleton } from "../../components/states";
+import { EmptyState, ErrorState, Loading, Skeleton } from "../../components/states";
 import { showBidi } from "../../lib/bidi";
 import { plural } from "../../lib/format";
+import { useSession } from "../../lib/session";
 import { paths } from "../../lib/paths";
 import { TopBar } from "../../layout/TopBar";
 import { type Workspace, useWorkspaces } from "../../layout/workspace";
@@ -99,7 +101,7 @@ function Activity({ events }: { events: ReadonlyArray<ActivityEvent> }) {
                     <span className="font-medium text-on-surface">{actor}</span>{" "}
                     {activityVerb(event)}{" "}
                     <AppLink
-                      href={paths.pull(repo, event.number)}
+                      href={paths.branchPage(repo, event.key)}
                       className="font-medium text-on-surface hover:underline"
                     >
                       {showBidi(event.title)}
@@ -164,6 +166,18 @@ function Lead({ home, workspace }: { home: WorkspaceHome; workspace: Workspace }
   );
 }
 
+/** `/`: the workspace's home for a member, Explore for anyone else. */
+export function HomePage() {
+  const session = useSession();
+  const go = useGo();
+  const member = session.data?.user != null && session.data.user.username !== null;
+  const known = session.data !== undefined;
+  useEffect(() => {
+    if (known && !member) go(paths.explore(), { replace: true });
+  }, [known, member, go]);
+  return member ? <AgentHome /> : <Loading shape="page" />;
+}
+
 export function AgentHome() {
   const [days, setDays] = useState<Days>(7);
   const { workspaces, current } = useWorkspaces();
@@ -211,7 +225,7 @@ export function AgentHome() {
                   : {})}
               >
                 {data.yours.items.map((change) => (
-                  <ChangeRow key={`${change.repository.id}#${change.number}`} change={change} />
+                  <ChangeRow key={`${change.repository.id}:${change.key}`} change={change} />
                 ))}
               </WorkCard>
               <WorkCard
@@ -224,7 +238,7 @@ export function AgentHome() {
                   : {})}
               >
                 {data.team.items.map((change) => (
-                  <ChangeRow key={`${change.repository.id}#${change.number}`} change={change} />
+                  <ChangeRow key={`${change.repository.id}:${change.key}`} change={change} />
                 ))}
               </WorkCard>
             </div>
@@ -241,7 +255,7 @@ export function AgentHome() {
                   : {})}
               >
                 {data.suggested.items.map((change) => (
-                  <SuggestedRow key={`${change.repository.id}#${change.number}`} change={change} />
+                  <SuggestedRow key={`${change.repository.id}:${change.key}`} change={change} />
                 ))}
               </WorkCard>
             </div>

@@ -49,6 +49,8 @@ export interface LinkTab {
   readonly count?: number | undefined;
   /** Whether a pathname belongs to this tab. Default: it is `href` or under it. */
   readonly match?: (pathname: string) => boolean;
+  /** Whether it is the current tab, when the page knows better than its path (a tab in the query). */
+  readonly active?: boolean;
 }
 
 /**
@@ -77,9 +79,9 @@ export function LinkTabs({
     >
       {tabs.map((tab) => {
         const path = tab.href.split("?")[0]!;
-        const active = tab.match
-          ? tab.match(pathname)
-          : pathname === path || pathname.startsWith(`${path}/`);
+        const active =
+          tab.active ??
+          (tab.match ? tab.match(pathname) : pathname === path || pathname.startsWith(`${path}/`));
         return (
           <AppLink
             key={tab.href}
@@ -127,9 +129,9 @@ export function QuietTabs({
     <nav aria-label={label} className={`flex items-center gap-0.5 ${className}`}>
       {tabs.map((tab) => {
         const path = tab.href.split("?")[0]!;
-        const active = tab.match
-          ? tab.match(pathname)
-          : pathname === path || pathname.startsWith(`${path}/`);
+        const active =
+          tab.active ??
+          (tab.match ? tab.match(pathname) : pathname === path || pathname.startsWith(`${path}/`));
         const iconOnly = compact && tab.icon !== undefined;
         return (
           <AppLink

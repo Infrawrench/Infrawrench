@@ -1,4 +1,9 @@
-import type { ReviewComment } from "@infrawrench/git-contract";
+/**
+ * The mock of the branches group: listing, proposing and finding branch
+ * pages, and everything a page does (reviews, comments, merging).
+ */
+import type { ReviewComment, UserRef } from "@infrawrench/git-contract";
+import { parseBranchKey } from "@infrawrench/git-contract";
 import {
   badRequest,
   conflict,
@@ -17,28 +22,31 @@ import {
   requireUser,
   type RepositoryRecord,
 } from "../db";
-import { aheadBehind, diffCommits, statsOf, summarize, summaryOf } from "../git";
-import { mergeCommits, writeCommit } from "../git-write";
+import { FIXTURE_PEOPLE, aheadBehind, diffCommits, statsOf, summarize, summaryOf } from "../git";
+import { copyObjects, mergeCommits, writeCommit } from "../git-write";
 import { startRun } from "../ci-data";
 import { newId } from "../settings-data";
 import {
   commitsOf,
   event,
   filterThreads,
-  findThread,
+  findPage,
   hunkAround,
   mergeabilityOf,
+  openPageOf,
+  pageKeyOf,
   presentThread,
   refsOf,
   reviewThreadsOf,
   reviewsOf,
   syncCounts,
   threadsOf,
-  toPull,
-  toPullSummary,
+  titleOfBranch,
+  toBranchPage,
+  toBranchPageSummary,
   touch,
   viewerOf,
-  type PullRecord,
+  type PageRecord,
   type StoredReview,
   type StoredReviewThread,
   type ThreadRecord,
@@ -47,34 +55,122 @@ import { applyThreadChange } from "../threads-write";
 
 const now = (): string => new Date().toISOString();
 
-function pullOf(owner: string, name: string, number: number) {
+function pageOf(owner: string, name: string, key: string) {
   const repo = findRepository(owner, name);
-  const thread = findThread(repo, number, true);
-  return { repo, thread, pull: thread.pull! };
+  const thread = findPage(repo, key);
+  return { repo, thread, page: thread.page! };
 }
 
-/** The pull request a review thread or comment belongs to. */
+interface Opening {
+  readonly head: string;
+  /** The fork the head is in; the repository itself when it is the same one. */
+  readonly headRepo: RepositoryRecord;
+  readonly base: string;
+  readonly title: string;
+  readonly body: string;
+  readonly draft: boolean;
+  readonly author: UserRef | null;
+}
+
+/**
+ * Opens a page: what proposing does, and what `get` does for a branch that
+ * was pushed without one. Refuses a head with nothing the base lacks, or
+ * one that already has an open page.
+ */
+function openPage(repo: RepositoryRecord, opening: Opening): ThreadRecord {
+  const fx = gitOf(repo);
+  const cross = opening.headRepo !== repo;
+  const headFx = gitOf(opening.headRepo);
+  const base = fx.branches[opening.base];
+  const head = headFx.branches[opening.head];
+  if (base === undefined || head === undefined) {
+    throw unprocessable("No such branch", "ref_not_found");
+  }
+  if (cross) copyObjects(headFx, fx, head);
+  if (aheadBehind(fx, base, head).ahead.length === 0) {
+    throw unprocessable(
+      `${opening.head} has no commits that ${opening.base} lacks`,
+      "no_commits_between",
+    );
+  }
+  const headRepository = cross
+    ? `${opening.headRepo.owner.slug}/${opening.headRepo.name}`
+    : undefined;
+  if (openPageOf(repo, opening.head, headRepository) !== undefined) {
+    throw conflict(`${opening.head} already has an open page`, "branch_page_exists");
+  }
+  const store = threadsOf(repo);
+  const at = now();
+  const thread: ThreadRecord = {
+    id: newId("thread"),
+    number: store.nextNumber++,
+    title: opening.title,
+    body: opening.body,
+    bodyEditedAt: null,
+    author: opening.author,
+    labelIds: [],
+    assignees: [],
+    milestone: null,
+    state: "open",
+    stateReason: null,
+    locked: false,
+    lockReason: null,
+    createdAt: at,
+    updatedAt: at,
+    closedAt: null,
+    closedBy: null,
+    items: [],
+    page: {
+      draft: opening.draft,
+      baseRef: opening.base,
+      headRef: opening.head,
+      ...(headRepository === undefined ? {} : { headRepository }),
+      frozenHeadOid: null,
+      frozenBaseOid: null,
+      merged: null,
+      reviews: [],
+      threads: [],
+    },
+  };
+  thread.items.push({
+    type: "commits",
+    id: newId("push"),
+    createdAt: at,
+    commits: commitsOf(refsOf(repo, thread.page!)).map((oid) => summarize(fx, oid)),
+  });
+  store.threads.push(thread);
+  syncCounts(repo);
+  return thread;
+}
+
+/** The person behind a commit, as a user of the mock when they are one. */
+function authorOf(fx: ReturnType<typeof gitOf>, oid: string): UserRef | null {
+  const email = fx.commits[oid]?.author.email;
+  return (email === undefined ? undefined : FIXTURE_PEOPLE[email]) ?? currentUser();
+}
+
+/** The review thread or comment's page. */
 function locate(repo: RepositoryRecord, match: (thread: StoredReviewThread) => boolean) {
   for (const thread of threadsOf(repo).threads) {
-    const found = thread.pull?.threads.find(match);
-    if (found) return { thread, pull: thread.pull!, reviewThread: found };
+    const found = thread.page?.threads.find(match);
+    if (found) return { thread, page: thread.page!, reviewThread: found };
   }
   throw notFound("Not found");
 }
 
-function pendingReviewOf(repo: RepositoryRecord, pull: PullRecord): StoredReview {
+function pendingReviewOf(repo: RepositoryRecord, page: PageRecord): StoredReview {
   const user = requireUser();
-  let found = pull.reviews.find((item) => item.state === "pending" && item.author?.id === user.id);
+  let found = page.reviews.find((item) => item.state === "pending" && item.author?.id === user.id);
   if (!found) {
-    found = blankReview(repo, pull, "pending", "");
-    pull.reviews.push(found);
+    found = blankReview(repo, page, "pending", "");
+    page.reviews.push(found);
   }
   return found;
 }
 
 function blankReview(
   repo: RepositoryRecord,
-  pull: PullRecord,
+  page: PageRecord,
   state: StoredReview["state"],
   body: string,
 ): StoredReview {
@@ -84,7 +180,7 @@ function blankReview(
     author: requireUser(),
     state,
     body,
-    commitOid: refsOf(repo, pull).headOid,
+    commitOid: refsOf(repo, page).headOid,
     stale: false,
     commentCount: 0,
     createdAt: at,
@@ -125,11 +221,11 @@ interface Anchor {
 
 function startThread(
   repo: RepositoryRecord,
-  pull: PullRecord,
+  page: PageRecord,
   anchor: Anchor,
   first: Mutable<ReviewComment>,
 ): StoredReviewThread {
-  const refs = refsOf(repo, pull);
+  const refs = refsOf(repo, page);
   const hunk = hunkAround(
     refs.fx,
     refs.mergeBaseOid,
@@ -159,20 +255,20 @@ function startThread(
     viewerCanResolve: true,
     viewerCanReply: true,
   };
-  pull.threads.push(created);
+  page.threads.push(created);
   return created;
 }
 
 function submit(
   thread: ThreadRecord,
-  pull: PullRecord,
+  page: PageRecord,
   item: StoredReview,
   kind: "comment" | "approve" | "request_changes",
   body: string | undefined,
 ): void {
   const user = requireUser();
   if (kind !== "comment" && thread.author?.id === user.id) {
-    throw unprocessable("You cannot approve or request changes on your own pull request");
+    throw unprocessable("You cannot approve or request changes on your own branch");
   }
   item.state =
     kind === "approve"
@@ -182,7 +278,7 @@ function submit(
         : "commented";
   if (body !== undefined) item.body = body;
   item.submittedAt = now();
-  for (const reviewThread of pull.threads) {
+  for (const reviewThread of page.threads) {
     for (const comment of reviewThread.comments) {
       if (comment.reviewId === item.id) comment.pending = false;
     }
@@ -202,22 +298,33 @@ const BLOCKER_CODE: Record<string, string> = {
 };
 
 export default defineMockHandlers({
-  pulls: {
+  branches: {
     list: ({ params, query }) => {
       const repo = findRepository(params.owner, params.repo);
-      const pulls = threadsOf(repo).threads.filter((thread) => thread.pull !== null);
-      let matching = filterThreads(repo, pulls, query ?? {});
+      const pages = threadsOf(repo).threads.filter((thread) => thread.page !== null);
+      let matching = filterThreads(repo, pages, query ?? {});
       if (query?.base !== undefined)
-        matching = matching.filter((t) => t.pull!.baseRef === query.base);
-      if (query?.head !== undefined)
-        matching = matching.filter((t) => t.pull!.headRef === query.head);
+        matching = matching.filter((t) => t.page!.baseRef === query.base);
+      if (query?.head !== undefined) {
+        // `owner:branch` for a branch in a fork.
+        const colon = query.head.indexOf(":");
+        const owner = colon < 0 ? null : query.head.slice(0, colon).toLowerCase();
+        const ref = colon < 0 ? query.head : query.head.slice(colon + 1);
+        matching = matching.filter(
+          (t) =>
+            t.page!.headRef === ref &&
+            (owner === null
+              ? t.page!.headRepository === undefined
+              : t.page!.headRepository?.toLowerCase().startsWith(`${owner}/`) === true),
+        );
+      }
       if (query?.draft !== undefined) {
-        matching = matching.filter((t) => t.pull!.draft === (query.draft === "true"));
+        matching = matching.filter((t) => t.page!.draft === (query.draft === "true"));
       }
       if (query?.reviewer !== undefined) {
         const name = query.reviewer === "@me" ? currentUser()?.username : query.reviewer;
         matching = matching.filter((t) =>
-          t.pull!.reviews.some((r) => r.state !== "pending" && r.author?.username === name),
+          t.page!.reviews.some((r) => r.state !== "pending" && r.author?.username === name),
         );
       }
       const state = query?.state ?? "open";
@@ -225,12 +332,12 @@ export default defineMockHandlers({
         state === "all"
           ? true
           : state === "merged"
-            ? thread.pull!.merged !== null
+            ? thread.page!.merged !== null
             : thread.state === state,
       );
       return {
         ...paginate(
-          shown.map((thread) => toPullSummary(repo, thread)),
+          shown.map((thread) => toBranchPageSummary(repo, thread)),
           query,
         ),
         counts: {
@@ -239,78 +346,21 @@ export default defineMockHandlers({
         },
       };
     },
-    create: ({ params, payload }) => {
+    propose: ({ params, payload }) => {
       const repo = findRepository(params.owner, params.repo);
       const author = requireUser();
-      const fx = gitOf(repo);
       const headRepo = headRepositoryOf(repo, payload.headRepository);
-      const base = fx.branches[payload.base];
-      const head = fx.branches[payload.head];
-      if (base === undefined || head === undefined) {
-        throw unprocessable("No such branch", "ref_not_found");
-      }
-      if (payload.title.trim() === "") throw badRequest("A title is required");
-      if (aheadBehind(fx, base, head).ahead.length === 0) {
-        throw unprocessable(
-          `${payload.head} has no commits that ${payload.base} lacks`,
-          "no_commits_between",
-        );
-      }
-      const store = threadsOf(repo);
-      const existing = store.threads.find(
-        (thread) =>
-          thread.state === "open" &&
-          thread.pull?.baseRef === payload.base &&
-          thread.pull.headRef === payload.head &&
-          (thread.pull.headRepository === undefined) === (headRepo === repo),
-      );
-      if (existing) {
-        throw conflict(
-          `Pull request #${existing.number} is already open for these branches`,
-          "pull_request_exists",
-        );
-      }
-      const at = now();
-      const thread: ThreadRecord = {
-        id: newId("thread"),
-        number: store.nextNumber++,
-        title: payload.title.trim(),
+      const title = payload.title?.trim() ?? "";
+      if (payload.title !== undefined && title === "") throw badRequest("A title is required");
+      const thread = openPage(repo, {
+        head: payload.head,
+        headRepo,
+        base: payload.base ?? repo.defaultBranch,
+        title: title === "" ? titleOfBranch(payload.head) : title,
         body: payload.body ?? "",
-        bodyEditedAt: null,
+        draft: payload.draft ?? false,
         author,
-        labelIds: [],
-        assignees: [],
-        milestone: null,
-        state: "open",
-        stateReason: null,
-        locked: false,
-        lockReason: null,
-        createdAt: at,
-        updatedAt: at,
-        closedAt: null,
-        closedBy: null,
-        items: [],
-        pull: {
-          draft: payload.draft ?? false,
-          baseRef: payload.base,
-          headRef: payload.head,
-          ...(headRepo === repo
-            ? {}
-            : { headRepository: `${headRepo.owner.slug}/${headRepo.name}` }),
-          frozenHeadOid: null,
-          frozenBaseOid: null,
-          merged: null,
-          reviews: [],
-          threads: [],
-        },
-      };
-      thread.items.push({
-        type: "commits",
-        id: newId("push"),
-        createdAt: at,
-        commits: commitsOf(refsOf(repo, thread.pull!)).map((oid) => summarize(fx, oid)),
       });
-      store.threads.push(thread);
       if (viewerOf(repo).canTriage) {
         applyThreadChange(repo, thread, {
           labels: payload.labels,
@@ -318,46 +368,83 @@ export default defineMockHandlers({
           milestone: payload.milestone,
         });
       }
-      syncCounts(repo);
-      return toPull(repo, thread);
+      return toBranchPage(repo, thread);
+    },
+    locate: ({ params }) => {
+      const repo = findRepository(params.owner, params.repo);
+      const thread = threadsOf(repo).threads.find((item) => item.number === params.number);
+      if (thread === undefined || thread.page === null) throw notFound("Branch page not found");
+      return { key: pageKeyOf(repo, thread) };
     },
     get: ({ params }) => {
-      const { repo, thread } = pullOf(params.owner, params.repo, params.number);
-      return toPull(repo, thread);
+      const repo = findRepository(params.owner, params.repo);
+      let thread: ThreadRecord;
+      try {
+        thread = findPage(repo, params.branch);
+      } catch (error) {
+        // A branch of this repository pushed before pages were opened on push gets its page now.
+        const parsed = parseBranchKey(params.branch);
+        const fx = repo.fixture === null ? null : gitOf(repo);
+        const head = parsed === null || fx === null ? undefined : fx.branches[parsed.branch];
+        if (
+          parsed === null ||
+          fx === null ||
+          head === undefined ||
+          parsed.fork !== null ||
+          parsed.ordinal !== null ||
+          parsed.branch === repo.defaultBranch
+        ) {
+          throw error;
+        }
+        try {
+          thread = openPage(repo, {
+            head: parsed.branch,
+            headRepo: repo,
+            base: repo.defaultBranch,
+            title: titleOfBranch(parsed.branch),
+            body: "",
+            draft: false,
+            author: authorOf(fx, head),
+          });
+        } catch {
+          throw error;
+        }
+      }
+      return toBranchPage(repo, thread);
     },
     update: ({ params, payload }) => {
-      const { repo, thread, pull } = pullOf(params.owner, params.repo, params.number);
-      if (payload.base !== undefined && payload.base !== pull.baseRef) {
+      const { repo, thread, page } = pageOf(params.owner, params.repo, params.branch);
+      if (payload.base !== undefined && payload.base !== page.baseRef) {
         if (gitOf(repo).branches[payload.base] === undefined) {
           throw unprocessable("No such branch", "ref_not_found");
         }
         thread.items.push(
-          event("base_changed", requireUser(), now(), { from: pull.baseRef, to: payload.base }),
+          event("base_changed", requireUser(), now(), { from: page.baseRef, to: payload.base }),
         );
-        pull.baseRef = payload.base;
+        page.baseRef = payload.base;
       }
       applyThreadChange(repo, thread, payload);
-      return toPull(repo, thread);
+      return toBranchPage(repo, thread);
     },
     close: ({ params }) => {
-      const { repo, thread, pull } = pullOf(params.owner, params.repo, params.number);
-      if (pull.merged) throw unprocessable("This pull request is merged", "already_merged");
+      const { repo, thread, page } = pageOf(params.owner, params.repo, params.branch);
+      if (page.merged) throw unprocessable("This branch is merged", "already_merged");
       applyThreadChange(repo, thread, { state: "closed" });
-      return toPull(repo, thread);
+      return toBranchPage(repo, thread);
     },
     reopen: ({ params }) => {
-      const { repo, thread, pull } = pullOf(params.owner, params.repo, params.number);
-      if (pull.merged) throw unprocessable("This pull request is merged", "already_merged");
-      if (!refsOf(repo, pull).headRefExists) {
+      const { repo, thread, page } = pageOf(params.owner, params.repo, params.branch);
+      if (page.merged) throw unprocessable("This branch is merged", "already_merged");
+      if (!refsOf(repo, page).headRefExists) {
         throw unprocessable("Its head branch was deleted", "ref_not_found");
       }
       applyThreadChange(repo, thread, { state: "open" });
-      return toPull(repo, thread);
+      return toBranchPage(repo, thread);
     },
     setDraft: ({ params, payload }) => {
-      const { repo, thread, pull } = pullOf(params.owner, params.repo, params.number);
-      if (pull.draft !== payload.draft) {
-        pull.draft = payload.draft;
+      const { repo, thread, page } = pageOf(params.owner, params.repo, params.branch);
+      if (page.draft !== payload.draft) {
+        page.draft = payload.draft;
         thread.items.push(
           event(
             payload.draft ? "converted_to_draft" : "ready_for_review",
@@ -368,41 +455,41 @@ export default defineMockHandlers({
         );
         touch(thread);
       }
-      return toPull(repo, thread);
+      return toBranchPage(repo, thread);
     },
     files: ({ params, query }) => {
-      const { repo, pull } = pullOf(params.owner, params.repo, params.number);
-      const refs = refsOf(repo, pull);
+      const { repo, page } = pageOf(params.owner, params.repo, params.branch);
+      const refs = refsOf(repo, page);
       const baseOid = query?.since ?? refs.mergeBaseOid;
       const all = diffCommits(refs.fx, baseOid, refs.headOid, {
         context: query?.context,
         path: query?.path,
       });
-      const page = paginate(all, query);
+      const slice = paginate(all, query);
       return {
         baseOid,
         headOid: refs.headOid,
         stats: statsOf(all.map(summaryOf)),
-        files: page.items,
-        nextCursor: page.nextCursor,
+        files: slice.items,
+        nextCursor: slice.nextCursor,
       };
     },
     commits: ({ params, query }) => {
-      const { repo, pull } = pullOf(params.owner, params.repo, params.number);
-      const refs = refsOf(repo, pull);
+      const { repo, page } = pageOf(params.owner, params.repo, params.branch);
+      const refs = refsOf(repo, page);
       return paginate(
         commitsOf(refs).map((oid) => summarize(refs.fx, oid)),
         query,
       );
     },
     mergeability: ({ params }) => {
-      const { repo, thread } = pullOf(params.owner, params.repo, params.number);
+      const { repo, thread } = pageOf(params.owner, params.repo, params.branch);
       return mergeabilityOf(repo, thread);
     },
     merge: ({ params, payload }) => {
-      const { repo, thread, pull } = pullOf(params.owner, params.repo, params.number);
+      const { repo, thread, page } = pageOf(params.owner, params.repo, params.branch);
       const user = requireUser();
-      const refs = refsOf(repo, pull);
+      const refs = refsOf(repo, page);
       const state = mergeabilityOf(repo, thread);
       if (payload.expectedHeadOid !== undefined && payload.expectedHeadOid !== refs.headOid) {
         throw conflict("The branch has new commits since you looked", "head_moved");
@@ -416,7 +503,7 @@ export default defineMockHandlers({
       }
       const { fx } = refs;
       const merged = mergeCommits(fx, refs.baseOid, refs.headOid);
-      const title = `${thread.title} (#${thread.number})`;
+      const title = thread.title;
       // A rebase replays each commit; the mock writes the result as one.
       const commitOid =
         payload.method === "merge"
@@ -424,8 +511,7 @@ export default defineMockHandlers({
               fx,
               merged.files,
               [refs.baseOid, refs.headOid],
-              payload.commitTitle ??
-                `Merge pull request #${thread.number} from ${pull.headRef}\n\n${thread.title}`,
+              payload.commitTitle ?? `Merge branch '${page.headRef}'\n\n${thread.title}`,
               user,
             )
           : writeCommit(
@@ -439,23 +525,23 @@ export default defineMockHandlers({
                 : (fx.commits[refs.headOid]?.message ?? title),
               user,
             );
-      fx.branches[pull.baseRef] = commitOid;
+      fx.branches[page.baseRef] = commitOid;
       const at = now();
-      pull.frozenHeadOid = refs.headOid;
-      pull.frozenBaseOid = refs.baseOid;
-      pull.merged = { at, by: user, commitOid, method: payload.method };
+      page.frozenHeadOid = refs.headOid;
+      page.frozenBaseOid = refs.baseOid;
+      page.merged = { at, by: user, commitOid, method: payload.method };
       thread.state = "closed";
       thread.closedAt = at;
       thread.closedBy = user;
       thread.items.push(
-        event("merged", user, at, { commitOid, method: payload.method, baseRef: pull.baseRef }),
+        event("merged", user, at, { commitOid, method: payload.method, baseRef: page.baseRef }),
       );
       const branchDeleted =
         (payload.deleteBranch ?? repo.merge.deleteBranchOnMerge) &&
-        pull.headRef !== repo.defaultBranch;
+        page.headRef !== repo.defaultBranch;
       if (branchDeleted) {
-        delete fx.branches[pull.headRef];
-        thread.items.push(event("head_branch_deleted", user, at, { ref: pull.headRef }));
+        delete refs.headFx.branches[page.headRef];
+        thread.items.push(event("head_branch_deleted", user, at, { ref: page.headRef }));
       }
       repo.pushedAt = at;
       touch(thread);
@@ -463,9 +549,9 @@ export default defineMockHandlers({
       return { merged: true as const, commitOid, method: payload.method, branchDeleted };
     },
     updateBranch: ({ params, payload }) => {
-      const { repo, thread, pull } = pullOf(params.owner, params.repo, params.number);
+      const { repo, thread, page } = pageOf(params.owner, params.repo, params.branch);
       const user = requireUser();
-      const refs = refsOf(repo, pull);
+      const refs = refsOf(repo, page);
       if (payload.expectedHeadOid !== undefined && payload.expectedHeadOid !== refs.headOid) {
         throw conflict("The branch has new commits since you looked", "head_moved");
       }
@@ -477,10 +563,11 @@ export default defineMockHandlers({
         refs.fx,
         merged.files,
         [refs.headOid, refs.baseOid],
-        `Merge branch '${pull.baseRef}' into ${pull.headRef}`,
+        `Merge branch '${page.baseRef}' into ${page.headRef}`,
         user,
       );
-      refs.fx.branches[pull.headRef] = headOid;
+      if (refs.headFx !== refs.fx) copyObjects(refs.fx, refs.headFx, headOid);
+      refs.headFx.branches[page.headRef] = headOid;
       thread.items.push({
         type: "commits",
         id: newId("push"),
@@ -489,9 +576,9 @@ export default defineMockHandlers({
       });
       if (repo.hasCi) {
         startRun(repo, {
-          headRef: pull.headRef,
+          headRef: page.headRef,
           sha: headOid,
-          pullNumber: thread.number,
+          branchPage: pageKeyOf(repo, thread),
           actor: user,
         });
       }
@@ -499,61 +586,61 @@ export default defineMockHandlers({
       return { headOid };
     },
     restoreBranch: ({ params }) => {
-      const { repo, thread, pull } = pullOf(params.owner, params.repo, params.number);
-      const refs = refsOf(repo, pull);
+      const { repo, thread, page } = pageOf(params.owner, params.repo, params.branch);
+      const refs = refsOf(repo, page);
       if (refs.headRefExists) throw conflict("The branch exists", "ref_exists");
-      refs.fx.branches[pull.headRef] = refs.headOid;
-      thread.items.push(event("head_branch_restored", requireUser(), now(), { ref: pull.headRef }));
-      return { ref: pull.headRef, oid: refs.headOid };
+      refs.headFx.branches[page.headRef] = refs.headOid;
+      thread.items.push(event("head_branch_restored", requireUser(), now(), { ref: page.headRef }));
+      return { ref: page.headRef, oid: refs.headOid };
     },
     listReviews: ({ params }) => {
-      const { repo, thread } = pullOf(params.owner, params.repo, params.number);
+      const { repo, thread } = pageOf(params.owner, params.repo, params.branch);
       return { reviews: reviewsOf(repo, thread) };
     },
     createReview: ({ params, payload }) => {
-      const { repo, thread, pull } = pullOf(params.owner, params.repo, params.number);
+      const { repo, thread, page } = pageOf(params.owner, params.repo, params.branch);
       requireUser();
       const item =
         payload.event === undefined
-          ? pendingReviewOf(repo, pull)
-          : blankReview(repo, pull, "pending", payload.body ?? "");
-      if (!pull.reviews.includes(item)) pull.reviews.push(item);
+          ? pendingReviewOf(repo, page)
+          : blankReview(repo, page, "pending", payload.body ?? "");
+      if (!page.reviews.includes(item)) page.reviews.push(item);
       for (const draft of payload.comments ?? []) {
-        startThread(repo, pull, draft, newComment(item.id, draft.body, true));
+        startThread(repo, page, draft, newComment(item.id, draft.body, true));
       }
       if (payload.event !== undefined) {
         try {
-          submit(thread, pull, item, payload.event, payload.body);
+          submit(thread, page, item, payload.event, payload.body);
         } catch (error) {
-          pull.reviews.splice(pull.reviews.indexOf(item), 1);
+          page.reviews.splice(page.reviews.indexOf(item), 1);
           throw error;
         }
       }
       return reviewsOf(repo, thread).find((review) => review.id === item.id)!;
     },
     submitReview: ({ params, payload }) => {
-      const { repo, thread, pull } = pullOf(params.owner, params.repo, params.number);
-      const item = pull.reviews.find((review) => review.id === params.reviewId);
+      const { repo, thread, page } = pageOf(params.owner, params.repo, params.branch);
+      const item = page.reviews.find((review) => review.id === params.reviewId);
       if (!item) throw notFound("Review not found");
       if (item.state !== "pending") throw unprocessable("That review was already submitted");
-      submit(thread, pull, item, payload.event, payload.body);
+      submit(thread, page, item, payload.event, payload.body);
       return reviewsOf(repo, thread).find((review) => review.id === item.id)!;
     },
     discardReview: ({ params }) => {
-      const { pull } = pullOf(params.owner, params.repo, params.number);
-      const item = pull.reviews.find((review) => review.id === params.reviewId);
+      const { page } = pageOf(params.owner, params.repo, params.branch);
+      const item = page.reviews.find((review) => review.id === params.reviewId);
       if (!item) throw notFound("Review not found");
       if (item.state !== "pending") throw unprocessable("Only a pending review can be discarded");
-      pull.reviews.splice(pull.reviews.indexOf(item), 1);
-      for (const reviewThread of pull.threads) {
+      page.reviews.splice(page.reviews.indexOf(item), 1);
+      for (const reviewThread of page.threads) {
         reviewThread.comments = reviewThread.comments.filter((c) => c.reviewId !== item.id);
       }
-      pull.threads = pull.threads.filter((reviewThread) => reviewThread.comments.length > 0);
+      page.threads = page.threads.filter((reviewThread) => reviewThread.comments.length > 0);
       return ok;
     },
     dismissReview: ({ params, payload }) => {
-      const { repo, thread, pull } = pullOf(params.owner, params.repo, params.number);
-      const item = pull.reviews.find((review) => review.id === params.reviewId);
+      const { repo, thread, page } = pageOf(params.owner, params.repo, params.branch);
+      const item = page.reviews.find((review) => review.id === params.reviewId);
       if (!item) throw notFound("Review not found");
       const user = requireUser();
       item.state = "dismissed";
@@ -565,23 +652,23 @@ export default defineMockHandlers({
       return reviewsOf(repo, thread).find((review) => review.id === item.id)!;
     },
     listThreads: ({ params }) => {
-      const { repo, thread } = pullOf(params.owner, params.repo, params.number);
+      const { repo, thread } = pageOf(params.owner, params.repo, params.branch);
       return { threads: reviewThreadsOf(repo, thread) };
     },
     createReviewComment: ({ params, payload }) => {
-      const { repo, thread, pull } = pullOf(params.owner, params.repo, params.number);
+      const { repo, thread, page } = pageOf(params.owner, params.repo, params.branch);
       requireUser();
       const pending = payload.pending === true;
       let item: StoredReview;
-      if (pending) item = pendingReviewOf(repo, pull);
+      if (pending) item = pendingReviewOf(repo, page);
       else {
-        item = blankReview(repo, pull, "commented", "");
-        pull.reviews.push(item);
+        item = blankReview(repo, page, "commented", "");
+        page.reviews.push(item);
       }
       const comment = newComment(item.id, payload.body, pending);
       let reviewThread: StoredReviewThread;
       if (payload.inReplyTo !== undefined) {
-        const found = pull.threads.find((t) => t.comments.some((c) => c.id === payload.inReplyTo));
+        const found = page.threads.find((t) => t.comments.some((c) => c.id === payload.inReplyTo));
         if (!found) throw notFound("Thread not found");
         comment.threadId = found.id;
         comment.inReplyToId = found.id;
@@ -597,7 +684,7 @@ export default defineMockHandlers({
         }
         reviewThread = startThread(
           repo,
-          pull,
+          page,
           {
             path: payload.path,
             line: payload.line,
@@ -627,12 +714,12 @@ export default defineMockHandlers({
     deleteReviewComment: ({ params }) => {
       const repo = findRepository(params.owner, params.repo);
       requireUser();
-      const { pull, reviewThread } = locate(repo, (t) =>
+      const { page, reviewThread } = locate(repo, (t) =>
         t.comments.some((c) => c.id === params.commentId),
       );
       reviewThread.comments = reviewThread.comments.filter((c) => c.id !== params.commentId);
       if (reviewThread.comments.length === 0) {
-        pull.threads.splice(pull.threads.indexOf(reviewThread), 1);
+        page.threads.splice(page.threads.indexOf(reviewThread), 1);
       }
       return ok;
     },

@@ -1,11 +1,11 @@
 /**
- * The merge box: whether the pull request can merge and why not (reviews,
+ * The merge box: whether the branch can merge and why not (reviews,
  * checks, conflicts, how far behind it is), then the merge itself. It draws
  * `deriveMergeBox` and holds only the form's state.
  */
 import { useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import type { FindingsTally, MergeMethod, PullRequest } from "@infrawrench/git-contract";
+import type { FindingsTally, MergeMethod, BranchPage } from "@infrawrench/git-contract";
 import { ApiError, api } from "../../api/client";
 import { invalidate } from "../../api/queries";
 import { AppLink } from "../../components/AppLink";
@@ -28,7 +28,7 @@ import {
   type MergeRow,
   type RowTone,
 } from "./merge-box";
-import { refreshPull } from "./PullLayout";
+import { refreshBranchPage } from "./BranchLayout";
 import { tallySentence } from "../review/branch";
 
 const TONE_CLASS: Record<RowTone, string> = {
@@ -101,26 +101,26 @@ function CheckList({ rows }: { rows: ReadonlyArray<CheckRow> }) {
  * has: an override, on the record with its reason.
  */
 function FindingsRow({
-  pull,
+  page,
   tally,
 }: {
-  pull: PullRequest;
+  page: BranchPage;
   tally: FindingsTally | null | undefined;
 }) {
   const repo = useRepoRef();
-  const gate = pull.mergeability.findings;
+  const gate = page.mergeability.findings;
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const override = useMutation({
     mutationFn: () =>
       api.findings.override({
-        params: { ...repo, number: pull.number },
+        params: { ...repo, branch: page.key },
         payload: { reason: reason.trim() },
       }),
     onSuccess: () => {
       setOpen(false);
       setReason("");
-      refreshPull();
+      refreshBranchPage();
       void invalidate("findings");
       void invalidate("versions", "branchState");
     },
@@ -182,22 +182,18 @@ function FindingsRow({
 }
 
 export function MergeBox({
-  pull,
+  page,
   tally,
-  flush = false,
 }: {
-  pull: PullRequest;
+  page: BranchPage;
   /** The findings tally, where the page has it: the findings row then says more. */
   tally?: FindingsTally | null;
-  /** Without the timeline's indent: on the branch page. */
-  flush?: boolean;
 }) {
   const repo = useRepoRef();
-  const indent = flush ? "" : "sm:ml-10";
   const repository = useRepository();
-  const params = { ...repo, number: pull.number };
-  const { mergeability } = pull;
-  const model = deriveMergeBox(mergeability, pull.baseRef);
+  const params = { ...repo, branch: page.key };
+  const { mergeability } = page;
+  const model = deriveMergeBox(mergeability, page.baseRef);
   const [showChecks, setShowChecks] = useState(model.checks?.tone !== "success");
   const [method, setMethod] = useState<MergeMethod>(mergeability.defaultMethod);
   const [confirming, setConfirming] = useState(false);
@@ -208,11 +204,11 @@ export function MergeBox({
 
   const merge = useMutation({
     mutationFn: () =>
-      api.pulls.merge({
+      api.branches.merge({
         params,
         payload: {
           method,
-          expectedHeadOid: pull.headOid,
+          expectedHeadOid: page.headOid,
           deleteBranch,
           ...(model.action.mode === "bypass" ? { bypass: true } : {}),
           ...(method !== "rebase" && title.trim() !== "" ? { commitTitle: title.trim() } : {}),
@@ -221,74 +217,74 @@ export function MergeBox({
       }),
     onSuccess: () => {
       setConfirming(false);
-      refreshPull();
+      refreshBranchPage();
       void invalidate("contents");
       void invalidate("ci");
     },
     onError: (error) => {
       // The head moved under the reader: show them the new state before they try again.
-      if (error instanceof ApiError && error.code === "head_moved") refreshPull();
+      if (error instanceof ApiError && error.code === "head_moved") refreshBranchPage();
     },
   });
   const update = useMutation({
     mutationFn: (how: "merge" | "rebase") =>
-      api.pulls.updateBranch({
+      api.branches.updateBranch({
         params,
-        payload: { method: how, expectedHeadOid: pull.headOid },
+        payload: { method: how, expectedHeadOid: page.headOid },
       }),
     onSuccess: () => {
-      refreshPull();
+      refreshBranchPage();
       void invalidate("contents");
       void invalidate("ci");
     },
   });
   const ready = useMutation({
-    mutationFn: () => api.pulls.setDraft({ params, payload: { draft: false } }),
-    onSuccess: refreshPull,
+    mutationFn: () => api.branches.setDraft({ params, payload: { draft: false } }),
+    onSuccess: refreshBranchPage,
   });
   const removeBranch = useMutation({
     mutationFn: () =>
       api.contents.deleteBranch({
         params: repo,
-        query: { name: pull.headRef, expectedOid: pull.headOid },
+        query: { name: page.headRef, expectedOid: page.headOid },
       }),
     onSuccess: () => {
-      refreshPull();
+      refreshBranchPage();
       void invalidate("contents");
     },
   });
   const restoreBranch = useMutation({
-    mutationFn: () => api.pulls.restoreBranch({ params }),
+    mutationFn: () => api.branches.restoreBranch({ params }),
     onSuccess: () => {
-      refreshPull();
+      refreshBranchPage();
       void invalidate("contents");
     },
   });
 
-  if (pull.state !== "open") {
-    const merged = pull.state === "merged";
+  if (page.state !== "open") {
+    const merged = page.state === "merged";
     return (
       <section
         aria-label="Merge status"
-        className={`rounded-md border border-border bg-surface-raised ${indent}`}
+        className="rounded-md border border-border bg-surface-raised"
       >
         <Row
           row={{
             tone: merged ? "success" : "neutral",
             title: merged ? "Merged" : "Closed without merging",
             detail:
-              merged && pull.mergeCommitOid !== null
-                ? `${MERGE_METHOD_LABEL[pull.mergeMethod ?? "merge"]} ${shortOid(pull.mergeCommitOid)} into ${pull.baseRef}`
+              merged && page.mergeCommitOid !== null
+                ? `${MERGE_METHOD_LABEL[page.mergeMethod ?? "merge"]} ${shortOid(page.mergeCommitOid)} into ${page.baseRef}`
                 : null,
           }}
           actions={
             <>
-              {pull.viewer.canDeleteHeadBranch ? (
+              {page.viewer.canDeleteHeadBranch ? (
                 <Button busy={removeBranch.isPending} onClick={() => removeBranch.mutate()}>
                   Delete branch
                 </Button>
               ) : null}
-              {!pull.headRefExists && repository.viewer.canPush ? (
+              {!page.headRefExists && repository.viewer.canPush ? (
                 <Button busy={restoreBranch.isPending} onClick={() => restoreBranch.mutate()}>
                   Restore branch
                 </Button>
@@ -307,15 +303,12 @@ export function MergeBox({
   const canAct = action.mode === "merge" || (action.mode === "bypass" && bypass);
 
   return (
-    <section
-      aria-label="Merge"
-      className={`rounded-md border border-border bg-surface-raised ${indent}`}
-    >
-      {pull.draft ? (
+    <section aria-label="Merge" className="rounded-md border border-border bg-surface-raised">
+      {page.draft ? (
         <Row
-          row={{ tone: "neutral", title: "This pull request is a draft", detail: null }}
+          row={{ tone: "neutral", title: "This branch is a draft", detail: null }}
           actions={
-            pull.viewer.canEdit ? (
+            page.viewer.canEdit ? (
               <Button busy={ready.isPending} onClick={() => ready.mutate()}>
                 Ready for review
               </Button>
@@ -326,14 +319,14 @@ export function MergeBox({
         </Row>
       ) : null}
       {model.reviews !== null ? <Row row={model.reviews} /> : null}
-      <FindingsRow pull={pull} tally={tally} />
+      <FindingsRow page={page} tally={tally} />
       {model.checks !== null ? (
         <Row
           row={model.checks}
           actions={
             <>
               <AppLink
-                href={paths.pullTab(repo, pull.number, "checks")}
+                href={paths.branchPage(repo, page.key, { tab: "checks" })}
                 className="text-xs text-on-surface-secondary hover:underline"
               >
                 Checks
@@ -370,10 +363,10 @@ export function MergeBox({
                 align="end"
                 items={[
                   {
-                    label: `Merge ${pull.baseRef} into it`,
+                    label: `Merge ${page.baseRef} into it`,
                     onSelect: () => update.mutate("merge"),
                   },
-                  { label: `Rebase onto ${pull.baseRef}`, onSelect: () => update.mutate("rebase") },
+                  { label: `Rebase onto ${page.baseRef}`, onSelect: () => update.mutate("rebase") },
                 ]}
                 trigger={({ props }) => (
                   <button
@@ -442,9 +435,7 @@ export function MergeBox({
                         value={title}
                         maxLength={256}
                         placeholder={
-                          method === "squash"
-                            ? `${pull.title} (#${pull.number})`
-                            : `Merge pull request #${pull.number} from ${pull.headRef}`
+                          method === "squash" ? `${page.title}` : `Merge branch '${page.headRef}'`
                         }
                         onChange={(event) => setTitle(event.target.value)}
                       />

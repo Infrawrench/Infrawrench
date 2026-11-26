@@ -26,8 +26,8 @@ import { useRepoRef } from "../../layout/RepoLayout";
 import { cursorQuery } from "../../lib/cursor";
 import { plural } from "../../lib/format";
 import { useDiffLayout } from "../code/DiffSection";
-import { usePull } from "../pulls/PullLayout";
-import { ReviewCommentForm, ReviewThreadView } from "../pulls/ReviewThreadView";
+import { useBranchPage } from "../branch-page/BranchLayout";
+import { ReviewCommentForm, ReviewThreadView } from "../branch-page/ReviewThreadView";
 import {
   anchorOfLine,
   fileTree,
@@ -35,7 +35,7 @@ import {
   threadsAt,
   type FileNode,
   type LineAnchor,
-} from "../pulls/review-threads";
+} from "../branch-page/review-threads";
 import { diffFrom, diffNotice, lineKey, placeOnDiff, seenOn, type DiffMode } from "./branch";
 import { rowAbove } from "./diff/patch";
 import type { DiffMark, DiffMarkKey, PickedLines } from "./diff/ReviewDiff";
@@ -113,10 +113,10 @@ export function VersionDiff({
   actions?: ReactNode;
 }) {
   const repo = useRepoRef();
-  const pull = usePull();
+  const page = useBranchPage();
   const params = useMemo(
-    () => ({ ...repo, number: pull.number, version: String(version.number) }),
-    [repo, pull.number, version.number],
+    () => ({ ...repo, branch: page.key, version: String(version.number) }),
+    [repo, page.key, version.number],
   );
   const from = diffFrom(mode);
   const [layout, setLayout] = useDiffLayout();
@@ -127,11 +127,11 @@ export function VersionDiff({
   const diff = usePages(
     ["versions", "diff", params, from, whitespace, version.tipOid],
     async (cursor) => {
-      const page = await api.versions.diff({
+      const answer = await api.versions.diff({
         params,
         query: { ...cursorQuery(cursor), limit: 30, whitespace, from },
       });
-      return { ...page, items: page.files };
+      return { ...answer, items: answer.files };
     },
   );
   const first = diff.pages[0];
@@ -168,7 +168,7 @@ export function VersionDiff({
     () => indexThreads(latest ? threads.filter((thread) => whole || thread.side === "RIGHT") : []),
     [threads, latest, whole],
   );
-  const canComment = latest && pull.viewer.canReview && pull.viewer.canComment;
+  const canComment = latest && page.viewer.canReview && page.viewer.canComment;
 
   // Everything the page hangs on each file's lines, and the lines themselves.
   const hung = useMemo(() => {
@@ -288,15 +288,15 @@ export function VersionDiff({
           {cards > 0 ? (
             <div className="diff-note divide-y divide-border">
               {(here?.fileFindings ?? []).map((finding) => (
-                <FindingCard key={finding.id} finding={finding} number={pull.number} />
+                <FindingCard key={finding.id} finding={finding} branchKey={page.key} />
               ))}
               {(here?.findings ?? []).map((finding) => (
                 <div key={finding.id} className="border-l-2 border-l-danger/60">
-                  <FindingCard finding={finding} number={pull.number} where={false} />
+                  <FindingCard finding={finding} branchKey={page.key} where={false} />
                 </div>
               ))}
               {(here?.threads ?? []).map((thread) => (
-                <ReviewThreadView key={thread.id} thread={thread} showLines={false} branch />
+                <ReviewThreadView key={thread.id} thread={thread} showLines={false} />
               ))}
               {composing && composer !== null ? (
                 <div className="bg-surface-raised p-2.5">
@@ -317,7 +317,7 @@ export function VersionDiff({
         </div>
       );
     },
-    [hung, composer, composerMark, pull.number],
+    [hung, composer, composerMark, page.key],
   );
 
   const onPickLines = useCallback(

@@ -48,17 +48,17 @@ const EVIDENCE_LABEL: Record<string, string> = {
 export function refreshFindings(): void {
   void invalidate("findings");
   void invalidate("versions", "branchState");
-  void invalidate("pulls", "get");
+  void invalidate("branches", "get");
 }
 
-function DismissButton({ finding, number }: { finding: ReviewFinding; number: number }) {
+function DismissButton({ finding, branchKey }: { finding: ReviewFinding; branchKey: string }) {
   const repo = useRepoRef();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const dismiss = useMutation({
     mutationFn: () =>
       api.findings.dismiss({
-        params: { ...repo, number, findingId: finding.id },
+        params: { ...repo, branch: branchKey, findingId: finding.id },
         payload: { reason: reason.trim() },
       }),
     onSuccess: () => {
@@ -109,12 +109,12 @@ function DismissButton({ finding, number }: { finding: ReviewFinding; number: nu
 
 export function FindingCard({
   finding,
-  number,
+  branchKey,
   where = true,
   startOpen,
 }: {
   finding: ReviewFinding;
-  number: number;
+  branchKey: string;
   /** Name the file and lines: everywhere but under its own line. */
   where?: boolean;
   startOpen?: boolean;
@@ -125,7 +125,8 @@ export function FindingCard({
     startOpen ?? (finding.status === "open" && finding.severity === "must_fix"),
   );
   const reopen = useMutation({
-    mutationFn: () => api.findings.reopen({ params: { ...repo, number, findingId: finding.id } }),
+    mutationFn: () =>
+      api.findings.reopen({ params: { ...repo, branch: branchKey, findingId: finding.id } }),
     onSuccess: refreshFindings,
   });
   const instruction =
@@ -218,7 +219,7 @@ export function FindingCard({
               <SendToAgentButton from={{ source: "finding", findingId: finding.id }} />
             ) : null}
             {finding.status === "open" && finding.viewerCanDismiss ? (
-              <DismissButton finding={finding} number={number} />
+              <DismissButton finding={finding} branchKey={branchKey} />
             ) : null}
             {finding.status === "dismissed" && finding.viewerCanDismiss ? (
               <Button size="sm" busy={reopen.isPending} onClick={() => reopen.mutate()}>
@@ -243,13 +244,13 @@ const RUN_LABEL: Record<ReviewRunStatus, string> = {
 /** Every finding of the branch, the open ones first. */
 export function FindingsPanel({
   findings,
-  number,
+  branchKey,
   version,
   run,
   canRun,
 }: {
   findings: ReadonlyArray<ReviewFinding>;
-  number: number;
+  branchKey: string;
   /** The newest version: what "Review again" reviews. */
   version: number | null;
   /** The newest review run of that version. */
@@ -258,7 +259,8 @@ export function FindingsPanel({
 }) {
   const repo = useRepoRef();
   const again = useMutation({
-    mutationFn: () => api.findings.requestRun({ params: { ...repo, number }, payload: {} }),
+    mutationFn: () =>
+      api.findings.requestRun({ params: { ...repo, branch: branchKey }, payload: {} }),
     onSuccess: refreshFindings,
   });
   const busy = run === "queued" || run === "running";
@@ -304,7 +306,7 @@ export function FindingsPanel({
         <ul className="divide-y divide-border">
           {sortFindings(findings).map((finding) => (
             <li key={finding.id}>
-              <FindingCard finding={finding} number={number} />
+              <FindingCard finding={finding} branchKey={branchKey} />
             </li>
           ))}
         </ul>

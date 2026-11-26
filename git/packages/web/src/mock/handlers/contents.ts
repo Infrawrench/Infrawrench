@@ -7,7 +7,10 @@ import {
   headRepositoryOf,
   requireUser,
   toRepository,
+  type RepositoryRecord,
 } from "../db";
+import { copyObjects } from "../git-write";
+import { findPage, openPageOf, toBranchPageSummary } from "../threads-data";
 import {
   aheadBehind,
   blameOf,
@@ -53,7 +56,12 @@ function fileBlob(fx: GitFixture, ref: string | undefined, path: string): FileBl
   };
 }
 
-function toBranch(fx: GitFixture, name: string, canDelete: boolean): Branch {
+function toBranch(
+  repo: RepositoryRecord,
+  fx: GitFixture,
+  name: string,
+  canDelete: boolean,
+): Branch {
   const oid = fx.branches[name]!;
   const isDefault = name === fx.defaultBranch;
   const distance = isDefault ? null : aheadBehind(fx, fx.branches[fx.defaultBranch]!, oid);
@@ -64,19 +72,31 @@ function toBranch(fx: GitFixture, name: string, canDelete: boolean): Branch {
     protected: isDefault || name.startsWith("release/"),
     ahead: distance ? distance.ahead.length : null,
     behind: distance ? distance.behind.length : null,
-    pullRequest:
-      name === "feature/vpc-peering"
-        ? { number: 12, title: "Peer with the shared services VPC", state: "open", draft: false }
-        : name === "feature/flow-logs"
-          ? { number: 7, title: "network: optional VPC flow logs", state: "merged", draft: false }
-          : null,
+    page: isDefault ? null : pageBadge(repo, name),
     viewerCanDelete: canDelete && !isDefault && !name.startsWith("release/"),
   };
 }
 
-function comparison(fx: GitFixture, base: string, head: string) {
+/** A branch's page as a badge: the open one, or the newest. Null for a branch with none yet. */
+function pageBadge(repo: RepositoryRecord, name: string) {
+  let thread;
+  try {
+    thread = findPage(repo, name);
+  } catch {
+    return null;
+  }
+  const page = toBranchPageSummary(repo, thread);
+  return { key: page.key, title: page.title, state: page.state, draft: page.draft };
+}
+
+/**
+ * `base...head`, the head read in its own repository: a fork's branch is
+ * resolved there and its objects copied here, where the diff is worked out.
+ */
+function comparison(fx: GitFixture, base: string, head: string, headFx: GitFixture = fx) {
   const baseRef = resolveRef(fx, base);
-  const headRef = resolveRef(fx, head);
+  const headRef = resolveRef(headFx, head);
+  if (headFx !== fx) copyObjects(headFx, fx, headRef.commitOid);
   const mergeBaseOid = mergeBase(fx, baseRef.commitOid, headRef.commitOid);
   const distance = aheadBehind(fx, baseRef.commitOid, headRef.commitOid);
   return { baseRef, headRef, mergeBaseOid, distance };
@@ -125,7 +145,7 @@ export default defineMockHandlers({
       const staleBefore = Date.now() - 14 * 86_400_000;
       const branches = Object.keys(fx.branches)
         .filter((name) => name.toLowerCase().includes(query?.q?.toLowerCase() ?? ""))
-        .map((name) => toBranch(fx, name, canDelete))
+        .map((name) => toBranch(repo, fx, name, canDelete))
         .filter((branch) => {
           const when = Date.parse(branch.commit.committer.when);
           switch (query?.view ?? "all") {
@@ -155,7 +175,7 @@ export default defineMockHandlers({
         throw conflict("A branch with that name already exists", "ref_exists");
       }
       fx.branches[payload.name] = resolveRef(fx, payload.from).commitOid;
-      return toBranch(fx, payload.name, true);
+      return toBranch(repo, fx, payload.name, true);
     },
     deleteBranch: ({ params, query }) => {
       requireUser();
@@ -277,8 +297,8 @@ export default defineMockHandlers({
         tags: Object.entries(fx.tags)
           .filter(([, tag]) => tag.commit === commit.oid)
           .map(([name]) => name),
-        pullRequests: commit.summary.startsWith("Merge pull request #7")
-          ? [{ number: 7, title: "network: optional VPC flow logs" }]
+        branchPages: commit.summary.startsWith("Merge pull request #7")
+          ? [{ key: "feature/flow-logs", title: "network: optional VPC flow logs" }]
           : [],
       };
     },
@@ -304,7 +324,12 @@ export default defineMockHandlers({
       const repo = findRepository(params.owner, params.repo);
       const fx = gitOf(repo);
       const headRepo = headRepositoryOf(repo, query.headRepository);
-      const { baseRef, headRef, mergeBaseOid, distance } = comparison(fx, query.base, query.head);
+      const { baseRef, headRef, mergeBaseOid, distance } = comparison(
+        fx,
+        query.base,
+        query.head,
+        gitOf(headRepo),
+      );
       const files =
         mergeBaseOid === null
           ? []
@@ -322,24 +347,24 @@ export default defineMockHandlers({
         files: files.map(summaryOf),
         filesTruncated: false,
         mergeable: distance.ahead.length === 0 ? null : true,
-        pullRequest:
-          headRepo === repo &&
-          headRef.name === "feature/vpc-peering" &&
-          baseRef.name === fx.defaultBranch
-            ? {
-                number: 12,
-                title: "Peer with the shared services VPC",
-                state: "open",
-                draft: false,
-              }
-            : null,
+        page: (() => {
+          if (headRef.kind !== "branch") return null;
+          const open = openPageOf(
+            repo,
+            headRef.name,
+            headRepo === repo ? undefined : `${headRepo.owner.slug}/${headRepo.name}`,
+          );
+          if (open === undefined) return null;
+          const page = toBranchPageSummary(repo, open);
+          return { key: page.key, title: page.title, state: page.state, draft: page.draft };
+        })(),
       };
     },
     compareDiff: ({ params, query }) => {
       const repo = findRepository(params.owner, params.repo);
-      headRepositoryOf(repo, query.headRepository);
+      const headRepo = headRepositoryOf(repo, query.headRepository);
       const fx = gitOf(repo);
-      const { headRef, mergeBaseOid } = comparison(fx, query.base, query.head);
+      const { headRef, mergeBaseOid } = comparison(fx, query.base, query.head, gitOf(headRepo));
       const all =
         mergeBaseOid === null
           ? []

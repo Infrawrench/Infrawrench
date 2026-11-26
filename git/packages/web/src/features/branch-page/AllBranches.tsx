@@ -1,5 +1,9 @@
-/** Branches: how far each is from the default branch, its last commit, and creating and deleting them. */
-import { useState, type FormEvent } from "react";
+/**
+ * Every Git branch of a repository: how far each is from the default branch,
+ * its last commit and its page, and creating and deleting them. On a fork,
+ * each can be proposed to the repository it was forked from.
+ */
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { isValidRefName, type Branch } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
@@ -10,12 +14,14 @@ import { Button, ButtonLink } from "../../components/Button";
 import { ConfirmDialog, Dialog, Segmented } from "../../components/controls";
 import { Field, Input, SearchInput } from "../../components/forms";
 import { Icon } from "../../components/icons";
-import { Page, PageHeader, Panel, Table, Td, Th, Tr } from "../../components/Panel";
+import { Page, Panel, Table, Td, Th, Tr } from "../../components/Panel";
 import { CommitAuthors, RelativeTime } from "../../components/people";
 import { RefPicker } from "../../components/RefPicker";
+import { ThreadStateIcon, pageKind } from "../../components/StatusIcons";
 import { EmptyState, ErrorState, InlineError, Loading, LoadMore } from "../../components/states";
 import { paths, type RepoRef } from "../../lib/paths";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
+import { ProposeButton } from "./ProposeButton";
 
 type View = "all" | "active" | "stale" | "mine";
 
@@ -127,7 +133,7 @@ function NewBranchDialog({
   );
 }
 
-export function BranchesPage() {
+export function AllBranches({ lead }: { lead: ReactNode }) {
   const repository = useRepository();
   const repo = useRepoRef();
   const [view, setView] = useState<View>("all");
@@ -161,18 +167,10 @@ export function BranchesPage() {
 
   return (
     <Page>
-      <PageHeader
-        title="Branches"
-        actions={
-          repository.viewer.canPush && !repository.isEmpty ? (
-            <Button variant="primary" onClick={() => setCreating(true)}>
-              <Icon name="plus" />
-              New branch
-            </Button>
-          ) : undefined
-        }
-      >
-        <div className="flex flex-wrap items-center gap-2">
+      <h1 className="sr-only">Branches</h1>
+      {lead}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
           <Segmented
             label="Which branches"
             value={view}
@@ -192,7 +190,13 @@ export function BranchesPage() {
             className="w-64"
           />
         </div>
-      </PageHeader>
+        {repository.viewer.canPush && !repository.isEmpty ? (
+          <Button variant="primary" onClick={() => setCreating(true)}>
+            <Icon name="plus" />
+            New branch
+          </Button>
+        ) : null}
+      </div>
 
       <Panel>
         {repository.isEmpty ? (
@@ -210,7 +214,7 @@ export function BranchesPage() {
                 <Th>Branch</Th>
                 <Th>Last commit</Th>
                 <Th>Behind and ahead</Th>
-                <Th>Pull request</Th>
+                <Th>Page</Th>
                 <Th>
                   <span className="sr-only">Actions</span>
                 </Th>
@@ -246,28 +250,24 @@ export function BranchesPage() {
                     <Divergence branch={branch} base={repository.defaultBranch} />
                   </Td>
                   <Td>
-                    {branch.pullRequest !== null ? (
+                    {branch.page !== null ? (
                       <AppLink
-                        href={paths.pull(repo, branch.pullRequest.number)}
-                        title={branch.pullRequest.title}
+                        href={paths.branchPage(repo, branch.page.key)}
+                        className="inline-flex max-w-64 items-center gap-1.5 text-on-surface hover:underline"
                       >
-                        <Badge
-                          tone={
-                            branch.pullRequest.state === "open"
-                              ? "success"
-                              : branch.pullRequest.state === "merged"
-                                ? "notice"
-                                : "danger"
-                          }
-                        >
-                          <Icon name="gitPullRequest" size={10} />#{branch.pullRequest.number}
-                          <span className="sr-only">{branch.pullRequest.state}</span>
-                        </Badge>
+                        <ThreadStateIcon
+                          kind={pageKind(branch.page.state, branch.page.draft)}
+                          size={13}
+                        />
+                        <span className="truncate">{branch.page.title}</span>
                       </AppLink>
                     ) : null}
                   </Td>
                   <Td className="text-right">
                     <span className="flex items-center justify-end gap-1.5">
+                      {repository.parent !== null ? (
+                        <ProposeButton fork={repository} branch={branch.name} />
+                      ) : null}
                       {branch.isDefault ? null : (
                         <ButtonLink
                           size="sm"

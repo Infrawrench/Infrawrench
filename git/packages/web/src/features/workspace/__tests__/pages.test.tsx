@@ -1,9 +1,8 @@
 /**
  * The sidebar shell and the pages of someone's work against the dev mock,
  * through the real router: home, Changes and its filters, Mentions, a
- * repository inside the shell, the sidebar of each mode with the mode switch
- * in its account menu, the classic lists of pull requests and issues, and who
- * keeps the top-nav shell.
+ * repository inside the shell, its Branches tab, and the reduced sidebar of
+ * a signed-out reader.
  */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -61,17 +60,16 @@ function open(path: string) {
   return router;
 }
 
-afterEach(async () => {
+afterEach(() => {
   cleanup();
   queryClient.clear();
   localStorage.clear();
   setScenario("signed-in");
-  await api.review.setMode({ payload: { mode: "agent" } });
 });
 
 const sidebar = () => within(screen.getByRole("navigation", { name: "Workspace" }));
 
-describe("home in agent mode", () => {
+describe("home", () => {
   it("counts the team's branches and lists the reader's, the team's and the suggested", async () => {
     open("/");
     expect(
@@ -86,7 +84,7 @@ describe("home in agent mode", () => {
     const working = yours.getByRole("link", {
       name: "Skip upstreams that fail their health check",
     });
-    expect(working.getAttribute("href")).toBe("/acme/edge-router/pulls/4");
+    expect(working.getAttribute("href")).toBe("/acme/edge-router/branches/feature/health-checks");
     expect(within(working.closest("li")!).getByRole("img", { name: "Agent working" })).toBeTruthy();
 
     // Five of the eleven, and every one somebody else's.
@@ -104,7 +102,7 @@ describe("home in agent mode", () => {
       suggested
         .getByRole("link", { name: "Peer with the shared services VPC" })
         .getAttribute("href"),
-    ).toBe("/acme/infra/pulls/12?v=3&diff=since");
+    ).toBe("/acme/infra/branches/feature/vpc-peering?v=3&diff=since");
     // A branch with no description is named by its commit.
     expect(
       within(suggested.getByRole("link", { name: "fix weight rounding" }).closest("li")!).getByText(
@@ -116,6 +114,12 @@ describe("home in agent mode", () => {
     expect(activity.getAllByRole("listitem")[0]!.textContent).toContain(
       "Jonas Weber pushed v3 to Peer with the shared services VPC",
     );
+    // Linked by the event's own key.
+    expect(
+      activity
+        .getAllByRole("link", { name: "Peer with the shared services VPC" })[0]!
+        .getAttribute("href"),
+    ).toBe("/acme/infra/branches/feature/vpc-peering");
     expect(activity.getByText(/found 2 must fix on/)).toBeTruthy();
     expect(screen.getByText("2 agents working")).toBeTruthy();
   });
@@ -133,7 +137,7 @@ describe("home in agent mode", () => {
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "Mara Lindqvist" }));
     expect(await screen.findByRole("heading", { name: "No active branches" }, wait)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Start work" }).getAttribute("href")).toMatch(
-      /^\/mara\/[^/]+\/pulls\/start$/,
+      /^\/mara\/[^/]+\/start$/,
     );
   });
 
@@ -176,13 +180,13 @@ describe("the sidebar", () => {
 
   it("frames a repository's pages, with the repository marked and named in the bar", async () => {
     open("/acme/infra");
-    // The repository's sections are in the bar, its pull requests as its branches.
+    // The repository's sections are in the bar.
     const sections = within(await screen.findByRole("navigation", { name: "Repository" }, wait));
     expect(sections.getByRole("link", { name: /Branches/ }).getAttribute("href")).toBe(
-      "/acme/infra/pulls",
+      "/acme/infra/branches",
     );
     expect(sections.getByRole("link", { name: "Code" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.queryByRole("link", { name: /Pull requests/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /Pull/ })).toBeNull();
     expect(sidebar().getByRole("link", { name: "infra" }).getAttribute("aria-current")).toBe(
       "page",
     );
@@ -197,33 +201,48 @@ describe("the sidebar", () => {
     expect(screen.queryByRole("navigation", { name: "Site" })).toBeNull();
   });
 
-  it("lists a repository's pull requests as its branches, one line each", async () => {
-    open("/acme/infra/pulls");
+  it("lists a repository's branches by their pages, one line each, named by the branch", async () => {
+    open("/acme/infra/branches");
     const list = within(await screen.findByRole("list", { name: "Branches" }, wait));
     const row = list.getByRole("link", { name: "Peer with the shared services VPC" });
-    expect(row.getAttribute("href")).toBe("/acme/infra/pulls/12");
+    expect(row.getAttribute("href")).toBe("/acme/infra/branches/feature/vpc-peering");
     expect(row.closest("li")!.textContent).toContain("feature/vpc-peering");
+    expect(row.closest("li")!.textContent).not.toContain("#12");
     expect(list.getByRole("img", { name: "Approved" })).toBeTruthy();
+    expect(
+      list.getByRole("link", { name: "Staging budget alarm at 80 percent" }).getAttribute("href"),
+    ).toBe("/acme/infra/branches/feature/budgets/staging-alarm");
     expect(screen.getByRole("searchbox", { name: "Search branches" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "New pull request" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Start work" }).getAttribute("href")).toBe(
+      "/acme/infra/start",
+    );
+    expect(screen.queryByRole("link", { name: /New pull/i })).toBeNull();
+    // The other view of the tab is every branch, to make and delete them.
+    fireEvent.click(screen.getByRole("link", { name: /All branches/ }));
+    const table = within(await screen.findByRole("table", { name: "Branches" }, wait));
+    expect(
+      table.getByRole("link", { name: /Peer with the shared services VPC/ }).getAttribute("href"),
+    ).toBe("/acme/infra/branches/feature/vpc-peering");
+    expect(screen.getByRole("button", { name: "New branch" })).toBeTruthy();
+    expect(
+      within(screen.getByRole("navigation", { name: "Repository" }))
+        .getByRole("link", { name: /Branches/ })
+        .getAttribute("aria-current"),
+    ).toBe("page");
   });
 
-  it("names a branch page in the bar, with the mode switch beside the sections", async () => {
-    open("/acme/infra/pulls/12");
+  it("names a branch page in the bar, with no number anywhere", async () => {
+    open("/acme/infra/branches/feature/vpc-peering");
     const title = await screen.findByRole(
       "heading",
       { name: "Peer with the shared services VPC" },
       wait,
     );
-    // The number is a quiet part of the line above the title, not of the title.
     expect(title.textContent).not.toContain("#12");
     const bar = within(screen.getByRole("navigation", { name: "Breadcrumb" }));
     expect(bar.getByText("Peer with the shared services VPC")).toBeTruthy();
-    const header = within(screen.getByRole("banner"));
-    expect(header.getByRole("group", { name: "Open pull requests as" })).toBeTruthy();
-    expect(
-      within(screen.getByRole("main")).queryByRole("group", { name: "Open pull requests as" }),
-    ).toBeNull();
+    expect(within(screen.getByRole("main")).queryByText("#12")).toBeNull();
+    expect(screen.queryByRole("group", { name: /Open .* as/ })).toBeNull();
     expect(screen.queryByText(/wants to merge/)).toBeNull();
   });
 
@@ -239,70 +258,28 @@ describe("the sidebar", () => {
     }, wait);
   });
 
-  it("switches to classic from the account menu, and back: the sidebar stays, what it holds changes", async () => {
-    open("/");
-    await screen.findByRole("heading", { name: /active branches/ }, wait);
-    fireEvent.click(screen.getByRole("button", { name: "Account menu for Mara Lindqvist" }));
-    const classic = await screen.findByRole("menuitemradio", { name: "Classic" });
-    expect(classic.getAttribute("aria-checked")).toBe("false");
-    expect(
-      screen.getByRole("menuitemradio", { name: "Branch page" }).getAttribute("aria-checked"),
-    ).toBe("true");
-    fireEvent.click(classic);
-
-    // The classic sidebar and the home page as it was.
-    const site = within(await screen.findByRole("navigation", { name: "Site" }, wait));
-    expect(await screen.findByRole("heading", { name: "Recent pushes" }, wait)).toBeTruthy();
-    expect(screen.queryByRole("navigation", { name: "Workspace" })).toBeNull();
-    expect(screen.queryByRole("button", { name: /^Workspace:/ })).toBeNull();
-    expect((await api.review.mode()).mode).toBe("classic");
-    for (const [group, name, href] of [
-      ["Pull requests", "Created", "/pulls"],
-      ["Pull requests", "Review requested", "/pulls?view=review"],
-      ["Pull requests", "Assigned", "/pulls?view=assigned"],
-      ["Issues", "Assigned", "/issues"],
-      ["Issues", "Created", "/issues?view=created"],
-      ["Issues", "Mentioned", "/issues?view=mentioned"],
-    ]) {
-      const panel = document.getElementById(
-        site.getByRole("button", { name: group! }).getAttribute("aria-controls")!,
-      )!;
-      expect(within(panel).getByRole("link", { name: name! }).getAttribute("href")).toBe(href);
-    }
-    expect(site.getByRole("link", { name: "Explore" }).getAttribute("href")).toBe("/explore");
-    expect(site.queryByRole("link", { name: "Changes" })).toBeNull();
-    // A namespace's group says how many it holds and adds one.
-    expect(site.getByRole("button", { name: "Acme" }).textContent).toMatch(/Acme\s*5/);
-    expect(site.getByRole("link", { name: "New repository in Acme" }).getAttribute("href")).toBe(
-      "/new?owner=acme",
-    );
-    expect(site.getByRole("link", { name: "infra" }).getAttribute("href")).toBe("/acme/infra");
-
-    fireEvent.click(screen.getByRole("button", { name: "Account menu for Mara Lindqvist" }));
-    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Branch page" }));
-    expect(await screen.findByRole("navigation", { name: "Workspace" }, wait)).toBeTruthy();
-  });
-
-  it("keeps a repository's own header and tabs in classic, inside the sidebar", async () => {
-    await api.review.setMode({ payload: { mode: "classic" } });
-    open("/acme/infra");
-    const tabs = within(await screen.findByRole("navigation", { name: "Repository" }, wait));
-    expect(tabs.getByRole("link", { name: /Pull requests/ }).getAttribute("href")).toBe(
-      "/acme/infra/pulls",
-    );
-    expect(within(screen.getByRole("main")).getByRole("button", { name: "Starred" })).toBeTruthy();
-    expect(screen.queryByRole("navigation", { name: "Breadcrumb" })).toBeNull();
-    const site = within(screen.getByRole("navigation", { name: "Site" }));
-    expect(site.getByRole("link", { name: "infra" }).getAttribute("aria-current")).toBe("page");
-    expect(within(screen.getByRole("banner")).getByRole("search")).toBeTruthy();
-  });
-
-  it("is not for a signed-out reader", async () => {
+  it("is reduced for a signed-out reader: the site, Explore, the repository read, and Sign in", async () => {
     setScenario("signed-out");
-    open("/");
-    expect(await screen.findByRole("navigation", { name: "Site" }, wait)).toBeTruthy();
-    expect(await screen.findByRole("heading", { name: "Repositories" }, wait)).toBeTruthy();
+    const router = open("/");
+    // Nothing of theirs is here: home is Explore.
+    await waitFor(() => expect(router.state.location.pathname).toBe("/explore"), wait);
+    const site = within(await screen.findByRole("navigation", { name: "Site" }, wait));
+    expect(site.getByRole("link", { name: "Explore" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByRole("navigation", { name: "Workspace" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Sign in" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Account menu/ })).toBeNull();
+    cleanup();
+    queryClient.clear();
+
+    open("/acme/edge-router");
+    const nav = within(await screen.findByRole("navigation", { name: "Site" }, wait));
+    const repository = await nav.findByRole("link", { name: "edge-router" }, wait);
+    expect(repository.getAttribute("href")).toBe("/acme/edge-router");
+    expect(repository.getAttribute("aria-current")).toBe("page");
+    expect(nav.getByRole("link", { name: "acme" }).getAttribute("href")).toBe("/acme");
+    // The same page as a member sees: the sections in the bar, no header of its own.
+    expect(await screen.findByRole("navigation", { name: "Repository" }, wait)).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeTruthy();
     cleanup();
     queryClient.clear();
     open("/changes");
@@ -355,71 +332,10 @@ describe("the lists", () => {
     expect(rows[0]!.textContent).toContain("@mara the route table ids");
     expect(
       list.getByRole("link", { name: "Peer with the shared services VPC" }).getAttribute("href"),
-    ).toBe("/acme/infra/pulls/12");
+    ).toBe("/acme/infra/branches/feature/vpc-peering");
     // An issue's mention goes to the issue.
     expect(
       list.getByRole("link", { name: "Rotate the database master password" }).getAttribute("href"),
     ).toBe("/acme/infra/issues/15");
-  });
-
-  it("lists the reader's pull requests and issues across repositories, by their part in them", async () => {
-    await api.review.setMode({ payload: { mode: "classic" } });
-    open("/pulls");
-    const pulls = within(await screen.findByRole("list", { name: "Pull requests" }, wait));
-    expect(
-      pulls
-        .getByRole("link", { name: "Skip upstreams that fail their health check" })
-        .getAttribute("href"),
-    ).toBe("/acme/edge-router/pulls/4");
-    expect(pulls.getByRole("link", { name: "acme/edge-router" })).toBeTruthy();
-    const site = within(screen.getByRole("navigation", { name: "Site" }));
-    const created = site
-      .getAllByRole("link", { name: "Created" })
-      .find((link) => link.getAttribute("href") === "/pulls")!;
-    expect(created.getAttribute("aria-current")).toBe("page");
-
-    // The ones waiting on their review are the review inbox.
-    fireEvent.click(
-      within(screen.getByRole("navigation", { name: "Pull requests views" })).getByRole("link", {
-        name: "Review requested",
-      }),
-    );
-    await waitFor(() => {
-      const waiting = within(screen.getByRole("list", { name: "Pull requests" }));
-      expect(
-        waiting
-          .getByRole("link", { name: "Peer with the shared services VPC" })
-          .getAttribute("href"),
-      ).toBe("/acme/infra/pulls/12");
-    }, wait);
-
-    cleanup();
-    queryClient.clear();
-    open("/issues?view=created");
-    const issues = within(await screen.findByRole("list", { name: "Issues" }, wait));
-    expect(
-      issues
-        .getByRole("link", { name: "Database backups are kept for one day" })
-        .getAttribute("href"),
-    ).toBe("/acme/infra/issues/6");
-    // Closed ones are a filter away, in the address.
-    fireEvent.click(
-      within(screen.getByRole("group", { name: "State" })).getByRole("button", { name: "All" }),
-    );
-    await waitFor(
-      () =>
-        expect(
-          within(screen.getByRole("list", { name: "Issues" })).getAllByRole("listitem").length,
-        ).toBeGreaterThan(7),
-      wait,
-    );
-  });
-
-  it("keeps the lists for someone in classic mode, in the same sidebar", async () => {
-    await api.review.setMode({ payload: { mode: "classic" } });
-    open("/changes");
-    expect(await screen.findByRole("list", { name: "Changes" }, wait)).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "Changes" })).toBeTruthy();
-    expect(screen.getByRole("navigation", { name: "Site" })).toBeTruthy();
   });
 });

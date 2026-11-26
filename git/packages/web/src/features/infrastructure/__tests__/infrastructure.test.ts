@@ -59,10 +59,10 @@ describe("terraformEventSentence", () => {
     const skipped = terraformEventSentence({
       ...base,
       outcome: "skipped",
-      reason: "Pull requests from forks are not planned",
+      reason: "Branches from forks are not planned",
     });
     expect(skipped.tone).toBe("neutral");
-    expect(skipped.text).toBe("plan skipped: Pull requests from forks are not planned");
+    expect(skipped.text).toBe("plan skipped: Branches from forks are not planned");
     expect(terraformEventSentence({ ...base, operation: "apply", outcome: "applied" }).text).toBe(
       "applied",
     );

@@ -12,19 +12,19 @@ import { shortOid } from "../../lib/format";
 import { paths } from "../../lib/paths";
 import { RunRow, isActive } from "../ci/RunRow";
 import { checkRows } from "./merge-box";
-import { usePull } from "./PullLayout";
+import { useBranchPage } from "./BranchLayout";
 
-/** What ran on the pull request's head commit: its CI runs, and every status reported on it. */
+/** What ran on the branch's head commit: its CI runs, and every status reported on it. */
 export function ChecksTab() {
   const repo = useRepoRef();
-  const pull = usePull();
+  const page = useBranchPage();
   const runs = useQuery({
-    ...queries.ci.listRuns({ params: repo, query: { sha: pull.headOid, limit: 50 } }),
+    ...queries.ci.listRuns({ params: repo, query: { sha: page.headOid, limit: 50 } }),
     refetchInterval: (query) => (query.state.data?.items.some(isActive) === true ? 4000 : false),
   });
-  const rows = checkRows(pull.mergeability.checks);
+  const rows = checkRows(page.mergeability.checks);
   const reportedAt = new Map(
-    pull.mergeability.checks.statuses.map((status) => [status.context, status.updatedAt]),
+    page.mergeability.checks.statuses.map((status) => [status.context, status.updatedAt]),
   );
 
   return (
@@ -33,10 +33,10 @@ export function ChecksTab() {
         <PanelHeader>
           CI runs of
           <AppLink
-            href={paths.commit(repo, pull.headOid)}
+            href={paths.commit(repo, page.headOid)}
             className="rounded bg-surface-sunken px-1.5 py-px font-mono text-[11px] text-on-surface hover:underline"
           >
-            {shortOid(pull.headOid)}
+            {shortOid(page.headOid)}
           </AppLink>
         </PanelHeader>
         <QueryView query={runs}>

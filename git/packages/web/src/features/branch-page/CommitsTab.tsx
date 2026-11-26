@@ -10,16 +10,16 @@ import { EmptyState, ErrorState, Loading, LoadMore } from "../../components/stat
 import { useRepoRef } from "../../layout/RepoLayout";
 import { dayKey, formatDate, groupConsecutive, shortOid } from "../../lib/format";
 import { paths } from "../../lib/paths";
-import { usePull } from "./PullLayout";
+import { useBranchPage } from "./BranchLayout";
 import { cursorQuery } from "../../lib/cursor";
 import { showBidi } from "../../lib/bidi";
 
 export function CommitsTab() {
   const repo = useRepoRef();
-  const pull = usePull();
-  const request = { params: { ...repo, number: pull.number } };
-  const commits = usePages(["pulls", "commits", request, pull.headOid], (cursor) =>
-    api.pulls.commits({ ...request, query: { ...cursorQuery(cursor), limit: 50 } }),
+  const page = useBranchPage();
+  const request = { params: { ...repo, branch: page.key } };
+  const commits = usePages(["branches", "commits", request, page.headOid], (cursor) =>
+    api.branches.commits({ ...request, query: { ...cursorQuery(cursor), limit: 50 } }),
   );
   if (commits.error) return <ErrorState error={commits.error} />;
   if (commits.isLoading) return <Loading />;

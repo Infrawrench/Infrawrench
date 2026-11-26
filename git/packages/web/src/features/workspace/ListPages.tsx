@@ -147,11 +147,7 @@ export function ChangesPage() {
       }
     >
       {pages.items.map((change) => (
-        <ChangeRow
-          key={`${change.repository.id}#${change.number}`}
-          change={change}
-          showRepository
-        />
+        <ChangeRow key={`${change.repository.id}:${change.key}`} change={change} showRepository />
       ))}
     </ListPage>
   );
@@ -172,11 +168,11 @@ export function ReviewsPage() {
         const author = personOf(item.author);
         return (
           <WorkRow
-            key={`${item.repository.id}#${item.number}`}
+            key={`${item.repository.id}:${item.key}`}
             // Opens on what is new: the newest version against the one last reviewed.
             href={paths.branchPage(
               repo,
-              item.number,
+              item.key,
               item.reviewedVersion === null ? {} : { v: item.latestVersion, diff: "since" },
             )}
             icon={<ChangeStateIcon state="needs_review" draft={item.draft} />}
@@ -219,8 +215,8 @@ export function MentionsPage() {
           <WorkRow
             key={mention.id}
             href={
-              mention.isPullRequest
-                ? paths.pull(repo, mention.number)
+              mention.branch !== null
+                ? paths.branchPage(repo, mention.branch)
                 : paths.issue(repo, mention.number)
             }
             icon={

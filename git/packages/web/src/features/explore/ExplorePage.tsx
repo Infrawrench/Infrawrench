@@ -7,7 +7,7 @@ import { useGo } from "../../components/AppLink";
 import { Button } from "../../components/Button";
 import { Checkbox, Input, SearchInput, Select } from "../../components/forms";
 import { LANGUAGE_OPTIONS_ID, LanguageOptions } from "../../components/LanguageOptions";
-import { Page, PageHeader, Panel } from "../../components/Panel";
+import { Page, Panel } from "../../components/Panel";
 import { RepoList } from "../../components/RepoList";
 import { EmptyState, ErrorState, Loading, LoadMore } from "../../components/states";
 
@@ -67,7 +67,8 @@ export function ExplorePage({ search }: { search: ExploreSearch }) {
 
   return (
     <Page>
-      <PageHeader title="Explore">
+      <div className="mb-4">
+        <h1 className="sr-only">Explore</h1>
         <form onSubmit={submit} className="flex flex-wrap items-center gap-2">
           <SearchInput
             label="Search repositories"
@@ -104,7 +105,7 @@ export function ExplorePage({ search }: { search: ExploreSearch }) {
           />
           <Button type="submit">Search</Button>
         </form>
-      </PageHeader>
+      </div>
       <Panel>
         {results.isLoading ? (
           <Loading framed={false} />

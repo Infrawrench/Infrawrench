@@ -2,7 +2,7 @@
  * A diff, file by file: unified or split, with the unchanged lines between
  * hunks revealed on demand from the file's text.
  *
- * Pages that add to a diff (review comments on a pull request) do it through
+ * Pages that add to a diff (review comments on a branch) do it through
  * `renderAfterLine`, `renderBeforeLine` and `lineAction` rather than by
  * copying this file.
  */

@@ -9,7 +9,7 @@ import type {
   TdHTMLAttributes,
   ThHTMLAttributes,
 } from "react";
-import { pageColumn, useSidebarShell } from "../lib/shell";
+import { pageColumn } from "../lib/shell";
 
 export function Panel({ className = "", ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (
@@ -100,8 +100,8 @@ export function PageHeader({
 }
 
 /**
- * The column every page sits in: centred under the top nav, the width of the
- * window in the sidebar shell. `narrow` is for forms.
+ * The column every page sits in: the width of the window beside the sidebar.
+ * `narrow` is for forms.
  */
 export function Page({
   children,
@@ -110,6 +110,5 @@ export function Page({
   children: ReactNode;
   width?: "wide" | "narrow";
 }) {
-  const sidebar = useSidebarShell();
-  return <div className={pageColumn(sidebar, width)}>{children}</div>;
+  return <div className={pageColumn(width)}>{children}</div>;
 }

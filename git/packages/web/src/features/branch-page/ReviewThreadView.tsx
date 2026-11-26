@@ -18,7 +18,7 @@ import { InlineError } from "../../components/states";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { paths } from "../../lib/paths";
 import { CommentCard } from "../issues/CommentCard";
-import { refreshPull, usePull } from "./PullLayout";
+import { refreshBranchPage, useBranchPage } from "./BranchLayout";
 import { instructionFor } from "../review/branch";
 import { InstructionBadge, SendToAgentButton, useInstructions } from "../review/Instructions";
 import { describeAnchor, startsCollapsed, type LineAnchor } from "./review-threads";
@@ -74,17 +74,17 @@ export function ReviewCommentForm({
   autoFocus?: boolean;
 }) {
   const repo = useRepoRef();
-  const pull = usePull();
+  const page = useBranchPage();
   const [body, setBody] = useState("");
-  const reviewing = pull.viewer.pendingReviewId !== null;
+  const reviewing = page.viewer.pendingReviewId !== null;
   const send = useMutation({
     mutationFn: (pending: boolean) =>
-      api.pulls.createReviewComment({
-        params: { ...repo, number: pull.number },
+      api.branches.createReviewComment({
+        params: { ...repo, branch: page.key },
         payload: {
           body,
           pending,
-          commitOid: pull.headOid,
+          commitOid: page.headOid,
           ...(inReplyTo !== undefined
             ? { inReplyTo }
             : anchor !== undefined
@@ -100,7 +100,7 @@ export function ReviewCommentForm({
         },
       }),
     onSuccess: () => {
-      refreshPull();
+      refreshBranchPage();
       onDone();
     },
   });
@@ -142,36 +142,34 @@ export function ReviewCommentForm({
   );
 }
 
+/** A thread names its version and what answered it, and can be sent to the branch's agent. */
 export function ReviewThreadView({
   thread,
   showLines = true,
-  branch = false,
 }: {
   thread: ReviewThread;
   /** Draw the lines the thread is on: everywhere but under its line in the diff. */
   showLines?: boolean;
-  /** On the branch page: name its version, what answered it, and offer it to the agent. */
-  branch?: boolean;
 }) {
   const repo = useRepoRef();
-  const pull = usePull();
+  const page = useBranchPage();
   const sent = useInstructions();
   const instruction =
-    !branch || sent === null || sent.instructions === null
+    sent === null || sent.instructions === null
       ? null
       : instructionFor(sent.instructions, {
           commentIds: thread.comments.map((comment) => comment.id),
         });
-  const answeredIn = branch ? (thread.answeredInVersion ?? null) : null;
+  const answeredIn = thread.answeredInVersion ?? null;
   const [collapsed, setCollapsed] = useState(() => startsCollapsed(thread));
   const [replying, setReplying] = useState(false);
   const resolve = useMutation({
     mutationFn: () =>
       thread.resolved
-        ? api.pulls.unresolveThread({ params: { ...repo, threadId: thread.id } })
-        : api.pulls.resolveThread({ params: { ...repo, threadId: thread.id } }),
+        ? api.branches.unresolveThread({ params: { ...repo, threadId: thread.id } })
+        : api.branches.resolveThread({ params: { ...repo, threadId: thread.id } }),
     onSuccess: (next) => {
-      refreshPull();
+      refreshBranchPage();
       setCollapsed(next.resolved);
     },
   });
@@ -200,11 +198,7 @@ export function ReviewThreadView({
         </button>
         {showLines ? (
           <AppLink
-            href={
-              branch
-                ? `${paths.pull(repo, pull.number)}#${diffFileId(thread.path)}`
-                : `${paths.pullTab(repo, pull.number, "files")}#${diffFileId(thread.path)}`
-            }
+            href={`${paths.branchPage(repo, page.key)}#${diffFileId(thread.path)}`}
             className="min-w-0 truncate font-mono text-on-surface hover:underline"
           >
             {thread.path}
@@ -218,7 +212,7 @@ export function ReviewThreadView({
         ) : (
           <span className="flex-1" />
         )}
-        {branch && thread.version !== undefined && thread.version !== null ? (
+        {thread.version !== undefined && thread.version !== null ? (
           <Badge tone="outline">v{thread.version}</Badge>
         ) : null}
         {answeredIn !== null ? (
@@ -253,17 +247,17 @@ export function ReviewThreadView({
                   canDelete={comment.viewerCanDelete}
                   badges={comment.pending ? <Badge tone="warning">Pending</Badge> : undefined}
                   onSave={(body) =>
-                    api.pulls
+                    api.branches
                       .updateReviewComment({
                         params: { ...repo, commentId: comment.id },
                         payload: { body },
                       })
-                      .then(refreshPull)
+                      .then(refreshBranchPage)
                   }
                   onDelete={() =>
-                    api.pulls
+                    api.branches
                       .deleteReviewComment({ params: { ...repo, commentId: comment.id } })
-                      .then(refreshPull)
+                      .then(refreshBranchPage)
                   }
                 />
               </li>
@@ -288,7 +282,7 @@ export function ReviewThreadView({
                     {thread.resolved ? "Unresolve" : "Resolve"}
                   </Button>
                 ) : null}
-                {branch && instruction === null && !thread.resolved && first ? (
+                {instruction === null && !thread.resolved && first ? (
                   <SendToAgentButton
                     from={{ source: "review_comment", reviewCommentId: first.id }}
                   />

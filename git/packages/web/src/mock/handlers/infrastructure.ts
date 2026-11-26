@@ -79,7 +79,7 @@ export default defineMockHandlers({
         rootPath: payload.rootPath,
         branch: payload.branch ?? null,
         terraformVersion: payload.terraformVersion ?? null,
-        planOnPullRequest: payload.planOnPullRequest ?? true,
+        planOnBranch: payload.planOnBranch ?? true,
         applyOnMerge: payload.applyOnMerge ?? true,
         applyRequiresApproval: payload.applyRequiresApproval ?? false,
         accounts: accountsFor(payload.accountIds ?? []),
@@ -110,8 +110,7 @@ export default defineMockHandlers({
       }
       if (payload.branch !== undefined) item.branch = payload.branch;
       if (payload.terraformVersion !== undefined) item.terraformVersion = payload.terraformVersion;
-      if (payload.planOnPullRequest !== undefined)
-        item.planOnPullRequest = payload.planOnPullRequest;
+      if (payload.planOnBranch !== undefined) item.planOnBranch = payload.planOnBranch;
       if (payload.applyOnMerge !== undefined) item.applyOnMerge = payload.applyOnMerge;
       if (payload.applyRequiresApproval !== undefined) {
         item.applyRequiresApproval = payload.applyRequiresApproval;
@@ -143,7 +142,7 @@ export default defineMockHandlers({
         .runs.filter(
           (run) =>
             (query?.workspace === undefined || run.workspace.name === query.workspace) &&
-            (query?.pull === undefined || run.pullNumber === query.pull) &&
+            (query?.page === undefined || run.branchPage === query.page) &&
             (query?.status === undefined || run.status === query.status),
         )
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -180,7 +179,7 @@ export default defineMockHandlers({
         statusReason: null,
         commitOid: resolveRef(gitOf(repo), ref).commitOid,
         ref,
-        pullNumber: null,
+        branchPage: null,
         actor,
         approvedBy: null,
         createdAt: new Date().toISOString(),

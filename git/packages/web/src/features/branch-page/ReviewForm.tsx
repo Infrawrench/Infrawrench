@@ -9,7 +9,7 @@ import { InlineError } from "../../components/states";
 import { useRepoRef } from "../../layout/RepoLayout";
 import type { ReviewEvent } from "@infrawrench/git-contract";
 import { plural } from "../../lib/format";
-import { refreshPull, usePull } from "./PullLayout";
+import { refreshBranchPage, useBranchPage } from "./BranchLayout";
 
 /**
  * "Finish review": the summary, the verdict, and submit. With comments
@@ -17,31 +17,32 @@ import { refreshPull, usePull } from "./PullLayout";
  */
 export function ReviewButton({ pendingComments }: { pendingComments: number }) {
   const repo = useRepoRef();
-  const pull = usePull();
+  const page = useBranchPage();
   const [body, setBody] = useState("");
   const [event, setEvent] = useState<ReviewEvent>("comment");
-  const params = { ...repo, number: pull.number };
-  const reviewId = pull.viewer.pendingReviewId;
+  const params = { ...repo, branch: page.key };
+  const reviewId = page.viewer.pendingReviewId;
 
   const submit = useMutation({
     mutationFn: () =>
       reviewId !== null
-        ? api.pulls.submitReview({ params: { ...params, reviewId }, payload: { event, body } })
-        : api.pulls.createReview({ params, payload: { event, body, commitOid: pull.headOid } }),
+        ? api.branches.submitReview({ params: { ...params, reviewId }, payload: { event, body } })
+        : api.branches.createReview({ params, payload: { event, body, commitOid: page.headOid } }),
     onSuccess: () => {
       setBody("");
       setEvent("comment");
-      refreshPull();
+      refreshBranchPage();
     },
   });
   const discard = useMutation({
-    mutationFn: () => api.pulls.discardReview({ params: { ...params, reviewId: reviewId ?? "" } }),
-    onSuccess: refreshPull,
+    mutationFn: () =>
+      api.branches.discardReview({ params: { ...params, reviewId: reviewId ?? "" } }),
+    onSuccess: refreshBranchPage,
   });
 
-  if (!pull.viewer.canReview) return null;
+  if (!page.viewer.canReview) return null;
   const needsText = event === "comment" && pendingComments === 0;
-  const own = !pull.viewer.canApprove;
+  const own = !page.viewer.canApprove;
 
   return (
     <Popover

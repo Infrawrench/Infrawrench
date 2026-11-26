@@ -6,7 +6,7 @@
 import type { ReactNode } from "react";
 import { ApiError } from "../api/client";
 import type { Pages } from "../api/queries";
-import { pageColumn, useSidebarShell } from "../lib/shell";
+import { pageColumn } from "../lib/shell";
 import { Button } from "./Button";
 import { Spinner } from "./icons";
 
@@ -101,7 +101,6 @@ export function Loading({
   /** For `page`: the width of the page it stands in for (`Page`'s). */
   width?: "wide" | "narrow";
 }) {
-  const sidebar = useSidebarShell();
   const frame = framed ? panel : "";
   const announce = <span className="sr-only">{label}</span>;
   if (shape === "inline") {
@@ -164,7 +163,7 @@ export function Loading({
       // Laid out as `Page` lays out the page it stands in for, so it does not
       // span the window and then shrink.
       body = (
-        <div className={`${pageColumn(sidebar, width)} space-y-4`}>
+        <div className={`${pageColumn(width)} space-y-4`}>
           <Skeleton className="h-6" width="30%" />
           <div className={panel}>{rows(count ?? 5)}</div>
         </div>

@@ -1,7 +1,7 @@
 /**
- * The mock's issues and pull requests: one number sequence per repository,
- * each thread with its comments and events, and for a pull request its
- * reviews and review threads. Pull requests point at real branches of the
+ * The mock's issues and branch pages: one number sequence per repository,
+ * each thread with its comments and events, and for a branch page its
+ * reviews and review threads. Branch pages point at real branches of the
  * fixture histories, so their diffs, commits and mergeability are computed.
  */
 import type {
@@ -12,8 +12,8 @@ import type {
   Mergeability,
   MergeMethod,
   Milestone,
-  PullRequest,
-  PullRequestSummary,
+  BranchPage,
+  BranchPageSummary,
   Review,
   ReviewComment,
   ReviewThread,
@@ -22,12 +22,17 @@ import type {
   TimelineItem,
   UserRef,
 } from "@infrawrench/git-contract";
-import type { ReviewDecision, TerraformRunStatus } from "@infrawrench/git-contract";
+import type {
+  ParsedBranchKey,
+  ReviewDecision,
+  TerraformRunStatus,
+} from "@infrawrench/git-contract";
+import { formatBranchKey, parseBranchKey } from "@infrawrench/git-contract";
 import { notFound, type Mutable } from "./define";
 import { accessTo, currentUser, gitOf, repositories, type RepositoryRecord } from "./db";
 import { aheadBehind, ancestors, diffCommits, mergeBase, statsOf, type GitFixture } from "./git";
 import { combine, statusesFor } from "./ci-data";
-import { mergeCommits } from "./git-write";
+import { copyObjects, mergeCommits } from "./git-write";
 import { findingsGate } from "./review-data";
 import { hoursAgo, newId, person, ruleFor } from "./settings-data";
 import { terraformOf } from "./terraform-data";
@@ -38,13 +43,13 @@ export type StoredReviewThread = Mutable<Omit<ReviewThread, "comments">> & {
   comments: Array<Mutable<ReviewComment>>;
 };
 
-export interface PullRecord {
+export interface PageRecord {
   draft: boolean;
   baseRef: string;
   headRef: string;
   /** `owner/name` of the fork the head is in. Absent for a branch of the repository itself. */
   headRepository?: string;
-  /** The head commit once the branch is gone or the pull request merged. */
+  /** The head commit once the branch is gone or its page merged. */
   frozenHeadOid: string | null;
   frozenBaseOid: string | null;
   merged: { at: string; by: UserRef; commitOid: string; method: MergeMethod } | null;
@@ -71,7 +76,7 @@ export interface ThreadRecord {
   closedAt: string | null;
   closedBy: UserRef | null;
   items: StoredItem[];
-  pull: PullRecord | null;
+  page: PageRecord | null;
 }
 
 export type MilestoneRecord = Mutable<Omit<Milestone, "openCount" | "closedCount">>;
@@ -152,7 +157,7 @@ interface ThreadSeed {
   closed?: { by: string; hours: number; reason?: "completed" | "not_planned" };
   locked?: string;
   items?: StoredItem[];
-  pull?: Omit<PullRecord, "reviews" | "threads"> & {
+  page?: Omit<PageRecord, "reviews" | "threads"> & {
     reviews?: StoredReview[];
     threads?: StoredReviewThread[];
   };
@@ -186,7 +191,7 @@ function build(store: RepoThreads, seed: ThreadSeed): ThreadRecord {
     closedAt: seed.closed ? hoursAgo(seed.closed.hours) : null,
     closedBy: seed.closed ? person(seed.closed.by) : null,
     items,
-    pull: seed.pull ? { reviews: [], threads: [], ...seed.pull } : null,
+    page: seed.page ? { reviews: [], threads: [], ...seed.page } : null,
   };
 }
 
@@ -510,7 +515,7 @@ function seedInfra(repo: RepositoryRecord, store: RepoThreads): void {
             repository: { owner: "acme", name: "infra" },
             number: 12,
             title: "Peer with the shared services VPC",
-            isPullRequest: true,
+            branch: "feature/vpc-peering",
             state: "open",
           },
         }),
@@ -533,7 +538,7 @@ function seedInfra(repo: RepositoryRecord, store: RepoThreads): void {
             repository: { owner: "acme", name: "infra" },
             number: 7,
             title: "network: optional VPC flow logs",
-            isPullRequest: true,
+            branch: "feature/flow-logs",
             state: "merged",
           },
         }),
@@ -577,7 +582,7 @@ function seedInfra(repo: RepositoryRecord, store: RepoThreads): void {
             repository: { owner: "acme", name: "infra" },
             number: 14,
             title: "Keep two weeks of database backups by default",
-            isPullRequest: true,
+            branch: "fix/database-backups",
             state: "open",
           },
         }),
@@ -725,7 +730,7 @@ function seedInfra(repo: RepositoryRecord, store: RepoThreads): void {
           baseRef: "main",
         }),
       ],
-      pull: {
+      page: {
         draft: false,
         baseRef: "main",
         headRef: "feature/flow-logs",
@@ -762,7 +767,7 @@ function seedInfra(repo: RepositoryRecord, store: RepoThreads): void {
         comment(
           "mara",
           46,
-          "NAT data processing for staging was $41 last month, most of it image pulls. This should take nearly all of it away.",
+          "NAT data processing for staging was $41 last month, most of it image downloads. This should take nearly all of it away.",
         ),
         {
           type: "commits",
@@ -772,7 +777,7 @@ function seedInfra(repo: RepositoryRecord, store: RepoThreads): void {
         },
         comment("jonas", 37.5, "Pushed the docs page. @priya the route key note is in there."),
       ],
-      pull: {
+      page: {
         draft: false,
         baseRef: "main",
         headRef: "feature/vpc-peering",
@@ -803,7 +808,7 @@ function seedInfra(repo: RepositoryRecord, store: RepoThreads): void {
         ev("converted_to_draft", "priya", 24 * 2.1, {}),
         ev("ready_for_review", "priya", 22, {}),
       ],
-      pull: {
+      page: {
         draft: false,
         baseRef: "main",
         headRef: "fix/database-backups",
@@ -813,9 +818,46 @@ function seedInfra(repo: RepositoryRecord, store: RepoThreads): void {
       },
     },
   ];
+  // A branch whose name has two slashes, with a page that was closed and the one opened after it.
+  const alarm = fx.branches["feature/budgets/staging-alarm"];
+  if (alarm !== undefined) {
+    const alarmPage = {
+      draft: false,
+      baseRef: "main",
+      headRef: "feature/budgets/staging-alarm",
+      frozenHeadOid: null,
+      frozenBaseOid: null,
+      merged: null,
+    };
+    seeds.push(
+      {
+        number: 17,
+        title: "Budget alarm for staging",
+        by: "mara",
+        hours: 30,
+        body: "Mail the team when staging passes its monthly budget.",
+        labels: ["cost"],
+        closed: { by: "mara", hours: 20 },
+        items: [
+          comment("jonas", 26, "Passing the budget is too late to act on. Warn at 80 percent?"),
+          ev("closed", "mara", 20, { stateReason: null, commitOid: null }),
+        ],
+        page: alarmPage,
+      },
+      {
+        number: 18,
+        title: "Staging budget alarm at 80 percent",
+        by: "mara",
+        hours: 6,
+        body: "Mails `infrastructure@acme.example` when actual spend passes 80 percent of the staging budget.",
+        labels: ["cost"],
+        page: alarmPage,
+      },
+    );
+  }
   void backups;
   for (const seed of seeds) store.threads.push(build(store, seed));
-  store.nextNumber = 17;
+  store.nextNumber = 19;
   store.nextMilestone = 4;
 }
 
@@ -873,7 +915,7 @@ function seedEdgeRouter(repo: RepositoryRecord, store: RepoThreads): void {
       hours: 24 * 1.2,
       body: "Closes #2.",
       labels: ["enhancement"],
-      pull: {
+      page: {
         draft: true,
         baseRef: "main",
         headRef: "feature/health-checks",
@@ -883,8 +925,26 @@ function seedEdgeRouter(repo: RepositoryRecord, store: RepoThreads): void {
       },
     });
   }
+  // Proposed from Jonas's fork.
+  seeds.push({
+    number: 6,
+    title: "Match hosts case-insensitively",
+    by: "jonas",
+    hours: 5,
+    body: "Closes #5.",
+    labels: ["bug"],
+    page: {
+      draft: false,
+      baseRef: "main",
+      headRef: "fix/lowercase-hosts",
+      headRepository: "jonas/edge-router",
+      frozenHeadOid: null,
+      frozenBaseOid: null,
+      merged: null,
+    },
+  });
   for (const seed of seeds) store.threads.push(build(store, seed));
-  store.nextNumber = 6;
+  store.nextNumber = 7;
 }
 
 const GENERIC_TITLES = [
@@ -950,14 +1010,14 @@ export function syncCounts(repo: RepositoryRecord): void {
   const store = stores.get(repo.id);
   if (!store) return;
   const open = store.threads.filter((thread) => thread.state === "open");
-  repo.openIssueCount = open.filter((thread) => thread.pull === null).length;
-  repo.openPullRequestCount = open.filter((thread) => thread.pull !== null).length;
+  repo.openIssueCount = open.filter((thread) => thread.page === null).length;
+  repo.openBranchCount = open.filter((thread) => thread.page !== null).length;
 }
 
-export function findThread(repo: RepositoryRecord, number: number, pull: boolean): ThreadRecord {
+export function findThread(repo: RepositoryRecord, number: number, page: boolean): ThreadRecord {
   const thread = threadsOf(repo).threads.find((item) => item.number === number);
-  if (!thread || (thread.pull !== null) !== pull) {
-    throw notFound(pull ? "Pull request not found" : "Issue not found");
+  if (!thread || (thread.page !== null) !== page) {
+    throw notFound(page ? "Branch page not found" : "Issue not found");
   }
   return thread;
 }
@@ -1061,23 +1121,45 @@ export function presentComment(repo: RepositoryRecord, thread: ThreadRecord, val
   };
 }
 
-// --- Pull requests ---------------------------------------------------------
+// --- Branch pages ----------------------------------------------------------
 
-export interface PullRefs {
+export interface PageRefs {
+  /** The page's repository, where the diff is worked out. */
   fx: GitFixture;
+  /** Where the head branch is: `fx` itself, or the fork's. */
+  headFx: GitFixture;
   headOid: string;
   baseOid: string;
   mergeBaseOid: string | null;
   headRefExists: boolean;
 }
 
-export function refsOf(repo: RepositoryRecord, pull: PullRecord): PullRefs {
+/**
+ * The repository a page's head branch is in: the page's own, or the fork it
+ * was proposed from. Null for a fork that is gone, or one the viewer cannot
+ * read.
+ */
+export function headRecordOf(repo: RepositoryRecord, page: PageRecord): RepositoryRecord | null {
+  if (page.headRepository === undefined) return repo;
+  const fork = repositories.find(
+    (item) =>
+      `${item.owner.slug}/${item.name}`.toLowerCase() === page.headRepository!.toLowerCase(),
+  );
+  return fork === undefined || accessTo(fork) === "none" ? null : fork;
+}
+
+export function refsOf(repo: RepositoryRecord, page: PageRecord): PageRefs {
   const fx = gitOf(repo);
-  const live = fx.branches[pull.headRef];
-  const headOid = pull.frozenHeadOid ?? live ?? "";
-  const baseOid = pull.frozenBaseOid ?? fx.branches[pull.baseRef] ?? "";
+  // A fork's branch is read in the fork; its objects are copied here, where the diff is worked out.
+  const headRecord = headRecordOf(repo, page);
+  const headFx = headRecord === null ? fx : gitOf(headRecord);
+  const live = headRecord === null ? undefined : headFx.branches[page.headRef];
+  if (live !== undefined && headFx !== fx) copyObjects(headFx, fx, live);
+  const headOid = page.frozenHeadOid ?? live ?? "";
+  const baseOid = page.frozenBaseOid ?? fx.branches[page.baseRef] ?? "";
   return {
     fx,
+    headFx,
     headOid,
     baseOid,
     mergeBaseOid: mergeBase(fx, baseOid, headOid),
@@ -1085,20 +1167,20 @@ export function refsOf(repo: RepositoryRecord, pull: PullRecord): PullRefs {
   };
 }
 
-/** The commits a pull request brings, oldest first. */
-export function commitsOf(refs: PullRefs): string[] {
+/** The commits a branch page brings, oldest first. */
+export function commitsOf(refs: PageRefs): string[] {
   const { fx, headOid, mergeBaseOid } = refs;
   const inBase = mergeBaseOid === null ? new Set<string>() : ancestors(fx, mergeBaseOid);
   const inHead = ancestors(fx, headOid);
   return fx.order.filter((oid) => inHead.has(oid) && !inBase.has(oid)).reverse();
 }
 
-function presentReview(repo: RepositoryRecord, pull: PullRecord, item: StoredReview, head: string) {
+function presentReview(repo: RepositoryRecord, page: PageRecord, item: StoredReview, head: string) {
   const viewer = viewerOf(repo);
   return {
     ...item,
     stale: item.state !== "pending" && item.commitOid !== head,
-    commentCount: pull.threads.reduce(
+    commentCount: page.threads.reduce(
       (sum, thread) => sum + thread.comments.filter((c) => c.reviewId === item.id).length,
       0,
     ),
@@ -1109,12 +1191,12 @@ function presentReview(repo: RepositoryRecord, pull: PullRecord, item: StoredRev
 }
 
 export function reviewsOf(repo: RepositoryRecord, thread: ThreadRecord): Review[] {
-  const pull = thread.pull!;
+  const page = thread.page!;
   const viewer = viewerOf(repo);
-  const head = refsOf(repo, pull).headOid;
-  return pull.reviews
+  const head = refsOf(repo, page).headOid;
+  return page.reviews
     .filter((item) => item.state !== "pending" || viewer.is(item.author))
-    .map((item) => presentReview(repo, pull, item, head))
+    .map((item) => presentReview(repo, page, item, head))
     .sort((a, b) => (a.submittedAt ?? "9").localeCompare(b.submittedAt ?? "9"));
 }
 
@@ -1143,7 +1225,7 @@ export function presentThread(
 
 export function reviewThreadsOf(repo: RepositoryRecord, thread: ThreadRecord): ReviewThread[] {
   return thread
-    .pull!.threads.map((item) => presentThread(repo, thread, item))
+    .page!.threads.map((item) => presentThread(repo, thread, item))
     .filter((item): item is ReviewThread => item !== null)
     .sort(
       (a, b) =>
@@ -1153,10 +1235,10 @@ export function reviewThreadsOf(repo: RepositoryRecord, thread: ThreadRecord): R
     );
 }
 
-function reviewTally(repo: RepositoryRecord, pull: PullRecord, head: string) {
-  const rule = ruleFor(repo, pull.baseRef);
+function reviewTally(repo: RepositoryRecord, page: PageRecord, head: string) {
+  const rule = ruleFor(repo, page.baseRef);
   const newest = new Map<string, StoredReview>();
-  for (const item of pull.reviews) {
+  for (const item of page.reviews) {
     if (item.state !== "approved" && item.state !== "changes_requested") continue;
     if (item.author === null) continue;
     const before = newest.get(item.author.id);
@@ -1183,17 +1265,17 @@ function reviewTally(repo: RepositoryRecord, pull: PullRecord, head: string) {
 }
 
 export function mergeabilityOf(repo: RepositoryRecord, thread: ThreadRecord): Mergeability {
-  const pull = thread.pull!;
-  const refs = refsOf(repo, pull);
+  const page = thread.page!;
+  const refs = refsOf(repo, page);
   const viewer = viewerOf(repo);
-  const rule = ruleFor(repo, pull.baseRef);
+  const rule = ruleFor(repo, page.baseRef);
   const open = thread.state === "open";
   const statuses = refs.headOid === "" ? [] : statusesFor(repo, refs.headOid);
   const required = (rule?.requiredStatusContexts ?? []).map((context) => ({
     context,
     state: statuses.find((status) => status.context === context)?.state ?? null,
   }));
-  const reviews = reviewTally(repo, pull, refs.headOid);
+  const reviews = reviewTally(repo, page, refs.headOid);
   const behindBy =
     open && refs.headRefExists ? aheadBehind(refs.fx, refs.baseOid, refs.headOid).behind.length : 0;
   const conflictFiles =
@@ -1204,13 +1286,13 @@ export function mergeabilityOf(repo: RepositoryRecord, thread: ThreadRecord): Me
   const blockers: Array<Mergeability["blockers"][number]> = [];
   const block = (code: Mergeability["blockers"][number]["code"], message: string) =>
     blockers.push({ code, message });
-  if (pull.merged) block("merged", "This pull request is merged");
-  else if (!open) block("closed", "This pull request is closed");
+  if (page.merged) block("merged", "This branch is merged");
+  else if (!open) block("closed", "This branch page is closed");
   else {
     if (repo.archived) block("archived", "The repository is archived");
     if (!viewer.canWrite) block("no_permission", "You cannot merge into this repository");
     if (!refs.headRefExists) block("head_missing", "The head branch was deleted");
-    if (pull.draft) block("draft", "This pull request is a draft");
+    if (page.draft) block("draft", "This branch is a draft");
     if (conflictFiles.length > 0) block("conflicts", "The branch has conflicts with the base");
     const failed = required.filter((item) => item.state === "failure" || item.state === "error");
     const waiting = required.filter((item) => item.state === null || item.state === "pending");
@@ -1235,12 +1317,12 @@ export function mergeabilityOf(repo: RepositoryRecord, thread: ThreadRecord): Me
       !viewer.isAdmin &&
       !rule.pushers.some((user) => viewer.is(user))
     ) {
-      block("push_restricted", `Only some people may merge into ${pull.baseRef}`);
+      block("push_restricted", `Only some people may merge into ${page.baseRef}`);
     }
   }
   // What review agents hold the merge on: never one of the soft blockers.
   const gate = findingsGate(repo, thread.number);
-  if (open && !pull.merged && gate !== null && gate.blocks && gate.mustFixOpen > 0) {
+  if (open && !page.merged && gate !== null && gate.blocks && gate.mustFixOpen > 0) {
     block(
       "must_fix_findings",
       `${gate.mustFixOpen} must-fix ${gate.mustFixOpen === 1 ? "finding is" : "findings are"} open`,
@@ -1282,40 +1364,44 @@ export function mergeabilityOf(repo: RepositoryRecord, thread: ThreadRecord): Me
   };
 }
 
-export function toPullSummary(repo: RepositoryRecord, thread: ThreadRecord): PullRequestSummary {
-  const pull = thread.pull!;
-  const refs = refsOf(repo, pull);
+export function toBranchPageSummary(
+  repo: RepositoryRecord,
+  thread: ThreadRecord,
+): BranchPageSummary {
+  const page = thread.page!;
+  const refs = refsOf(repo, page);
   const statuses = refs.headOid === "" ? [] : statusesFor(repo, refs.headOid);
   return {
     ...threadFields(threadsOf(repo), thread),
-    state: pull.merged ? "merged" : thread.state,
-    draft: pull.draft,
-    baseRef: pull.baseRef,
-    headRef: pull.headRef,
-    headRepository: headRepositoryRef(repo, pull),
-    crossRepository: pull.headRepository !== undefined,
+    key: pageKeyOf(repo, thread),
+    state: page.merged ? "merged" : thread.state,
+    draft: page.draft,
+    baseRef: page.baseRef,
+    headRef: page.headRef,
+    headRepository: headRepositoryRef(repo, page),
+    crossRepository: page.headRepository !== undefined,
     headOid: refs.headOid,
     status: combine(statuses),
-    reviewDecision: pull.merged ? null : reviewTally(repo, pull, refs.headOid).decision,
-    mergedAt: pull.merged?.at ?? null,
+    reviewDecision: page.merged ? null : reviewTally(repo, page, refs.headOid).decision,
+    mergedAt: page.merged?.at ?? null,
   };
 }
 
-export function pullDiffBase(refs: PullRefs): string | null {
+export function pageDiffBase(refs: PageRefs): string | null {
   return refs.mergeBaseOid;
 }
 
-export function toPull(repo: RepositoryRecord, thread: ThreadRecord): PullRequest {
-  const pull = thread.pull!;
-  const refs = refsOf(repo, pull);
+export function toBranchPage(repo: RepositoryRecord, thread: ThreadRecord): BranchPage {
+  const page = thread.page!;
+  const refs = refsOf(repo, page);
   const viewer = viewerOf(repo);
   const own = viewer.is(thread.author);
   const files = diffCommits(refs.fx, refs.mergeBaseOid, refs.headOid, { hunks: false });
-  const pendingReview = pull.reviews.find(
+  const pendingReview = page.reviews.find(
     (item) => item.state === "pending" && viewer.is(item.author),
   );
   return {
-    ...toPullSummary(repo, thread),
+    ...toBranchPageSummary(repo, thread),
     body: thread.body,
     bodyEditedAt: thread.bodyEditedAt,
     closedBy: thread.closedBy,
@@ -1325,9 +1411,9 @@ export function toPull(repo: RepositoryRecord, thread: ThreadRecord): PullReques
     headRefExists: refs.headRefExists,
     commitCount: commitsOf(refs).length,
     stats: statsOf(files),
-    mergedBy: pull.merged?.by ?? null,
-    mergeCommitOid: pull.merged?.commitOid ?? null,
-    mergeMethod: pull.merged?.method ?? null,
+    mergedBy: page.merged?.by ?? null,
+    mergeCommitOid: page.merged?.commitOid ?? null,
+    mergeMethod: page.merged?.method ?? null,
     mergeability: mergeabilityOf(repo, thread),
     viewer: {
       ...threadViewer(repo, thread),
@@ -1339,23 +1425,89 @@ export function toPull(repo: RepositoryRecord, thread: ThreadRecord): PullReques
         viewer.canWrite &&
         refs.headRefExists &&
         thread.state === "closed" &&
-        pull.headRef !== repo.defaultBranch,
+        page.headRef !== repo.defaultBranch,
     },
   };
 }
 
-/** Where a pull request's head is: the repository itself, a fork, or null for a fork that is gone. */
-function headRepositoryRef(repo: RepositoryRecord, pull: PullRecord): RepositoryRef | null {
-  if (pull.headRepository === undefined) {
-    return { id: repo.id, owner: repo.owner.slug, name: repo.name, visibility: repo.visibility };
-  }
-  const fork = repositories.find(
-    (item) =>
-      `${item.owner.slug}/${item.name}`.toLowerCase() === pull.headRepository!.toLowerCase(),
-  );
-  return fork === undefined || accessTo(fork) === "none"
+/** Where a branch page's head is: the repository itself, a fork, or null for a fork that is gone. */
+function headRepositoryRef(repo: RepositoryRecord, page: PageRecord): RepositoryRef | null {
+  const head = headRecordOf(repo, page);
+  return head === null
     ? null
-    : { id: fork.id, owner: fork.owner.slug, name: fork.name, visibility: fork.visibility };
+    : { id: head.id, owner: head.owner.slug, name: head.name, visibility: head.visibility };
+}
+
+// --- Keys ------------------------------------------------------------------
+
+const sameHeadRepository = (a: string | undefined, b: string | undefined): boolean =>
+  (a ?? "").toLowerCase() === (b ?? "").toLowerCase();
+
+/** The pages one head (repository and branch) has had, oldest first by number. */
+function pagesOfHead(
+  repo: RepositoryRecord,
+  headRef: string,
+  headRepository: string | undefined,
+): ThreadRecord[] {
+  return threadsOf(repo)
+    .threads.filter(
+      (thread) =>
+        thread.page !== null &&
+        thread.page.headRef === headRef &&
+        sameHeadRepository(thread.page.headRepository, headRepository),
+    )
+    .sort((a, b) => a.number - b.number);
+}
+
+/** What the bare name of a head resolves to: its open page, or its newest. */
+const bareOf = (pages: ReadonlyArray<ThreadRecord>): ThreadRecord | undefined =>
+  pages.find((thread) => thread.state === "open") ?? pages[pages.length - 1];
+
+/** A page's canonical key: bare when the bare name resolves to it, else with its `~n`. */
+export function pageKeyOf(repo: RepositoryRecord, thread: ThreadRecord): string {
+  const page = thread.page!;
+  const pages = pagesOfHead(repo, page.headRef, page.headRepository);
+  const ordinal = bareOf(pages) === thread ? null : pages.indexOf(thread) + 1;
+  let fork: ParsedBranchKey["fork"] = null;
+  if (page.headRepository !== undefined) {
+    const head = headRecordOf(repo, page);
+    fork = head === null ? "gone" : { owner: head.owner.slug, name: head.name };
+  }
+  return formatBranchKey({ fork, branch: page.headRef, ordinal });
+}
+
+/** The page a key names, or the 404 the API answers. */
+export function findPage(repo: RepositoryRecord, key: string): ThreadRecord {
+  const parsed = parseBranchKey(key);
+  if (parsed === null) throw notFound("Branch page not found");
+  const pages = threadsOf(repo)
+    .threads.filter((thread) => {
+      const page = thread.page;
+      if (page === null || page.headRef !== parsed.branch) return false;
+      if (parsed.fork === null) return page.headRepository === undefined;
+      if (page.headRepository === undefined) return false;
+      if (parsed.fork === "gone") return headRecordOf(repo, page) === null;
+      return sameHeadRepository(page.headRepository, `${parsed.fork.owner}/${parsed.fork.name}`);
+    })
+    .sort((a, b) => a.number - b.number);
+  const found = parsed.ordinal === null ? bareOf(pages) : pages[parsed.ordinal - 1];
+  if (found === undefined) throw notFound("Branch page not found");
+  return found;
+}
+
+/** The open page of a head, whatever its base. */
+export function openPageOf(
+  repo: RepositoryRecord,
+  headRef: string,
+  headRepository: string | undefined,
+): ThreadRecord | undefined {
+  return pagesOfHead(repo, headRef, headRepository).find((thread) => thread.state === "open");
+}
+
+/** A page's title when none is given: the branch's last segment as words. */
+export function titleOfBranch(branch: string): string {
+  const words = (branch.split("/").pop() ?? branch).replace(/[-_]+/g, " ").trim();
+  return words === "" ? branch : words[0]!.toUpperCase() + words.slice(1);
 }
 
 /** A thread's timeline as the API serves it: stored entries with reviews placed by time. */
@@ -1367,7 +1519,7 @@ export function timelineOf(repo: RepositoryRecord, thread: ThreadRecord): Timeli
         ? { ...item, comment: presentComment(repo, thread, item.comment) }
         : item,
   }));
-  if (thread.pull) {
+  if (thread.page) {
     const all = reviewThreadsOf(repo, thread);
     for (const item of reviewsOf(repo, thread)) {
       if (item.state === "pending" || item.submittedAt === null) continue;
@@ -1385,10 +1537,10 @@ export function timelineOf(repo: RepositoryRecord, thread: ThreadRecord): Timeli
       });
     }
   }
-  if (thread.pull) {
+  if (thread.page) {
     for (const run of terraformOf(repo).runs) {
       const outcome = TERRAFORM_OUTCOME[run.status];
-      if (run.pullNumber !== thread.number || outcome === undefined) continue;
+      if (run.branchPage !== pageKeyOf(repo, thread) || outcome === undefined) continue;
       const at = run.finishedAt ?? run.createdAt;
       entries.push({
         at,
@@ -1414,7 +1566,7 @@ export function timelineOf(repo: RepositoryRecord, thread: ThreadRecord): Timeli
 
 type TerraformRunEvent = Extract<TimelineItem, { type: "terraform_run" }>;
 
-/** The runs a pull request's timeline names, by how they ended. A plan a newer one replaced is not one. */
+/** The runs a branch page's timeline names, by how they ended. A plan a newer one replaced is not one. */
 const TERRAFORM_OUTCOME: Partial<Record<TerraformRunStatus, TerraformRunEvent["outcome"]>> = {
   planned: "planned",
   no_changes: "no_changes",

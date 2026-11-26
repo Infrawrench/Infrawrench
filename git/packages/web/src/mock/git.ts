@@ -4,7 +4,7 @@
  * the content endpoints need over them: resolving refs, listing trees,
  * history, last-commit-per-entry, diffs and blame.
  *
- * Other mock handlers (pull requests, CI) use this too: `fixtureFor(repo)`
+ * Other mock handlers (branch pages, CI) use this too: `fixtureFor(repo)`
  * and the functions below take the place of the worker's `RepoDO`.
  */
 import type {

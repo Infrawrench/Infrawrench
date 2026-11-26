@@ -4,9 +4,15 @@
  *
  * Refs and tree paths keep their slashes in the URL (`/tree/feature/x/src`),
  * the way every forge writes them; `lib/refs.ts` splits them back apart
- * against the repository's ref names.
+ * against the repository's ref names. A branch page's key does the same
+ * (`/branches/feature/x`), written by the contract's `branchPagePath`.
  */
-import { encodePathSegments, repositoryPath, type RepoRef } from "@infrawrench/git-contract";
+import {
+  branchPagePath,
+  encodePathSegments,
+  repositoryPath,
+  type RepoRef,
+} from "@infrawrench/git-contract";
 
 const seg = encodeURIComponent;
 
@@ -24,10 +30,8 @@ const search = (values: Record<string, string | number | undefined>): string => 
   return text === "" ? "" : `?${text}`;
 };
 
-/** Which of the reader's pull requests: `review` is the ones waiting on their review. */
-export type PullsView = "created" | "review" | "assigned";
-export type IssuesView = "assigned" | "created" | "mentioned";
-export type ThreadsState = "open" | "closed" | "all";
+/** A branch page's tabs besides its review, kept in `?tab=`: a splat route has no room for a suffix. */
+export type BranchPageTab = "commits" | "checks";
 
 export const paths = {
   home: () => "/",
@@ -36,17 +40,6 @@ export const paths = {
     `/changes${search(query)}`,
   reviews: () => "/reviews",
   mentions: () => "/mentions",
-  /** The reader's pull requests and issues across repositories. The first view and `open` are the address without a query. */
-  myPulls: (query: { view?: PullsView; state?: ThreadsState } = {}) =>
-    `/pulls${search({
-      view: query.view === "created" ? undefined : query.view,
-      state: query.state === "open" ? undefined : query.state,
-    })}`,
-  myIssues: (query: { view?: IssuesView; state?: ThreadsState } = {}) =>
-    `/issues${search({
-      view: query.view === "assigned" ? undefined : query.view,
-      state: query.state === "open" ? undefined : query.state,
-    })}`,
   explore: (query: { q?: string; language?: string } = {}) => `/explore${search(query)}`,
   newRepository: (owner?: string) => `/new${search({ owner })}`,
   onboardingUsername: (returnTo?: string) => `/onboarding/username${search({ returnTo })}`,
@@ -68,7 +61,24 @@ export const paths = {
       ? `${repositoryPath(repo)}/commits`
       : withRef(`${repositoryPath(repo)}/commits`, ref, path),
   commit: (repo: RepoRef, sha: string) => `${repositoryPath(repo)}/commit/${seg(sha)}`,
-  branches: (repo: RepoRef) => `${repositoryPath(repo)}/branches`,
+  /**
+   * The Branches tab: the branch pages, searched with `?q=` the way the issue
+   * list is; `view: "all"` is every Git branch, to create and delete them.
+   */
+  branches: (repo: RepoRef, query: { q?: string | undefined; view?: "all" | undefined } = {}) =>
+    `${repositoryPath(repo)}/branches${search(query)}`,
+  /**
+   * A branch's page, named by its key (`feature/a`, `bob/infra:feature/a`,
+   * `feature/a~2`) with the key's slashes as the path's own. The version and
+   * the diff picked, and the Commits and Checks tabs, are in the query.
+   */
+  branchPage: (
+    repo: RepoRef,
+    key: string,
+    query: { v?: number; diff?: "whole" | "step" | "since"; tab?: BranchPageTab } = {},
+  ) => `${branchPagePath(repo.owner, repo.repo, key)}${search(query)}`,
+  /** An agent starts a branch from an ask. */
+  startWork: (repo: RepoRef) => `${repositoryPath(repo)}/start`,
   tags: (repo: RepoRef) => `${repositoryPath(repo)}/tags`,
   /**
    * `/compare/base...head`; without refs, the page that picks them. A head in
@@ -85,21 +95,6 @@ export const paths = {
   issues: (repo: RepoRef) => `${repositoryPath(repo)}/issues`,
   issue: (repo: RepoRef, number: number) => `${repositoryPath(repo)}/issues/${number}`,
   newIssue: (repo: RepoRef) => `${repositoryPath(repo)}/issues/new`,
-  pulls: (repo: RepoRef) => `${repositoryPath(repo)}/pulls`,
-  pull: (repo: RepoRef, number: number) => `${repositoryPath(repo)}/pulls/${number}`,
-  newPull: (repo: RepoRef, query: { base?: string; head?: string } = {}) =>
-    `${repositoryPath(repo)}/pulls/new${search(query)}`,
-  /**
-   * A pull request's page with a version and a diff picked: what the branch
-   * page (the pull request, for someone in agent mode) keeps in its address.
-   */
-  branchPage: (
-    repo: RepoRef,
-    number: number,
-    query: { v?: number; diff?: "whole" | "step" | "since" } = {},
-  ) => `${repositoryPath(repo)}/pulls/${number}${search(query)}`,
-  /** Under `/pulls` so the Pull requests tab stays the active one. */
-  startWork: (repo: RepoRef) => `${repositoryPath(repo)}/pulls/start`,
   ci: (repo: RepoRef) => `${repositoryPath(repo)}/ci`,
   /**
    * The Infrastructure tab. Not `/terraform`: that prefix is the state
@@ -111,10 +106,6 @@ export const paths = {
 
   /** The issue list with its search box filled (`is:open label:bug`). */
   issueSearch: (repo: RepoRef, q?: string) => `${repositoryPath(repo)}/issues${search({ q })}`,
-  pullSearch: (repo: RepoRef, q?: string) => `${repositoryPath(repo)}/pulls${search({ q })}`,
-  /** A pull request's other tabs; the conversation is `paths.pull`. */
-  pullTab: (repo: RepoRef, number: number, tab: "commits" | "checks" | "files") =>
-    `${repositoryPath(repo)}/pulls/${number}/${tab}`,
   /** Under `/issues` so the Issues tab stays the active one. */
   labels: (repo: RepoRef) => `${repositoryPath(repo)}/issues/labels`,
   milestones: (repo: RepoRef) => `${repositoryPath(repo)}/issues/milestones`,

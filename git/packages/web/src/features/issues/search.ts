@@ -1,5 +1,5 @@
 /**
- * The search box of the issue and pull request lists: `is:open label:bug
+ * The search box of the issue and branch page lists: `is:open label:bug
  * author:mara flow logs`. The text is the whole state of the list (it is the
  * `?q=` of the URL), so the filter menus edit it rather than keeping state of
  * their own.

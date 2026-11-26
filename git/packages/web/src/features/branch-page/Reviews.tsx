@@ -1,8 +1,8 @@
+/** A review in a branch's conversation, and who reviewed it. */
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import type { Review, TimelineItem } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
-import { queries } from "../../api/queries";
 import { Badge } from "../../components/Badge";
 import { Button } from "../../components/Button";
 import { Dialog } from "../../components/controls";
@@ -12,16 +12,9 @@ import { Markdown } from "../../components/Markdown";
 import { RelativeTime, UserLink } from "../../components/people";
 import { InlineError } from "../../components/states";
 import { useRepoRef } from "../../layout/RepoLayout";
-import { CommentCard } from "../issues/CommentCard";
-import { CommentForm } from "../issues/CommentForm";
-import { LockControl, TriageFields } from "../issues/ThreadSidebar";
-import { Timeline, TimelineRow } from "../issues/Timeline";
-import { InfrastructureBox } from "./InfrastructureBox";
-import { MergeBox } from "./MergeBox";
-import { refreshPull, usePull } from "./PullLayout";
-import { ReviewButton } from "./ReviewForm";
+import { TimelineRow } from "../issues/Timeline";
+import { refreshBranchPage, useBranchPage } from "./BranchLayout";
 import { ReviewThreadView } from "./ReviewThreadView";
-import { countThreads } from "./review-threads";
 
 const REVIEW: Record<Review["state"], { icon: IconName; tone: string; verb: string }> = {
   approved: { icon: "check", tone: "text-success", verb: "approved these changes" },
@@ -33,18 +26,18 @@ const REVIEW: Record<Review["state"], { icon: IconName; tone: string; verb: stri
 
 function DismissButton({ review }: { review: Review }) {
   const repo = useRepoRef();
-  const pull = usePull();
+  const page = useBranchPage();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
   const dismiss = useMutation({
     mutationFn: () =>
-      api.pulls.dismissReview({
-        params: { ...repo, number: pull.number, reviewId: review.id },
+      api.branches.dismissReview({
+        params: { ...repo, branch: page.key, reviewId: review.id },
         payload: { reason: reason.trim() },
       }),
     onSuccess: () => {
       setOpen(false);
-      refreshPull();
+      refreshBranchPage();
     },
   });
   return (
@@ -86,14 +79,8 @@ function DismissButton({ review }: { review: Review }) {
   );
 }
 
-export function ReviewEntry({
-  item,
-  branch = false,
-}: {
-  item: Extract<TimelineItem, { type: "review" }>;
-  /** On the branch page: its threads name their version and can go to the agent. */
-  branch?: boolean;
-}) {
+/** A review in the conversation: its verdict, its words, and the threads it started. */
+export function ReviewEntry({ item }: { item: Extract<TimelineItem, { type: "review" }> }) {
   const { review, threads } = item;
   const look = REVIEW[review.state];
   // A bare comment on a line is a review of one thread and no words: show the thread alone.
@@ -128,7 +115,7 @@ export function ReviewEntry({
       ) : null}
       {threads.map((thread) => (
         <div key={thread.id} className="sm:ml-10">
-          <ReviewThreadView thread={thread} branch={branch} />
+          <ReviewThreadView thread={thread} />
         </div>
       ))}
     </div>
@@ -178,125 +165,5 @@ export function Reviewers({ reviews }: { reviews: ReadonlyArray<Review> }) {
         </ul>
       )}
     </section>
-  );
-}
-
-export function ConversationTab() {
-  const repo = useRepoRef();
-  const pull = usePull();
-  const { number } = pull;
-  const params = { ...repo, number };
-  const reviews = useQuery(queries.pulls.listReviews({ params }));
-  const threads = useQuery(queries.pulls.listThreads({ params }));
-  const counts = countThreads(threads.data?.threads ?? []);
-
-  const update = useMutation({
-    mutationFn: (payload: Parameters<typeof api.pulls.update>[0]["payload"]) =>
-      api.pulls.update({ params, payload }),
-    onSuccess: refreshPull,
-  });
-  const close = useMutation({
-    mutationFn: () => api.pulls.close({ params }),
-    onSuccess: refreshPull,
-  });
-  const reopen = useMutation({
-    mutationFn: () => api.pulls.reopen({ params }),
-    onSuccess: refreshPull,
-  });
-  const toDraft = useMutation({
-    mutationFn: () => api.pulls.setDraft({ params, payload: { draft: true } }),
-    onSuccess: refreshPull,
-  });
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
-      <div className="min-w-0 space-y-3">
-        <CommentCard
-          author={pull.author}
-          createdAt={pull.createdAt}
-          body={pull.body}
-          edited={pull.bodyEditedAt !== null}
-          access="author"
-          canEdit={pull.viewer.canEdit}
-          onSave={(body) => update.mutateAsync({ body })}
-        />
-        <Timeline
-          number={number}
-          kind="pulls"
-          renderReview={(item) => <ReviewEntry item={item} />}
-        />
-        <InfrastructureBox number={number} />
-        <MergeBox pull={pull} />
-        <CommentForm
-          number={number}
-          canComment={pull.viewer.canComment}
-          locked={pull.locked}
-          stateActions={({ body, post }) =>
-            pull.state === "merged" || !pull.viewer.canClose ? null : pull.state === "open" ? (
-              <Button busy={close.isPending} onClick={() => void post().then(() => close.mutate())}>
-                <Icon name="gitPullRequestClosed" size={13} className="text-danger" />
-                {body.trim() === "" ? "Close pull request" : "Close with comment"}
-              </Button>
-            ) : (
-              <Button
-                busy={reopen.isPending}
-                disabled={!pull.headRefExists}
-                title={pull.headRefExists ? undefined : "Restore the branch first"}
-                onClick={() => void post().then(() => reopen.mutate())}
-              >
-                Reopen pull request
-              </Button>
-            )
-          }
-        />
-        <InlineError error={update.error ?? close.error ?? reopen.error ?? toDraft.error} />
-      </div>
-      <aside aria-label="Details">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <ReviewButton pendingComments={counts.pending} />
-          {counts.unresolved > 0 ? (
-            <span className="text-xs text-on-surface-muted">{counts.unresolved} unresolved</span>
-          ) : null}
-        </div>
-        <Reviewers reviews={reviews.data?.reviews ?? []} />
-        <div className="pt-3">
-          <TriageFields
-            kind="pulls"
-            canTriage={pull.viewer.canTriage}
-            shown={pull}
-            value={{
-              labels: pull.labels.map((label) => label.name),
-              assignees: pull.assignees.flatMap((user) => user.username ?? []),
-              milestone: pull.milestone?.number ?? null,
-            }}
-            onChange={(next) =>
-              update.mutate({
-                labels: [...next.labels],
-                assignees: [...next.assignees],
-                milestone: next.milestone,
-              })
-            }
-          />
-        </div>
-        {pull.state === "open" && !pull.draft && pull.viewer.canEdit ? (
-          <section className="border-t border-border py-3">
-            <button
-              type="button"
-              disabled={toDraft.isPending}
-              onClick={() => toDraft.mutate()}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-on-surface-secondary hover:text-on-surface disabled:opacity-60"
-            >
-              <Icon name="gitPullRequestDraft" size={13} />
-              Convert to draft
-            </button>
-          </section>
-        ) : null}
-        {pull.viewer.canTriage ? (
-          <div className="border-t border-border">
-            <LockControl number={number} locked={pull.locked} />
-          </div>
-        ) : null}
-      </aside>
-    </div>
   );
 }

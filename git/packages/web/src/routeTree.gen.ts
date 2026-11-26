@@ -12,10 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as ExploreRouteImport } from './routes/explore'
-import { Route as IssuesRouteImport } from './routes/issues'
 import { Route as MentionsRouteImport } from './routes/mentions'
 import { Route as NewRouteImport } from './routes/new'
-import { Route as PullsRouteImport } from './routes/pulls'
 import { Route as ReviewsRouteImport } from './routes/reviews'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as OwnerIndexRouteImport } from './routes/$owner/index'
@@ -23,15 +21,16 @@ import { Route as OwnerRepoRouteRouteImport } from './routes/$owner/$repo/route'
 import { Route as OnboardingUsernameRouteImport } from './routes/onboarding.username'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsKeysRouteImport } from './routes/settings.keys'
-import { Route as SettingsReviewRouteImport } from './routes/settings.review'
 import { Route as SettingsT3RouteImport } from './routes/settings.t3'
 import { Route as SettingsTokensRouteImport } from './routes/settings.tokens'
 import { Route as OwnerRepoIndexRouteImport } from './routes/$owner/$repo/index'
-import { Route as OwnerRepoBranchesRouteImport } from './routes/$owner/$repo/branches'
 import { Route as OwnerRepoSettingsRouteImport } from './routes/$owner/$repo/settings'
+import { Route as OwnerRepoStartRouteImport } from './routes/$owner/$repo/start'
 import { Route as OwnerRepoTagsRouteImport } from './routes/$owner/$repo/tags'
 import { Route as OwnerRepoBlameSplatRouteImport } from './routes/$owner/$repo/blame.$'
 import { Route as OwnerRepoBlobSplatRouteImport } from './routes/$owner/$repo/blob.$'
+import { Route as OwnerRepoBranchesIndexRouteImport } from './routes/$owner/$repo/branches.index'
+import { Route as OwnerRepoBranchesSplatRouteImport } from './routes/$owner/$repo/branches.$'
 import { Route as OwnerRepoCiIndexRouteImport } from './routes/$owner/$repo/ci.index'
 import { Route as OwnerRepoCommitShaRouteImport } from './routes/$owner/$repo/commit.$sha'
 import { Route as OwnerRepoCommitsIndexRouteImport } from './routes/$owner/$repo/commits.index'
@@ -45,7 +44,6 @@ import { Route as OwnerRepoIssuesNumberRouteImport } from './routes/$owner/$repo
 import { Route as OwnerRepoIssuesLabelsRouteImport } from './routes/$owner/$repo/issues.labels'
 import { Route as OwnerRepoIssuesNewRouteImport } from './routes/$owner/$repo/issues.new'
 import { Route as OwnerRepoPullsIndexRouteImport } from './routes/$owner/$repo/pulls.index'
-import { Route as OwnerRepoPullsNumberRouteImport } from './routes/$owner/$repo/pulls.$number'
 import { Route as OwnerRepoPullsNewRouteImport } from './routes/$owner/$repo/pulls.new'
 import { Route as OwnerRepoPullsStartRouteImport } from './routes/$owner/$repo/pulls.start'
 import { Route as OwnerRepoSettingsIndexRouteImport } from './routes/$owner/$repo/settings.index'
@@ -65,9 +63,7 @@ import { Route as OwnerRepoInfrastructureWorkspaceStateRouteImport } from './rou
 import { Route as OwnerRepoIssuesMilestonesIndexRouteImport } from './routes/$owner/$repo/issues.milestones.index'
 import { Route as OwnerRepoIssuesMilestonesNumberRouteImport } from './routes/$owner/$repo/issues.milestones.$number'
 import { Route as OwnerRepoPullsNumberIndexRouteImport } from './routes/$owner/$repo/pulls.$number.index'
-import { Route as OwnerRepoPullsNumberChecksRouteImport } from './routes/$owner/$repo/pulls.$number.checks'
-import { Route as OwnerRepoPullsNumberCommitsRouteImport } from './routes/$owner/$repo/pulls.$number.commits'
-import { Route as OwnerRepoPullsNumberFilesRouteImport } from './routes/$owner/$repo/pulls.$number.files'
+import { Route as OwnerRepoPullsNumberTabRouteImport } from './routes/$owner/$repo/pulls.$number.$tab'
 import { Route as OwnerRepoInfrastructureWorkspaceRunsRunIdRouteImport } from './routes/$owner/$repo/infrastructure.$workspace.runs.$runId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -85,11 +81,6 @@ const ExploreRoute = ExploreRouteImport.update({
   path: '/explore',
   getParentRoute: () => rootRouteImport,
 } as any)
-const IssuesRoute = IssuesRouteImport.update({
-  id: '/issues',
-  path: '/issues',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const MentionsRoute = MentionsRouteImport.update({
   id: '/mentions',
   path: '/mentions',
@@ -98,11 +89,6 @@ const MentionsRoute = MentionsRouteImport.update({
 const NewRoute = NewRouteImport.update({
   id: '/new',
   path: '/new',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const PullsRoute = PullsRouteImport.update({
-  id: '/pulls',
-  path: '/pulls',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReviewsRoute = ReviewsRouteImport.update({
@@ -140,11 +126,6 @@ const SettingsKeysRoute = SettingsKeysRouteImport.update({
   path: '/keys',
   getParentRoute: () => SettingsRoute,
 } as any)
-const SettingsReviewRoute = SettingsReviewRouteImport.update({
-  id: '/review',
-  path: '/review',
-  getParentRoute: () => SettingsRoute,
-} as any)
 const SettingsT3Route = SettingsT3RouteImport.update({
   id: '/t3',
   path: '/t3',
@@ -160,14 +141,14 @@ const OwnerRepoIndexRoute = OwnerRepoIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OwnerRepoRouteRoute,
 } as any)
-const OwnerRepoBranchesRoute = OwnerRepoBranchesRouteImport.update({
-  id: '/branches',
-  path: '/branches',
-  getParentRoute: () => OwnerRepoRouteRoute,
-} as any)
 const OwnerRepoSettingsRoute = OwnerRepoSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => OwnerRepoRouteRoute,
+} as any)
+const OwnerRepoStartRoute = OwnerRepoStartRouteImport.update({
+  id: '/start',
+  path: '/start',
   getParentRoute: () => OwnerRepoRouteRoute,
 } as any)
 const OwnerRepoTagsRoute = OwnerRepoTagsRouteImport.update({
@@ -183,6 +164,16 @@ const OwnerRepoBlameSplatRoute = OwnerRepoBlameSplatRouteImport.update({
 const OwnerRepoBlobSplatRoute = OwnerRepoBlobSplatRouteImport.update({
   id: '/blob/$',
   path: '/blob/$',
+  getParentRoute: () => OwnerRepoRouteRoute,
+} as any)
+const OwnerRepoBranchesIndexRoute = OwnerRepoBranchesIndexRouteImport.update({
+  id: '/branches/',
+  path: '/branches/',
+  getParentRoute: () => OwnerRepoRouteRoute,
+} as any)
+const OwnerRepoBranchesSplatRoute = OwnerRepoBranchesSplatRouteImport.update({
+  id: '/branches/$',
+  path: '/branches/$',
   getParentRoute: () => OwnerRepoRouteRoute,
 } as any)
 const OwnerRepoCiIndexRoute = OwnerRepoCiIndexRouteImport.update({
@@ -250,11 +241,6 @@ const OwnerRepoIssuesNewRoute = OwnerRepoIssuesNewRouteImport.update({
 const OwnerRepoPullsIndexRoute = OwnerRepoPullsIndexRouteImport.update({
   id: '/pulls/',
   path: '/pulls/',
-  getParentRoute: () => OwnerRepoRouteRoute,
-} as any)
-const OwnerRepoPullsNumberRoute = OwnerRepoPullsNumberRouteImport.update({
-  id: '/pulls/$number',
-  path: '/pulls/$number',
   getParentRoute: () => OwnerRepoRouteRoute,
 } as any)
 const OwnerRepoPullsNewRoute = OwnerRepoPullsNewRouteImport.update({
@@ -358,28 +344,15 @@ const OwnerRepoIssuesMilestonesNumberRoute =
   } as any)
 const OwnerRepoPullsNumberIndexRoute =
   OwnerRepoPullsNumberIndexRouteImport.update({
-    id: '/',
-    path: '/',
-    getParentRoute: () => OwnerRepoPullsNumberRoute,
+    id: '/pulls/$number/',
+    path: '/pulls/$number/',
+    getParentRoute: () => OwnerRepoRouteRoute,
   } as any)
-const OwnerRepoPullsNumberChecksRoute =
-  OwnerRepoPullsNumberChecksRouteImport.update({
-    id: '/checks',
-    path: '/checks',
-    getParentRoute: () => OwnerRepoPullsNumberRoute,
-  } as any)
-const OwnerRepoPullsNumberCommitsRoute =
-  OwnerRepoPullsNumberCommitsRouteImport.update({
-    id: '/commits',
-    path: '/commits',
-    getParentRoute: () => OwnerRepoPullsNumberRoute,
-  } as any)
-const OwnerRepoPullsNumberFilesRoute =
-  OwnerRepoPullsNumberFilesRouteImport.update({
-    id: '/files',
-    path: '/files',
-    getParentRoute: () => OwnerRepoPullsNumberRoute,
-  } as any)
+const OwnerRepoPullsNumberTabRoute = OwnerRepoPullsNumberTabRouteImport.update({
+  id: '/pulls/$number/$tab',
+  path: '/pulls/$number/$tab',
+  getParentRoute: () => OwnerRepoRouteRoute,
+} as any)
 const OwnerRepoInfrastructureWorkspaceRunsRunIdRoute =
   OwnerRepoInfrastructureWorkspaceRunsRunIdRouteImport.update({
     id: '/runs/$runId',
@@ -391,26 +364,24 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
   '/explore': typeof ExploreRoute
-  '/issues': typeof IssuesRoute
   '/mentions': typeof MentionsRoute
   '/new': typeof NewRoute
-  '/pulls': typeof PullsRoute
   '/reviews': typeof ReviewsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/$owner/$repo': typeof OwnerRepoRouteRouteWithChildren
   '/onboarding/username': typeof OnboardingUsernameRoute
   '/settings/keys': typeof SettingsKeysRoute
-  '/settings/review': typeof SettingsReviewRoute
   '/settings/t3': typeof SettingsT3Route
   '/settings/tokens': typeof SettingsTokensRoute
   '/$owner/': typeof OwnerIndexRoute
   '/settings/': typeof SettingsIndexRoute
-  '/$owner/$repo/branches': typeof OwnerRepoBranchesRoute
   '/$owner/$repo/settings': typeof OwnerRepoSettingsRouteWithChildren
+  '/$owner/$repo/start': typeof OwnerRepoStartRoute
   '/$owner/$repo/tags': typeof OwnerRepoTagsRoute
   '/$owner/$repo/': typeof OwnerRepoIndexRoute
   '/$owner/$repo/blame/$': typeof OwnerRepoBlameSplatRoute
   '/$owner/$repo/blob/$': typeof OwnerRepoBlobSplatRoute
+  '/$owner/$repo/branches/$': typeof OwnerRepoBranchesSplatRoute
   '/$owner/$repo/commit/$sha': typeof OwnerRepoCommitShaRoute
   '/$owner/$repo/commits/$': typeof OwnerRepoCommitsSplatRoute
   '/$owner/$repo/compare/$': typeof OwnerRepoCompareSplatRoute
@@ -418,7 +389,6 @@ export interface FileRoutesByFullPath {
   '/$owner/$repo/issues/$number': typeof OwnerRepoIssuesNumberRoute
   '/$owner/$repo/issues/labels': typeof OwnerRepoIssuesLabelsRoute
   '/$owner/$repo/issues/new': typeof OwnerRepoIssuesNewRoute
-  '/$owner/$repo/pulls/$number': typeof OwnerRepoPullsNumberRouteWithChildren
   '/$owner/$repo/pulls/new': typeof OwnerRepoPullsNewRoute
   '/$owner/$repo/pulls/start': typeof OwnerRepoPullsStartRoute
   '/$owner/$repo/settings/branches': typeof OwnerRepoSettingsBranchesRoute
@@ -429,6 +399,7 @@ export interface FileRoutesByFullPath {
   '/$owner/$repo/settings/milestones': typeof OwnerRepoSettingsMilestonesRoute
   '/$owner/$repo/settings/review': typeof OwnerRepoSettingsReviewRoute
   '/$owner/$repo/tree/$': typeof OwnerRepoTreeSplatRoute
+  '/$owner/$repo/branches/': typeof OwnerRepoBranchesIndexRoute
   '/$owner/$repo/ci/': typeof OwnerRepoCiIndexRoute
   '/$owner/$repo/commits/': typeof OwnerRepoCommitsIndexRoute
   '/$owner/$repo/compare/': typeof OwnerRepoCompareIndexRoute
@@ -441,9 +412,7 @@ export interface FileRoutesByFullPath {
   '/$owner/$repo/infrastructure/$workspace/settings': typeof OwnerRepoInfrastructureWorkspaceSettingsRoute
   '/$owner/$repo/infrastructure/$workspace/state': typeof OwnerRepoInfrastructureWorkspaceStateRoute
   '/$owner/$repo/issues/milestones/$number': typeof OwnerRepoIssuesMilestonesNumberRoute
-  '/$owner/$repo/pulls/$number/checks': typeof OwnerRepoPullsNumberChecksRoute
-  '/$owner/$repo/pulls/$number/commits': typeof OwnerRepoPullsNumberCommitsRoute
-  '/$owner/$repo/pulls/$number/files': typeof OwnerRepoPullsNumberFilesRoute
+  '/$owner/$repo/pulls/$number/$tab': typeof OwnerRepoPullsNumberTabRoute
   '/$owner/$repo/infrastructure/$workspace/': typeof OwnerRepoInfrastructureWorkspaceIndexRoute
   '/$owner/$repo/issues/milestones/': typeof OwnerRepoIssuesMilestonesIndexRoute
   '/$owner/$repo/pulls/$number/': typeof OwnerRepoPullsNumberIndexRoute
@@ -453,23 +422,21 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
   '/explore': typeof ExploreRoute
-  '/issues': typeof IssuesRoute
   '/mentions': typeof MentionsRoute
   '/new': typeof NewRoute
-  '/pulls': typeof PullsRoute
   '/reviews': typeof ReviewsRoute
   '/onboarding/username': typeof OnboardingUsernameRoute
   '/settings/keys': typeof SettingsKeysRoute
-  '/settings/review': typeof SettingsReviewRoute
   '/settings/t3': typeof SettingsT3Route
   '/settings/tokens': typeof SettingsTokensRoute
   '/$owner': typeof OwnerIndexRoute
   '/settings': typeof SettingsIndexRoute
-  '/$owner/$repo/branches': typeof OwnerRepoBranchesRoute
+  '/$owner/$repo/start': typeof OwnerRepoStartRoute
   '/$owner/$repo/tags': typeof OwnerRepoTagsRoute
   '/$owner/$repo': typeof OwnerRepoIndexRoute
   '/$owner/$repo/blame/$': typeof OwnerRepoBlameSplatRoute
   '/$owner/$repo/blob/$': typeof OwnerRepoBlobSplatRoute
+  '/$owner/$repo/branches/$': typeof OwnerRepoBranchesSplatRoute
   '/$owner/$repo/commit/$sha': typeof OwnerRepoCommitShaRoute
   '/$owner/$repo/commits/$': typeof OwnerRepoCommitsSplatRoute
   '/$owner/$repo/compare/$': typeof OwnerRepoCompareSplatRoute
@@ -486,6 +453,7 @@ export interface FileRoutesByTo {
   '/$owner/$repo/settings/milestones': typeof OwnerRepoSettingsMilestonesRoute
   '/$owner/$repo/settings/review': typeof OwnerRepoSettingsReviewRoute
   '/$owner/$repo/tree/$': typeof OwnerRepoTreeSplatRoute
+  '/$owner/$repo/branches': typeof OwnerRepoBranchesIndexRoute
   '/$owner/$repo/ci': typeof OwnerRepoCiIndexRoute
   '/$owner/$repo/commits': typeof OwnerRepoCommitsIndexRoute
   '/$owner/$repo/compare': typeof OwnerRepoCompareIndexRoute
@@ -498,9 +466,7 @@ export interface FileRoutesByTo {
   '/$owner/$repo/infrastructure/$workspace/settings': typeof OwnerRepoInfrastructureWorkspaceSettingsRoute
   '/$owner/$repo/infrastructure/$workspace/state': typeof OwnerRepoInfrastructureWorkspaceStateRoute
   '/$owner/$repo/issues/milestones/$number': typeof OwnerRepoIssuesMilestonesNumberRoute
-  '/$owner/$repo/pulls/$number/checks': typeof OwnerRepoPullsNumberChecksRoute
-  '/$owner/$repo/pulls/$number/commits': typeof OwnerRepoPullsNumberCommitsRoute
-  '/$owner/$repo/pulls/$number/files': typeof OwnerRepoPullsNumberFilesRoute
+  '/$owner/$repo/pulls/$number/$tab': typeof OwnerRepoPullsNumberTabRoute
   '/$owner/$repo/infrastructure/$workspace': typeof OwnerRepoInfrastructureWorkspaceIndexRoute
   '/$owner/$repo/issues/milestones': typeof OwnerRepoIssuesMilestonesIndexRoute
   '/$owner/$repo/pulls/$number': typeof OwnerRepoPullsNumberIndexRoute
@@ -511,26 +477,24 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/changes': typeof ChangesRoute
   '/explore': typeof ExploreRoute
-  '/issues': typeof IssuesRoute
   '/mentions': typeof MentionsRoute
   '/new': typeof NewRoute
-  '/pulls': typeof PullsRoute
   '/reviews': typeof ReviewsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/$owner/$repo': typeof OwnerRepoRouteRouteWithChildren
   '/onboarding/username': typeof OnboardingUsernameRoute
   '/settings/keys': typeof SettingsKeysRoute
-  '/settings/review': typeof SettingsReviewRoute
   '/settings/t3': typeof SettingsT3Route
   '/settings/tokens': typeof SettingsTokensRoute
   '/$owner/': typeof OwnerIndexRoute
   '/settings/': typeof SettingsIndexRoute
-  '/$owner/$repo/branches': typeof OwnerRepoBranchesRoute
   '/$owner/$repo/settings': typeof OwnerRepoSettingsRouteWithChildren
+  '/$owner/$repo/start': typeof OwnerRepoStartRoute
   '/$owner/$repo/tags': typeof OwnerRepoTagsRoute
   '/$owner/$repo/': typeof OwnerRepoIndexRoute
   '/$owner/$repo/blame/$': typeof OwnerRepoBlameSplatRoute
   '/$owner/$repo/blob/$': typeof OwnerRepoBlobSplatRoute
+  '/$owner/$repo/branches/$': typeof OwnerRepoBranchesSplatRoute
   '/$owner/$repo/commit/$sha': typeof OwnerRepoCommitShaRoute
   '/$owner/$repo/commits/$': typeof OwnerRepoCommitsSplatRoute
   '/$owner/$repo/compare/$': typeof OwnerRepoCompareSplatRoute
@@ -538,7 +502,6 @@ export interface FileRoutesById {
   '/$owner/$repo/issues/$number': typeof OwnerRepoIssuesNumberRoute
   '/$owner/$repo/issues/labels': typeof OwnerRepoIssuesLabelsRoute
   '/$owner/$repo/issues/new': typeof OwnerRepoIssuesNewRoute
-  '/$owner/$repo/pulls/$number': typeof OwnerRepoPullsNumberRouteWithChildren
   '/$owner/$repo/pulls/new': typeof OwnerRepoPullsNewRoute
   '/$owner/$repo/pulls/start': typeof OwnerRepoPullsStartRoute
   '/$owner/$repo/settings/branches': typeof OwnerRepoSettingsBranchesRoute
@@ -549,6 +512,7 @@ export interface FileRoutesById {
   '/$owner/$repo/settings/milestones': typeof OwnerRepoSettingsMilestonesRoute
   '/$owner/$repo/settings/review': typeof OwnerRepoSettingsReviewRoute
   '/$owner/$repo/tree/$': typeof OwnerRepoTreeSplatRoute
+  '/$owner/$repo/branches/': typeof OwnerRepoBranchesIndexRoute
   '/$owner/$repo/ci/': typeof OwnerRepoCiIndexRoute
   '/$owner/$repo/commits/': typeof OwnerRepoCommitsIndexRoute
   '/$owner/$repo/compare/': typeof OwnerRepoCompareIndexRoute
@@ -561,9 +525,7 @@ export interface FileRoutesById {
   '/$owner/$repo/infrastructure/$workspace/settings': typeof OwnerRepoInfrastructureWorkspaceSettingsRoute
   '/$owner/$repo/infrastructure/$workspace/state': typeof OwnerRepoInfrastructureWorkspaceStateRoute
   '/$owner/$repo/issues/milestones/$number': typeof OwnerRepoIssuesMilestonesNumberRoute
-  '/$owner/$repo/pulls/$number/checks': typeof OwnerRepoPullsNumberChecksRoute
-  '/$owner/$repo/pulls/$number/commits': typeof OwnerRepoPullsNumberCommitsRoute
-  '/$owner/$repo/pulls/$number/files': typeof OwnerRepoPullsNumberFilesRoute
+  '/$owner/$repo/pulls/$number/$tab': typeof OwnerRepoPullsNumberTabRoute
   '/$owner/$repo/infrastructure/$workspace/': typeof OwnerRepoInfrastructureWorkspaceIndexRoute
   '/$owner/$repo/issues/milestones/': typeof OwnerRepoIssuesMilestonesIndexRoute
   '/$owner/$repo/pulls/$number/': typeof OwnerRepoPullsNumberIndexRoute
@@ -575,26 +537,24 @@ export interface FileRouteTypes {
     | '/'
     | '/changes'
     | '/explore'
-    | '/issues'
     | '/mentions'
     | '/new'
-    | '/pulls'
     | '/reviews'
     | '/settings'
     | '/$owner/$repo'
     | '/onboarding/username'
     | '/settings/keys'
-    | '/settings/review'
     | '/settings/t3'
     | '/settings/tokens'
     | '/$owner/'
     | '/settings/'
-    | '/$owner/$repo/branches'
     | '/$owner/$repo/settings'
+    | '/$owner/$repo/start'
     | '/$owner/$repo/tags'
     | '/$owner/$repo/'
     | '/$owner/$repo/blame/$'
     | '/$owner/$repo/blob/$'
+    | '/$owner/$repo/branches/$'
     | '/$owner/$repo/commit/$sha'
     | '/$owner/$repo/commits/$'
     | '/$owner/$repo/compare/$'
@@ -602,7 +562,6 @@ export interface FileRouteTypes {
     | '/$owner/$repo/issues/$number'
     | '/$owner/$repo/issues/labels'
     | '/$owner/$repo/issues/new'
-    | '/$owner/$repo/pulls/$number'
     | '/$owner/$repo/pulls/new'
     | '/$owner/$repo/pulls/start'
     | '/$owner/$repo/settings/branches'
@@ -613,6 +572,7 @@ export interface FileRouteTypes {
     | '/$owner/$repo/settings/milestones'
     | '/$owner/$repo/settings/review'
     | '/$owner/$repo/tree/$'
+    | '/$owner/$repo/branches/'
     | '/$owner/$repo/ci/'
     | '/$owner/$repo/commits/'
     | '/$owner/$repo/compare/'
@@ -625,9 +585,7 @@ export interface FileRouteTypes {
     | '/$owner/$repo/infrastructure/$workspace/settings'
     | '/$owner/$repo/infrastructure/$workspace/state'
     | '/$owner/$repo/issues/milestones/$number'
-    | '/$owner/$repo/pulls/$number/checks'
-    | '/$owner/$repo/pulls/$number/commits'
-    | '/$owner/$repo/pulls/$number/files'
+    | '/$owner/$repo/pulls/$number/$tab'
     | '/$owner/$repo/infrastructure/$workspace/'
     | '/$owner/$repo/issues/milestones/'
     | '/$owner/$repo/pulls/$number/'
@@ -637,23 +595,21 @@ export interface FileRouteTypes {
     | '/'
     | '/changes'
     | '/explore'
-    | '/issues'
     | '/mentions'
     | '/new'
-    | '/pulls'
     | '/reviews'
     | '/onboarding/username'
     | '/settings/keys'
-    | '/settings/review'
     | '/settings/t3'
     | '/settings/tokens'
     | '/$owner'
     | '/settings'
-    | '/$owner/$repo/branches'
+    | '/$owner/$repo/start'
     | '/$owner/$repo/tags'
     | '/$owner/$repo'
     | '/$owner/$repo/blame/$'
     | '/$owner/$repo/blob/$'
+    | '/$owner/$repo/branches/$'
     | '/$owner/$repo/commit/$sha'
     | '/$owner/$repo/commits/$'
     | '/$owner/$repo/compare/$'
@@ -670,6 +626,7 @@ export interface FileRouteTypes {
     | '/$owner/$repo/settings/milestones'
     | '/$owner/$repo/settings/review'
     | '/$owner/$repo/tree/$'
+    | '/$owner/$repo/branches'
     | '/$owner/$repo/ci'
     | '/$owner/$repo/commits'
     | '/$owner/$repo/compare'
@@ -682,9 +639,7 @@ export interface FileRouteTypes {
     | '/$owner/$repo/infrastructure/$workspace/settings'
     | '/$owner/$repo/infrastructure/$workspace/state'
     | '/$owner/$repo/issues/milestones/$number'
-    | '/$owner/$repo/pulls/$number/checks'
-    | '/$owner/$repo/pulls/$number/commits'
-    | '/$owner/$repo/pulls/$number/files'
+    | '/$owner/$repo/pulls/$number/$tab'
     | '/$owner/$repo/infrastructure/$workspace'
     | '/$owner/$repo/issues/milestones'
     | '/$owner/$repo/pulls/$number'
@@ -694,26 +649,24 @@ export interface FileRouteTypes {
     | '/'
     | '/changes'
     | '/explore'
-    | '/issues'
     | '/mentions'
     | '/new'
-    | '/pulls'
     | '/reviews'
     | '/settings'
     | '/$owner/$repo'
     | '/onboarding/username'
     | '/settings/keys'
-    | '/settings/review'
     | '/settings/t3'
     | '/settings/tokens'
     | '/$owner/'
     | '/settings/'
-    | '/$owner/$repo/branches'
     | '/$owner/$repo/settings'
+    | '/$owner/$repo/start'
     | '/$owner/$repo/tags'
     | '/$owner/$repo/'
     | '/$owner/$repo/blame/$'
     | '/$owner/$repo/blob/$'
+    | '/$owner/$repo/branches/$'
     | '/$owner/$repo/commit/$sha'
     | '/$owner/$repo/commits/$'
     | '/$owner/$repo/compare/$'
@@ -721,7 +674,6 @@ export interface FileRouteTypes {
     | '/$owner/$repo/issues/$number'
     | '/$owner/$repo/issues/labels'
     | '/$owner/$repo/issues/new'
-    | '/$owner/$repo/pulls/$number'
     | '/$owner/$repo/pulls/new'
     | '/$owner/$repo/pulls/start'
     | '/$owner/$repo/settings/branches'
@@ -732,6 +684,7 @@ export interface FileRouteTypes {
     | '/$owner/$repo/settings/milestones'
     | '/$owner/$repo/settings/review'
     | '/$owner/$repo/tree/$'
+    | '/$owner/$repo/branches/'
     | '/$owner/$repo/ci/'
     | '/$owner/$repo/commits/'
     | '/$owner/$repo/compare/'
@@ -744,9 +697,7 @@ export interface FileRouteTypes {
     | '/$owner/$repo/infrastructure/$workspace/settings'
     | '/$owner/$repo/infrastructure/$workspace/state'
     | '/$owner/$repo/issues/milestones/$number'
-    | '/$owner/$repo/pulls/$number/checks'
-    | '/$owner/$repo/pulls/$number/commits'
-    | '/$owner/$repo/pulls/$number/files'
+    | '/$owner/$repo/pulls/$number/$tab'
     | '/$owner/$repo/infrastructure/$workspace/'
     | '/$owner/$repo/issues/milestones/'
     | '/$owner/$repo/pulls/$number/'
@@ -757,10 +708,8 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ChangesRoute: typeof ChangesRoute
   ExploreRoute: typeof ExploreRoute
-  IssuesRoute: typeof IssuesRoute
   MentionsRoute: typeof MentionsRoute
   NewRoute: typeof NewRoute
-  PullsRoute: typeof PullsRoute
   ReviewsRoute: typeof ReviewsRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   OwnerRepoRouteRoute: typeof OwnerRepoRouteRouteWithChildren
@@ -791,13 +740,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExploreRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/issues': {
-      id: '/issues'
-      path: '/issues'
-      fullPath: '/issues'
-      preLoaderRoute: typeof IssuesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/mentions': {
       id: '/mentions'
       path: '/mentions'
@@ -810,13 +752,6 @@ declare module '@tanstack/react-router' {
       path: '/new'
       fullPath: '/new'
       preLoaderRoute: typeof NewRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/pulls': {
-      id: '/pulls'
-      path: '/pulls'
-      fullPath: '/pulls'
-      preLoaderRoute: typeof PullsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reviews': {
@@ -868,13 +803,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsKeysRouteImport
       parentRoute: typeof SettingsRoute
     }
-    '/settings/review': {
-      id: '/settings/review'
-      path: '/review'
-      fullPath: '/settings/review'
-      preLoaderRoute: typeof SettingsReviewRouteImport
-      parentRoute: typeof SettingsRoute
-    }
     '/settings/t3': {
       id: '/settings/t3'
       path: '/t3'
@@ -896,18 +824,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OwnerRepoIndexRouteImport
       parentRoute: typeof OwnerRepoRouteRoute
     }
-    '/$owner/$repo/branches': {
-      id: '/$owner/$repo/branches'
-      path: '/branches'
-      fullPath: '/$owner/$repo/branches'
-      preLoaderRoute: typeof OwnerRepoBranchesRouteImport
-      parentRoute: typeof OwnerRepoRouteRoute
-    }
     '/$owner/$repo/settings': {
       id: '/$owner/$repo/settings'
       path: '/settings'
       fullPath: '/$owner/$repo/settings'
       preLoaderRoute: typeof OwnerRepoSettingsRouteImport
+      parentRoute: typeof OwnerRepoRouteRoute
+    }
+    '/$owner/$repo/start': {
+      id: '/$owner/$repo/start'
+      path: '/start'
+      fullPath: '/$owner/$repo/start'
+      preLoaderRoute: typeof OwnerRepoStartRouteImport
       parentRoute: typeof OwnerRepoRouteRoute
     }
     '/$owner/$repo/tags': {
@@ -929,6 +857,20 @@ declare module '@tanstack/react-router' {
       path: '/blob/$'
       fullPath: '/$owner/$repo/blob/$'
       preLoaderRoute: typeof OwnerRepoBlobSplatRouteImport
+      parentRoute: typeof OwnerRepoRouteRoute
+    }
+    '/$owner/$repo/branches/': {
+      id: '/$owner/$repo/branches/'
+      path: '/branches'
+      fullPath: '/$owner/$repo/branches/'
+      preLoaderRoute: typeof OwnerRepoBranchesIndexRouteImport
+      parentRoute: typeof OwnerRepoRouteRoute
+    }
+    '/$owner/$repo/branches/$': {
+      id: '/$owner/$repo/branches/$'
+      path: '/branches/$'
+      fullPath: '/$owner/$repo/branches/$'
+      preLoaderRoute: typeof OwnerRepoBranchesSplatRouteImport
       parentRoute: typeof OwnerRepoRouteRoute
     }
     '/$owner/$repo/ci/': {
@@ -1020,13 +962,6 @@ declare module '@tanstack/react-router' {
       path: '/pulls'
       fullPath: '/$owner/$repo/pulls/'
       preLoaderRoute: typeof OwnerRepoPullsIndexRouteImport
-      parentRoute: typeof OwnerRepoRouteRoute
-    }
-    '/$owner/$repo/pulls/$number': {
-      id: '/$owner/$repo/pulls/$number'
-      path: '/pulls/$number'
-      fullPath: '/$owner/$repo/pulls/$number'
-      preLoaderRoute: typeof OwnerRepoPullsNumberRouteImport
       parentRoute: typeof OwnerRepoRouteRoute
     }
     '/$owner/$repo/pulls/new': {
@@ -1157,31 +1092,17 @@ declare module '@tanstack/react-router' {
     }
     '/$owner/$repo/pulls/$number/': {
       id: '/$owner/$repo/pulls/$number/'
-      path: '/'
+      path: '/pulls/$number'
       fullPath: '/$owner/$repo/pulls/$number/'
       preLoaderRoute: typeof OwnerRepoPullsNumberIndexRouteImport
-      parentRoute: typeof OwnerRepoPullsNumberRoute
+      parentRoute: typeof OwnerRepoRouteRoute
     }
-    '/$owner/$repo/pulls/$number/checks': {
-      id: '/$owner/$repo/pulls/$number/checks'
-      path: '/checks'
-      fullPath: '/$owner/$repo/pulls/$number/checks'
-      preLoaderRoute: typeof OwnerRepoPullsNumberChecksRouteImport
-      parentRoute: typeof OwnerRepoPullsNumberRoute
-    }
-    '/$owner/$repo/pulls/$number/commits': {
-      id: '/$owner/$repo/pulls/$number/commits'
-      path: '/commits'
-      fullPath: '/$owner/$repo/pulls/$number/commits'
-      preLoaderRoute: typeof OwnerRepoPullsNumberCommitsRouteImport
-      parentRoute: typeof OwnerRepoPullsNumberRoute
-    }
-    '/$owner/$repo/pulls/$number/files': {
-      id: '/$owner/$repo/pulls/$number/files'
-      path: '/files'
-      fullPath: '/$owner/$repo/pulls/$number/files'
-      preLoaderRoute: typeof OwnerRepoPullsNumberFilesRouteImport
-      parentRoute: typeof OwnerRepoPullsNumberRoute
+    '/$owner/$repo/pulls/$number/$tab': {
+      id: '/$owner/$repo/pulls/$number/$tab'
+      path: '/pulls/$number/$tab'
+      fullPath: '/$owner/$repo/pulls/$number/$tab'
+      preLoaderRoute: typeof OwnerRepoPullsNumberTabRouteImport
+      parentRoute: typeof OwnerRepoRouteRoute
     }
     '/$owner/$repo/infrastructure/$workspace/runs/$runId': {
       id: '/$owner/$repo/infrastructure/$workspace/runs/$runId'
@@ -1195,7 +1116,6 @@ declare module '@tanstack/react-router' {
 
 interface SettingsRouteChildren {
   SettingsKeysRoute: typeof SettingsKeysRoute
-  SettingsReviewRoute: typeof SettingsReviewRoute
   SettingsT3Route: typeof SettingsT3Route
   SettingsTokensRoute: typeof SettingsTokensRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -1203,7 +1123,6 @@ interface SettingsRouteChildren {
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsKeysRoute: SettingsKeysRoute,
-  SettingsReviewRoute: SettingsReviewRoute,
   SettingsT3Route: SettingsT3Route,
   SettingsTokensRoute: SettingsTokensRoute,
   SettingsIndexRoute: SettingsIndexRoute,
@@ -1265,30 +1184,14 @@ const OwnerRepoInfrastructureWorkspaceRouteWithChildren =
     OwnerRepoInfrastructureWorkspaceRouteChildren,
   )
 
-interface OwnerRepoPullsNumberRouteChildren {
-  OwnerRepoPullsNumberChecksRoute: typeof OwnerRepoPullsNumberChecksRoute
-  OwnerRepoPullsNumberCommitsRoute: typeof OwnerRepoPullsNumberCommitsRoute
-  OwnerRepoPullsNumberFilesRoute: typeof OwnerRepoPullsNumberFilesRoute
-  OwnerRepoPullsNumberIndexRoute: typeof OwnerRepoPullsNumberIndexRoute
-}
-
-const OwnerRepoPullsNumberRouteChildren: OwnerRepoPullsNumberRouteChildren = {
-  OwnerRepoPullsNumberChecksRoute: OwnerRepoPullsNumberChecksRoute,
-  OwnerRepoPullsNumberCommitsRoute: OwnerRepoPullsNumberCommitsRoute,
-  OwnerRepoPullsNumberFilesRoute: OwnerRepoPullsNumberFilesRoute,
-  OwnerRepoPullsNumberIndexRoute: OwnerRepoPullsNumberIndexRoute,
-}
-
-const OwnerRepoPullsNumberRouteWithChildren =
-  OwnerRepoPullsNumberRoute._addFileChildren(OwnerRepoPullsNumberRouteChildren)
-
 interface OwnerRepoRouteRouteChildren {
-  OwnerRepoBranchesRoute: typeof OwnerRepoBranchesRoute
   OwnerRepoSettingsRoute: typeof OwnerRepoSettingsRouteWithChildren
+  OwnerRepoStartRoute: typeof OwnerRepoStartRoute
   OwnerRepoTagsRoute: typeof OwnerRepoTagsRoute
   OwnerRepoIndexRoute: typeof OwnerRepoIndexRoute
   OwnerRepoBlameSplatRoute: typeof OwnerRepoBlameSplatRoute
   OwnerRepoBlobSplatRoute: typeof OwnerRepoBlobSplatRoute
+  OwnerRepoBranchesSplatRoute: typeof OwnerRepoBranchesSplatRoute
   OwnerRepoCommitShaRoute: typeof OwnerRepoCommitShaRoute
   OwnerRepoCommitsSplatRoute: typeof OwnerRepoCommitsSplatRoute
   OwnerRepoCompareSplatRoute: typeof OwnerRepoCompareSplatRoute
@@ -1296,10 +1199,10 @@ interface OwnerRepoRouteRouteChildren {
   OwnerRepoIssuesNumberRoute: typeof OwnerRepoIssuesNumberRoute
   OwnerRepoIssuesLabelsRoute: typeof OwnerRepoIssuesLabelsRoute
   OwnerRepoIssuesNewRoute: typeof OwnerRepoIssuesNewRoute
-  OwnerRepoPullsNumberRoute: typeof OwnerRepoPullsNumberRouteWithChildren
   OwnerRepoPullsNewRoute: typeof OwnerRepoPullsNewRoute
   OwnerRepoPullsStartRoute: typeof OwnerRepoPullsStartRoute
   OwnerRepoTreeSplatRoute: typeof OwnerRepoTreeSplatRoute
+  OwnerRepoBranchesIndexRoute: typeof OwnerRepoBranchesIndexRoute
   OwnerRepoCiIndexRoute: typeof OwnerRepoCiIndexRoute
   OwnerRepoCommitsIndexRoute: typeof OwnerRepoCommitsIndexRoute
   OwnerRepoCompareIndexRoute: typeof OwnerRepoCompareIndexRoute
@@ -1308,16 +1211,19 @@ interface OwnerRepoRouteRouteChildren {
   OwnerRepoPullsIndexRoute: typeof OwnerRepoPullsIndexRoute
   OwnerRepoCiRunsRunIdRoute: typeof OwnerRepoCiRunsRunIdRoute
   OwnerRepoIssuesMilestonesNumberRoute: typeof OwnerRepoIssuesMilestonesNumberRoute
+  OwnerRepoPullsNumberTabRoute: typeof OwnerRepoPullsNumberTabRoute
   OwnerRepoIssuesMilestonesIndexRoute: typeof OwnerRepoIssuesMilestonesIndexRoute
+  OwnerRepoPullsNumberIndexRoute: typeof OwnerRepoPullsNumberIndexRoute
 }
 
 const OwnerRepoRouteRouteChildren: OwnerRepoRouteRouteChildren = {
-  OwnerRepoBranchesRoute: OwnerRepoBranchesRoute,
   OwnerRepoSettingsRoute: OwnerRepoSettingsRouteWithChildren,
+  OwnerRepoStartRoute: OwnerRepoStartRoute,
   OwnerRepoTagsRoute: OwnerRepoTagsRoute,
   OwnerRepoIndexRoute: OwnerRepoIndexRoute,
   OwnerRepoBlameSplatRoute: OwnerRepoBlameSplatRoute,
   OwnerRepoBlobSplatRoute: OwnerRepoBlobSplatRoute,
+  OwnerRepoBranchesSplatRoute: OwnerRepoBranchesSplatRoute,
   OwnerRepoCommitShaRoute: OwnerRepoCommitShaRoute,
   OwnerRepoCommitsSplatRoute: OwnerRepoCommitsSplatRoute,
   OwnerRepoCompareSplatRoute: OwnerRepoCompareSplatRoute,
@@ -1326,10 +1232,10 @@ const OwnerRepoRouteRouteChildren: OwnerRepoRouteRouteChildren = {
   OwnerRepoIssuesNumberRoute: OwnerRepoIssuesNumberRoute,
   OwnerRepoIssuesLabelsRoute: OwnerRepoIssuesLabelsRoute,
   OwnerRepoIssuesNewRoute: OwnerRepoIssuesNewRoute,
-  OwnerRepoPullsNumberRoute: OwnerRepoPullsNumberRouteWithChildren,
   OwnerRepoPullsNewRoute: OwnerRepoPullsNewRoute,
   OwnerRepoPullsStartRoute: OwnerRepoPullsStartRoute,
   OwnerRepoTreeSplatRoute: OwnerRepoTreeSplatRoute,
+  OwnerRepoBranchesIndexRoute: OwnerRepoBranchesIndexRoute,
   OwnerRepoCiIndexRoute: OwnerRepoCiIndexRoute,
   OwnerRepoCommitsIndexRoute: OwnerRepoCommitsIndexRoute,
   OwnerRepoCompareIndexRoute: OwnerRepoCompareIndexRoute,
@@ -1338,7 +1244,9 @@ const OwnerRepoRouteRouteChildren: OwnerRepoRouteRouteChildren = {
   OwnerRepoPullsIndexRoute: OwnerRepoPullsIndexRoute,
   OwnerRepoCiRunsRunIdRoute: OwnerRepoCiRunsRunIdRoute,
   OwnerRepoIssuesMilestonesNumberRoute: OwnerRepoIssuesMilestonesNumberRoute,
+  OwnerRepoPullsNumberTabRoute: OwnerRepoPullsNumberTabRoute,
   OwnerRepoIssuesMilestonesIndexRoute: OwnerRepoIssuesMilestonesIndexRoute,
+  OwnerRepoPullsNumberIndexRoute: OwnerRepoPullsNumberIndexRoute,
 }
 
 const OwnerRepoRouteRouteWithChildren = OwnerRepoRouteRoute._addFileChildren(
@@ -1349,10 +1257,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ChangesRoute: ChangesRoute,
   ExploreRoute: ExploreRoute,
-  IssuesRoute: IssuesRoute,
   MentionsRoute: MentionsRoute,
   NewRoute: NewRoute,
-  PullsRoute: PullsRoute,
   ReviewsRoute: ReviewsRoute,
   SettingsRoute: SettingsRouteWithChildren,
   OwnerRepoRouteRoute: OwnerRepoRouteRouteWithChildren,

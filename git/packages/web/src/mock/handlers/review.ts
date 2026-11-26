@@ -1,7 +1,7 @@
 /**
  * Agent work review: versions and their diffs, traces, findings,
  * instructions, the agent behind a branch, the repository's review settings,
- * the viewer's inbox and mode, and their T3 Code environments.
+ * the viewer's inbox, and their T3 Code environments.
  *
  * The mock has an agent of its own: an instruction sent to a branch that has
  * an agent is delivered a few seconds later and answered by a new version a
@@ -43,10 +43,8 @@ import {
   isOverridden,
   presentFinding,
   presentSettings,
-  reviewMode,
   reviewOf,
   reviewSettingsOf,
-  setReviewMode,
   syncVersions,
   t3Environments,
   tallyOf,
@@ -57,12 +55,13 @@ import {
 import { newId } from "../settings-data";
 import {
   commitsOf,
-  findThread,
+  findPage,
+  pageKeyOf,
   mergeabilityOf,
   refsOf,
   syncCounts,
   threadsOf,
-  toPull,
+  toBranchPage,
   touch,
   type ThreadRecord,
 } from "../threads-data";
@@ -90,7 +89,7 @@ function seedThreadVersions(repo: RepositoryRecord, thread: ThreadRecord, state:
   if (seededThreads.has(thread)) return;
   seededThreads.add(thread);
   if (`${repo.owner.slug}/${repo.name}` !== "acme/infra" || thread.number !== 12) return;
-  for (const item of thread.pull!.threads) {
+  for (const item of thread.page!.threads) {
     item.version = item.path.startsWith("modules/") ? 1 : item.path.startsWith("docs/") ? 3 : 2;
     item.answeredInVersion = item.outdated ? 2 : null;
     const sent = state.instructions.find(
@@ -108,9 +107,9 @@ function pushVersion(
   instruction: Mutable<Instruction> | null,
   note: string,
 ): void {
-  const pull = thread.pull!;
+  const page = thread.page!;
   const fx = gitOf(repo);
-  const head = fx.branches[pull.headRef];
+  const head = fx.branches[page.headRef];
   if (head === undefined) return;
   const files = new Map(flatten(fx, head));
   const write = (path: string, text: string) => {
@@ -134,7 +133,7 @@ function pushVersion(
     write(touched, before.replace(target.fix.find, target.fix.find + target.fix.insert));
     message = `Fix: ${target.title.toLowerCase()}`;
   } else if (instruction === null) {
-    touched = `docs/${pull.headRef.split("/").pop() ?? "work"}.md`;
+    touched = `docs/${page.headRef.split("/").pop() ?? "work"}.md`;
     write(touched, `# ${thread.title}\n\n${note}\n`);
     message = thread.title;
   } else {
@@ -145,7 +144,7 @@ function pushVersion(
 
   const who = state.agent?.connectedBy ?? thread.author ?? requireUser();
   const oid = writeCommit(fx, files, [head], message, who);
-  fx.branches[pull.headRef] = oid;
+  fx.branches[page.headRef] = oid;
   const at = now();
   thread.items.push({
     type: "commits",
@@ -170,7 +169,7 @@ function pushVersion(
     },
     author: who,
     agent,
-    branch: pull.headRef,
+    branch: page.headRef,
     version: made.number,
     createdAt: at,
   });
@@ -216,11 +215,11 @@ function blankRun(
   };
 }
 
-/** Brings a pull request's review state up to the present: versions, the agent's work, review runs. */
+/** Brings a branch page's review state up to the present: versions, the agent's work, review runs. */
 function advance(repo: RepositoryRecord, thread: ThreadRecord, state: ReviewState): void {
-  const pull = thread.pull!;
+  const page = thread.page!;
   seedThreadVersions(repo, thread, state);
-  const refs = refsOf(repo, pull);
+  const refs = refsOf(repo, page);
   if (commitsOf(refs).length > 0) {
     syncVersions(state, {
       oid: refs.headOid,
@@ -251,7 +250,7 @@ function advance(repo: RepositoryRecord, thread: ThreadRecord, state: ReviewStat
         evidence: null,
         author: state.agent.connectedBy,
         agent: identityOf(state.agent),
-        branch: pull.headRef,
+        branch: page.headRef,
         version: null,
         createdAt: now(),
       });
@@ -279,12 +278,12 @@ function advance(repo: RepositoryRecord, thread: ThreadRecord, state: ReviewStat
   }
 }
 
-function open(owner: string, name: string, number: number) {
+function open(owner: string, name: string, key: string) {
   const repo = findRepository(owner, name);
-  const thread = findThread(repo, number, true);
-  const state = reviewOf(repo, number);
+  const thread = findPage(repo, key);
+  const state = reviewOf(repo, thread.number);
   advance(repo, thread, state);
-  return { repo, thread, pull: thread.pull!, state, fx: gitOf(repo) };
+  return { repo, thread, page: thread.page!, state, fx: gitOf(repo) };
 }
 
 const canWrite = (repo: RepositoryRecord): boolean =>
@@ -297,9 +296,9 @@ function requireWrite(repo: RepositoryRecord) {
 }
 
 function baseOf(repo: RepositoryRecord, thread: ThreadRecord, tipOid: string): string | null {
-  const pull = thread.pull!;
+  const page = thread.page!;
   const fx = gitOf(repo);
-  const base = pull.frozenBaseOid ?? fx.branches[pull.baseRef];
+  const base = page.frozenBaseOid ?? fx.branches[page.baseRef];
   return base === undefined ? null : mergeBase(fx, base, tipOid);
 }
 
@@ -331,7 +330,7 @@ function presentVersion(
     stats: statsOf(diffCommits(fx, baseOid, version.tipOid, { hunks: false })),
     counts: {
       comments: thread
-        .pull!.threads.filter((item) => item.version === version.number)
+        .page!.threads.filter((item) => item.version === version.number)
         .reduce((sum, item) => sum + item.comments.filter((c) => !c.pending).length, 0),
       findings: state.findings.filter((item) => item.version === version.number).length,
       traceEntries,
@@ -359,7 +358,7 @@ function branchState(
   thread: ThreadRecord,
   state: ReviewState,
 ): BranchPageState {
-  const pull = thread.pull!;
+  const page = thread.page!;
   const mergeability = mergeabilityOf(repo, thread);
   const latest = state.versions[state.versions.length - 1]?.number ?? null;
   const findings = tallyOf(state);
@@ -374,7 +373,7 @@ function branchState(
   const checks = mergeability.checks.state;
   const settings = reviewSettingsOf(repo);
   const unreviewed = latest === null ? 0 : latest - (state.reviewed ?? 0);
-  const name: BranchPageState["state"] = pull.merged
+  const name: BranchPageState["state"] = page.merged
     ? "merged"
     : thread.state === "closed"
       ? "closed"
@@ -426,7 +425,7 @@ function instructionAt(state: ReviewState, id: string): Mutable<Instruction> {
   return found;
 }
 
-/** Entries recorded for a branch no pull request has yet. */
+/** Entries recorded for a branch no page has yet. */
 const looseTraces = new Map<string, Array<Mutable<TraceEntry>>>();
 
 const slug = (text: string): string =>
@@ -446,20 +445,20 @@ function environmentAt(id: string) {
 export default defineMockHandlers({
   versions: {
     list: ({ params }) => {
-      const { repo, thread, pull, state } = open(params.owner, params.repo, params.number);
+      const { repo, thread, page, state } = open(params.owner, params.repo, params.branch);
       return {
-        branch: pull.headRef,
+        branch: page.headRef,
         versions: state.versions.map((item) => presentVersion(repo, thread, state, item)),
         latest: state.versions[state.versions.length - 1]?.number ?? null,
         viewerReviewed: state.reviewed,
       };
     },
     get: ({ params }) => {
-      const { repo, thread, state } = open(params.owner, params.repo, params.number);
+      const { repo, thread, state } = open(params.owner, params.repo, params.branch);
       return presentVersion(repo, thread, state, versionAt(state, params.version));
     },
     diff: ({ params, query }) => {
-      const { repo, thread, state, fx } = open(params.owner, params.repo, params.number);
+      const { repo, thread, state, fx } = open(params.owner, params.repo, params.branch);
       const to = versionAt(state, params.version);
       const asked = query?.from ?? "base";
       const fromNumber =
@@ -483,13 +482,13 @@ export default defineMockHandlers({
         context: query?.context,
         path: query?.path,
       });
-      const page = paginate(all, query);
+      const slice = paginate(all, query);
       return {
         baseOid,
         headOid: to.tipOid,
         stats: statsOf(all.map(summaryOf)),
-        files: page.items,
-        nextCursor: page.nextCursor,
+        files: slice.items,
+        nextCursor: slice.nextCursor,
         kind: from === null ? ("whole" as const) : ("interdiff" as const),
         from: from?.number ?? null,
         to: to.number,
@@ -504,13 +503,13 @@ export default defineMockHandlers({
     },
     markReviewed: ({ params }) => {
       requireUser();
-      const { state } = open(params.owner, params.repo, params.number);
+      const { state } = open(params.owner, params.repo, params.branch);
       const version = versionAt(state, params.version);
       state.reviewed = Math.max(state.reviewed ?? 0, version.number);
       return { version: state.reviewed, reviewedAt: now() };
     },
     branchState: ({ params }) => {
-      const { repo, thread, state } = open(params.owner, params.repo, params.number);
+      const { repo, thread, state } = open(params.owner, params.repo, params.branch);
       return branchState(repo, thread, state);
     },
   },
@@ -520,7 +519,7 @@ export default defineMockHandlers({
       const repo = findRepository(params.owner, params.repo);
       const user = requireWrite(repo);
       const thread = threadsOf(repo).threads.find(
-        (item) => item.pull?.headRef === payload.branch && item.state === "open",
+        (item) => item.page?.headRef === payload.branch && item.state === "open",
       );
       const entries = payload.entries.map((item): Mutable<TraceEntry> => ({
         id: newId("trace"),
@@ -546,17 +545,17 @@ export default defineMockHandlers({
     },
     list: ({ params, query }) => {
       const repo = findRepository(params.owner, params.repo);
-      let all: ReadonlyArray<TraceEntry>;
-      if (query?.pull !== undefined) {
-        all = open(params.owner, params.repo, query.pull).state.traces;
-      } else if (query?.branch !== undefined) {
-        const thread = threadsOf(repo).threads.find((item) => item.pull?.headRef === query.branch);
-        all = thread
-          ? open(params.owner, params.repo, thread.number).state.traces
-          : (looseTraces.get(`${repo.id}:${query.branch}`) ?? []);
-      } else {
-        throw badRequest("One of pull and branch is needed");
+      // The branch's page holds its entries; a branch with none keeps them loose.
+      let thread: ThreadRecord | undefined;
+      try {
+        thread = findPage(repo, query.branch);
+      } catch {
+        thread = undefined;
       }
+      const all: ReadonlyArray<TraceEntry> =
+        thread === undefined
+          ? (looseTraces.get(`${repo.id}:${query.branch}`) ?? [])
+          : open(params.owner, params.repo, pageKeyOf(repo, thread)).state.traces;
       const wanted = query.version;
       const shown =
         wanted === undefined
@@ -573,7 +572,7 @@ export default defineMockHandlers({
 
   findings: {
     list: ({ params, query }) => {
-      const { repo, state } = open(params.owner, params.repo, params.number);
+      const { repo, state } = open(params.owner, params.repo, params.branch);
       const version = query?.version;
       const findings = state.findings
         .filter(
@@ -587,7 +586,7 @@ export default defineMockHandlers({
       return { findings, tally: tallyOf(state) };
     },
     report: ({ params, payload }) => {
-      const { repo, state } = open(params.owner, params.repo, params.number);
+      const { repo, state } = open(params.owner, params.repo, params.branch);
       requireWrite(repo);
       const version =
         payload.version === undefined
@@ -654,7 +653,7 @@ export default defineMockHandlers({
       return { findings: seen.map((item) => presentFinding(repo, state, item)) };
     },
     dismiss: ({ params, payload }) => {
-      const { repo, state } = open(params.owner, params.repo, params.number);
+      const { repo, state } = open(params.owner, params.repo, params.branch);
       const user = requireWrite(repo);
       const found = findingAt(state, params.findingId);
       if (found.status === "fixed") throw unprocessable("The finding is already fixed");
@@ -667,7 +666,7 @@ export default defineMockHandlers({
       return presentFinding(repo, state, found);
     },
     reopen: ({ params }) => {
-      const { repo, state } = open(params.owner, params.repo, params.number);
+      const { repo, state } = open(params.owner, params.repo, params.branch);
       requireWrite(repo);
       const found = findingAt(state, params.findingId);
       if (found.status !== "dismissed") throw unprocessable("The finding is not dismissed");
@@ -679,7 +678,7 @@ export default defineMockHandlers({
       return presentFinding(repo, state, found);
     },
     override: ({ params, payload }) => {
-      const { repo, pull, state } = open(params.owner, params.repo, params.number);
+      const { repo, page, state } = open(params.owner, params.repo, params.branch);
       const user = requireUser();
       if (accessTo(repo) !== "admin") {
         throw mockError(403, "Only an administrator can merge past a finding");
@@ -696,23 +695,23 @@ export default defineMockHandlers({
         by: user,
         reason: payload.reason.trim(),
         findingIds: [...findingIds],
-        headOid: refsOf(repo, pull).headOid,
+        headOid: refsOf(repo, page).headOid,
         createdAt: now(),
       };
       state.overrides.push(made);
       return made;
     },
     listRuns: ({ params }) => ({
-      runs: open(params.owner, params.repo, params.number).state.runs,
+      runs: open(params.owner, params.repo, params.branch).state.runs,
     }),
     getRun: ({ params }) => {
-      const { state } = open(params.owner, params.repo, params.number);
+      const { state } = open(params.owner, params.repo, params.branch);
       const found = state.runs.find((item) => item.id === params.runId);
       if (found === undefined) throw notFound("No such review run");
       return found;
     },
     requestRun: ({ params, payload }) => {
-      const { repo, state } = open(params.owner, params.repo, params.number);
+      const { repo, state } = open(params.owner, params.repo, params.branch);
       requireWrite(repo);
       const version =
         payload.version === undefined
@@ -732,7 +731,7 @@ export default defineMockHandlers({
       return made;
     },
     updateRun: ({ params, payload }) => {
-      const { repo, state } = open(params.owner, params.repo, params.number);
+      const { repo, state } = open(params.owner, params.repo, params.branch);
       requireWrite(repo);
       const found = state.runs.find((item) => item.id === params.runId);
       if (found === undefined) throw notFound("No such review run");
@@ -750,7 +749,7 @@ export default defineMockHandlers({
 
   instructions: {
     send: ({ params, payload }) => {
-      const { repo, pull, state } = open(params.owner, params.repo, params.number);
+      const { repo, page, state } = open(params.owner, params.repo, params.branch);
       const user = requireWrite(repo);
       let body = payload.body?.trim() ?? "";
       let findingId: string | null = null;
@@ -762,7 +761,7 @@ export default defineMockHandlers({
         findingId = found.id;
         body = [found.title, found.body, body].filter((part) => part !== "").join("\n\n");
       } else {
-        const thread = pull.threads.find((item) =>
+        const thread = page.threads.find((item) =>
           item.comments.some((comment) => comment.id === payload.reviewCommentId),
         );
         if (thread === undefined) throw unprocessable("No such review comment");
@@ -792,7 +791,7 @@ export default defineMockHandlers({
       return made;
     },
     list: ({ params, query }) => {
-      const { state } = open(params.owner, params.repo, params.number);
+      const { state } = open(params.owner, params.repo, params.branch);
       return {
         instructions: state.instructions.filter(
           (item) => query?.status === undefined || item.status === query.status,
@@ -800,7 +799,7 @@ export default defineMockHandlers({
       };
     },
     markDelivered: ({ params, payload }) => {
-      const { repo, state } = open(params.owner, params.repo, params.number);
+      const { repo, state } = open(params.owner, params.repo, params.branch);
       requireWrite(repo);
       const found = instructionAt(state, params.instructionId);
       if (found.status !== "queued") throw unprocessable("The instruction is not waiting");
@@ -810,7 +809,7 @@ export default defineMockHandlers({
       return found;
     },
     markAnswered: ({ params, payload }) => {
-      const { repo, state } = open(params.owner, params.repo, params.number);
+      const { repo, state } = open(params.owner, params.repo, params.branch);
       requireWrite(repo);
       const found = instructionAt(state, params.instructionId);
       if (found.status === "dismissed") throw unprocessable("The instruction was withdrawn");
@@ -821,7 +820,7 @@ export default defineMockHandlers({
       return found;
     },
     dismiss: ({ params }) => {
-      const { repo, state } = open(params.owner, params.repo, params.number);
+      const { repo, state } = open(params.owner, params.repo, params.branch);
       const user = requireWrite(repo);
       const found = instructionAt(state, params.instructionId);
       if (found.status === "answered") throw unprocessable("The instruction is already answered");
@@ -833,9 +832,9 @@ export default defineMockHandlers({
   },
 
   agents: {
-    get: ({ params }) => ({ agent: open(params.owner, params.repo, params.number).state.agent }),
+    get: ({ params }) => ({ agent: open(params.owner, params.repo, params.branch).state.agent }),
     set: ({ params, payload }) => {
-      const { repo, state } = open(params.owner, params.repo, params.number);
+      const { repo, state } = open(params.owner, params.repo, params.branch);
       const user = requireWrite(repo);
       if (payload.kind === "t3" && payload.t3EnvironmentId) {
         environmentAt(payload.t3EnvironmentId);
@@ -853,7 +852,7 @@ export default defineMockHandlers({
       return { agent: state.agent };
     },
     remove: ({ params }) => {
-      const { repo, state } = open(params.owner, params.repo, params.number);
+      const { repo, state } = open(params.owner, params.repo, params.branch);
       requireWrite(repo);
       state.agent = null;
       return ok;
@@ -894,7 +893,7 @@ export default defineMockHandlers({
         closedAt: null,
         closedBy: null,
         items: [],
-        pull: {
+        page: {
           draft: true,
           baseRef,
           headRef: branch,
@@ -932,7 +931,7 @@ export default defineMockHandlers({
         });
         state.work.push({ instructionId: null, since: Date.now(), note: ask, started: false });
       }
-      return { pullRequest: toPull(repo, thread), branch, agent: state.agent };
+      return { page: toBranchPage(repo, thread), branch, agent: state.agent };
     },
   },
 
@@ -946,9 +945,6 @@ export default defineMockHandlers({
       const repo = findRepository(params.owner, params.repo);
       if (accessTo(repo) !== "admin") throw mockError(403, "Forbidden");
       const settings = reviewSettingsOf(repo);
-      if (payload.autoOpenBranchPages !== undefined) {
-        settings.autoOpenBranchPages = payload.autoOpenBranchPages;
-      }
       if (payload.reviewAgentsEnabled !== undefined) {
         settings.reviewAgentsEnabled = payload.reviewAgentsEnabled;
       }
@@ -966,14 +962,14 @@ export default defineMockHandlers({
       const items: Array<ReviewInbox["items"][number]> = [];
       for (const repo of visibleRepositories()) {
         for (const thread of threadsOf(repo).threads) {
-          const pull = thread.pull;
-          if (pull === null || thread.state !== "open" || pull.merged) continue;
+          const page = thread.page;
+          if (page === null || thread.state !== "open" || page.merged) continue;
           const state = reviewOf(repo, thread.number);
           advance(repo, thread, state);
           const involved =
             thread.author?.id === user.id ||
             thread.assignees.some((person) => person.id === user.id) ||
-            pull.reviews.some((review) => review.author?.id === user.id) ||
+            page.reviews.some((review) => review.author?.id === user.id) ||
             state.agent?.connectedBy?.id === user.id;
           const latest = state.versions[state.versions.length - 1];
           const reviewed = state.reviewed ?? 0;
@@ -986,10 +982,11 @@ export default defineMockHandlers({
               name: repo.name,
               visibility: repo.visibility,
             },
+            key: pageKeyOf(repo, thread),
             number: thread.number,
             title: thread.title,
-            branch: pull.headRef,
-            draft: pull.draft,
+            branch: page.headRef,
+            draft: page.draft,
             author: thread.author,
             agent:
               state.agent === null
@@ -1000,7 +997,7 @@ export default defineMockHandlers({
             waitingSince: since.createdAt,
             changes: {
               versions: latest.number - reviewed,
-              comments: pull.threads
+              comments: page.threads
                 .filter((item) => (item.version ?? 0) > reviewed)
                 .reduce(
                   (sum, item) =>
@@ -1016,15 +1013,6 @@ export default defineMockHandlers({
       }
       items.sort((a, b) => a.waitingSince.localeCompare(b.waitingSince));
       return paginate(items, query);
-    },
-    mode: () => {
-      requireUser();
-      return { mode: reviewMode() };
-    },
-    setMode: ({ payload }) => {
-      requireUser();
-      setReviewMode(payload.mode);
-      return { mode: reviewMode() };
     },
   },
 });

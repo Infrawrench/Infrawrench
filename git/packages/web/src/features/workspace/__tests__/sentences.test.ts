@@ -26,6 +26,7 @@ const event = (fields: Partial<ActivityEvent>): ActivityEvent => ({
   agent: null,
   repository: repository("web"),
   number: 1,
+  key: "feature/a-change",
   title: "A change",
   version: 3,
   findings: null,

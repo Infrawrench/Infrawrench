@@ -1,32 +1,28 @@
 /**
- * The list both Issues and Pull requests show: a search box whose text is the
+ * The list both Issues and Branches show: a search box whose text is the
  * list's whole state, Open and Closed counts, filter menus that edit the
- * text, and the rows.
- *
- * In the sidebar shell the same list is drawn as the lists of work are (one
- * line a row, `WorkRow`), and a repository's pull requests are its branches.
+ * text, and the rows, one line each as the lists of work are (`WorkRow`).
  */
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { IssueSummary, PullRequestSummary } from "@infrawrench/git-contract";
+import type { BranchPageSummary, IssueSummary } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
 import { queries, usePages } from "../../api/queries";
 import { AppLink, useGo } from "../../components/AppLink";
-import { Badge, CommitStatusIcon } from "../../components/Badge";
+import { CommitStatusIcon } from "../../components/Badge";
 import { ButtonLink } from "../../components/Button";
 import { SearchInput } from "../../components/forms";
 import { Icon, type IconName } from "../../components/icons";
 import { LabelChip, LabelDot } from "../../components/LabelChip";
 import { Page, Panel } from "../../components/Panel";
-import { Avatar, RelativeTime, UserLink } from "../../components/people";
+import { Avatar } from "../../components/people";
 import { Picker, PickerButton, type PickerOption } from "../../components/Picker";
 import { EmptyState, ErrorState, Loading, LoadMore } from "../../components/states";
-import { ThreadStateIcon, issueKind, pullKind } from "../../components/StatusIcons";
+import { issueKind } from "../../components/StatusIcons";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { formatCount } from "../../lib/format";
 import { paths, type RepoRef } from "../../lib/paths";
 import { signInHref, useSession } from "../../lib/session";
-import { useSidebarShell } from "../../lib/shell";
 import { ChangeStateIcon, Chip, WorkRow, personOf, type RowPerson } from "../workspace/rows";
 import {
   DEFAULT_SEARCH_TEXT,
@@ -41,8 +37,9 @@ import {
 } from "./search";
 import { cursorQuery } from "../../lib/cursor";
 
-type Kind = "issues" | "pulls";
-type Row = IssueSummary | PullRequestSummary;
+export type ThreadListKind = "issues" | "branches";
+type Kind = ThreadListKind;
+type Row = IssueSummary | BranchPageSummary;
 
 interface ListPage {
   readonly items: ReadonlyArray<Row>;
@@ -50,7 +47,7 @@ interface ListPage {
   readonly counts: { readonly open: number; readonly closed: number };
 }
 
-const isPull = (row: Row): row is PullRequestSummary => "headRef" in row;
+const isPage = (row: Row): row is BranchPageSummary => "headRef" in row;
 
 const SORT_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
   { value: "created-desc", label: "Newest" },
@@ -65,7 +62,16 @@ const REVIEW_LABEL = {
   review_required: "Review required",
 } as const;
 
-export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
+export function ThreadList({
+  kind,
+  q,
+  lead,
+}: {
+  kind: Kind;
+  q: string | undefined;
+  /** Above the search: the Branches tab's two views. */
+  lead?: ReactNode;
+}) {
   const repo = useRepoRef();
   const repository = useRepository();
   const go = useGo();
@@ -88,8 +94,8 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
   const list = usePages<ListPage>(
     [kind, "list", repo, listQuery],
     (cursor) => {
-      if (kind === "pulls") {
-        return api.pulls.list({
+      if (kind === "branches") {
+        return api.branches.list({
           params: repo,
           query: { ...listQuery, ...cursorQuery(cursor), limit: 25 },
         });
@@ -135,18 +141,9 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
           },
         ],
   );
-  const sidebar = useSidebarShell();
-  // In the sidebar shell a pull request is read as its branch.
-  const branches = sidebar && kind === "pulls";
-  const noun = kind === "issues" ? "issue" : "pull request";
-  const [thing, things] =
-    kind === "issues"
-      ? ["issue", "issues"]
-      : branches
-        ? ["branch", "branches"]
-        : ["pull request", "pull requests"];
-  const heading = kind === "issues" ? "Issues" : branches ? "Branches" : "Pull requests";
-  const canOpen = kind === "issues" || repository.branchCount > 1;
+  const things = kind === "issues" ? "issues" : "branches";
+  const heading = kind === "issues" ? "Issues" : "Branches";
+  const canStart = signedIn && repository.viewer.canPush && !repository.archived;
 
   const stateTab = (state: "open" | "closed", count: number | undefined, icon: ReactNode) => (
     <AppLink
@@ -167,6 +164,7 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
   return (
     <Page>
       <h1 className="sr-only">{heading}</h1>
+      {lead}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <form role="search" onSubmit={submit} className="min-w-56 flex-1">
           <SearchInput
@@ -186,21 +184,17 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
           <Icon name="milestone" size={12} />
           Milestones
         </ButtonLink>
-        {kind === "pulls" && signedIn && repository.viewer.canPush && !repository.archived ? (
-          <ButtonLink href={paths.startWork(repo)} variant={branches ? "primary" : "secondary"}>
-            <Icon name="bot" size={12} />
-            Start work
-          </ButtonLink>
-        ) : null}
-        {repository.archived ? null : signedIn ? (
-          canOpen ? (
-            <ButtonLink
-              variant={branches ? "secondary" : "primary"}
-              href={kind === "issues" ? paths.newIssue(repo) : paths.newPull(repo)}
-            >
-              New {noun}
+        {kind === "branches" ? (
+          canStart ? (
+            <ButtonLink href={paths.startWork(repo)} variant="primary">
+              <Icon name="bot" size={12} />
+              Start work
             </ButtonLink>
           ) : null
+        ) : repository.archived ? null : signedIn ? (
+          <ButtonLink variant="primary" href={paths.newIssue(repo)}>
+            New issue
+          </ButtonLink>
         ) : (
           <a href={signInHref()} className="text-xs text-on-surface-secondary hover:underline">
             Sign in to open one
@@ -208,22 +202,13 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
         )}
       </div>
 
-      <Panel className={`overflow-visible ${sidebar ? "!rounded-lg" : ""}`}>
-        <div
-          className={`flex flex-wrap items-center gap-x-1 gap-y-1 border-b border-border ${
-            sidebar
-              ? "min-h-12 rounded-t-lg py-1.5 pr-3 pl-3.5"
-              : "min-h-10 rounded-t-md bg-surface-inset px-2 py-1"
-          }`}
-        >
+      <Panel className="overflow-visible !rounded-lg">
+        <div className="flex min-h-12 flex-wrap items-center gap-x-1 gap-y-1 rounded-t-lg border-b border-border py-1.5 pr-3 pl-3.5">
           <div className="flex flex-1 items-center gap-2">
             {stateTab(
               "open",
               counts?.open,
-              <Icon
-                name={kind === "issues" ? "circleDot" : branches ? "gitBranch" : "gitPullRequest"}
-                size={13}
-              />,
+              <Icon name={kind === "issues" ? "circleDot" : "gitBranch"} size={13} />,
             )}
             {stateTab("closed", counts?.closed, <Icon name="check" size={13} />)}
             {isFiltered(search) ? (
@@ -333,10 +318,17 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
           (counts?.open ?? 0) + (counts?.closed ?? 0) === 0 && !isFiltered(search) ? (
             <EmptyState
               action={
-                signedIn && canOpen && !repository.archived ? (
-                  <ButtonLink href={kind === "issues" ? paths.newIssue(repo) : paths.newPull(repo)}>
-                    New {noun}
-                  </ButtonLink>
+                kind === "branches" ? (
+                  // A fork's own branches have no pages: they are proposed from the list of them.
+                  repository.parent !== null ? (
+                    <ButtonLink href={paths.branches(repo, { view: "all" })}>
+                      All branches
+                    </ButtonLink>
+                  ) : canStart ? (
+                    <ButtonLink href={paths.startWork(repo)}>Start work</ButtonLink>
+                  ) : undefined
+                ) : signedIn && !repository.archived ? (
+                  <ButtonLink href={paths.newIssue(repo)}>New issue</ButtonLink>
                 ) : undefined
               }
             >
@@ -354,133 +346,19 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
             </EmptyState>
           )
         ) : (
-          <ul aria-label={heading} className={sidebar ? "divide-y divide-border" : ""}>
-            {list.items.map((row) =>
-              sidebar ? (
-                <ThreadWorkRow
-                  key={row.id}
-                  row={row}
-                  labelHref={(name) => href(editSearch(text, { labels: [name] }))}
-                />
-              ) : (
-                <ThreadRow
-                  key={row.id}
-                  row={row}
-                  labelHref={(name) => href(editSearch(text, { labels: [name] }))}
-                />
-              ),
-            )}
+          <ul aria-label={heading} className="divide-y divide-border">
+            {list.items.map((row) => (
+              <ThreadWorkRow
+                key={row.id}
+                row={row}
+                labelHref={(name) => href(editSearch(text, { labels: [name] }))}
+              />
+            ))}
           </ul>
         )}
       </Panel>
       <LoadMore pages={list} />
     </Page>
-  );
-}
-
-function ThreadRow({ row, labelHref }: { row: Row; labelHref: (name: string) => string }) {
-  const repo = useRepoRef();
-  const pull = isPull(row);
-  const kind = pull ? pullKind(row.state, row.draft) : issueKind(row.state, row.stateReason);
-  const closed = row.state !== "open";
-  return (
-    <li className="flex items-start gap-2.5 border-t border-border px-3 py-2 first:border-t-0 hover:bg-surface-inset">
-      <span className="mt-0.5">
-        <ThreadStateIcon kind={kind} size={15} />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-          <AppLink
-            href={pull ? paths.pull(repo, row.number) : paths.issue(repo, row.number)}
-            className="text-sm font-medium text-on-surface hover:underline"
-          >
-            {row.title}
-          </AppLink>
-          {pull ? <CommitStatusIcon state={row.status} /> : null}
-          {row.labels.map((label) => (
-            <LabelChip key={label.id} label={label} href={labelHref(label.name)} />
-          ))}
-        </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-on-surface-muted">
-          <span>#{row.number}</span>
-          {pull && row.state === "merged" && row.mergedAt !== null ? (
-            <span>
-              merged <RelativeTime iso={row.mergedAt} />
-            </span>
-          ) : closed && row.closedAt !== null ? (
-            <span>
-              closed <RelativeTime iso={row.closedAt} />
-            </span>
-          ) : (
-            <span>
-              opened <RelativeTime iso={row.createdAt} />
-            </span>
-          )}
-          {row.author !== null ? (
-            <span className="inline-flex items-center gap-1">
-              by <UserLink user={row.author} className="font-normal text-on-surface-secondary" />
-            </span>
-          ) : null}
-          {pull && row.draft && row.state === "open" ? <Badge tone="outline">Draft</Badge> : null}
-          {pull && row.reviewDecision !== null && row.state === "open" ? (
-            <span
-              className={
-                row.reviewDecision === "approved"
-                  ? "text-success"
-                  : row.reviewDecision === "changes_requested"
-                    ? "text-danger"
-                    : ""
-              }
-            >
-              {REVIEW_LABEL[row.reviewDecision]}
-            </span>
-          ) : null}
-          {row.milestone !== null ? (
-            <AppLink
-              href={paths.milestone(repo, row.milestone.number)}
-              className="inline-flex items-center gap-1 hover:text-on-surface"
-            >
-              <Icon name="milestone" size={11} />
-              {row.milestone.title}
-            </AppLink>
-          ) : null}
-          {row.locked ? (
-            <span className="inline-flex items-center gap-1">
-              <Icon name="lock" size={11} />
-              Locked
-            </span>
-          ) : null}
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-3 pt-0.5">
-        {row.assignees.length > 0 ? (
-          <span
-            className="flex -space-x-1"
-            title={`Assigned to ${row.assignees.map((user) => user.username ?? user.displayName).join(", ")}`}
-          >
-            {row.assignees.slice(0, 3).map((user) => (
-              <Avatar
-                key={user.id}
-                name={user.displayName ?? user.username ?? "?"}
-                src={user.avatarUrl}
-                size={18}
-              />
-            ))}
-            <span className="sr-only">
-              Assigned to{" "}
-              {row.assignees.map((user) => user.username ?? user.displayName).join(", ")}
-            </span>
-          </span>
-        ) : null}
-        {row.commentCount > 0 ? (
-          <span className="inline-flex items-center gap-1 text-xs text-on-surface-muted">
-            <Icon name="messageSquare" size={12} />
-            <span className="sr-only">Comments:</span>
-            {row.commentCount}
-          </span>
-        ) : null}
-      </div>
-    </li>
   );
 }
 
@@ -496,7 +374,7 @@ const ISSUE_GLYPH: Record<string, { icon: IconName; tone: string; label: string 
 
 /** A thread's state as the lists of work draw one: a branch's by where its review stands. */
 function WorkStateIcon({ row }: { row: Row }) {
-  if (isPull(row)) {
+  if (isPage(row)) {
     return (
       <ChangeStateIcon
         draft={row.draft}
@@ -522,10 +400,10 @@ function WorkStateIcon({ row }: { row: Row }) {
   );
 }
 
-/** The same thread as `ThreadRow` shows, on one line: the row of the sidebar shell's lists. */
+/** A thread on one line. A branch is named by its branch, an issue by its number. */
 function ThreadWorkRow({ row, labelHref }: { row: Row; labelHref: (name: string) => string }) {
   const repo = useRepoRef();
-  const pull = isPull(row);
+  const page = isPage(row) ? row : null;
   // The author first, then whoever it is assigned to, each once.
   const people: RowPerson[] = [];
   for (const user of [row.author, ...row.assignees]) {
@@ -534,20 +412,39 @@ function ThreadWorkRow({ row, labelHref }: { row: Row; labelHref: (name: string)
   }
   return (
     <WorkRow
-      href={pull ? paths.pull(repo, row.number) : paths.issue(repo, row.number)}
+      href={page !== null ? paths.branchPage(repo, page.key) : paths.issue(repo, row.number)}
       icon={<WorkStateIcon row={row} />}
       title={row.title}
       summary={
-        <span className="inline-flex items-center gap-2.5">
+        page !== null ? (
+          <span className="truncate font-mono text-xs">{page.headRef}</span>
+        ) : (
           <span className="tabular-nums">#{row.number}</span>
-          {pull ? <span className="truncate font-mono text-xs">{row.headRef}</span> : null}
-        </span>
+        )
       }
       chips={
         // Above the row's own link, so a label and a milestone can be followed.
         <span className="relative z-10 flex items-center gap-2 text-xs text-on-surface-muted">
-          {pull ? <CommitStatusIcon state={row.status} /> : null}
-          {pull && row.reviewDecision === "review_required" && row.state === "open" ? (
+          {page !== null ? <CommitStatusIcon state={page.status} /> : null}
+          {page !== null && page.crossRepository ? (
+            <span
+              title={
+                page.headRepository === null
+                  ? "From a deleted fork"
+                  : `From ${page.headRepository.owner}/${page.headRepository.name}`
+              }
+            >
+              <Chip icon="gitFork">
+                from fork
+                <span className="sr-only">
+                  {page.headRepository === null
+                    ? " that was deleted"
+                    : ` ${page.headRepository.owner}/${page.headRepository.name}`}
+                </span>
+              </Chip>
+            </span>
+          ) : null}
+          {page !== null && page.reviewDecision === "review_required" && page.state === "open" ? (
             <Chip icon="eye">{REVIEW_LABEL.review_required}</Chip>
           ) : null}
           {row.labels.map((label) => (
@@ -588,7 +485,7 @@ function ThreadWorkRow({ row, labelHref }: { row: Row; labelHref: (name: string)
  */
 export function threadListHref(repo: RepoRef, kind: Kind, text: string): string {
   const q = text === DEFAULT_SEARCH_TEXT ? undefined : text === "" ? "is:all" : text;
-  return kind === "issues" ? paths.issueSearch(repo, q) : paths.pullSearch(repo, q);
+  return kind === "issues" ? paths.issueSearch(repo, q) : paths.branches(repo, { q });
 }
 
 /** For a page that reaches a list with one filter: a milestone's threads, a label's. */

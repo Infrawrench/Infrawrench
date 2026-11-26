@@ -1,11 +1,10 @@
 /**
  * Status glyphs every page shares: a commit status, a CI run or job, an issue
- * or pull request's state. Each is an image with a name, so a row that shows
+ * or branch's state. Each is an image with a name, so a row that shows
  * only the icon still reads to a screen reader.
  */
 import type { CiRunStatus, StatusState } from "@infrawrench/git-contract";
 import { Icon, type IconName } from "./icons";
-import { useSidebarShell } from "../lib/shell";
 
 export type CiGlyphStatus =
   CiRunStatus | "passed" | "failed" | "skipped" | "error" | "cancelled" | "running" | "waiting";
@@ -113,30 +112,43 @@ export type ThreadKind =
   | "issue-open"
   | "issue-closed"
   | "issue-not-planned"
-  | "pull-open"
-  | "pull-draft"
-  | "pull-merged"
-  | "pull-closed";
+  | "page-open"
+  | "page-draft"
+  | "page-merged"
+  | "page-closed";
 
-const THREAD: Record<ThreadKind, { icon: IconName; tone: string; label: string }> = {
-  "issue-open": { icon: "circleDot", tone: "text-success", label: "Open issue" },
-  "issue-closed": { icon: "checkCircle", tone: "text-notice", label: "Closed issue" },
+const THREAD: Record<ThreadKind, { icon: IconName; tone: string; label: string; text: string }> = {
+  "issue-open": { icon: "circleDot", tone: "text-success", label: "Open issue", text: "Open" },
+  "issue-closed": {
+    icon: "checkCircle",
+    tone: "text-notice",
+    label: "Closed issue",
+    text: "Closed",
+  },
   "issue-not-planned": {
     icon: "circleSlash",
     tone: "text-on-surface-muted",
     label: "Closed as not planned",
+    text: "Not planned",
   },
-  "pull-open": { icon: "gitPullRequest", tone: "text-success", label: "Open pull request" },
-  "pull-draft": {
-    icon: "gitPullRequestDraft",
+  "page-open": {
+    icon: "circleChevronUp",
+    tone: "text-on-surface-secondary",
+    label: "Open branch",
+    text: "Open",
+  },
+  "page-draft": {
+    icon: "circleDashed",
     tone: "text-on-surface-muted",
-    label: "Draft pull request",
+    label: "Draft branch",
+    text: "Draft",
   },
-  "pull-merged": { icon: "gitMerge", tone: "text-notice", label: "Merged pull request" },
-  "pull-closed": {
-    icon: "gitPullRequestClosed",
-    tone: "text-danger",
-    label: "Closed pull request",
+  "page-merged": { icon: "gitMerge", tone: "text-notice", label: "Merged branch", text: "Merged" },
+  "page-closed": {
+    icon: "circleSlash",
+    tone: "text-on-surface-muted",
+    label: "Closed branch",
+    text: "Closed",
   },
 };
 
@@ -148,19 +160,20 @@ export function issueKind(state: "open" | "closed", reason: string | null): Thre
       : "issue-closed";
 }
 
-export function pullKind(state: "open" | "closed" | "merged", draft: boolean): ThreadKind {
+/** A branch page's state as a thread kind. */
+export function pageKind(state: "open" | "closed" | "merged", draft: boolean): ThreadKind {
   return state === "merged"
-    ? "pull-merged"
+    ? "page-merged"
     : state === "closed"
-      ? "pull-closed"
+      ? "page-closed"
       : draft
-        ? "pull-draft"
-        : "pull-open";
+        ? "page-draft"
+        : "page-open";
 }
 
 export const threadKindLabel = (kind: ThreadKind): string => THREAD[kind].label;
 
-/** An issue's or pull request's state as its glyph, in the state's colour. */
+/** An issue's or a branch's state as its glyph, in the state's colour. */
 export function ThreadStateIcon({ kind, size = 14 }: { kind: ThreadKind; size?: number }) {
   const { icon, tone, label } = THREAD[kind];
   return (
@@ -170,54 +183,13 @@ export function ThreadStateIcon({ kind, size = 14 }: { kind: ThreadKind; size?: 
   );
 }
 
-const BADGE_TONE: Record<ThreadKind, string> = {
-  "issue-open": "bg-success/15 text-success",
-  "issue-closed": "bg-notice/15 text-notice",
-  "issue-not-planned": "bg-surface-sunken text-on-surface-secondary",
-  "pull-open": "bg-success/15 text-success",
-  "pull-draft": "bg-surface-sunken text-on-surface-secondary",
-  "pull-merged": "bg-notice/15 text-notice",
-  "pull-closed": "bg-danger/15 text-danger",
-};
-
-const BADGE_TEXT: Record<ThreadKind, string> = {
-  "issue-open": "Open",
-  "issue-closed": "Closed",
-  "issue-not-planned": "Not planned",
-  "pull-open": "Open",
-  "pull-draft": "Draft",
-  "pull-merged": "Merged",
-  "pull-closed": "Closed",
-};
-
-/** In the sidebar shell the pill is quiet: the state's colour is on its glyph alone. */
-const QUIET_TONE: Record<ThreadKind, string> = {
-  "issue-open": "text-on-surface-secondary",
-  "issue-closed": "text-notice",
-  "issue-not-planned": "text-on-surface-muted",
-  "pull-open": "text-on-surface-secondary",
-  "pull-draft": "text-on-surface-muted",
-  "pull-merged": "text-notice",
-  "pull-closed": "text-on-surface-muted",
-};
-
-/** The state pill beside a thread's title. */
+/** The state pill beside a thread's title: quiet, the state's colour on its glyph alone. */
 export function ThreadStateBadge({ kind }: { kind: ThreadKind }) {
-  const sidebar = useSidebarShell();
-  if (sidebar) {
-    return (
-      <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-border px-2 text-xs font-medium whitespace-nowrap text-on-surface">
-        <Icon name={THREAD[kind].icon} size={13} className={QUIET_TONE[kind]} />
-        {BADGE_TEXT[kind]}
-      </span>
-    );
-  }
+  const { icon, tone, text } = THREAD[kind];
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap ${BADGE_TONE[kind]}`}
-    >
-      <Icon name={THREAD[kind].icon} size={13} />
-      {BADGE_TEXT[kind]}
+    <span className="inline-flex h-6 items-center gap-1.5 rounded-full border border-border px-2 text-xs font-medium whitespace-nowrap text-on-surface">
+      <Icon name={icon} size={13} className={tone} />
+      {text}
     </span>
   );
 }

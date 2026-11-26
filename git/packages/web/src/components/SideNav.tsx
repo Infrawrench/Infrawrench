@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useLocation } from "@tanstack/react-router";
-import { pageColumn, useSidebarShell } from "../lib/shell";
+import { pageColumn } from "../lib/shell";
 import { AppLink } from "./AppLink";
 
 export interface SideNavItem {
@@ -44,11 +44,8 @@ export function SideNav({ items, label }: { items: ReadonlyArray<SideNavItem>; l
 
 /** A settings area: its sections on the left, the section's page on the right. */
 export function SettingsFrame({ nav, children }: { nav: ReactNode; children: ReactNode }) {
-  const sidebar = useSidebarShell();
   return (
-    <div
-      className={`${pageColumn(sidebar)} grid gap-x-8 gap-y-4 md:grid-cols-[13rem_minmax(0,1fr)]`}
-    >
+    <div className={`${pageColumn()} grid gap-x-8 gap-y-4 md:grid-cols-[13rem_minmax(0,1fr)]`}>
       <div>{nav}</div>
       <div className="min-w-0 space-y-6">{children}</div>
     </div>
