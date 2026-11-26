@@ -49,7 +49,6 @@ import {
   setReviewMode,
   syncVersions,
   t3Environments,
-  t3Threads,
   tallyOf,
   type ReviewState,
   type StoredFinding,
@@ -1026,71 +1025,6 @@ export default defineMockHandlers({
       requireUser();
       setReviewMode(payload.mode);
       return { mode: reviewMode() };
-    },
-  },
-
-  t3: {
-    list: () => {
-      requireUser();
-      return { environments: t3Environments };
-    },
-    create: ({ payload }) => {
-      requireUser();
-      if (!payload.baseUrl.startsWith("https://")) {
-        throw badRequest("The address must start with https://");
-      }
-      if (t3Environments.some((item) => item.baseUrl === payload.baseUrl)) {
-        throw conflict("You already have an environment at that address");
-      }
-      const at = now();
-      const made = {
-        id: newId("t3env"),
-        label: payload.label,
-        baseUrl: payload.baseUrl,
-        status: "pending" as const,
-        scopes: [],
-        tokenExpiresAt: null,
-        lastError: null,
-        lastUsedAt: null,
-        createdAt: at,
-        updatedAt: at,
-      };
-      t3Environments.push(made);
-      return made;
-    },
-    update: ({ params, payload }) => {
-      requireUser();
-      const found = environmentAt(params.environmentId);
-      if (payload.label !== undefined) found.label = payload.label;
-      found.updatedAt = now();
-      return found;
-    },
-    remove: ({ params }) => {
-      requireUser();
-      t3Environments.splice(t3Environments.indexOf(environmentAt(params.environmentId)), 1);
-      return ok;
-    },
-    beginOAuth: ({ params, payload }) => {
-      requireUser();
-      const found = environmentAt(params.environmentId);
-      // There is no environment to sign in to: the mock connects it and comes straight back.
-      found.status = "connected";
-      found.scopes = ["threads:read", "threads:write"];
-      found.updatedAt = now();
-      return { authorizeUrl: payload.returnTo ?? "/settings" };
-    },
-    listThreads: ({ params, query }) => {
-      requireUser();
-      const found = environmentAt(params.environmentId);
-      if (found.status !== "connected") {
-        throw unprocessable("Sign in to the environment first");
-      }
-      const words = query?.q?.toLowerCase().trim() ?? "";
-      return {
-        threads: (t3Threads[found.id] ?? []).filter((item) =>
-          item.title.toLowerCase().includes(words),
-        ),
-      };
     },
   },
 });
