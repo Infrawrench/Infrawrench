@@ -33,6 +33,7 @@ const git = async (request: Request, env: Env, ctx: Ctx): Promise<Response> =>
   new Response("Not Found", { status: 404 });
 const database = lazy(() => import("./db/client"));
 const terraform = lazy(() => import("./terraform/mount"));
+const mcp = lazy(() => import("./mcp/mount"));
 
 /** The cron expression of the instruction sweep, as `wrangler.jsonc` spells it. */
 const INSTRUCTIONS_CRON = "*/2 * * * *";
@@ -76,6 +77,16 @@ const routes: Routes = {
   terraformPlan: async (request, env, ctx, route) =>
     (await terraform()).planFetch(request, env, ctx, route),
 
+  // The MCP server agents connect to. Its tools call the API above, in this process (`mcp/mount.ts`).
+  mcp: async (request, env, ctx) => {
+    const [{ mcpFetch }, handler] = await Promise.all([mcp(), api()]);
+    return mcpFetch(request, env, ctx, handler);
+  },
+  // The authorization server MCP clients sign in through, and where they find it (`mcp/oauth/`).
+  oauth: async (request, env, ctx, route) =>
+    (await mcp()).oauthFetch(request, env, ctx, route.action),
+  wellKnown: async (request, env) => (await mcp()).wellKnownFetch(request, env),
+
   // An image from another site, fetched so its host never sees the reader (`images/proxy.ts`).
   imageProxy: async (request, env) => {
     const { proxyImage } = await import("./images/proxy");
@@ -111,7 +122,7 @@ export default {
 
   /**
    * The cron triggers (`wrangler.jsonc`). Hourly: versions whose thirty days
-   * are up (`review/prune.ts`), and review runs nothing finished
+   * are up and traces no push claimed (`review/prune.ts`), and review runs nothing finished
    * (`review/queue.ts`). Every two minutes: instructions still waiting for an
    * agent the forge can tell itself (`review/instructions.ts`).
    */
@@ -124,13 +135,14 @@ export default {
       });
       return;
     }
-    const [{ pruneVersions }, { sweepReviewRuns }] = await Promise.all([
+    const [{ pruneVersions, pruneStaleTraces }, { sweepReviewRuns }] = await Promise.all([
       import("./review/prune"),
       import("./review/queue"),
     ]);
     await withDb(env, ctx, async () => {
       await pruneVersions(env);
       await sweepReviewRuns(env);
+      await pruneStaleTraces();
     });
   },
 

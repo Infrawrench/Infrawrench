@@ -7,7 +7,7 @@ The JSON API of git.infrawrench.com as Effect `HttpApi` definitions. The worker 
 - `src/http/`: `errors.ts` (one `Schema.Error` class per status, `{ error, code? }` on the wire), `annotations.ts` (the gates), `auth.ts` (the middleware tags and the services they provide, `withApiDefaults`).
 - `src/schemas/`: every request and response shape, by subject. `git.ts` is the content the UI draws directly.
 - `src/groups/`: the endpoints. `src/api.ts` assembles `GitApi` (everything) and the per-group APIs.
-- `src/names.ts`, `src/urls.ts`: pure functions both sides use (name rules and the reserved list; clone, raw, archive and sign-in paths).
+- `src/names.ts`, `src/urls.ts`: pure functions both sides use (name rules and the reserved list; clone, raw, archive and sign-in paths; `MCP_PATH`, `OAUTH_PATHS` and `WELL_KNOWN_PATHS` for the MCP server and its authorization server, which are not `HttpApi` endpoints: MCP is JSON-RPC over one path, and OAuth's endpoints are forms and a page whose shapes the RFCs fix).
 - `src/limits.ts`: the plan limits and the sentence that refuses one more private repository, re-exported from client-core (`git-forge.ts`), where the app's Settings > Git words the same numbers.
 
 ## Conventions

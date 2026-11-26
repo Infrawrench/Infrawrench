@@ -73,3 +73,94 @@ export const revokeAccessToken = async (userId: string, tokenId: string): Promis
 export const touchAccessToken = async (tokenId: string, at: Date = new Date()): Promise<void> => {
   await db.update(gitAccessTokens).set({ lastUsedAt: at }).where(eq(gitAccessTokens.id, tokenId));
 };
+
+// ---------------------------------------------------------------------------
+// Tokens an OAuth client holds (`mcp/oauth/`)
+// ---------------------------------------------------------------------------
+
+/**
+ * What an OAuth client was granted is a row of this table like any other
+ * token, so it authenticates the same way, shows on the same settings page
+ * and is revoked there. Its id says where it came from.
+ */
+export const OAUTH_GRANT_ID_PREFIX = "mcp_";
+
+export const isOAuthGrantId = (id: string): boolean => id.startsWith(OAUTH_GRANT_ID_PREFIX);
+
+/**
+ * Insert the token an authorization code was exchanged for, under the id the
+ * code carried. False when the id is taken, which is a code used twice: the
+ * primary key is what makes a code single use.
+ */
+export const insertGrantedToken = async (token: {
+  readonly id: string;
+  readonly userId: string;
+  readonly name: string;
+  readonly prefix: string;
+  readonly hash: string;
+  readonly scopes: readonly GitTokenScope[];
+  readonly expiresAt: Date;
+}): Promise<boolean> => {
+  const inserted = await db
+    .insert(gitAccessTokens)
+    .values({
+      id: token.id,
+      userId: token.userId,
+      name: token.name,
+      prefix: token.prefix,
+      hashedToken: token.hash,
+      scopes: [...token.scopes],
+      expiresAt: token.expiresAt,
+    })
+    .onConflictDoNothing({ target: gitAccessTokens.id })
+    .returning({ id: gitAccessTokens.id });
+  return inserted.length > 0;
+};
+
+export const getAccessTokenById = async (tokenId: string): Promise<AccessTokenRow | null> => {
+  const [row] = await db
+    .select()
+    .from(gitAccessTokens)
+    .where(eq(gitAccessTokens.id, tokenId))
+    .limit(1);
+  return row ?? null;
+};
+
+/**
+ * Replace a grant's access token: the row keeps its id, its name and its
+ * scopes, and from now on only the new token's hash verifies. Compared and
+ * swapped on the hash the caller saw, so of two refreshes racing one wins
+ * and the other changes nothing (false).
+ */
+export const rotateGrantedToken = async (rotation: {
+  readonly id: string;
+  readonly fromHash: string;
+  readonly toHash: string;
+  readonly prefix: string;
+  readonly expiresAt: Date;
+}): Promise<boolean> => {
+  const rotated = await db
+    .update(gitAccessTokens)
+    .set({
+      hashedToken: rotation.toHash,
+      prefix: rotation.prefix,
+      expiresAt: rotation.expiresAt,
+    })
+    .where(
+      and(
+        eq(gitAccessTokens.id, rotation.id),
+        eq(gitAccessTokens.hashedToken, rotation.fromHash),
+        isNull(gitAccessTokens.revokedAt),
+      ),
+    )
+    .returning({ id: gitAccessTokens.id });
+  return rotated.length > 0;
+};
+
+/** Revoke a token by its id alone: its holder asked, or it was presented twice. */
+export const revokeAccessTokenById = async (tokenId: string): Promise<void> => {
+  await db
+    .update(gitAccessTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(gitAccessTokens.id, tokenId), isNull(gitAccessTokens.revokedAt)));
+};

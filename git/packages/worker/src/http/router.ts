@@ -14,13 +14,16 @@
  * | `/:owner/:repo/terraform/:workspace/state..` | `terraform-state` |
  * | `/:owner/:repo/terraform/:workspace/runs/:id/plan` | `terraform-plan` |
  * | `/-/image`                                   | `image-proxy`     |
+ * | `/mcp`                                       | `mcp`             |
+ * | `/oauth/authorize`, `/token`, `/register`, `/revoke` | `oauth`   |
+ * | `/.well-known/...`                           | `well-known`      |
  * | everything else                              | `assets` (the UI) |
  *
  * The Git and Terraform routes are the storage's to serve. Until they exist
  * {@link serve} answers them 503 rather than the UI's shell, so `git clone`
  * and `terraform init` fail saying why.
  */
-import { AUTH_PATHS, IMAGE_PROXY_PATH } from "@infrawrench/git-contract";
+import { AUTH_PATHS, IMAGE_PROXY_PATH, MCP_PATH, OAUTH_PATHS } from "@infrawrench/git-contract";
 import type { Env } from "../env";
 import { requestIdOf, withSecurityHeaders } from "./security-headers";
 import { admissionFor } from "./admission";
@@ -50,6 +53,9 @@ export type Route =
       readonly runId: string;
     } & RepoPath)
   | { readonly kind: "image-proxy" }
+  | { readonly kind: "mcp" }
+  | { readonly kind: "oauth"; readonly action: "authorize" | "token" | "register" | "revoke" }
+  | { readonly kind: "well-known" }
   | { readonly kind: "assets" }
   | { readonly kind: "not-found" };
 
@@ -73,6 +79,21 @@ export const routeOf = (pathname: string): Route => {
     if (pathname === AUTH_PATHS.callback) return { kind: "auth", action: "callback" };
     if (pathname === AUTH_PATHS.signOut) return { kind: "auth", action: "sign-out" };
     if (pathname === AUTH_PATHS.t3Callback) return { kind: "auth", action: "t3-callback" };
+    return { kind: "not-found" };
+  }
+  // A namespace cannot be called `.well-known`, `mcp` or `oauth` (client-core
+  // `git-names.ts`), so none of these is ever a person's page.
+  if (first === ".well-known") return { kind: "well-known" };
+  if (first === "mcp") {
+    return pathname === MCP_PATH || pathname === `${MCP_PATH}/`
+      ? { kind: "mcp" }
+      : { kind: "not-found" };
+  }
+  if (first === "oauth") {
+    if (pathname === OAUTH_PATHS.authorize) return { kind: "oauth", action: "authorize" };
+    if (pathname === OAUTH_PATHS.token) return { kind: "oauth", action: "token" };
+    if (pathname === OAUTH_PATHS.register) return { kind: "oauth", action: "register" };
+    if (pathname === OAUTH_PATHS.revoke) return { kind: "oauth", action: "revoke" };
     return { kind: "not-found" };
   }
   if (first === undefined || second === undefined) return { kind: "assets" };
@@ -148,6 +169,12 @@ export interface Routes {
   readonly terraformPlan?: Handler<Extract<Route, { kind: "terraform-plan" }>>;
   /** `/-/image?url=`: an image from another site (`images/proxy.ts`). */
   readonly imageProxy?: Handler<Extract<Route, { kind: "image-proxy" }>>;
+  /** `/mcp`: the MCP server agents connect to (`mcp/http.ts`). */
+  readonly mcp?: Handler<Extract<Route, { kind: "mcp" }>>;
+  /** `/oauth/...`: the authorization server MCP clients sign in through (`mcp/oauth/`). */
+  readonly oauth?: Handler<Extract<Route, { kind: "oauth" }>>;
+  /** `/.well-known/...`: where a client finds the two above (`mcp/oauth/endpoints.ts`). */
+  readonly wellKnown?: Handler<Extract<Route, { kind: "well-known" }>>;
 }
 
 const text = (body: string, status: number, headers: Record<string, string> = {}): Response =>
@@ -201,6 +228,19 @@ const dispatch = (request: Request, env: Env, ctx: Ctx, routes: Routes): Promise
     case "image-proxy":
       return routes.imageProxy
         ? routes.imageProxy(request, env, ctx, route)
+        : Promise.resolve(text("Not Found\n", 404));
+    case "mcp":
+      return routes.mcp
+        ? routes.mcp(request, env, ctx, route)
+        : Promise.resolve(notReady("The MCP server"));
+    case "oauth":
+      return routes.oauth
+        ? routes.oauth(request, env, ctx, route)
+        : Promise.resolve(notReady("Signing in from an MCP client"));
+    case "well-known":
+      // Never the UI's shell: a client reads what it gets here as JSON.
+      return routes.wellKnown
+        ? routes.wellKnown(request, env, ctx, route)
         : Promise.resolve(text("Not Found\n", 404));
     case "assets":
       return assets(request, env);

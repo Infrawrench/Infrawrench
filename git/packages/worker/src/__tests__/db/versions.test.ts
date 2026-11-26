@@ -589,13 +589,6 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
     await push("feature");
     const [page] = await pullsOf("feature");
     const pull = `${repo}/pulls/${page!["number"]}`;
-    const unbuilt = { status: 503, body: { code: "not_implemented" } };
-    expect(
-      await world.call("POST", `${repo}/traces`, {
-        as: bob,
-        body: { branch: "feature", entries: [{ kind: "step", body: "Read the handler" }] },
-      }),
-    ).toMatchObject(unbuilt);
     // The gates come first: only an administrator overrides, and a token never reaches T3 Code.
     expect(
       (

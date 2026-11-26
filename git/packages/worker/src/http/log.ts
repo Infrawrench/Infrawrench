@@ -20,12 +20,12 @@ const MAX_MESSAGE = 1000;
 const MAX_FRAMES = 12;
 const MAX_CAUSES = 3;
 
-/** `iwg_`, `iwk_` and `iwj_` secrets, bearer and basic credentials, sealed cookies. */
+/** Every `iw?_` secret (tokens, keys, OAuth codes and refresh tokens), bearer and basic credentials, sealed values. */
 const CREDENTIALS: readonly (readonly [RegExp, string])[] = [
-  [/\biw([gkj])_[A-Za-z0-9._~+/=-]{8,}/g, "iw$1_[redacted]"],
+  [/\biw([a-z])_[A-Za-z0-9._~+/=-]{8,}/g, "iw$1_[redacted]"],
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [redacted]"],
   [/\bv1\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, "[sealed]"],
-  [/([?&](?:token|code|state)=)[^&\s"']+/gi, "$1[redacted]"],
+  [/([?&](?:token|code|state|refresh_token|code_verifier)=)[^&\s"']+/gi, "$1[redacted]"],
 ];
 
 /** Text safe to log: credentials cut to their kind, control characters out, bounded. */

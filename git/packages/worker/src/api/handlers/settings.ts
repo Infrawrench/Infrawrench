@@ -22,6 +22,7 @@ import { organizationMembers, roles } from "@infrawrench/server-core/db/schema";
 import { accessFromPermissions } from "../../auth/access";
 import { parsePublicKey, publicKeyProblemMessage } from "../../auth/ssh-keys";
 import { mintAccessToken, normalizeScopes } from "../../auth/tokens";
+import { grantLapsesAt } from "../../mcp/oauth/protocol";
 import { db } from "../../db/client";
 import {
   type CollaboratorRow,
@@ -53,6 +54,7 @@ import {
 import {
   type AccessTokenRow,
   insertAccessToken,
+  isOAuthGrantId,
   listAccessTokens,
   revokeAccessToken,
 } from "../../db/tokens";
@@ -422,7 +424,13 @@ const tokenView = (row: AccessTokenRow) => ({
   prefix: row.prefix,
   scopes: normalizeScopes(row.scopes),
   createdAt: iso(row.createdAt),
-  expiresAt: isoOrNull(row.expiresAt),
+  // What an MCP client was granted (`mcp/oauth/grants.ts`) is listed with the
+  // tokens and revoked the same way. Its row's expiry is its current access
+  // token's, an hour out, which the client renews by itself: what a person
+  // wants to know is when the connection ends if it is left unused.
+  expiresAt: isoOrNull(
+    row.expiresAt !== null && isOAuthGrantId(row.id) ? grantLapsesAt(row.expiresAt) : row.expiresAt,
+  ),
   lastUsedAt: isoOrNull(row.lastUsedAt),
 });
 

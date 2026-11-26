@@ -15,6 +15,9 @@
  * | `/:owner/:repo/archive/:ref.tar.gz` / `.zip` | The tree at a ref as an archive.                 |
  * | `/:owner/:repo/terraform/:workspace/state`   | Terraform's HTTP state backend (`/lock`, `/unlock`). |
  * | `/-/image?url=`                              | An image from another site, fetched by the Worker. |
+ * | `/mcp`                                       | The MCP server (Streamable HTTP): what an agent's client is given. |
+ * | `/oauth/authorize`, `/token`, `/register`, `/revoke` | The authorization server an MCP client signs in through. |
+ * | `/.well-known/oauth-protected-resource[/mcp]`, `/.well-known/oauth-authorization-server` | Where a client finds the two above. |
  *
  * **Refs in a path.** A ref name contains slashes, so `raw/feature/x/src/a.ts`
  * is ambiguous on its face. The server resolves it the way every forge does:
@@ -34,6 +37,32 @@ export const AUTH_PATHS = {
   signOut: "/auth/sign-out",
   /** Where a T3 Code environment sends the browser back with `code` and `state`. */
   t3Callback: "/auth/t3/callback",
+} as const;
+
+/**
+ * The MCP endpoint. One path, `POST` only: an agent's client is given
+ * `https://git.infrawrench.com/mcp` and finds everything else from there. A
+ * namespace cannot be called `mcp` or `oauth` (client-core `git-names.ts`).
+ */
+export const MCP_PATH = "/mcp";
+
+export const mcpUrl = (origin: string = SITE_ORIGIN): string => `${origin}${MCP_PATH}`;
+
+/** The OAuth 2.1 authorization server MCP clients sign in through. */
+export const OAUTH_PATHS = {
+  /** A page: the person signs in if they have not, and says yes or no. */
+  authorize: "/oauth/authorize",
+  token: "/oauth/token",
+  /** Dynamic client registration (RFC 7591). */
+  register: "/oauth/register",
+  /** Token revocation (RFC 7009). */
+  revoke: "/oauth/revoke",
+} as const;
+
+/** The discovery documents. The first is also served with {@link MCP_PATH} after it (RFC 9728 section 3.1). */
+export const WELL_KNOWN_PATHS = {
+  protectedResource: "/.well-known/oauth-protected-resource",
+  authorizationServer: "/.well-known/oauth-authorization-server",
 } as const;
 
 export interface RepoRef {

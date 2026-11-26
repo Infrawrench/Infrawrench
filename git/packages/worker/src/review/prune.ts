@@ -8,14 +8,20 @@
  * them) and never a ref no row knows about. Removing a version's ref clears
  * the repository's "everything is reachable" answer in the same transaction
  * (`Repository.pruneVersions`), so a full clone asks again.
+ *
+ * The same run drops trace entries that waited thirty days for a push that
+ * never came ({@link pruneStaleTraces}): a branch need not exist to be
+ * recorded on, so nothing else would ever remove them.
  */
 import { locatorOf } from "../api/context";
 import { getRepositoryById } from "../db/repositories";
 import { type VersionRow, deleteVersions, dueVersions } from "../db/review";
+import { deleteStalePendingTraces } from "../db/traces";
 import type { Env } from "../env";
 import { describeError } from "../http/log";
 import { RepoReaderError } from "../repo/reader";
 import { type RepoReaderFactory, repoReaderFor } from "../repo/select";
+import { TRACE_LIMITS } from "./trace";
 
 /** Versions one run takes. More wait for the next. */
 const BATCH = 500;
@@ -25,6 +31,12 @@ export interface PruneResult {
   /** Left for the next run: their repository's storage did not answer. */
   readonly deferred: number;
 }
+
+/** Trace entries no push claimed in {@link TRACE_LIMITS.pendingDays} days. Answers how many went. */
+export const pruneStaleTraces = (now: Date = new Date()): Promise<number> =>
+  deleteStalePendingTraces(
+    new Date(now.getTime() - TRACE_LIMITS.pendingDays * 24 * 60 * 60 * 1000),
+  );
 
 export const pruneVersions = async (
   env: Env,
