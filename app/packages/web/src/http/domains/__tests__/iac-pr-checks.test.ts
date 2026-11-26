@@ -129,7 +129,25 @@ describe("iac", () => {
     getIacResourceStatus.mockResolvedValue({ status: null, driftFieldCount: 0 });
     const res = await iac().request(`/resource?resourceId=${encodeURIComponent("aws:a1:x/y")}`);
     expect(res.status).toBe(200);
-    expect(getIacResourceStatus).toHaveBeenCalledWith("org-1", "aws:a1:x/y");
+    expect(getIacResourceStatus).toHaveBeenCalledWith("org-1", "aws:a1:x/y", {
+      readsGit: expect.any(Boolean),
+    });
+  });
+
+  it("names a private repository's workspace only to someone who reads the forge", async () => {
+    getIacResourceStatus.mockResolvedValue({ status: null, driftFieldCount: 0 });
+    for (const [permissions, readsGit] of [
+      [["iac:read"], false],
+      [["iac:read", "resources:read", "accounts:read"], false],
+      [["iac:read", "git:read"], true],
+      [["iac:read", "git:write"], true],
+      [["iac:read", "git:admin"], true],
+    ] as const) {
+      getIacResourceStatus.mockClear();
+      const res = await iac(permissions).request("/resource?resourceId=r-1");
+      expect(res.status).toBe(200);
+      expect(getIacResourceStatus).toHaveBeenCalledWith("org-1", "r-1", { readsGit });
+    }
   });
 });
 

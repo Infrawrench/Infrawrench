@@ -200,7 +200,7 @@ export const IacResourceStatus = Schema.Struct({
     }).annotate({ identifier: "IacManagedBy" }),
   ).annotate({
     description:
-      "The Terraform workspaces on git.infrawrench.com whose current state holds this resource. Independent of `status`, which is about uploaded state documents. Empty when none matched.",
+      "The Terraform workspaces on git.infrawrench.com whose current state holds this resource. Independent of `status`, which is about uploaded state documents. A workspace of a private repository is listed only for a caller with `git:read` (or more) in the organization. Empty when none matched, or none the caller may see.",
   }),
 }).annotate({ identifier: "IacResourceStatusResponse" });
 

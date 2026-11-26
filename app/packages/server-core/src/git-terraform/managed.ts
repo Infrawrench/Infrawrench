@@ -38,13 +38,29 @@ export interface IacManagedBy {
   url: string;
 }
 
+/** Who is asking what manages a resource. */
+export interface ManagedByViewer {
+  /**
+   * The caller reads the organisation's repositories on the forge
+   * (`git:read`, `git:write` or `git:admin`). Without it only public
+   * repositories are named: a private repository's name, its layout and the
+   * addresses in its state are not something a resource page gives away.
+   */
+  readsGit: boolean;
+}
+
+/** What nobody in particular may be told: public repositories only. */
+export const PUBLIC_MANAGED_BY_VIEWER: ManagedByViewer = { readsGit: false };
+
 /**
- * The forge workspaces whose current state holds this resource. Usually one;
- * more when two states import the same thing, which is worth seeing.
+ * The forge workspaces whose current state holds this resource, as `viewer`
+ * may see them. Usually one; more when two states import the same thing,
+ * which is worth seeing.
  */
 export async function managedByForResource(
   organizationId: string,
   resourceId: string,
+  viewer: ManagedByViewer = PUBLIC_MANAGED_BY_VIEWER,
 ): Promise<IacManagedBy[]> {
   const rows = await db
     .select({
@@ -53,6 +69,7 @@ export async function managedByForResource(
       rootPath: gitTerraformWorkspaces.rootPath,
       repository: gitRepositories.name,
       namespace: gitNamespaces.slug,
+      visibility: gitRepositories.visibility,
     })
     .from(gitTerraformManagedResources)
     .innerJoin(
@@ -68,10 +85,12 @@ export async function managedByForResource(
         // The link is the workspace's organisation's: a namespace moved to
         // another organisation takes no one else's resources with it.
         eq(gitTerraformWorkspaces.organizationId, organizationId),
+        viewer.readsGit ? undefined : eq(gitRepositories.visibility, "public"),
       ),
     )
     .limit(20);
   return rows
+    .filter((row) => managedByVisible(row.visibility, viewer))
     .map((row) => ({
       repository: `${row.namespace}/${row.repository}`,
       rootPath: row.rootPath,
@@ -84,6 +103,14 @@ export async function managedByForResource(
         `${b.repository}/${b.workspace}/${b.address}`,
       ),
     );
+}
+
+/** Whether a repository of this visibility is named to `viewer`. */
+export function managedByVisible(
+  visibility: "public" | "private",
+  viewer: ManagedByViewer,
+): boolean {
+  return visibility === "public" || viewer.readsGit;
 }
 
 /** Who is asking for costs, as cost visibility resolves them. */

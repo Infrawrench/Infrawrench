@@ -10,7 +10,11 @@ import { deriveTerraformTypeMap, reconcileTerraformState } from "@infrawrench/cl
 import type { ResourceInstance, TerraformExportCapability } from "@infrawrench/plugin-base";
 import { exportResourcesForAdoption } from "@infrawrench/plugin-base";
 import { db } from "../db/client.js";
-import { managedByForResource } from "../git-terraform/managed.js";
+import {
+  PUBLIC_MANAGED_BY_VIEWER,
+  managedByForResource,
+  type ManagedByViewer,
+} from "../git-terraform/managed.js";
 import { resourceChanges, resources } from "../db/schema.js";
 import { loadPlugins } from "../plugin-loader.js";
 import { lookupResourceOwners } from "../ownership/store.js";
@@ -274,12 +278,14 @@ export async function buildIacImportPlan(
 export async function getIacResourceStatus(
   organizationId: string,
   resourceId: string,
+  /** Who `managedBy` is for. Left out, only public repositories are named. */
+  viewer: ManagedByViewer = PUBLIC_MANAGED_BY_VIEWER,
 ): Promise<IacResourceStatusResponse> {
   // Which forge workspace manages it is its own fact: it holds whether or not
   // a state document was ever uploaded here, and whatever `status` says.
   const [badge, managedBy] = await Promise.all([
     resourceStatusBadge(organizationId, resourceId),
-    managedByForResource(organizationId, resourceId).catch((err: unknown) => {
+    managedByForResource(organizationId, resourceId, viewer).catch((err: unknown) => {
       console.warn(`[iac] could not read what manages ${resourceId}:`, err);
       return [];
     }),

@@ -604,4 +604,7 @@
 // 1.130.0: `GET /org/{orgId}/iac/resource` answers `managedBy`, the Terraform
 // workspaces on git.infrawrench.com whose current state holds the resource
 // (repository, root path, workspace, address and a link). Additive.
-export const API_VERSION = "1.130.0";
+// 1.130.1: `managedBy` on `GET /org/{orgId}/iac/resource` lists a workspace of a
+// private repository only for a caller with `git:read` (or more) in the
+// organization. No shape changes.
+export const API_VERSION = "1.130.1";

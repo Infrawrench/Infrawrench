@@ -634,6 +634,28 @@ describe("secrets and variables", () => {
     expect("trusted" in (runner.runs[0]?.body ?? {})).toBe(false);
   });
 
+  it("puts a secret the request carries over a stored one of the same name", async () => {
+    // The app mints a Terraform run's job token into the request's `secrets`
+    // as IW_GIT_JOB_TOKEN. A secret someone stored under that name must not
+    // take its place, or the job would present a credential of their choosing.
+    const runner = new FakeRunner("http://a.test", 8, 8);
+    const { call } = await setup([runner]);
+    await call("PUT", "/v1/orgs/github.com-acme/secrets/IW_GIT_JOB_TOKEN", { value: "stored-org" });
+    await call("PUT", "/v1/orgs/github.com-acme/repos/web/secrets/IW_GIT_JOB_TOKEN", {
+      value: "stored-repo",
+    });
+    await call("PUT", "/v1/orgs/github.com-acme/secrets/OTHER", { value: "kept" });
+    await call("POST", "/v1/runs", {
+      repo,
+      branch: "main",
+      secrets: { IW_GIT_JOB_TOKEN: "minted-for-this-run" },
+    });
+    expect(runner.runs[0]?.body.secrets).toEqual({
+      IW_GIT_JOB_TOKEN: "minted-for-this-run",
+      OTHER: "kept",
+    });
+  });
+
   it("lends connections, keys and resources only to trusted runs", async () => {
     const runner = new FakeRunner("http://a.test", 8, 8);
     const { call } = await setup([runner]);

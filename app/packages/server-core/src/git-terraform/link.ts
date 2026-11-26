@@ -41,13 +41,18 @@ import {
 } from "../db/schema.js";
 import { loadCapabilities, toResourceInstance, type InventoryRow } from "../iac/service.js";
 
-/** A request to the forge as the app itself: a read-only token for one repository, ten minutes. */
+/**
+ * A request to the forge as the app itself: a read-only token for one
+ * workspace of one repository, ten minutes. It reads that workspace's state
+ * and the plans waiting to be priced, and nothing of the repository.
+ */
 export async function forgeFetch(
-  repositoryId: string,
+  target: { repositoryId: string; workspaceId: string },
   url: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const token = await mintGitJobToken(repositoryId, TERRAFORM_SERVICE_PURPOSE, {
+  const token = await mintGitJobToken(target.repositoryId, TERRAFORM_SERVICE_PURPOSE, {
+    workspace: target.workspaceId,
     ttlSeconds: SHORT_TOKEN_TTL_SECONDS,
   });
   return fetch(url, {
@@ -203,7 +208,10 @@ export async function linkWorkspace(
     return { resources: 0, matched: 0 };
   }
   const { stateUrl } = terraformRunUrls(target.namespace, target.repository, target.name, "-");
-  const response = await forgeFetch(target.repositoryId, stateUrl);
+  const response = await forgeFetch(
+    { repositoryId: target.repositoryId, workspaceId: target.id },
+    stateUrl,
+  );
   if (response.status === 404) {
     // Purged since the mirror was written: it manages nothing now.
     await response.body?.cancel();

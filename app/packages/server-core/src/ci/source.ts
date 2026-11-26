@@ -166,6 +166,12 @@ export async function mintGitJobToken(
     ttlSeconds?: number;
     /** Good for this commit's source archive alone: for a token that goes in a link. */
     commit?: string;
+    /**
+     * Good for this Terraform workspace's state and plans alone (its id):
+     * the forge refuses such a token everywhere else, so it clones nothing
+     * and pushes nothing. `access` is then about the state.
+     */
+    workspace?: string;
   } = {},
 ): Promise<string> {
   const key = process.env["GIT_JOB_TOKEN_KEY"] ?? "";
@@ -179,6 +185,7 @@ export async function mintGitJobToken(
       runId: purpose,
       expiresAt: Math.floor(now / 1000) + (opts.ttlSeconds ?? CLONE_TOKEN_TTL_SECONDS),
       ...(opts.commit !== undefined ? { commit: opts.commit } : {}),
+      ...(opts.workspace !== undefined ? { workspace: opts.workspace } : {}),
     },
     now,
   );

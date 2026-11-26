@@ -11,11 +11,14 @@
  *   (`@infrawrench/git-terraform` `workspacePipelineYaml`) and sent as the
  *   request's `pipeline`. A repository cannot edit its own apply, and a
  *   workspace's settings take effect on the next run.
- * - **It gets a job token as a run secret** (`IW_GIT_JOB_TOKEN`): scoped to
- *   the repository, `write`, minted when the run is sent and never stored.
- *   The pipeline text only ever names the secret (`${{ secrets.… }}`); the
- *   value travels in the request's `secrets`, which the runner masks. The
- *   forge's state backend takes it for this run's workspace alone.
+ * - **It gets a job token as a run secret** (`IW_GIT_JOB_TOKEN`): bound to
+ *   the run's workspace, minted when the run is sent and never stored. It
+ *   reaches that workspace's state and this run's plan and nothing of the
+ *   repository: the forge refuses it for a clone, a push and the API. A
+ *   plan's reads the state and takes the lock (`read`); an apply's writes it
+ *   too (`write`). The pipeline text only ever names the secret
+ *   (`${{ secrets.… }}`); the value travels in the request's `secrets`,
+ *   which the runner masks and which win over a stored secret of that name.
  * - **It is lent the workspace's linked accounts**, as CI connections. The
  *   link is the grant (an admin of the repository made it, with
  *   `accounts:read` in the organisation), so these do not need the
@@ -51,6 +54,7 @@ import {
   ciRuns,
   gitIssues,
   gitNamespaces,
+  gitPullRequests,
   gitRepositories,
   gitTerraformRuns,
   gitTerraformWorkspaceAccounts,
@@ -73,6 +77,30 @@ export const TERRAFORM_JOB_TOKEN_SECRET = "IW_GIT_JOB_TOKEN";
 export const TERRAFORM_SERVICE_PURPOSE = SERVICE_TOKEN_PURPOSE;
 /** A job runs for at most an hour, after waiting for a runner. */
 const JOB_TOKEN_TTL_SECONDS = 2 * 60 * 60;
+
+/**
+ * What a run's job token may do to its workspace's state: a plan locks and
+ * reads, and never writes; an apply writes.
+ */
+export function terraformTokenAccess(kind: TerraformRunRow["kind"]): "read" | "write" {
+  return kind === "apply" ? "write" : "read";
+}
+
+/**
+ * Whether a pull request's run may be sent, asked again when it is: only a
+ * head in the base repository itself. A fork's pull request is never
+ * recorded as a run that may run (`terraformSkipReason`), and this is the
+ * same rule where the credentials are handed over, so a row that got there
+ * some other way still runs nobody else's code with the workspace's
+ * accounts. `headRepositoryId` is null for a pull request that is gone, or
+ * whose fork is.
+ */
+export function terraformForkRefusal(
+  repositoryId: string,
+  headRepositoryId: string | null,
+): string | null {
+  return headRepositoryId === repositoryId ? null : FORK_REASON;
+}
 
 export const FORK_REASON =
   "Pull requests from forks are never planned: a plan runs the fork's code with the workspace's credentials.";
@@ -207,6 +235,13 @@ export function terraformCiRun(plan: TerraformRunPlan): typeof ciRuns.$inferInse
     ]);
   }
   const branch = workspace.branch ?? repository.defaultBranch;
+  // An apply is of the workspace's branch, however it was started: the
+  // pipeline's `manual` trigger takes any branch, so the limit is here.
+  if (run.kind === "apply" && (run.branch ?? branch) !== branch) {
+    throw new PipelineInputError([
+      `An apply runs on ${branch}, the workspace's branch, not on ${run.branch}.`,
+    ]);
+  }
   const pipelineText = workspacePipelineYaml({
     kind: run.kind,
     workspace: { name: workspace.name, rootPath: workspace.rootPath },
@@ -559,9 +594,28 @@ export async function terraformDispatch(row: {
   }
   const refusal = terraformDispatchRefusal(run.status);
   if (refusal) return { refuse: refusal };
+  if (run.trigger === "pull-request" || run.pullNumber !== null) {
+    const [pull] =
+      run.pullNumber === null
+        ? []
+        : await db
+            .select({ headRepositoryId: gitPullRequests.headRepositoryId })
+            .from(gitPullRequests)
+            .innerJoin(gitIssues, eq(gitIssues.id, gitPullRequests.issueId))
+            .where(
+              and(
+                eq(gitIssues.repositoryId, run.repositoryId),
+                eq(gitIssues.number, run.pullNumber),
+              ),
+            )
+            .limit(1);
+    const fork = terraformForkRefusal(run.repositoryId, pull?.headRepositoryId ?? null);
+    if (fork) return { refuse: fork };
+  }
 
   const token = await mintGitJobToken(row.gitRepositoryId, row.id, {
-    access: "write",
+    access: terraformTokenAccess(run.kind),
+    workspace: run.workspaceId,
     ttlSeconds: JOB_TOKEN_TTL_SECONDS,
   });
   // The forge checks the token against this: a retried CI run is the run's CI run now.

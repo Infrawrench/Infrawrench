@@ -89,7 +89,10 @@ export async function runTerraformPlanCostPass(limit = 5): Promise<number> {
         // Read even when nothing can be priced: reading is what deletes the
         // inputs, and nothing with a plan's values in it should outlive its use.
         const { planUrl } = terraformRunUrls(run.namespace, run.repository, run.workspace, run.id);
-        const response = await forgeFetch(run.repositoryId, planUrl);
+        const response = await forgeFetch(
+          { repositoryId: run.repositoryId, workspaceId: run.workspaceId },
+          planUrl,
+        );
         if (response.ok && linked.length === 0) {
           await response.body?.cancel();
           // No account to price through: every change is unpriced, and says so.

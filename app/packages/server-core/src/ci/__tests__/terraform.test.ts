@@ -12,6 +12,8 @@ const {
   terraformCiRun,
   terraformCommitStatus,
   terraformDispatchRefusal,
+  terraformForkRefusal,
+  terraformTokenAccess,
   terraformRunUrls,
   terraformSkipReason,
   terraformStatusContext,
@@ -154,6 +156,25 @@ describe("a Terraform run's CI run", () => {
     expect(body).not.toHaveProperty("pipeline-file");
   });
 
+  it("applies only the workspace's branch, however the run was started", () => {
+    const apply = (branch: string | null, trigger: "push" | "manual") =>
+      terraformCiRun(
+        plan({
+          run: { kind: "apply", trigger, branch, pullNumber: null },
+          workspace: { branch: "release" },
+        }),
+      );
+    expect(() => apply("release", "manual")).not.toThrow();
+    expect(() => apply(null, "manual")).not.toThrow();
+    for (const trigger of ["manual", "push"] as const) {
+      expect(() => apply("feature/network", trigger)).toThrow(/runs on release/);
+    }
+    // A plan is of whatever branch was asked for.
+    expect(() =>
+      terraformCiRun(plan({ run: { trigger: "manual", pullNumber: null, branch: "feature/x" } })),
+    ).not.toThrow();
+  });
+
   it("refuses a version it has no pinned release for, by name", () => {
     expect(() => terraformCiRun(plan({ workspace: { toolVersion: "~> 1.9" } }))).toThrow(
       /no pinned release.*1\.15\.8/,
@@ -178,6 +199,18 @@ describe("who gets a run", () => {
     expect(terraformSkipReason({ fromFork: true, organizationId: null })).toBe(FORK_REASON);
     expect(terraformSkipReason({ fromFork: false, organizationId: null })).toBe(PERSONAL_REASON);
     expect(terraformSkipReason({ fromFork: false, organizationId: "org-1" })).toBeNull();
+  });
+
+  it("asks the fork rule again when a run is sent", () => {
+    expect(terraformForkRefusal("repo-1", "repo-1")).toBeNull();
+    expect(terraformForkRefusal("repo-1", "repo-of-a-fork")).toBe(FORK_REASON);
+    // The pull request is gone, or its fork is: nothing says the head is ours.
+    expect(terraformForkRefusal("repo-1", null)).toBe(FORK_REASON);
+  });
+
+  it("lets a plan's token read and lock, and only an apply's write", () => {
+    expect(terraformTokenAccess("plan")).toBe("read");
+    expect(terraformTokenAccess("apply")).toBe("write");
   });
 
   it("makes an apply wait unless the workspace applies on merge without approval", () => {

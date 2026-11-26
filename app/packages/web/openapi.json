@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.130.0",
+    "version": "1.130.1",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -45709,7 +45709,7 @@
             "items": {
               "$ref": "#/components/schemas/IacManagedBy"
             },
-            "description": "The Terraform workspaces on git.infrawrench.com whose current state holds this resource. Independent of `status`, which is about uploaded state documents. Empty when none matched."
+            "description": "The Terraform workspaces on git.infrawrench.com whose current state holds this resource. Independent of `status`, which is about uploaded state documents. A workspace of a private repository is listed only for a caller with `git:read` (or more) in the organization. Empty when none matched, or none the caller may see."
           }
         },
         "required": [

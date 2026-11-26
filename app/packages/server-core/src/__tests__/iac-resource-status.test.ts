@@ -33,6 +33,7 @@ vi.mock("../plugin-loader", () => ({ loadPlugins: () => Promise.resolve([]) }));
 // the badge's alone.
 const mockManagedBy = vi.fn(async (..._a: unknown[]): Promise<unknown[]> => []);
 vi.mock("../git-terraform/managed", () => ({
+  PUBLIC_MANAGED_BY_VIEWER: { readsGit: false },
   managedByForResource: (...a: unknown[]) => mockManagedBy(...a),
 }));
 vi.mock("../ownership/store", () => ({ lookupResourceOwners: () => Promise.resolve(new Map()) }));
@@ -153,7 +154,10 @@ describe("getIacResourceStatus scope selection", () => {
     // No uploaded state covers it, and a workspace's state does: both are true.
     expect(out.status).toBeNull();
     expect(out.managedBy).toEqual([managed]);
-    expect(mockManagedBy).toHaveBeenCalledWith("org-1", "res-1");
+    // Nobody in particular is asking: only public repositories are named.
+    expect(mockManagedBy).toHaveBeenCalledWith("org-1", "res-1", { readsGit: false });
+    await getIacResourceStatus("org-1", "res-1", { readsGit: true });
+    expect(mockManagedBy).toHaveBeenLastCalledWith("org-1", "res-1", { readsGit: true });
   });
 
   it("answers the badge when what manages it cannot be read", async () => {
