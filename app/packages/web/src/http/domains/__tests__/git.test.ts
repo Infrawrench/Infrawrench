@@ -102,7 +102,7 @@ describe("GET /git", () => {
     expect((await buildApp(["resources:read"]).request("/")).status).toBe(403);
     const res = await buildApp(["git:read"]).request("/");
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(overview);
+    expect(await res.json()).toEqual({ ...overview, reservedNamesAllowed: false });
     expect(mockOverview).toHaveBeenCalledWith("org-1");
   });
 
@@ -125,7 +125,9 @@ describe("PUT /git/namespace", () => {
     const res = await buildApp(["git:admin"]).request("/namespace", put({ slug: "acme" }));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(namespace);
-    expect(mockSetNamespace).toHaveBeenCalledWith("org-1", "acme", expect.any(String));
+    expect(mockSetNamespace).toHaveBeenCalledWith("org-1", "acme", expect.any(String), {
+      allowReserved: false,
+    });
     expect(mockLogAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "git.namespace.claim",
@@ -133,6 +135,41 @@ describe("PUT /git/namespace", () => {
       }),
     );
     expect(mockEnsurePrice).toHaveBeenCalledWith("org-1");
+  });
+
+  it("lets a platform admin, and nobody else, take a reserved name", async () => {
+    mockSetNamespace.mockResolvedValue({ namespace, change: "claimed" });
+    const before = process.env["INFRAWRENCH_PLATFORM_ADMIN_EMAILS"];
+    try {
+      process.env["INFRAWRENCH_PLATFORM_ADMIN_EMAILS"] = "test@example.com";
+      await buildApp(["git:admin"]).request("/namespace", put({ slug: "Infrawrench" }));
+      expect(mockSetNamespace).toHaveBeenLastCalledWith(
+        "org-1",
+        "Infrawrench",
+        expect.any(String),
+        {
+          allowReserved: true,
+        },
+      );
+      const overviewRes = await buildApp(["git:read"]).request("/");
+      expect(await overviewRes.json()).toMatchObject({ reservedNamesAllowed: true });
+
+      process.env["INFRAWRENCH_PLATFORM_ADMIN_EMAILS"] = "someone@else.com";
+      await buildApp(["git:admin"]).request("/namespace", put({ slug: "Infrawrench" }));
+      expect(mockSetNamespace).toHaveBeenLastCalledWith(
+        "org-1",
+        "Infrawrench",
+        expect.any(String),
+        {
+          allowReserved: false,
+        },
+      );
+      const other = await buildApp(["git:read"]).request("/");
+      expect(await other.json()).toMatchObject({ reservedNamesAllowed: false });
+    } finally {
+      if (before === undefined) delete process.env["INFRAWRENCH_PLATFORM_ADMIN_EMAILS"];
+      else process.env["INFRAWRENCH_PLATFORM_ADMIN_EMAILS"] = before;
+    }
   });
 
   it("audits a rename with the old name, and touches no subscription", async () => {

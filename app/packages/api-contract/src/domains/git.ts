@@ -65,6 +65,12 @@ export const GitForgeOverview = Schema.Struct({
   plan: Schema.Literals(["free", "paid"]),
   limits: GitForgeLimits,
   usage: GitForgeUsage,
+  reservedNamesAllowed: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "The caller may claim a name on the reserved list: a platform admin, for Infrawrench's own organisation.",
+    }),
+  ),
 }).annotate({ identifier: "GitForgeOverview" });
 
 export const GitForgeRepository = Schema.Struct({

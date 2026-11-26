@@ -11,6 +11,7 @@ import {
   gitRepositories,
   gitStars,
 } from "@infrawrench/server-core/db/schema";
+import { namespaceAvatarUrl } from "./namespaces";
 import { db } from "./client";
 import { type PageOf, pageSize } from "./cursor";
 import { type ListViewer, type RepositoryWithOwner, visibleTo } from "./repositories";
@@ -53,7 +54,7 @@ const ownerColumns = {
   userId: gitNamespaces.userId,
   organizationId: gitNamespaces.organizationId,
   displayName: gitNamespaces.displayName,
-  avatarUrl: gitNamespaces.avatarUrl,
+  avatarUrl: namespaceAvatarUrl,
 };
 
 /** Milliseconds since the epoch, so a cursor made in JavaScript compares exactly. */

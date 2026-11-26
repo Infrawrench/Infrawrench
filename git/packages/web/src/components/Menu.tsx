@@ -148,8 +148,13 @@ export interface MenuProps {
   readonly header?: ReactNode;
 }
 
+/**
+ * Opening a menu focuses its first item, so the arrow keys work at once. The
+ * focus is drawn only when the keyboard put it there (`focus-visible`), or a
+ * menu opened with a click would show its first item as if hovered.
+ */
 const itemClass =
-  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-surface-sunken focus:bg-surface-sunken focus:outline-none disabled:opacity-50";
+  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-surface-sunken focus:outline-none focus-visible:bg-surface-sunken disabled:opacity-50";
 
 export function Menu({ trigger, items, label, align, header }: MenuProps) {
   const list = useRef<HTMLDivElement>(null);

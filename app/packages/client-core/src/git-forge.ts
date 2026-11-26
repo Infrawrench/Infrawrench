@@ -76,6 +76,12 @@ export interface GitForgeOverview {
   plan: Exclude<GitForgePlan, "personal">;
   limits: GitForgeLimits;
   usage: GitForgeUsage;
+  /**
+   * The caller may claim a name on the reserved list (`infrawrench`, `admin`,
+   * ...): a platform admin, for Infrawrench's own organisation. Absent from
+   * an older server, which means no.
+   */
+  reservedNamesAllowed?: boolean;
 }
 
 export interface GitForgeRepositoryCi {

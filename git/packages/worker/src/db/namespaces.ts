@@ -6,11 +6,33 @@
  * is taken, and it says so through the unique index: the claim functions
  * insert and report a conflict, never check-then-insert.
  */
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { gitNamespaces, gitUsers } from "@infrawrench/server-core/db/schema";
 import { db, isUniqueViolation, newId } from "./client";
 
 export type NamespaceRow = typeof gitNamespaces.$inferSelect;
+
+/**
+ * The picture a namespace shows: its own, or for a person who has not set
+ * one, the picture they signed in with (`git_users.avatar_url`), which is what
+ * the header shows them. Every view of a namespace's picture reads this, so
+ * a person looks the same in the header, on their page and beside their
+ * repositories. Stored rows keep only what was set.
+ */
+export const namespaceAvatarUrl = sql<
+  string | null
+>`coalesce(${gitNamespaces.avatarUrl}, (select ${gitUsers.avatarUrl} from ${gitUsers} where ${gitUsers.userId} = ${gitNamespaces.userId}))`;
+
+/** {@link namespaceAvatarUrl} for a row already read. */
+export const avatarOfNamespace = async (namespace: NamespaceRow): Promise<string | null> => {
+  if (namespace.avatarUrl !== null || namespace.userId === null) return namespace.avatarUrl;
+  const [row] = await db
+    .select({ avatarUrl: gitUsers.avatarUrl })
+    .from(gitUsers)
+    .where(eq(gitUsers.userId, namespace.userId))
+    .limit(1);
+  return row?.avatarUrl ?? null;
+};
 
 export const getNamespaceBySlug = async (slug: string): Promise<NamespaceRow | null> => {
   const [row] = await db

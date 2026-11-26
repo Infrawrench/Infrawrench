@@ -11,6 +11,7 @@ import {
   gitStars,
 } from "@infrawrench/server-core/db/schema";
 import type { RepoForAccess } from "../auth/access";
+import { namespaceAvatarUrl } from "./namespaces";
 import { db, isUniqueViolation, newId } from "./client";
 import {
   type PageOf,
@@ -45,7 +46,7 @@ const ownerColumns = {
   userId: gitNamespaces.userId,
   organizationId: gitNamespaces.organizationId,
   displayName: gitNamespaces.displayName,
-  avatarUrl: gitNamespaces.avatarUrl,
+  avatarUrl: namespaceAvatarUrl,
 };
 
 /**

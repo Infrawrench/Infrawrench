@@ -23,6 +23,7 @@ import {
 } from "@infrawrench/server-core/git/forge";
 import { isGitEnabled } from "@infrawrench/server-core/git/feature-flag"; // git-feature-flag
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
+import { isPlatformAdmin } from "../../../auth/platform-admin";
 import { logAudit } from "../../../services/audit";
 import { ensureGitStoragePrice } from "../billing/operations";
 import { makeDomain } from "../../domain";
@@ -52,14 +53,25 @@ const requireGitFeature = Effect.gen(function* () {
   if (!enabled) return yield* notFound("Git is not available for this organization");
 });
 
+/**
+ * The reserved names (`infrawrench`, `admin`, ...) keep people from posing as
+ * the company or the site. A platform admin, in person and not with a key,
+ * may take one for Infrawrench's own organisation.
+ */
+const mayUseReservedNames = (email: string | undefined, apiKey: unknown): boolean =>
+  !apiKey && isPlatformAdmin(email);
+
 const GitForgeHandlers = HttpApiBuilder.group(GitForgeApi, "gitForge", (handlers) =>
   handlers
     .handle("overview", () =>
       Effect.gen(function* () {
         yield* requireGitFeature; // git-feature-flag
-        const { organizationId } = yield* OrgPrincipal;
+        const { organizationId, session, apiKey } = yield* OrgPrincipal;
         const overview = yield* legacy(() => gitForgeOverview(organizationId));
-        return yield* respond(GitForgeOverview)(overview);
+        return yield* respond(GitForgeOverview)({
+          ...overview,
+          reservedNamesAllowed: mayUseReservedNames(session.email, apiKey),
+        });
       }),
     )
     .handle("setNamespace", ({ payload }) =>
@@ -69,7 +81,9 @@ const GitForgeHandlers = HttpApiBuilder.group(GitForgeApi, "gitForge", (handlers
         const result = yield* legacyTry(
           () =>
             // A key has no person behind it to record as the claimant.
-            setGitForgeNamespace(organizationId, payload.slug, apiKey ? null : session.userId),
+            setGitForgeNamespace(organizationId, payload.slug, apiKey ? null : session.userId, {
+              allowReserved: mayUseReservedNames(session.email, apiKey),
+            }),
           namespaceRefusal,
         );
         if (result.change !== "none") {

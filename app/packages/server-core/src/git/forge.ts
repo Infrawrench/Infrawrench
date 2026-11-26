@@ -97,13 +97,15 @@ export async function setGitForgeNamespace(
   organizationId: string,
   slug: string,
   claimedByUserId: string | null,
+  /** A platform admin may take a reserved name (`infrawrench`); the shape rules still hold. */
+  options: { readonly allowReserved?: boolean } = {},
 ): Promise<{
   namespace: GitForgeNamespace;
   change: "claimed" | "renamed" | "none";
   from?: string;
 }> {
   const problem = gitNamespaceSlugProblem(slug);
-  if (problem !== null) {
+  if (problem !== null && !(problem === "reserved" && options.allowReserved === true)) {
     throw new GitForgeError(
       400,
       "name_invalid",

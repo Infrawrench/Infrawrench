@@ -35,6 +35,7 @@ import {
   getNamespaceForUser,
   isSlugTaken,
   renameNamespace,
+  avatarOfNamespace,
   updateNamespaceProfile,
 } from "../../db/namespaces";
 import { getOrganization } from "../../db/organizations";
@@ -111,7 +112,7 @@ export const namespaceView = async (cx: Cx, namespace: NamespaceRow): Promise<Na
     kind: namespace.kind,
     displayName: namespace.displayName,
     description: namespace.description,
-    avatarUrl: namespace.avatarUrl,
+    avatarUrl: await avatarOfNamespace(namespace),
     websiteUrl: namespace.websiteUrl,
     location: namespace.location,
     userId: namespace.userId,

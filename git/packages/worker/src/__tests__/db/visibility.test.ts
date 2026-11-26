@@ -5,6 +5,9 @@
  * archive, delete) follow the same answer.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
+import { gitUsers } from "@infrawrench/server-core/db/schema";
+import { db } from "../../db/client";
 import { type Person, type World, configured, makeWorld } from "./world";
 
 vi.mock("../../events/ci", () => ({
@@ -280,6 +283,16 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
     const me = await world.call("GET", "/api/session", { as: erin });
     const entry = me.body.organizations.find((o: { id: string }) => o.id === unclaimed.id);
     expect(entry).toMatchObject({ namespace: unclaimed.slug, canClaimNamespace: false });
+  });
+
+  it("shows a person's sign-in picture wherever their namespace shows, until they set one", async () => {
+    const picture = "https://avatars.example.test/alice.png";
+    await db.update(gitUsers).set({ avatarUrl: picture }).where(eq(gitUsers.userId, alice.id));
+    const page = await world.call("GET", `/api/namespaces/${alice.username}`);
+    expect(page.body.avatarUrl).toBe(picture);
+    const repository = await world.call("GET", `/api/repos/${alice.username}/pub`);
+    expect(repository.body.owner.avatarUrl).toBe(picture);
+    await db.update(gitUsers).set({ avatarUrl: null }).where(eq(gitUsers.userId, alice.id));
   });
 
   it("holds writes until a signed-in person has a username", async () => {

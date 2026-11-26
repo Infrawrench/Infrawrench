@@ -47,7 +47,10 @@ export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
     },
   });
 
-  if (session.data === undefined) return <Loading />;
+  // Once the name is claimed, refreshing the session also asks again whether
+  // the name is free, and the answer (taken, by this person) would flash
+  // before the page moves on.
+  if (session.data === undefined || claim.isSuccess) return <Loading />;
   if (session.data.user === null) {
     return (
       <Page width="narrow">

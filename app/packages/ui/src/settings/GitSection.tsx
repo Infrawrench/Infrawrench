@@ -228,7 +228,9 @@ function NamespaceCard({
 
   // The forge's own rules, checked as it is typed; the server checks again
   // and is the only one that knows whether the name is taken.
-  const problem = slug === "" ? null : gitNamespaceSlugProblem(slug);
+  const checked = slug === "" ? null : gitNamespaceSlugProblem(slug);
+  // A platform admin may take a reserved name; the shape rules still hold.
+  const problem = checked === "reserved" && overview.reservedNamesAllowed === true ? null : checked;
   const host = overview.forgeUrl.replace(/^https?:\/\//, "");
 
   async function save() {

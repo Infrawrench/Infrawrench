@@ -611,4 +611,6 @@
 // (temporary, `git-feature-flag`). `GET /org/{orgId}/team/me` answers
 // `gitEnabled`, and the `/api/org/:orgId/git` routes answer 404 while it is
 // false. Additive.
-export const API_VERSION = "1.131.0";
+// 1.132.0: `GET /org/{orgId}/git` answers `reservedNamesAllowed`, true for a
+// platform admin, who may claim a reserved namespace name. Additive.
+export const API_VERSION = "1.132.0";
