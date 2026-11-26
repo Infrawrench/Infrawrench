@@ -148,12 +148,31 @@ export function CommitStrip({
   );
 }
 
-type Transport = "https" | "ssh";
+export type Transport = "https" | "ssh";
 
 /** A clone URL with its copy button, and the HTTPS/SSH switch. */
-export function CloneUrl({ repository }: { repository: Repository }) {
-  const [transport, setTransport] = useState<Transport>("https");
-  const url = transport === "https" ? repository.httpCloneUrl : repository.sshCloneUrl;
+/** The repository's clone URL for a transport. */
+export const cloneUrlOf = (repository: Repository, transport: Transport): string =>
+  transport === "https" ? repository.httpCloneUrl : repository.sshCloneUrl;
+
+/**
+ * The HTTPS/SSH switch and the URL it picks. Pass `transport` and `onChange`
+ * when something beside it (the empty repository's commands) follows the
+ * choice; left out, it keeps its own.
+ */
+export function CloneUrl({
+  repository,
+  transport: chosen,
+  onChange,
+}: {
+  repository: Repository;
+  transport?: Transport;
+  onChange?: (transport: Transport) => void;
+}) {
+  const [own, setOwn] = useState<Transport>("https");
+  const transport = chosen ?? own;
+  const setTransport = onChange ?? setOwn;
+  const url = cloneUrlOf(repository, transport);
   return (
     <div className="flex items-center gap-2">
       <Segmented

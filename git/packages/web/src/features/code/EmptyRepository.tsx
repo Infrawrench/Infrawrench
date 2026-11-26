@@ -1,7 +1,8 @@
+import { useState } from "react";
 import type { Repository } from "@infrawrench/git-contract";
 import { CopyButton } from "../../components/controls";
 import { Panel, PanelHeader } from "../../components/Panel";
-import { CloneUrl } from "./shared";
+import { CloneUrl, type Transport, cloneUrlOf } from "./shared";
 
 function Commands({ label, lines }: { label: string; lines: ReadonlyArray<string> }) {
   const text = lines.join("\n");
@@ -25,14 +26,16 @@ function Commands({ label, lines }: { label: string; lines: ReadonlyArray<string
 /** A repository nothing has been pushed to: its clone URLs and the commands that fill it. */
 export function EmptyRepository({ repository }: { repository: Repository }) {
   const branch = repository.defaultBranch;
-  const remote = repository.sshCloneUrl;
+  // The commands use the address the switch above them shows.
+  const [transport, setTransport] = useState<Transport>("https");
+  const remote = cloneUrlOf(repository, transport);
   return (
     <Panel>
       <PanelHeader>
         <span className="font-medium text-on-surface">Nothing pushed yet</span>
       </PanelHeader>
       <div className="space-y-4 p-3">
-        <CloneUrl repository={repository} />
+        <CloneUrl repository={repository} transport={transport} onChange={setTransport} />
         {repository.viewer.canPush ? (
           <>
             <Commands
