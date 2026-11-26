@@ -1,18 +1,29 @@
 /**
  * The frame of every repository page: the header (owner / name, visibility,
- * star and fork) and the tab bar. The active tab comes from the route.
+ * star and fork) and the tab bar. The active tab comes from the route. In
+ * the sidebar shell there is no header: the same things are in the shell's
+ * bar (`RepoBarFrame`).
  *
  * Pages under it read the repository with `useRepository()` rather than
  * fetching it again.
  */
-import { createContext, useContext, useState, type FormEvent, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { REPOSITORY_NAME_MAX_LENGTH, type Repository } from "@infrawrench/git-contract";
 import { api } from "../api/client";
 import { invalidate, queries, queryClient } from "../api/queries";
 import { AppLink, useGo } from "../components/AppLink";
 import { Badge, VisibilityBadge } from "../components/Badge";
-import { Dialog, LinkTabs, type LinkTab } from "../components/controls";
+import { Dialog, LinkTabs, QuietTabs, type LinkTab } from "../components/controls";
 import { Field, Input, Select } from "../components/forms";
 import { Icon } from "../components/icons";
 import { useLocation } from "@tanstack/react-router";
@@ -25,6 +36,8 @@ import { ownersOf, type Owner } from "../lib/owners";
 import { paths, type RepoRef } from "../lib/paths";
 import { formatHead } from "../lib/refs";
 import { signInHref, useSession } from "../lib/session";
+import { pageColumn, useSidebarShell } from "../lib/shell";
+import { BarPortal } from "./TopBar";
 import { isNotFound } from "../api/client";
 import { Button, buttonClass } from "../components/Button";
 
@@ -61,7 +74,11 @@ export function repoSection(pathname: string): string {
   return pathname.split("/").filter(Boolean)[2] ?? "";
 }
 
-function tabsFor(repository: Repository, repo: RepoRef): LinkTab[] {
+/**
+ * A repository's sections. In the sidebar shell its pull requests are its
+ * branches: each opens as a branch page there.
+ */
+function tabsFor(repository: Repository, repo: RepoRef, sidebar = false): LinkTab[] {
   const section = (name: string) => (pathname: string) => repoSection(pathname) === name;
   const tabs: LinkTab[] = [
     {
@@ -82,9 +99,9 @@ function tabsFor(repository: Repository, repo: RepoRef): LinkTab[] {
   }
   if (repository.features.pullRequests) {
     tabs.push({
-      label: "Pull requests",
+      label: sidebar ? "Branches" : "Pull requests",
       href: paths.pulls(repo),
-      icon: <Icon name="gitPullRequest" />,
+      icon: <Icon name={sidebar ? "gitBranch" : "gitPullRequest"} />,
       count: repository.openPullRequestCount,
       match: section("pulls"),
     });
@@ -116,8 +133,18 @@ function tabsFor(repository: Repository, repo: RepoRef): LinkTab[] {
 
 const countButton =
   "inline-flex items-center gap-1.5 border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-on-surface";
+/** The same control in the sidebar shell's bar: its glyph and its count, no frame. */
+const quietButton =
+  "inline-flex h-7 items-center gap-1.5 rounded-md px-1.5 text-xs text-on-surface-muted tabular-nums hover:bg-surface-sunken hover:text-on-surface disabled:opacity-60";
 
-function StarButton({ repository, repo }: { repository: Repository; repo: RepoRef }) {
+interface RepoControl {
+  repository: Repository;
+  repo: RepoRef;
+  /** In the sidebar shell's bar. */
+  quiet?: boolean;
+}
+
+function StarButton({ repository, repo, quiet = false }: RepoControl) {
   const session = useSession();
   const signedIn = session.data?.user != null;
   const starred = repository.viewer.hasStarred;
@@ -147,6 +174,33 @@ function StarButton({ repository, repo }: { repository: Repository; repo: RepoRe
       {compactCount(repository.starCount)}
     </span>
   );
+  if (quiet) {
+    const body = (
+      <>
+        <Icon name="star" filled={starred} className={starred ? "text-warning" : ""} />
+        <span className="sr-only">{starred ? "Starred" : "Star"}</span>
+        <span aria-label={`${repository.starCount} stars`}>
+          {compactCount(repository.starCount)}
+        </span>
+      </>
+    );
+    return signedIn ? (
+      <button
+        type="button"
+        aria-pressed={starred}
+        title={starred ? "Starred" : "Star"}
+        disabled={toggle.isPending}
+        onClick={() => toggle.mutate()}
+        className={quietButton}
+      >
+        {body}
+      </button>
+    ) : (
+      <a href={signInHref()} title="Star" className={quietButton}>
+        {body}
+      </a>
+    );
+  }
   if (!signedIn) {
     return (
       <div className="flex">
@@ -301,7 +355,7 @@ function ForkDialog({
   );
 }
 
-function ForkButton({ repository, repo }: { repository: Repository; repo: RepoRef }) {
+function ForkButton({ repository, repo, quiet = false }: RepoControl) {
   const session = useSession();
   const user = session.data?.user ?? null;
   const [open, setOpen] = useState(false);
@@ -314,6 +368,45 @@ function ForkButton({ repository, repo }: { repository: Repository; repo: RepoRe
       {compactCount(repository.forkCount)}
     </span>
   );
+  const dialog = open ? (
+    <ForkDialog
+      repository={repository}
+      repo={repo}
+      targets={targets}
+      onClose={() => setOpen(false)}
+    />
+  ) : null;
+  if (quiet) {
+    const body = (
+      <>
+        <Icon name="gitFork" />
+        <span className="sr-only">Fork</span>
+        <span aria-label={`${repository.forkCount} forks`}>
+          {compactCount(repository.forkCount)}
+        </span>
+      </>
+    );
+    return (
+      <>
+        {user === null ? (
+          <a href={signInHref()} title="Fork" className={quietButton}>
+            {body}
+          </a>
+        ) : (
+          <button
+            type="button"
+            title="Fork"
+            disabled={!repository.viewer.canFork || user.username === null}
+            onClick={() => setOpen(true)}
+            className={quietButton}
+          >
+            {body}
+          </button>
+        )}
+        {dialog}
+      </>
+    );
+  }
   return (
     <div className="flex flex-col items-end gap-1">
       <div className="flex">
@@ -335,14 +428,7 @@ function ForkButton({ repository, repo }: { repository: Repository; repo: RepoRe
         )}
         {count}
       </div>
-      {open ? (
-        <ForkDialog
-          repository={repository}
-          repo={repo}
-          targets={targets}
-          onClose={() => setOpen(false)}
-        />
-      ) : null}
+      {dialog}
     </div>
   );
 }
@@ -355,11 +441,15 @@ function ForkButton({ repository, repo }: { repository: Repository; repo: RepoRe
 function RepoSkeleton() {
   const { pathname } = useLocation();
   const section = pathname.split("/").filter(Boolean)[2];
+  // In the sidebar shell the repository is named in the bar: there is no band.
+  const sidebar = useSidebarShell();
   return (
     <div role="status" aria-live="polite">
       <span className="sr-only">Loading repository</span>
       <div
-        className="h-[88px] overflow-hidden border-b border-border bg-surface-inset"
+        className={
+          sidebar ? "hidden" : "h-[88px] overflow-hidden border-b border-border bg-surface-inset"
+        }
         aria-hidden="true"
       >
         <div className="mx-auto w-full max-w-6xl px-4 pt-4">
@@ -387,6 +477,175 @@ function RepoSkeleton() {
         </Page>
       )}
     </div>
+  );
+}
+
+/** Where a fork came from, and how it differs. Nothing for a repository that is not one. */
+function ForkedFrom({
+  repository,
+  repo,
+  className = "",
+}: {
+  repository: Repository;
+  repo: RepoRef;
+  className?: string;
+}) {
+  if (repository.parent === null) return null;
+  const parent = { owner: repository.parent.owner, repo: repository.parent.name };
+  return (
+    <p className={`text-xs text-on-surface-muted ${className}`}>
+      Forked from{" "}
+      <AppLink href={paths.repo(parent)} className="text-on-surface-secondary hover:underline">
+        {parent.owner}/{parent.repo}
+      </AppLink>
+      {repository.isEmpty ? null : (
+        <>
+          {" · "}
+          <AppLink
+            href={paths.compareHead(
+              parent,
+              formatHead(parent, { repository: repo, ref: repository.defaultBranch }),
+            )}
+            className="text-on-surface-secondary hover:underline"
+          >
+            Compare with it
+          </AppLink>
+        </>
+      )}
+    </p>
+  );
+}
+
+interface RepoBarSlots {
+  /** Where a page's own name goes, after the repository's. */
+  readonly crumb: HTMLElement | null;
+  /** Where a page's own controls go, before the repository's. */
+  readonly actions: HTMLElement | null;
+  /** Says a page names itself in the bar, until the returned function is called. */
+  readonly nameIt: () => () => void;
+}
+
+const RepoBarContext = createContext<RepoBarSlots | null>(null);
+
+/**
+ * The page's name as the last part of the bar's breadcrumb, after the
+ * repository: `acme / infra / Peer with the shared services VPC`. Nothing
+ * outside the sidebar shell, where the page's own heading says it.
+ */
+export function RepoBarCrumb({ children }: { children: ReactNode }) {
+  const slots = useContext(RepoBarContext);
+  const nameIt = slots?.nameIt;
+  useEffect(() => nameIt?.(), [nameIt]);
+  if (slots === null || slots.crumb === null) return null;
+  return createPortal(
+    <>
+      <span aria-hidden="true" className="shrink-0 text-on-surface-faint">
+        /
+      </span>
+      <span aria-current="page" className="min-w-0 truncate font-medium text-on-surface">
+        {children}
+      </span>
+    </>,
+    slots.crumb,
+  );
+}
+
+/** A page's own controls on the right of the bar. Nothing outside the sidebar shell. */
+export function RepoBarActions({ children }: { children: ReactNode }) {
+  const slots = useContext(RepoBarContext);
+  if (slots === null || slots.actions === null) return null;
+  return createPortal(children, slots.actions);
+}
+
+/**
+ * A repository in the sidebar shell: no header of its own. The shell's bar
+ * says where the page is (namespace / repository / page), holds the
+ * repository's sections as quiet links, and its star and fork at the end.
+ */
+function RepoBarFrame({
+  repository,
+  repo,
+  children,
+}: {
+  repository: Repository;
+  repo: RepoRef;
+  children: ReactNode;
+}) {
+  const [crumb, setCrumb] = useState<HTMLElement | null>(null);
+  const [actions, setActions] = useState<HTMLElement | null>(null);
+  const [named, setNamed] = useState(0);
+  const slots = useMemo<RepoBarSlots>(
+    () => ({
+      crumb,
+      actions,
+      nameIt: () => {
+        setNamed((count) => count + 1);
+        return () => setNamed((count) => count - 1);
+      },
+    }),
+    [crumb, actions],
+  );
+  return (
+    <RepositoryContext.Provider value={repository}>
+      <RepoBarContext.Provider value={slots}>
+        <BarPortal>
+          <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
+            <AppLink
+              href={paths.namespace(repository.owner.slug)}
+              className="shrink-0 text-on-surface-muted hover:text-on-surface"
+            >
+              {repository.owner.slug}
+            </AppLink>
+            <span aria-hidden="true" className="shrink-0 text-on-surface-faint">
+              /
+            </span>
+            <AppLink
+              href={paths.repo(repo)}
+              className={`max-w-56 shrink-0 truncate hover:text-on-surface ${
+                named > 0 ? "text-on-surface-muted" : "font-medium text-on-surface"
+              }`}
+            >
+              {repository.name}
+            </AppLink>
+            {repository.visibility === "private" ? (
+              <span role="img" aria-label="Private" title="Private" className="inline-flex">
+                <Icon name="lock" size={12} className="text-on-surface-faint" />
+              </span>
+            ) : null}
+            {repository.isFork ? (
+              <span role="img" aria-label="Fork" title="Fork" className="inline-flex">
+                <Icon name="gitFork" size={12} className="text-on-surface-faint" />
+              </span>
+            ) : null}
+            {repository.archived ? (
+              <Badge tone="warning">
+                <Icon name="archive" size={10} />
+                Archived
+              </Badge>
+            ) : null}
+            <span ref={setCrumb} className="contents" />
+          </nav>
+          <div className="flex-1" />
+          <QuietTabs
+            label="Repository"
+            compact
+            tabs={tabsFor(repository, repo, true)}
+            className="shrink-0"
+          />
+          <span ref={setActions} className="flex shrink-0 items-center gap-3 empty:hidden" />
+          <span className="flex shrink-0 items-center border-l border-border pl-2">
+            <StarButton repository={repository} repo={repo} quiet />
+            <ForkButton repository={repository} repo={repo} quiet />
+          </span>
+        </BarPortal>
+        {repository.parent !== null ? (
+          <div className={`${pageColumn(true)} !pb-0`}>
+            <ForkedFrom repository={repository} repo={repo} />
+          </div>
+        ) : null}
+        {children}
+      </RepoBarContext.Provider>
+    </RepositoryContext.Provider>
   );
 }
 
@@ -427,37 +686,7 @@ function RepoHeader({ repository, repo }: { repository: Repository; repo: RepoRe
                 ) : null}
               </span>
             </h1>
-            {repository.parent !== null ? (
-              <p className="mt-1 text-xs text-on-surface-muted">
-                Forked from{" "}
-                <AppLink
-                  href={paths.repo({
-                    owner: repository.parent.owner,
-                    repo: repository.parent.name,
-                  })}
-                  className="text-on-surface-secondary hover:underline"
-                >
-                  {repository.parent.owner}/{repository.parent.name}
-                </AppLink>
-                {repository.isEmpty ? null : (
-                  <>
-                    {" · "}
-                    <AppLink
-                      href={paths.compareHead(
-                        { owner: repository.parent.owner, repo: repository.parent.name },
-                        formatHead(
-                          { owner: repository.parent.owner, repo: repository.parent.name },
-                          { repository: repo, ref: repository.defaultBranch },
-                        ),
-                      )}
-                      className="text-on-surface-secondary hover:underline"
-                    >
-                      Compare with it
-                    </AppLink>
-                  </>
-                )}
-              </p>
-            ) : null}
+            <ForkedFrom repository={repository} repo={repo} className="mt-1" />
           </div>
           <div className="flex items-start gap-2">
             <StarButton repository={repository} repo={repo} />
@@ -482,6 +711,7 @@ export function RepoLayout({
   const repo: RepoRef = { owner, repo: name };
   const query = useQuery(queries.repositories.get({ params: repo }));
   const session = useSession();
+  const sidebar = useSidebarShell();
 
   if (query.data === undefined) {
     if (query.error) {
@@ -504,6 +734,13 @@ export function RepoLayout({
   const repository = query.data;
   // The API matches names case-insensitively; link with the repository's own spelling.
   const canonical: RepoRef = { owner: repository.owner.slug, repo: repository.name };
+  if (sidebar) {
+    return (
+      <RepoBarFrame repository={repository} repo={canonical}>
+        {children}
+      </RepoBarFrame>
+    );
+  }
   return (
     <RepositoryContext.Provider value={repository}>
       <RepoHeader repository={repository} repo={canonical} />

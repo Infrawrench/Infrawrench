@@ -105,6 +105,58 @@ export function LinkTabs({
   );
 }
 
+/**
+ * The same links as `LinkTabs`, drawn quietly: plain words, the current one
+ * on a soft tile, a count as a number beside its word. For the sidebar
+ * shell's bar and the branch page, where an underlined strip would be a
+ * second header. `compact` shows each link as its icon alone below `xl`.
+ */
+export function QuietTabs({
+  tabs,
+  label,
+  compact = false,
+  className = "",
+}: {
+  tabs: ReadonlyArray<LinkTab>;
+  label: string;
+  compact?: boolean;
+  className?: string;
+}) {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  return (
+    <nav aria-label={label} className={`flex items-center gap-0.5 ${className}`}>
+      {tabs.map((tab) => {
+        const path = tab.href.split("?")[0]!;
+        const active = tab.match
+          ? tab.match(pathname)
+          : pathname === path || pathname.startsWith(`${path}/`);
+        const iconOnly = compact && tab.icon !== undefined;
+        return (
+          <AppLink
+            key={tab.href}
+            href={tab.href}
+            aria-current={active ? "page" : undefined}
+            title={iconOnly ? tab.label : undefined}
+            className={`flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[13px] whitespace-nowrap transition-colors ${
+              active
+                ? "bg-surface-sunken font-medium text-on-surface"
+                : "text-on-surface-muted hover:bg-surface-sunken hover:text-on-surface"
+            }`}
+          >
+            {iconOnly ? <span className="inline-flex xl:hidden">{tab.icon}</span> : null}
+            <span className={iconOnly ? "max-xl:sr-only" : ""}>{tab.label}</span>
+            {tab.count !== undefined && tab.count > 0 ? (
+              <span className="text-xs font-normal text-on-surface-faint tabular-nums">
+                {tab.count}
+              </span>
+            ) : null}
+          </AppLink>
+        );
+      })}
+    </nav>
+  );
+}
+
 export interface SegmentedProps<T extends string> {
   readonly label: string;
   readonly value: T;

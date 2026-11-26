@@ -44,10 +44,20 @@ export function BarTitle({ children }: { children: ReactNode }) {
   return <h1 className="min-w-0 truncate text-sm font-medium text-on-surface">{children}</h1>;
 }
 
-export function TopBar({ title, actions }: { title: ReactNode; actions?: ReactNode }) {
+/**
+ * Draws a page's own bar in the shell's, whatever it holds. Nothing outside
+ * the sidebar shell: a page that wants a heading there uses `TopBar`.
+ */
+export function BarPortal({ children }: { children: ReactNode }) {
   const slot = useContext(BarContext);
   const claim = slot?.claim;
   useEffect(() => claim?.(), [claim]);
+  if (slot === null || slot.element === null) return null;
+  return createPortal(children, slot.element);
+}
+
+export function TopBar({ title, actions }: { title: ReactNode; actions?: ReactNode }) {
+  const slot = useContext(BarContext);
   const bar = (
     <>
       <BarTitle>{title}</BarTitle>
@@ -58,5 +68,5 @@ export function TopBar({ title, actions }: { title: ReactNode; actions?: ReactNo
   if (slot === null) {
     return <div className="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 pt-5">{bar}</div>;
   }
-  return slot.element === null ? null : createPortal(bar, slot.element);
+  return <BarPortal>{bar}</BarPortal>;
 }
