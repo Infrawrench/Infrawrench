@@ -5,7 +5,8 @@
  * For each push: the repository row (`pushed_at`, size, counts); the pull
  * requests whose head or base moved (new head, timeline entry, mergeability
  * back to unknown, stale approvals dismissed); the branch's version and its
- * page (`events/versions.ts`); the issues a commit on the
+ * page (`events/versions.ts`) and the review agents' run on it
+ * (`events/reviews.ts`); the issues a commit on the
  * default branch closes (`Fixes #12`) or mentions; Infrawrench CI
  * (NOTES-ci.md section 1); and the Terraform runs the push asks for.
  *
@@ -39,6 +40,7 @@ import type { Env, GitEvent, GitPushEvent } from "../env";
 import { type RepoReader, RepoReaderError } from "../repo/reader";
 import { type RepoReaderFactory, repoReaderFor } from "../repo/select";
 import { announcePullRequest, announcePush } from "./ci";
+import { queueReviewForVersion } from "./reviews";
 import { queueMergeApplies, queuePullRequestPlans } from "./terraform";
 import { branchDeleted, carryThreads, openBranchPage, recordVersions } from "./versions";
 import { describeError } from "../http/log";
@@ -275,8 +277,13 @@ const handleBranch = async (cx: PushContext, update: Update, branch: string): Pr
   );
 
   // A branch with no page gets one: a draft pull request, opened at its head.
-  if (heads.length === 0) await openBranchPage(cx, update, branch, copied, commits);
+  const opened =
+    heads.length === 0 ? await openBranchPage(cx, update, branch, copied, commits) : null;
   for (const found of heads) await syncHead(cx, found, update, commits);
+  // The review agents read the new version, where the repository has them on.
+  for (const found of opened ? [opened] : heads) {
+    await queueReviewForVersion(cx, found, update.newOid);
+  }
   for (const { pull } of pulls) {
     if (pull.repositoryId !== repository.id || pull.baseRef !== branch) continue;
     if (pull.baseOid !== update.newOid) {

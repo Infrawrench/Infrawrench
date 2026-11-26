@@ -15,13 +15,25 @@
  * the Stripe price object. Complimentary organisations are marked without
  * sending; hours older than Stripe's 35-day window are dropped with a log
  * line. A person's own namespace is never sampled.
+ *
+ * The forge's review agents are metered here too ({@link reportGitReviewUsage}).
+ * Their usage is written by the forge's Worker into the organisation's AI
+ * spend (`workflow_ai_usage`, `billing/ai-usage.ts`), which is what the
+ * monthly cap counts, but the Worker holds no Stripe key, so the meter event
+ * is sent from this pass instead: the same chat meter, the same identifier
+ * (the usage row's id) `recordWorkflowAiUsage` would have used.
  */
-import { and, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, like, lt, sql } from "drizzle-orm";
 import { GIT_FORGE_LIMITS } from "@infrawrench/client-core";
 
 import { customerOf, sendMeterEvent } from "../ci/billing.js";
 import { db } from "../db/client.js";
-import { gitNamespaces, gitRepositories, gitStorageSamples } from "../db/schema.js";
+import {
+  gitNamespaces,
+  gitRepositories,
+  gitStorageSamples,
+  workflowAiUsage,
+} from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
 
 const GIB = 1024 ** 3;
@@ -187,9 +199,90 @@ export async function pruneGitStorageSamples(now: Date = new Date()): Promise<nu
   return removed.length;
 }
 
-/** The poller's pass: sample the hour, send what is owed, prune what is old. */
+/**
+ * What marks a usage row as the forge's review agents': its `workflow_id`
+ * is this and the repository's id. The forge's Worker writes it
+ * (`git/packages/worker/src/review/runner.ts`, `reviewUsageSource`).
+ */
+export const GIT_REVIEW_USAGE_PREFIX = "git-review:";
+
+/** What `stripe_usage_record_id` holds for usage that is settled without a meter event. */
+export const GIT_REVIEW_NOT_BILLED = "not-billed";
+
+/**
+ * Sends the review agents' usage to the AI meter (micro-dollars, the chat
+ * meter). Returns how many rows were settled. A complimentary organisation's
+ * rows are settled unsent; one with no Stripe customer yet waits, and is
+ * settled unsent once it is older than Stripe accepts.
+ */
+export async function reportGitReviewUsage(limit: number, now: Date = new Date()): Promise<number> {
+  const meter = process.env["INFRAWRENCH_STRIPE_CHAT_METER_EVENT"] || null;
+  if (!meter || !process.env["STRIPE_SECRET_KEY"]) return 0;
+  const rows = await db
+    .select({
+      id: workflowAiUsage.id,
+      organizationId: workflowAiUsage.organizationId,
+      costMicros: workflowAiUsage.costMicros,
+      createdAt: workflowAiUsage.createdAt,
+    })
+    .from(workflowAiUsage)
+    .where(
+      and(
+        isNull(workflowAiUsage.stripeUsageRecordId),
+        like(workflowAiUsage.workflowId, `${GIT_REVIEW_USAGE_PREFIX}%`),
+      ),
+    )
+    .orderBy(asc(workflowAiUsage.createdAt))
+    .limit(limit);
+  let settled = 0;
+  const customers = new Map<string, Awaited<ReturnType<typeof customerOf>>>();
+  for (const row of rows) {
+    const settle = (as: string) =>
+      db
+        .update(workflowAiUsage)
+        .set({ stripeUsageRecordId: as })
+        .where(and(eq(workflowAiUsage.id, row.id), isNull(workflowAiUsage.stripeUsageRecordId)));
+    const tooOld = now.getTime() - row.createdAt.getTime() > MAX_AGE_MS;
+    let customer = customers.get(row.organizationId);
+    if (!customer) {
+      customer = await customerOf(row.organizationId);
+      customers.set(row.organizationId, customer);
+    }
+    if (customer.kind === "never" || row.costMicros <= 0) {
+      await settle(GIT_REVIEW_NOT_BILLED);
+      settled++;
+      continue;
+    }
+    if (tooOld) {
+      if (customer.kind === "bill") {
+        console.warn(
+          `[git] ${row.organizationId}'s review usage ${row.id} is older than Stripe accepts; not billed`,
+        );
+      }
+      await settle(GIT_REVIEW_NOT_BILLED);
+      settled++;
+      continue;
+    }
+    // No Stripe customer: the free allowance, or a checkout in progress. It waits.
+    if (customer.kind === "unknown") continue;
+    try {
+      await sendMeterEvent(meter, row.id, customer.id, row.costMicros, row.createdAt);
+      await settle(row.id);
+      settled++;
+    } catch (err) {
+      console.warn(`[git] reporting ${row.organizationId}'s review usage failed; will retry:`, err);
+    }
+  }
+  return settled;
+}
+
+/**
+ * The poller's pass: sample the hour, send what is owed, prune what is old,
+ * and send what the review agents used.
+ */
 export async function runGitStoragePass(): Promise<void> {
   await sampleGitStorage();
   await reportGitStorage(200);
   await pruneGitStorageSamples();
+  await reportGitReviewUsage(200);
 }

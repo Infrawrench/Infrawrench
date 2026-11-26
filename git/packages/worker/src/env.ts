@@ -60,6 +60,12 @@ export interface GitLanguagesEvent {
 
 export type GitEvent = GitPushEvent | GitLanguagesEvent;
 
+/** What waits on `infrawrench-git-reviews`: a review run's id (`review/queue.ts`). */
+export interface GitReviewMessage {
+  readonly type: "review";
+  readonly runId: string;
+}
+
 /** A Rate Limiting binding, as much of it as is used. */
 export interface RateLimit {
   limit(options: { key: string }): Promise<{ success: boolean }>;
@@ -76,6 +82,11 @@ export interface Env {
   readonly TERRAFORM_STATE: DurableObjectNamespace;
   /** Producer for `infrawrench-git-events`. */
   readonly EVENTS: Queue<GitEvent>;
+  /**
+   * Producer for `infrawrench-git-reviews`, where review runs wait and run
+   * (`review/queue.ts`). Absent under tests: a run then stays queued.
+   */
+  readonly REVIEWS?: Queue<GitReviewMessage>;
   /**
    * The built UI (`../web/dist`), served for everything the Worker does not
    * route itself. Absent under tests and before the UI is built.
@@ -111,6 +122,16 @@ export interface Env {
    * reads it from `process.env`, which `nodejs_compat` fills from this.
    */
   readonly ENCRYPTION_MASTER_KEY: string;
+
+  /**
+   * Cloudflare AI Gateway, for the review agents (`review/model.ts`): the
+   * account, the gateway's id and its token. Optional, all three or none:
+   * without them review agents do not run. Server-core reads them from
+   * `process.env`.
+   */
+  readonly CLOUDFLARE_ACCOUNT_ID?: string;
+  readonly AI_GATEWAY_ID?: string;
+  readonly AI_GATEWAY_TOKEN?: string;
 
   // Variables (`vars` in wrangler.jsonc).
   /**

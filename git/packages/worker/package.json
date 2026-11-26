@@ -14,6 +14,7 @@
     "test:db": "vitest run --config vitest.db.config.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "@infrawrench/client-core": "workspace:*",
     "@infrawrench/git-contract": "workspace:*",
     "@infrawrench/git-core": "workspace:*",

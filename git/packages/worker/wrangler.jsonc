@@ -84,6 +84,9 @@
   // Optional, and CI stays off for repositories here without them:
   //   CI_PROXY_URL, CI_PROXY_KEY         the app's CI proxy (server-core `ci/proxy.ts`)
   //   APP_URL                            the app's origin, for a status's link to its run
+  // Optional, and review agents do not run without all three:
+  //   CLOUDFLARE_ACCOUNT_ID, AI_GATEWAY_ID, AI_GATEWAY_TOKEN
+  //                                      the app's Cloudflare AI Gateway (server-core `anthropic-client.ts`)
   "secrets": {
     "required": [
       "WORKOS_API_KEY",
@@ -146,8 +149,18 @@
   // The Durable Object sends a push here once the refs have moved
   // (git/README.md "After a push"). The consumer is this Worker's own `queue`
   // handler (`src/events/consumer.ts`).
+  //
+  // A review run waits on a queue of its own (`src/review/queue.ts`): one
+  // run an invocation, since a run is minutes of waiting on a model and
+  // would hold up the pushes batched behind it. A few at once, so one large
+  // review does not hold up every other repository's. A message that keeps
+  // failing goes to the same dead letter queue; its run is failed by the
+  // consumer's last try or by the hourly sweep, never left running.
   "queues": {
-    "producers": [{ "binding": "EVENTS", "queue": "infrawrench-git-events" }],
+    "producers": [
+      { "binding": "EVENTS", "queue": "infrawrench-git-events" },
+      { "binding": "REVIEWS", "queue": "infrawrench-git-reviews" },
+    ],
     "consumers": [
       {
         "queue": "infrawrench-git-events",
@@ -156,12 +169,22 @@
         "max_retries": 5,
         "dead_letter_queue": "infrawrench-git-events-dlq",
       },
+      {
+        "queue": "infrawrench-git-reviews",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_concurrency": 8,
+        "max_retries": 4,
+        "dead_letter_queue": "infrawrench-git-events-dlq",
+      },
     ],
   },
 
   // Local development only; production TCP arrives through a Spectrum
   // application whose origin is this Worker (README "SSH").
-  // Hourly: versions of branches merged or deleted thirty days ago are pruned (`src/review/prune.ts`).
+  // Hourly: versions of branches merged or deleted thirty days ago are pruned
+  // (`src/review/prune.ts`), and review runs nothing finished are sent again
+  // or failed (`src/review/queue.ts`).
   "triggers": { "crons": ["17 * * * *"] },
 
   "connect": [{ "protocol": "tcp", "port": 8788 }],

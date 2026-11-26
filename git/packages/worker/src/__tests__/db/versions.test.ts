@@ -596,7 +596,6 @@ describe.skipIf(!configured)("versions of a branch, against a real Postgres", ()
         body: { branch: "feature", entries: [{ kind: "step", body: "Read the handler" }] },
       }),
     ).toMatchObject(unbuilt);
-    expect(await world.call("GET", `${pull}/findings`, { as: bob })).toMatchObject(unbuilt);
     expect(await world.call("GET", `${pull}/instructions`, { as: bob })).toMatchObject(unbuilt);
     expect(await world.call("GET", "/api/t3/environments", { as: bob })).toMatchObject(unbuilt);
     // The gates come first: only an administrator overrides, and a token never reaches T3 Code.

@@ -242,9 +242,12 @@ and Hyperdrive (read) on the account; Zone (read) and Zone Settings (edit) on
 
    - R2 bucket `infrawrench-git` (`--location` picks the hint; `enam` by
      default, next to the database).
-   - Queues `infrawrench-git-events` and `infrawrench-git-events-dlq`. The
-     consumer's settings are the Worker's `wrangler.jsonc` and arrive with
-     the deploy.
+   - Queues `infrawrench-git-events`, `infrawrench-git-reviews` (review
+     agents' runs) and `infrawrench-git-events-dlq`: every queue
+     `wrangler.jsonc` names. The consumers' settings are the Worker's
+     `wrangler.jsonc` and arrive with the deploy. A queue added there later
+     is made by running the script again (`--only queues`) before the deploy
+     that binds it.
    - It checks that the Hyperdrive in `wrangler.jsonc` exists. It is the
      app's (`infrawrench-db`, "Cloudflare edge" above) and nothing is
      created: the forge's tables are in the app's database.
@@ -310,6 +313,12 @@ put` and deleted from disk. Both are made only when absent and never
   connected before refuse to. If it must change (it leaked), delete the
   secret, run `node infra/git/setup.mjs --only secrets`, deploy, and publish
   the new fingerprint.
+- **Review agents** need `CLOUDFLARE_ACCOUNT_ID`, `AI_GATEWAY_ID` and
+  `AI_GATEWAY_TOKEN` in `app_env` (the app's own, for AI chat): the deploy
+  passes them on and warns when one is missing, and without them no review
+  runs. What a run uses is billed from the organisation's AI spend; the
+  Stripe meter event is sent by the app's poller (`git-storage` pass), not
+  the Worker.
 - **A push event that failed five deliveries** is in
   `infrawrench-git-events-dlq`. Nothing consumes it: read it with
   `wrangler queues` to see what the consumer could not process. The
