@@ -8,7 +8,7 @@
  * can correct itself. Answers are bounded (`toolResultChars`) and say so
  * when they were cut, never silently.
  *
- * **A fork's pull request reads less.** Its code is anyone's, and what the
+ * **A fork's proposed branch reads less.** Its code is anyone's, and what the
  * model reads it can be talked into repeating in a finding, which the fork's
  * author reads. So a fork's review gets no CI log and no Terraform plan of
  * the base repository: only the names and states of its checks.
@@ -52,7 +52,7 @@ export const appCiJobs: CiJobsReader = async (organizationId, runId) =>
 
 export interface ReviewerContext {
   readonly kind: ReviewerKind;
-  /** The repository the pull request is in. */
+  /** The repository the branch page is in. */
   readonly base: RepositoryWithOwner;
   readonly found: PullRequestWithThread;
   readonly version: VersionRow;
@@ -132,13 +132,13 @@ export const REVIEW_TOOLS: Anthropic.Tool[] = [
   {
     name: "read_terraform_plan",
     description:
-      "Read the Terraform plans made for this pull request's head: per workspace, how many resources would be added, changed, replaced and destroyed, and each resource with the attributes that change.",
+      "Read the Terraform plans made for this branch's head: per workspace, how many resources would be added, changed, replaced and destroyed, and each resource with the attributes that change.",
     input_schema: { type: "object", properties: {} },
   },
   {
     name: "list_findings",
     description:
-      "List what has already been found on this pull request by every reviewer: open findings, fixed ones, and ones a person dismissed, with the reason they gave. Read it before reporting, so nothing is reported twice and nothing a person dismissed is raised again.",
+      "List what has already been found on this branch by every reviewer: open findings, fixed ones, and ones a person dismissed, with the reason they gave. Read it before reporting, so nothing is reported twice and nothing a person dismissed is raised again.",
     input_schema: { type: "object", properties: {} },
   },
   {
@@ -372,7 +372,7 @@ const readChecks = async (cx: ReviewerContext): Promise<string> => {
       `${status.context}: ${status.state}${status.description ? ` (${maskSecrets(status.description)})` : ""}`,
   );
   if (cx.fork) {
-    out.push("", "This pull request is from a fork: check logs are not read here.");
+    out.push("", "This branch is from a fork: check logs are not read here.");
     return out.join("\n");
   }
   const organizationId = cx.base.owner.organizationId;
@@ -411,7 +411,7 @@ const readChecks = async (cx: ReviewerContext): Promise<string> => {
 
 const readTerraformPlan = async (cx: ReviewerContext): Promise<string> => {
   const { pull, thread } = cx.found;
-  if (cx.fork) return "This pull request is from a fork: no Terraform plan is made or read for it.";
+  if (cx.fork) return "This branch is from a fork: no Terraform plan is made or read for it.";
   const [page, workspaces] = await Promise.all([
     listTerraformRuns(pull.repositoryId, { pull: thread.number, kind: "plan", limit: 50 }),
     listWorkspaces(pull.repositoryId),
@@ -420,7 +420,7 @@ const readTerraformPlan = async (cx: ReviewerContext): Promise<string> => {
   // Newest first: the first seen of each workspace is its newest plan.
   const newest = new Map<string, (typeof page.items)[number]>();
   for (const run of page.items) if (!newest.has(run.workspaceId)) newest.set(run.workspaceId, run);
-  if (newest.size === 0) return "No Terraform plan has been made for this pull request.";
+  if (newest.size === 0) return "No Terraform plan has been made for this branch.";
   const out: string[] = [];
   for (const run of newest.values()) {
     const stale = run.commitSha === cx.version.tipOid ? "" : " (of an older commit)";
@@ -464,7 +464,7 @@ const where = (finding: FindingRow): string =>
 
 const listKnownFindings = async (cx: ReviewerContext): Promise<string> => {
   const findings = await listFindings(cx.found.pull.issueId);
-  if (findings.length === 0) return "Nothing has been found on this pull request yet.";
+  if (findings.length === 0) return "Nothing has been found on this branch yet.";
   return findings
     .map((finding) => {
       const own = finding.reviewerKind === cx.kind;
@@ -491,7 +491,7 @@ const recheckFinding = async (cx: ReviewerContext, input: Input): Promise<string
   const [finding] = (await listFindings(cx.found.pull.issueId, { reviewerKind: cx.kind })).filter(
     (candidate) => candidate.id === id,
   );
-  if (!finding) throw new ToolRefusal("That is not one of your findings on this pull request");
+  if (!finding) throw new ToolRefusal("That is not one of your findings on this branch");
   if (finding.status !== "open") return `That finding is ${finding.status}: nothing to recheck.`;
   if (verdict === "fixed") {
     const fixed = await markFindingsFixed([finding.id], cx.version.number);

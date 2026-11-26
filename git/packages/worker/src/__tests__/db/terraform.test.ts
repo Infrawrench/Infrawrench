@@ -238,20 +238,22 @@ describe.skipIf(!configured)("Terraform runs, against a real Postgres", () => {
 
     await push("feature", bob);
     const pull = (
-      await world.call("POST", `${repo}/pulls`, {
+      await world.call("POST", `${repo}/branch-pages`, {
         as: bob,
         body: { title: "More servers", base: "main", head: "feature" },
       })
     ).body;
 
-    const [plan] = await runs(`&pull=${pull.number}`);
+    const [plan] = await runs(`&page=${encodeURIComponent(pull.key)}`);
     expect(plan).toMatchObject({
       operation: "plan",
-      trigger: "pull_request",
+      trigger: "branch",
       status: "queued",
       commitOid: pull.headOid,
-      pullNumber: pull.number,
+      branchPage: pull.key,
     });
+    // A key that names no page lists nothing, and the filter takes the trigger's wire name.
+    expect(await runs("&page=no-such-branch")).toEqual([]);
     const rows = await ciRunOf(plan!["id"]);
     expect(rows).toHaveLength(1);
     const ci = rows[0]!;
@@ -329,12 +331,13 @@ describe.skipIf(!configured)("Terraform runs, against a real Postgres", () => {
       userId: bob.id,
       fromFork: false,
     });
-    expect(await runs(`&pull=${pull.number}`)).toHaveLength(1);
+    expect(await runs(`&page=${encodeURIComponent(pull.key)}`)).toHaveLength(1);
   });
 
   it("stores a posted plan as its summary, on the run, the commit and the pull request", async () => {
-    const pull = (await world.call("GET", `${repo}/pulls?state=open`, { as: alice })).body.items[0];
-    const [plan] = await runs(`&pull=${pull.number}`);
+    const pull = (await world.call("GET", `${repo}/branch-pages?state=open`, { as: alice })).body
+      .items[0];
+    const [plan] = await runs(`&page=${encodeURIComponent(pull.key)}`);
     const ciRunId = plan!["ciRunId"] as string;
     const summary = summarizePlan(PLAN);
 
@@ -347,10 +350,12 @@ describe.skipIf(!configured)("Terraform runs, against a real Postgres", () => {
       { id: ciRunId, terraformRunId: plan!["id"] },
       { status: "in_progress", title: "Running", summary: "" },
     );
-    expect((await runs(`&pull=${pull.number}`))[0]).toMatchObject({ status: "planning" });
+    expect((await runs(`&page=${encodeURIComponent(pull.key)}`))[0]).toMatchObject({
+      status: "planning",
+    });
     expect(await recordTerraformPlan({ runId: plan!["id"], ciRunId, summary })).not.toBeNull();
 
-    const [planned] = await runs(`&pull=${pull.number}`);
+    const [planned] = await runs(`&page=${encodeURIComponent(pull.key)}`);
     expect(planned).toMatchObject({
       status: "planned",
       plan: { add: 1, change: 1, destroy: 0, hasChanges: true },
@@ -398,7 +403,9 @@ describe.skipIf(!configured)("Terraform runs, against a real Postgres", () => {
       { id: ciRunId, terraformRunId: plan!["id"] },
       { status: "completed", conclusion: "success", title: "1 job passed", summary: "" },
     );
-    expect((await runs(`&pull=${pull.number}`))[0]).toMatchObject({ status: "planned" });
+    expect((await runs(`&page=${encodeURIComponent(pull.key)}`))[0]).toMatchObject({
+      status: "planned",
+    });
     expect(await statusOf(pull.headOid)).toMatchObject({ state: "success" });
   });
 
@@ -415,8 +422,10 @@ describe.skipIf(!configured)("Terraform runs, against a real Postgres", () => {
       userId: bob.id,
       fromFork: true,
     });
-    const [skipped] = await runs("&pull=4040");
+    // No page has that number: the run names no page, and is found by its commit.
+    const [skipped] = (await runs()).filter((run) => run["commitOid"] === headOid);
     expect(skipped).toMatchObject({
+      branchPage: null,
       status: "skipped",
       statusReason: FORK_REASON,
       ciRunId: null,

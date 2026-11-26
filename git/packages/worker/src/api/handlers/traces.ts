@@ -7,7 +7,7 @@
  *   which is all a CI job's token has). An API key with `write`. A CI job's
  *   token for this repository, on the branch its run is of and no other: a
  *   job is one run of one commit, and what it records is about that work. A
- *   job of a fork's pull request records nothing (it is not trusted with
+ *   job of a fork's proposed branch records nothing (it is not trusted with
  *   the base repository's record), and neither does a token minted for no
  *   run. Everything else is a 403.
  * - **Masked before stored.** Every string an entry carries goes through
@@ -20,24 +20,20 @@
  *   version; `events/versions.ts` gives them to the version the branch's
  *   next push makes.
  *
- * Reading is the repository's readers'. A pull request's trace is its
- * versions' entries and what waits on its head branch, which for a fork's
- * pull request is in the fork.
+ * Reading is the repository's readers'. A branch's trace is its versions'
+ * entries and what waits on it for the next push.
  */
 import { HttpApiBuilder } from "effect/http-api";
 import {
   GitApi,
   type TraceEntry,
   accessAtLeast,
-  badRequest,
   forbidden,
   notFound,
   unprocessable,
 } from "@infrawrench/git-contract";
 import { getCiRun } from "../../db/automation";
 import { decodeCursor, pageSize } from "../../db/cursor";
-import { getPullRequest } from "../../db/pulls";
-import { versionsForPull } from "../../db/review";
 import {
   type TraceEntryRow,
   type TraceScope,
@@ -49,7 +45,6 @@ import {
 } from "../../db/traces";
 import { TRACE_LIMITS, prepareAgent, prepareTraceEntries } from "../../review/trace";
 import { type RepoCx, repoOp } from "../context";
-import { headRepositoryOf, mayProposeTo } from "../repos";
 import { iso, peopleById } from "../views/repositories";
 
 /** Characters no ref name has: controls, space, and what Git gives a meaning to. */
@@ -146,36 +141,14 @@ const traceViews = async (rows: readonly TraceEntryRow[]): Promise<TraceEntry[]>
   }));
 };
 
-/** Which entries a `list` reads: a pull request's, or a branch's of this repository. */
+/** Which entries a `list` reads: a branch's of this repository. */
 const scopeOf = async (
   cx: RepoCx,
-  query: {
-    readonly pull?: number | undefined;
-    readonly branch?: string | undefined;
-    readonly version?: string | undefined;
-  },
+  query: { readonly branch: string; readonly version?: string | undefined },
 ): Promise<TraceScope> => {
-  if ((query.pull === undefined) === (query.branch === undefined)) {
-    throw badRequest("Give one of pull and branch");
-  }
-  let versions: ReadonlyArray<{ readonly id: string; readonly number: number }>;
-  let pending: TraceScope["pending"];
-  if (query.pull !== undefined) {
-    const found = await getPullRequest(cx.repo.repository.id, query.pull);
-    if (!found) throw notFound("No such pull request");
-    versions = await versionsForPull(found.pull);
-    // What waits is in the head repository: this one, or a fork whose
-    // branches this repository's readers may be shown (as its versions are).
-    const head = await headRepositoryOf(cx, found.pull.headRepositoryId);
-    pending =
-      head && mayProposeTo(cx.repo, head.repo)
-        ? { repositoryId: head.repo.repository.id, branch: found.pull.headRef }
-        : null;
-  } else {
-    const branch = traceBranch(query.branch!);
-    versions = await versionsOfBranch(cx.repo.repository.id, branch);
-    pending = { repositoryId: cx.repo.repository.id, branch };
-  }
+  const branch = traceBranch(query.branch);
+  const versions = await versionsOfBranch(cx.repo.repository.id, branch);
+  const pending: TraceScope["pending"] = { repositoryId: cx.repo.repository.id, branch };
   if (query.version === undefined) {
     return { versionIds: versions.map((version) => version.id), pending };
   }

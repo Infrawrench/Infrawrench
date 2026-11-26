@@ -5,7 +5,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { writeGitCommitStatus } from "@infrawrench/server-core/ci/status";
-import { type Person, type World, configured, makeWorld } from "./world";
+import { type Person, type World, configured, makeWorld, pagePath } from "./world";
 
 vi.mock("../../events/ci", () => ({
   announcePush: vi.fn(async () => {}),
@@ -49,12 +49,12 @@ describe.skipIf(!configured)("merging, against a real Postgres", () => {
       expect(created.status).toBe(200);
     }
     const pull = (
-      await world.call("POST", `${repo}/pulls`, {
+      await world.call("POST", `${repo}/branch-pages`, {
         as: bob,
         body: { title: "Add the thing", base: "main", head: "feature" },
       })
     ).body;
-    const path = `${repo}/pulls/${pull.number}`;
+    const path = `${pagePath(repo, pull.key)}`;
     return {
       id: made.id,
       repo,
@@ -164,7 +164,7 @@ describe.skipIf(!configured)("merging, against a real Postgres", () => {
       baseRef: "main",
       headOid: s.head,
       method: "squash",
-      title: `Add the thing (#${s.number})`,
+      title: "Add the thing",
       committer: { email: alice.email },
     });
 
@@ -186,8 +186,10 @@ describe.skipIf(!configured)("merging, against a real Postgres", () => {
       "review_dismissed",
       "merged",
     ]);
-    expect((await world.call("GET", s.repo)).body.openPullRequestCount).toBe(0);
-    expect((await world.call("GET", `${s.repo}/pulls?state=merged`)).body.items).toHaveLength(1);
+    expect((await world.call("GET", s.repo)).body.openBranchCount).toBe(0);
+    expect(
+      (await world.call("GET", `${s.repo}/branch-pages?state=merged`)).body.items,
+    ).toHaveLength(1);
   });
 
   it("lets an administrator bypass a rule that does not bind administrators, and nobody else", async () => {
@@ -228,10 +230,15 @@ describe.skipIf(!configured)("merging, against a real Postgres", () => {
     // Deleting the head branch afterwards is the merger's choice.
     const merged = await s.merge(carol, { deleteBranch: true });
     expect(merged.body).toMatchObject({ merged: true, branchDeleted: true });
+    // The commit the forge writes names the branch it merges.
+    expect(world.storage.merges.at(-1)).toMatchObject({
+      method: "merge",
+      title: "Merge branch 'feature'",
+    });
     expect(s.storage.branches.has("feature")).toBe(false);
     const pull = (await world.call("GET", s.path, { as: bob })).body;
     expect(pull).toMatchObject({ headRefExists: false });
-    const restored = await world.call("POST", `${s.path}/restore-branch`, { as: bob });
+    const restored = await world.call("POST", `${s.path}/restore`, { as: bob });
     expect(restored.body).toEqual({ ref: "feature", oid: s.head });
   });
 
@@ -280,7 +287,7 @@ describe.skipIf(!configured)("merging, against a real Postgres", () => {
     expect(await threads(bob)).toHaveLength(0);
     expect(
       (
-        await world.call("PATCH", `${s.repo}/pulls/comments/${placed.body.comment.id}`, {
+        await world.call("PATCH", `${s.repo}/review-comments/${placed.body.comment.id}`, {
           as: alice,
           body: { body: "Peek" },
         })
@@ -301,9 +308,10 @@ describe.skipIf(!configured)("merging, against a real Postgres", () => {
     const threadId = placed.body.thread.id;
     const dave = await world.person("erin");
     expect(
-      (await world.call("PUT", `${s.repo}/pulls/threads/${threadId}/resolve`, { as: dave })).status,
+      (await world.call("PUT", `${s.repo}/review-threads/${threadId}/resolve`, { as: dave }))
+        .status,
     ).toBe(403);
-    const resolved = await world.call("PUT", `${s.repo}/pulls/threads/${threadId}/resolve`, {
+    const resolved = await world.call("PUT", `${s.repo}/review-threads/${threadId}/resolve`, {
       as: bob,
     });
     expect(resolved.body).toMatchObject({ resolved: true });

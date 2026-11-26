@@ -1,18 +1,18 @@
 /**
- * Pull request rows as the contract's shapes: summaries for a page, the
+ * Branch page rows as the contract's shapes: summaries for a list, the
  * detail with its mergeability, reviews and review threads.
  *
- * {@link mergeabilityOf} is the one place "can this merge, and why not" is
- * decided. `pulls.get`, `pulls.mergeability` and `pulls.merge` all read it, so
- * the merge box and the merge cannot disagree.
+ * {@link mergeabilityDetail} is the one place "can this merge, and why not"
+ * is decided. `branches.get`, `branches.mergeability` and `branches.merge`
+ * all read it, so the merge box and the merge cannot disagree.
  */
 import {
   type CommitStatus,
   type DiffHunk,
   type MergeMethod,
   type Mergeability,
-  type PullRequest,
-  type PullRequestSummary,
+  type BranchPage,
+  type BranchPageSummary,
   type Review,
   type ReviewComment,
   type ReviewDecision,
@@ -40,6 +40,7 @@ import {
   standingReviews,
   standingReviewsFor,
 } from "../../db/pulls";
+import { pageKeys } from "../../db/branch-pages";
 import { visibleRepositoriesById } from "../../db/repository-lists";
 import { findingsCount, getReviewSettings, latestVersionNumbers } from "../../db/review";
 import { RepoReaderError } from "../../repo/reader";
@@ -73,13 +74,13 @@ const decisionOf = (
   return approvals > 0 ? "approved" : null;
 };
 
-export const pullSummaries = async (
+export const pageSummaries = async (
   cx: RepoCx,
   rows: readonly PullRequestWithThread[],
-): Promise<PullRequestSummary[]> => {
+): Promise<BranchPageSummary[]> => {
   const { repository } = cx.repo;
   const viewer = await cx.viewer();
-  const [{ fields }, states, standing, rules, heads, versions] = await Promise.all([
+  const [{ fields }, states, standing, rules, heads, versions, keys] = await Promise.all([
     threadFieldsFor(rows.map((row) => row.thread)),
     combinedStatesFor(repository.id, [...new Set(rows.map((row) => row.pull.headOid))]),
     standingReviewsFor(rows.map((row) => row.pull.issueId)),
@@ -93,6 +94,7 @@ export const pullSummaries = async (
       viewer,
     ),
     latestVersionNumbers(rows.map((row) => row.pull.issueId)),
+    pageKeys(rows.map((row) => row.pull)),
   ]);
   return rows.map(({ thread, pull }) => {
     const head =
@@ -103,6 +105,7 @@ export const pullSummaries = async (
           : undefined;
     return {
       ...fields(thread),
+      key: keys.get(pull.issueId)!,
       state: pull.mergedAt ? "merged" : thread.state,
       draft: pull.draft,
       baseRef: pull.baseRef,
@@ -132,9 +135,9 @@ export const BYPASSABLE: ReadonlySet<Blocker["code"]> = new Set([
 ]);
 
 const BLOCKER_MESSAGES: Record<Blocker["code"], string> = {
-  merged: "This pull request has been merged",
-  closed: "This pull request is closed",
-  draft: "This pull request is a draft",
+  merged: "This branch has been merged",
+  closed: "This branch page is closed",
+  draft: "This branch is a draft",
   conflicts: "The branch has conflicts with the base branch",
   checking: "Checking whether the branch can merge",
   head_missing: "The head branch has been deleted",
@@ -164,8 +167,8 @@ export interface MergeabilityDetail {
 }
 
 /**
- * Whether a pull request can merge and everything that says why not. An open
- * pull request's trial merge is asked of the `RepoReader` (which caches it by
+ * Whether a branch page can merge and everything that says why not. An open
+ * page's trial merge is asked of the `RepoReader` (which caches it by
  * the two heads) and the answer kept on the row; while the storage does not
  * answer, the state is `unknown` and merging waits.
  */
@@ -289,13 +292,10 @@ export const mergeabilityDetail = async (
   };
 };
 
-export const pullDetail = async (
-  cx: RepoCx,
-  found: PullRequestWithThread,
-): Promise<PullRequest> => {
+export const pageDetail = async (cx: RepoCx, found: PullRequestWithThread): Promise<BranchPage> => {
   const { thread, pull } = found;
   const [[summary], { person }, { mergeability }, head, pending, extra] = await Promise.all([
-    pullSummaries(cx, [found]),
+    pageSummaries(cx, [found]),
     threadFieldsFor([thread]),
     mergeabilityDetail(cx, found),
     headRepositoryOf(cx, pull.headRepositoryId),
@@ -399,7 +399,7 @@ const reviewCommentView = (
   };
 };
 
-/** Whether the viewer may resolve a thread: the pull request's author, its starter, or `write`. */
+/** Whether the viewer may resolve a thread: the page's author, its starter, or `write`. */
 export const mayResolve = (
   cx: RepoCx,
   found: PullRequestWithThread,
@@ -454,6 +454,6 @@ export const reviewCommentViewOf = async (
   row: VisibleComment,
 ): Promise<ReviewComment> => reviewCommentView(cx, row, await peopleById([row.authorUserId]));
 
-/** A pull request's threads as the viewer sees them. */
+/** A page's review threads as the viewer sees them. */
 export const threadsOf = async (cx: RepoCx, found: PullRequestWithThread) =>
   reviewThreadViews(cx, found, await listReviewComments(found.pull.issueId, cx.userId));

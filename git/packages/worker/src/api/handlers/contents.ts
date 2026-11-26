@@ -1,13 +1,13 @@
 /**
  * `/api/repos/:owner/:repo`: what is in the repository. Every read and every
  * ref change goes through the `RepoReader` (`repo/reader.ts`); this file adds
- * what Postgres knows (people, statuses, pull requests, protected branches)
+ * what Postgres knows (people, statuses, branch pages, protected branches)
  * and decides who may change a branch.
  */
 import { HttpApiBuilder } from "effect/http-api";
 import {
   type Branch,
-  type PullRequestBadge,
+  type BranchPageBadge,
   GitApi,
   accessAtLeast,
   badRequest,
@@ -17,11 +17,11 @@ import {
 } from "@infrawrench/git-contract";
 import { principalActor } from "../../auth/principal";
 import { listProtectedBranches, protectionFor } from "../../db/policy";
+import { openPageOfHead, pageKey, pageKeys } from "../../db/branch-pages";
 import {
   type PullRequestWithThread,
-  findOpenPullRequest,
-  newestPullRequestsForBranches,
-  pullRequestsForCommit,
+  currentPagesForBranches,
+  pagesForCommit,
 } from "../../db/pulls";
 import { getUser, userByUsername } from "../../db/users";
 import { type ReaderBranch, RepoReaderError } from "../../repo/reader";
@@ -31,8 +31,8 @@ import { mayDelete, mayPush } from "../protection";
 import { headRepository } from "../repos";
 import { commitDecorator } from "../views/commits";
 
-export const badgeOf = ({ thread, pull }: PullRequestWithThread): PullRequestBadge => ({
-  number: thread.number,
+export const badgeOf = ({ thread, pull }: PullRequestWithThread, key: string): BranchPageBadge => ({
+  key,
   title: thread.title,
   state: pull.mergedAt ? "merged" : thread.state,
   draft: pull.draft,
@@ -53,9 +53,9 @@ const refInPayload = async <T>(work: Promise<T>): Promise<T> => {
 /** The branches of a page as the contract's `Branch`. */
 const branchViews = async (cx: RepoCx, branches: readonly ReaderBranch[]): Promise<Branch[]> => {
   const { repository } = cx.repo;
-  const [rules, pulls, decorate] = await Promise.all([
+  const [rules, pages, decorate] = await Promise.all([
     listProtectedBranches(repository.id),
-    newestPullRequestsForBranches(
+    currentPagesForBranches(
       repository.id,
       branches.map((branch) => branch.name),
     ),
@@ -64,10 +64,11 @@ const branchViews = async (cx: RepoCx, branches: readonly ReaderBranch[]): Promi
       branches.map((branch) => branch.commit),
     ),
   ]);
+  const keys = await pageKeys([...pages.values()].map((page) => page.pull));
   return branches.map((branch) => {
     const protection = protectionFor(rules, branch.name);
     const isDefault = branch.name === repository.defaultBranch;
-    const pull = pulls.get(branch.name);
+    const page = pages.get(branch.name);
     return {
       name: branch.name,
       commit: decorate(branch.commit),
@@ -75,7 +76,7 @@ const branchViews = async (cx: RepoCx, branches: readonly ReaderBranch[]): Promi
       protected: protection !== null,
       ahead: isDefault ? null : branch.ahead,
       behind: isDefault ? null : branch.behind,
-      pullRequest: pull ? badgeOf(pull) : null,
+      page: page ? badgeOf(page, keys.get(page.pull.issueId)!) : null,
       viewerCanDelete:
         !isDefault && accessAtLeast(cx.access, "write") && mayDelete(protection, cx.access),
     };
@@ -295,11 +296,16 @@ export const ContentsHandlers = HttpApiBuilder.group(GitApi, "contents", (handle
       "commit",
       repoOp(async (cx, { params }) => {
         const detail = await cx.git.commit(params.sha.toLowerCase());
-        const [decorate, pullRequests] = await Promise.all([
+        const [decorate, pages] = await Promise.all([
           commitDecorator(cx.repo.repository.id, [detail.commit]),
-          pullRequestsForCommit(cx.repo.repository.id, detail.commit.oid),
+          pagesForCommit(cx.repo.repository.id, detail.commit.oid),
         ]);
-        return { ...detail, commit: decorate(detail.commit), pullRequests };
+        const keys = await pageKeys(pages);
+        return {
+          ...detail,
+          commit: decorate(detail.commit),
+          branchPages: pages.map((page) => ({ key: keys.get(page.issueId)!, title: page.title })),
+        };
       }),
     )
     .handle(
@@ -315,21 +321,16 @@ export const ContentsHandlers = HttpApiBuilder.group(GitApi, "contents", (handle
         const found = await refInPayload(cx.git.compare(input));
         const [decorate, open] = await Promise.all([
           commitDecorator(cx.repo.repository.id, found.commits),
-          // Only a comparison of two branches can have a pull request.
-          found.base.kind === "branch" && found.head.kind === "branch"
-            ? findOpenPullRequest(
-                cx.repo.repository.id,
-                found.base.name,
-                head.repository.id,
-                found.head.name,
-              )
+          // Only a branch has a page.
+          found.head.kind === "branch"
+            ? openPageOfHead(cx.repo.repository.id, head.repository.id, found.head.name)
             : Promise.resolve(null),
         ]);
         return {
           ...found,
           commits: found.commits.map(decorate),
           headRepository: { owner: head.owner.slug, name: head.repository.name },
-          pullRequest: open ? badgeOf(open) : null,
+          page: open ? badgeOf(open, await pageKey(open.pull)) : null,
         };
       }),
     )

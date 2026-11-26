@@ -56,6 +56,14 @@ describe("routeOf", () => {
       "/acme",
       "/acme/infra",
       "/acme/infra/tree/main/src",
+      "/acme/infra/branches",
+      "/acme/infra/branches/feature/a/b",
+      "/acme/infra/branches/bob/infra:feature~2",
+      // A branch's name may end in what a Git or download path does: still a page.
+      "/acme/infra/branches/x/info/refs",
+      "/acme/infra/branches/x/git-upload-pack",
+      "/acme/infra/start",
+      // An old address the UI redirects.
       "/acme/infra/pulls/3",
       // The Infrastructure tab, not the state backend.
       "/acme/infra/terraform",

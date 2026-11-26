@@ -239,8 +239,8 @@ const settingsOf = async (
     checkPattern(payload.pattern);
     settings.pattern = payload.pattern;
   }
-  if (payload.requirePullRequest !== undefined) {
-    settings.requirePullRequest = payload.requirePullRequest;
+  if (payload.requireBranchPage !== undefined) {
+    settings.requirePullRequest = payload.requireBranchPage;
   }
   if (payload.requiredApprovals !== undefined)
     settings.requiredApprovals = payload.requiredApprovals;
@@ -275,7 +275,7 @@ const ruleViews = async (
   return rows.map((row) => ({
     id: row.id,
     pattern: row.pattern,
-    requirePullRequest: row.requirePullRequest,
+    requireBranchPage: row.requirePullRequest,
     requiredApprovals: row.requiredApprovals,
     dismissStaleApprovals: row.dismissStaleApprovals,
     requiredStatusContexts: row.requiredStatusContexts,

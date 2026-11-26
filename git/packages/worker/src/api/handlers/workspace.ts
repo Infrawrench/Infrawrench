@@ -1,7 +1,6 @@
 /**
- * `/api/workspace`: a person's work across repositories. The home page of
- * someone in agent mode in one call, the lists behind it, and the comments
- * that mention them. Rows come from `db/workspace.ts`, which keeps every
+ * `/api/workspace`: a person's work across repositories. The home page in
+ * one call, the lists behind it, and the comments that mention them. Rows come from `db/workspace.ts`, which keeps every
  * query to the repositories the viewer has a tie to.
  */
 import { HttpApiBuilder } from "effect/http-api";
@@ -11,6 +10,7 @@ import {
   GitApi,
   type SuggestionReason,
 } from "@infrawrench/git-contract";
+import { pageKeys } from "../../db/branch-pages";
 import { decodeCursor, pageSize } from "../../db/cursor";
 import { avatarOfNamespace, getNamespaceBySlug } from "../../db/namespaces";
 import {
@@ -21,7 +21,6 @@ import {
   countOpenChanges,
   listChanges,
   listMentions,
-  listThreads,
   mentionPattern,
   pushedSince,
   suggestedReviews,
@@ -72,13 +71,20 @@ export const excerptOf = (body: string, username: string): string => {
 
 type Person = Awaited<ReturnType<typeof peopleById>>;
 
-const changeView = (row: ChangeRow, person: Person): ChangeSummary => ({
+type Keys = ReadonlyMap<string, string>;
+
+/** The keys of the pages behind these rows, in one query. */
+const keysOf = (rows: ReadonlyArray<{ readonly pullRequestId: string }>): Promise<Keys> =>
+  pageKeys(rows.map((row) => ({ issueId: row.pullRequestId })));
+
+const changeView = (row: ChangeRow, person: Person, keys: Keys): ChangeSummary => ({
   repository: {
     id: row.repositoryId,
     owner: row.owner,
     name: row.repositoryName,
     visibility: row.visibility,
   },
+  key: keys.get(row.pullRequestId)!,
   number: row.number,
   title: row.title,
   branch: row.branch,
@@ -134,9 +140,16 @@ export const WorkspaceHandlers = HttpApiBuilder.group(GitApi, "workspace", (hand
           pushedSince(scope, since),
           activitySince(scope, since, HOME_ACTIVITY),
         ]);
-        const person = await peopleById([
-          ...[...yours.items, ...team.items, ...suggested.items].map((row) => row.authorUserId),
-          ...activity.map((row) => row.actorUserId),
+        const changes = [...yours.items, ...team.items, ...suggested.items];
+        const [person, keys] = await Promise.all([
+          peopleById([
+            ...changes.map((row) => row.authorUserId),
+            ...activity.map((row) => row.actorUserId),
+          ]),
+          pageKeys([
+            ...changes.map((row) => ({ issueId: row.pullRequestId })),
+            ...activity.map((row) => ({ issueId: row.pageId })),
+          ]),
         ]);
         return {
           namespace: namespace
@@ -160,12 +173,18 @@ export const WorkspaceHandlers = HttpApiBuilder.group(GitApi, "workspace", (hand
               visibility: row.visibility,
             })),
           },
-          yours: { count: counts.mine, items: yours.items.map((row) => changeView(row, person)) },
-          team: { count: counts.team, items: team.items.map((row) => changeView(row, person)) },
+          yours: {
+            count: counts.mine,
+            items: yours.items.map((row) => changeView(row, person, keys)),
+          },
+          team: {
+            count: counts.team,
+            items: team.items.map((row) => changeView(row, person, keys)),
+          },
           suggested: {
             count: suggested.count,
             items: suggested.items.map((row) => ({
-              ...changeView(row, person),
+              ...changeView(row, person, keys),
               reviewedVersion: row.reviewedVersion,
               reasons: reasonsOf(row),
             })),
@@ -182,6 +201,7 @@ export const WorkspaceHandlers = HttpApiBuilder.group(GitApi, "workspace", (hand
               name: row.repositoryName,
               visibility: row.visibility,
             },
+            key: keys.get(row.pageId)!,
             number: row.number,
             title: row.title,
             version: row.version,
@@ -200,49 +220,12 @@ export const WorkspaceHandlers = HttpApiBuilder.group(GitApi, "workspace", (hand
           cursor: decodeCursor(query.cursor),
           limit: pageSize(query.limit),
         });
-        const person = await peopleById(page.items.map((row) => row.authorUserId));
+        const [person, keys] = await Promise.all([
+          peopleById(page.items.map((row) => row.authorUserId)),
+          keysOf(page.items),
+        ]);
         return {
-          items: page.items.map((row) => changeView(row, person)),
-          nextCursor: page.nextCursor,
-        };
-      }),
-    )
-    .handle(
-      "threads",
-      op(async (cx, { query }) => {
-        const page = await listThreads({
-          viewer: { ...(await cx.viewer()), userId: cx.userId! },
-          username: cx.username,
-          kind: query.kind,
-          involvement: query.involvement,
-          state: query.state ?? "open",
-          cursor: decodeCursor(query.cursor),
-          limit: pageSize(query.limit),
-        });
-        const person = await peopleById(page.items.map((row) => row.authorUserId));
-        return {
-          items: page.items.map((row) => ({
-            id: row.id,
-            repository: {
-              id: row.repositoryId,
-              owner: row.owner,
-              name: row.repositoryName,
-              visibility: row.visibility,
-            },
-            number: row.number,
-            title: row.title,
-            isPullRequest: row.isPullRequest,
-            state: row.mergedAt
-              ? ("merged" as const)
-              : row.threadState === "open"
-                ? ("open" as const)
-                : ("closed" as const),
-            draft: row.draft ?? false,
-            author: person(row.authorUserId),
-            commentCount: row.commentsCount,
-            createdAt: iso(row.createdAt),
-            updatedAt: iso(row.updatedAt),
-          })),
+          items: page.items.map((row) => changeView(row, person, keys)),
           nextCursor: page.nextCursor,
         };
       }),
@@ -257,7 +240,13 @@ export const WorkspaceHandlers = HttpApiBuilder.group(GitApi, "workspace", (hand
           cursor: decodeCursor(query.cursor),
           limit: pageSize(query.limit),
         });
-        const person = await peopleById(page.items.map((row) => row.authorUserId));
+        const [person, keys] = await Promise.all([
+          peopleById(page.items.map((row) => row.authorUserId)),
+          // Only threads in the viewer's repositories are listed, so every key here is theirs to read.
+          pageKeys(
+            page.items.flatMap((row) => (row.isPullRequest ? [{ issueId: row.threadId }] : [])),
+          ),
+        ]);
         return {
           items: page.items.map((row) => ({
             id: row.id,
@@ -270,7 +259,7 @@ export const WorkspaceHandlers = HttpApiBuilder.group(GitApi, "workspace", (hand
             },
             number: row.number,
             title: row.title,
-            isPullRequest: row.isPullRequest,
+            branch: row.isPullRequest ? (keys.get(row.threadId) ?? null) : null,
             author: person(row.authorUserId),
             excerpt: excerptOf(row.body, username),
             createdAt: iso(row.createdAt),

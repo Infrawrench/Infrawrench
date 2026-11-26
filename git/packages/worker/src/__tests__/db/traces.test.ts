@@ -12,7 +12,7 @@ import type { GitPushEvent } from "../../env";
 import { handlePush } from "../../events/consumer";
 import { pruneStaleTraces } from "../../review/prune";
 import { TRACE_LIMITS } from "../../review/trace";
-import { type Person, type World, configured, makeWorld } from "./world";
+import { type Person, type World, configured, makeWorld, pagePath } from "./world";
 
 vi.mock("../../events/ci", () => ({
   announcePush: vi.fn(async () => {}),
@@ -292,15 +292,16 @@ describe.skipIf(!configured)("traces, against a real Postgres", () => {
     await push("feature");
     await record({ branch: "feature", entries: [entry("second step")] });
 
-    const [pull] = (await world.call("GET", `${repo}/pulls?state=all&head=feature`, { as: alice }))
-      .body.items;
-    const all = await world.call("GET", `${repo}/traces?pull=${pull.number}`, { as: carol });
+    const [pull] = (
+      await world.call("GET", `${repo}/branch-pages?state=all&head=feature`, { as: alice })
+    ).body.items;
+    const all = await world.call("GET", `${repo}/traces?branch=feature`, { as: carol });
     expect(all.body.items.map((e: any) => [e.body, e.version])).toEqual([
       ["the ask", 1],
       ["first step", 1],
       ["second step", null],
     ]);
-    const one = await world.call("GET", `${repo}/traces?pull=${pull.number}&version=1`, {
+    const one = await world.call("GET", `${repo}/traces?branch=feature&version=1`, {
       as: carol,
     });
     expect(one.body.items.map((e: any) => e.body)).toEqual(["the ask", "first step"]);
@@ -315,7 +316,7 @@ describe.skipIf(!configured)("traces, against a real Postgres", () => {
     expect(
       (await world.call("GET", `${repo}/traces?branch=feature&version=3`, { as: carol })).status,
     ).toBe(404);
-    const versions = await world.call("GET", `${repo}/pulls/${pull.number}/versions`, {
+    const versions = await world.call("GET", `${pagePath(repo, pull.key)}/versions`, {
       as: carol,
     });
     expect(versions.body.versions.map((v: any) => v.counts.traceEntries)).toEqual([2, 1]);
@@ -340,12 +341,10 @@ describe.skipIf(!configured)("traces, against a real Postgres", () => {
     expect(seen).toEqual(Array.from({ length: 7 }, (_, i) => `step ${i}`));
   });
 
-  it("needs one of pull and branch, and hides a private repository's trace", async () => {
+  it("needs a branch, and hides a private repository's trace", async () => {
     expect((await world.call("GET", `${repo}/traces`, { as: carol })).status).toBe(400);
-    expect((await world.call("GET", `${repo}/traces?branch=a&pull=1`, { as: carol })).status).toBe(
-      400,
-    );
-    expect((await world.call("GET", `${repo}/traces?pull=999`, { as: carol })).status).toBe(404);
+    // A page's number names no branch here: the branch is asked for by its name.
+    expect((await world.call("GET", `${repo}/traces?pull=1`, { as: carol })).status).toBe(400);
     expect((await world.call("GET", `${repo}/traces?branch=feature`, {})).status).toBe(404);
   });
 

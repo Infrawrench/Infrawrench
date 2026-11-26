@@ -29,7 +29,7 @@ import { ContentsHandlers } from "./handlers/contents";
 import { FindingsHandlers } from "./handlers/findings";
 import { InstructionsHandlers } from "./handlers/instructions";
 import { IssuesHandlers, LabelsHandlers, MilestonesHandlers } from "./handlers/issues";
-import { PullsHandlers } from "./handlers/pulls";
+import { BranchesHandlers } from "./handlers/branches";
 import { RepositoriesHandlers, RepositoryListsHandlers } from "./handlers/repositories";
 import { NamespacesHandlers, SessionHandlers } from "./handlers/session";
 import {
@@ -52,7 +52,7 @@ export const HandlersLive = Layer.mergeAll(
   RepositoriesHandlers,
   ContentsHandlers,
   IssuesHandlers,
-  PullsHandlers,
+  BranchesHandlers,
   VersionsHandlers,
   TracesHandlers,
   FindingsHandlers,

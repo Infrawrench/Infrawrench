@@ -85,7 +85,7 @@ export const repositorySummaries = async (
       starCount: repository.starsCount,
       forkCount: repository.forksCount,
       openIssueCount: repository.openIssuesCount,
-      openPullRequestCount: repository.openPullRequestsCount,
+      openBranchCount: repository.openPullRequestsCount,
       sizeBytes: repository.sizeBytes,
       pushedAt: isoOrNull(repository.pushedAt),
       createdAt: iso(repository.createdAt),
@@ -122,7 +122,7 @@ export const repositoryDetail = async (
     languages: repository.languages,
     httpCloneUrl: httpCloneUrl(ref, siteOrigin(cx.env)),
     sshCloneUrl: sshCloneUrl(ref, sshHost(cx.env)),
-    features: { issues: repository.hasIssues, pullRequests: repository.hasPullRequests },
+    features: { issues: repository.hasIssues },
     merge: {
       allowMergeCommit: repository.allowMergeCommit,
       allowSquash: repository.allowSquash,

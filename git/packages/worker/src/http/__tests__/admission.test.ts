@@ -117,7 +117,7 @@ describe("admission", () => {
       expect((await gate.admit(request(path, {}, method), ada))?.status, path).toBe(429);
     }
     // Writes have their own.
-    const merge = () => request("/api/repos/acme/infra/pulls/7/merge", {}, "POST");
+    const merge = () => request("/api/repos/acme/infra/branches/feature%2Fa/merge", {}, "POST");
     for (let i = 0; i < DEFAULT_RATE_BUDGETS.write.signedIn.limit; i++) {
       expect(await gate.admit(merge(), ada)).toBeNull();
     }

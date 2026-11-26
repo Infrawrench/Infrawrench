@@ -54,14 +54,14 @@ describe("push policy", () => {
     expect(refusal(lenient, update("refs/heads/main", "delete"))).toBeNull();
   });
 
-  it("refuses a direct push where changes must come by pull request", () => {
+  it("refuses a direct push where changes must come through a branch page", () => {
     for (const settings of [
       { requirePullRequest: true },
       { requiredApprovals: 1 },
-      { requiredStatusContexts: ["Infrawrench CI / pull request"] },
+      { requiredStatusContexts: ["Infrawrench CI / branch"] },
     ]) {
       expect(refusal(policy([rule(settings)]), update("refs/heads/main", "update"))).toMatch(
-        /pull request/,
+        /through a branch page only/,
       );
     }
   });

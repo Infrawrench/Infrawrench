@@ -2,8 +2,8 @@
  * The agent behind a branch, starting work from an ask, and a repository's
  * review settings.
  *
- * Starting work makes the branch at the base's commit and opens a draft
- * pull request whose body is the ask. The branch has nothing of its own yet,
+ * Starting work makes the branch at the base's commit and opens its page as
+ * a draft whose body is the ask. The branch has nothing of its own yet,
  * so the storage records no version for it (`repo/do/versions.ts`); the
  * agent's first push is version 1.
  *
@@ -21,13 +21,12 @@ import {
   badRequest,
   conflict,
   isValidRefName,
-  notFound,
   ok,
   unprocessable,
 } from "@infrawrench/git-contract";
 import { principalActor } from "../../auth/principal";
 import { listProtectedBranches, protectionFor } from "../../db/policy";
-import { type PullRequestWithThread, createPullRequest, getPullRequest } from "../../db/pulls";
+import { createPullRequest } from "../../db/pulls";
 import {
   type ReviewSettingsValue,
   getAgentLink,
@@ -38,17 +37,12 @@ import {
 import { connectAgent, prepareAgent } from "../../review/agent-connect";
 import { threadState } from "../../t3/work";
 import { RepoReaderError } from "../../repo/reader";
-import { type RepoCx, repoOp } from "../context";
+import { pageOr404 } from "../branch-page";
+import { repoOp } from "../context";
 import { mayPush } from "../protection";
 import { noteMentions } from "../thread-edits";
-import { pullDetail } from "../views/pulls";
+import { pageDetail } from "../views/branch-pages";
 import { agentLinkView } from "../views/review";
-
-const pullOr404 = async (cx: RepoCx, number: number): Promise<PullRequestWithThread> => {
-  const found = await getPullRequest(cx.repo.repository.id, number);
-  if (!found) throw notFound("No such pull request");
-  return found;
-};
 
 /** The ask's first line, without Markdown's heading marks, as a title. */
 const titleFrom = (ask: string): string => {
@@ -79,7 +73,7 @@ export const AgentsHandlers = HttpApiBuilder.group(GitApi, "agents", (handlers) 
     .handle(
       "get",
       repoOp(async (cx, { params }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const row = await getAgentLink(found.pull.issueId);
         if (!row) return { agent: null };
         const agent = await agentLinkView(row);
@@ -101,14 +95,14 @@ export const AgentsHandlers = HttpApiBuilder.group(GitApi, "agents", (handlers) 
     .handle(
       "set",
       repoOp(async (cx, { params, payload }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         return { agent: await agentLinkView(await connectAgent(cx, found, payload)) };
       }),
     )
     .handle(
       "remove",
       repoOp(async (cx, { params }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         await removeAgentLink(found.pull.issueId);
         return ok;
       }),
@@ -117,7 +111,6 @@ export const AgentsHandlers = HttpApiBuilder.group(GitApi, "agents", (handlers) 
       "startWork",
       repoOp(async (cx, { payload }) => {
         const { repository } = cx.repo;
-        if (!repository.hasPullRequests) throw unprocessable("Pull requests are switched off here");
         const baseName = payload.base ?? repository.defaultBranch;
         const base = await cx.git.getBranch(baseName);
         if (!base) throw unprocessable(`There is no branch named ${baseName}`, "ref_not_found");
@@ -183,7 +176,7 @@ export const AgentsHandlers = HttpApiBuilder.group(GitApi, "agents", (handlers) 
           ? await connectAgent(cx, created, payload.agent, prepared)
           : null;
         return {
-          pullRequest: await pullDetail(cx, created),
+          page: await pageDetail(cx, created),
           branch,
           agent: agent ? await agentLinkView(agent) : null,
         };
@@ -192,7 +185,6 @@ export const AgentsHandlers = HttpApiBuilder.group(GitApi, "agents", (handlers) 
 );
 
 const settingsView = (settings: ReviewSettingsValue) => ({
-  autoOpenBranchPages: settings.autoOpenBranchPages,
   reviewAgentsEnabled: settings.reviewAgentsEnabled,
   reviewerKinds: [...settings.reviewerKinds],
   mustFixBlocksMerge: settings.mustFixBlocksMerge,
@@ -212,9 +204,6 @@ export const ReviewSettingsHandlers = HttpApiBuilder.group(GitApi, "reviewSettin
           await updateReviewSettings(
             cx.repo.repository.id,
             {
-              ...(payload.autoOpenBranchPages !== undefined
-                ? { autoOpenBranchPages: payload.autoOpenBranchPages }
-                : {}),
               ...(payload.reviewAgentsEnabled !== undefined
                 ? { reviewAgentsEnabled: payload.reviewAgentsEnabled }
                 : {}),

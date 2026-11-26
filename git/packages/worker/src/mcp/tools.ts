@@ -16,6 +16,7 @@
  * Names are `snake_case`. A tool that changes nothing says so
  * (`readOnlyHint`); none reaches outside the forge (`openWorldHint: false`).
  */
+import { branchPagePath } from "@infrawrench/git-contract";
 import type { Principal } from "../auth/principal";
 import { type ApiCall, ToolFailure, expectOk } from "./api";
 
@@ -55,18 +56,12 @@ const REPOSITORY = {
     "The repository as `owner/name` (for example `acme/infra`). Its clone URL is accepted too.",
 } as const;
 
-const PULL_REQUEST = {
-  type: "integer",
-  minimum: 1,
-  description: "The pull request's number: the branch page's number. Give this or `branch`.",
-} as const;
-
 const BRANCH = {
   type: "string",
   minLength: 1,
-  maxLength: 255,
+  maxLength: 600,
   description:
-    "The branch's short name (`feature/rate-limits`). Give this or `pull_request`; the branch's open pull request is looked up.",
+    "The branch: its short name (`feature/rate-limits`), or the `key` list_my_branches gave (`owner/name:feature/x` for a fork's branch proposed to this repository, `feature/x~2` for an earlier page of a reused name).",
 } as const;
 
 const object = (
@@ -109,32 +104,37 @@ export const repositoryPath = (value: unknown, origin: string): string => {
 const shortBranch = (value: string): string =>
   value.startsWith("refs/heads/") ? value.slice("refs/heads/".length) : value;
 
+/** A branch's page as a tool reads it: its API path, its key and the page itself. */
+interface FoundPage {
+  readonly path: string;
+  readonly key: string;
+  readonly page: Record<string, unknown>;
+}
+
 /**
- * The pull request a tool is about: the number given, or the branch's. An
- * open one first, then the newest of any state, so a merged branch's page
- * can still be read.
+ * The branch page a tool is about, read through `branches.get` (which opens
+ * the page of a branch pushed before every branch had one). The bare name
+ * is the branch's open page, or its newest, so a merged branch's page can
+ * still be read.
  */
-const pullNumberOf = async (
+const pageOf = async (
   input: Readonly<Record<string, unknown>>,
   repo: string,
   cx: ToolContext,
-): Promise<number> => {
-  if (typeof input["pull_request"] === "number") return input["pull_request"];
+): Promise<FoundPage> => {
   if (typeof input["branch"] !== "string" || input["branch"] === "") {
-    throw new ToolFailure("Give `pull_request` or `branch`.");
+    throw new ToolFailure("Give `branch`.");
   }
   const branch = shortBranch(input["branch"]);
-  for (const state of ["open", "all"] as const) {
-    const found = expectOk(
-      await cx.api("GET", `${repo}/pulls`, { query: { head: branch, state, limit: 1 } }),
-      "Looking up the branch's pull request",
-    ) as { items?: Array<{ number?: unknown }> };
-    const number = found.items?.[0]?.number;
-    if (typeof number === "number") return number;
+  const answer = await cx.api("GET", `${repo}/branches/${encode(branch)}`);
+  if (answer.status === 404) {
+    throw new ToolFailure(
+      `The branch \`${branch}\` has no page: it does not exist, or has no commits of its own yet. Its page opens at its first push; push the branch, or call start_work to make the branch and its page from an ask.`,
+    );
   }
-  throw new ToolFailure(
-    `The branch \`${branch}\` has no pull request yet. One is opened as a draft at its first push; push the branch, or call start_work to make the branch and its page from an ask.`,
-  );
+  const page = record(expectOk(answer, "Reading the branch"));
+  const key = typeof page["key"] === "string" ? page["key"] : branch;
+  return { path: `${repo}/branches/${encode(key)}`, key, page };
 };
 
 const pick = (source: unknown, keys: readonly string[]): Record<string, unknown> => {
@@ -150,8 +150,14 @@ const record = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
-const pageUrl = (origin: string, repo: string, number: number): string =>
-  `${origin}${repo.replace(/^\/api\/repos/, "")}/pulls/${number}`;
+/** The branch page's address, for a person to open. */
+const pageUrl = (origin: string, repo: string, key: string): string => {
+  const [owner = "", name = ""] = repo
+    .replace(/^\/api\/repos\//, "")
+    .split("/")
+    .map((segment) => decodeURIComponent(segment));
+  return `${origin}${branchPagePath(owner, name, key)}`;
+};
 
 // ---------------------------------------------------------------------------
 // The tools
@@ -238,7 +244,7 @@ const listMyBranches: ToolDefinition = {
   name: "list_my_branches",
   title: "Branches waiting on you",
   description:
-    "Lists open pull requests (branch pages) that involve the person this connection acts as and have something they have not looked at: ones they wrote, are assigned, have reviewed, or connected an agent to, longest wait first. Each item names its repository and number, which the other tools take. Use it to find the branch you were working on, or to see what needs review.",
+    "Lists open branches that involve the person this connection acts as and have something they have not looked at: ones they wrote, are assigned, have reviewed, or connected an agent to, longest wait first. Each item names its repository and its `key`, which the other tools take as `branch`. Use it to find the branch you were working on, or to see what needs review.",
   inputSchema: object({
     limit: { type: "integer", minimum: 1, maximum: 100, description: "Default 30." },
     cursor: { type: "string", description: "`nextCursor` of the previous page." },
@@ -261,35 +267,34 @@ const getBranch: ToolDefinition = {
   name: "get_branch",
   title: "A branch's state",
   description:
-    "Reads where a branch stands: its pull request (title, base, head, draft or not), its state (`agent_working`, `checks_failing`, `must_fix_open`, `needs_your_review`, `ready_to_merge`, `waiting`, `merged`, `closed`), its versions (one per push, oldest first), how many instructions are waiting for the agent (`openInstructions`), the findings tally, trace entries recorded since the last push, and the agent linked to it. Call it before you start on a branch someone else opened, and after a push to see what the reviewers and review agents made of it.",
-  inputSchema: object({ repository: REPOSITORY, pull_request: PULL_REQUEST, branch: BRANCH }, [
-    "repository",
-  ]),
+    "Reads where a branch stands: its page (title, the branch it merges into, draft or not), its state (`agent_working`, `checks_failing`, `must_fix_open`, `needs_your_review`, `ready_to_merge`, `waiting`, `merged`, `closed`), its versions (one per push, oldest first), how many instructions are waiting for the agent (`openInstructions`), the findings tally, trace entries recorded since the last push, and the agent linked to it. Call it before you start on a branch someone else opened, and after a push to see what the reviewers and review agents made of it.",
+  inputSchema: object({ repository: REPOSITORY, branch: BRANCH }, ["repository", "branch"]),
   outputSchema: output(
     {
       url: { type: "string", description: "The branch page, for a person to open." },
-      pullRequest: ANY_OBJECT,
+      key: { type: "string", description: "What the other tools take as `branch`." },
+      page: ANY_OBJECT,
       state: ANY_OBJECT,
       versions: LIST,
       latestVersion: { type: ["integer", "null"] },
     },
-    ["url", "pullRequest", "state", "versions"],
+    ["url", "key", "page", "state", "versions"],
   ),
   readOnly: true,
   idempotent: true,
   async run(input, cx) {
     const repo = repositoryPath(input["repository"], cx.origin);
-    const number = await pullNumberOf(input, repo, cx);
-    const [pull, state, versions] = await Promise.all([
-      cx.api("GET", `${repo}/pulls/${number}`),
-      cx.api("GET", `${repo}/pulls/${number}/branch-state`),
-      cx.api("GET", `${repo}/pulls/${number}/versions`),
+    const found = await pageOf(input, repo, cx);
+    const [state, versions] = await Promise.all([
+      cx.api("GET", `${found.path}/branch-state`),
+      cx.api("GET", `${found.path}/versions`),
     ]);
     const listed = record(expectOk(versions, "Reading the branch's versions"));
     return {
-      url: pageUrl(cx.origin, repo, number),
-      pullRequest: pick(expectOk(pull, "Reading the pull request"), [
-        "number",
+      url: pageUrl(cx.origin, repo, found.key),
+      key: found.key,
+      page: pick(found.page, [
+        "key",
         "title",
         "body",
         "state",
@@ -318,7 +323,6 @@ const getVersionDiff: ToolDefinition = {
   inputSchema: object(
     {
       repository: REPOSITORY,
-      pull_request: PULL_REQUEST,
       branch: BRANCH,
       version: {
         type: "integer",
@@ -341,14 +345,14 @@ const getVersionDiff: ToolDefinition = {
       limit: { type: "integer", minimum: 1, maximum: 100, description: "Files per page." },
       cursor: { type: "string", description: "`nextCursor` of the previous page." },
     },
-    ["repository"],
+    ["repository", "branch"],
   ),
   outputSchema: ANY_OBJECT,
   readOnly: true,
   idempotent: true,
   async run(input, cx) {
     const repo = repositoryPath(input["repository"], cx.origin);
-    const number = await pullNumberOf(input, repo, cx);
+    const found = await pageOf(input, repo, cx);
     const mode = (input["mode"] as string | undefined) ?? "whole";
     if (mode === "since" && typeof input["since_version"] !== "number") {
       throw new ToolFailure("`mode: since` needs `since_version`.");
@@ -356,7 +360,7 @@ const getVersionDiff: ToolDefinition = {
     const from = mode === "step" ? "previous" : mode === "since" ? input["since_version"] : "base";
     const version = typeof input["version"] === "number" ? String(input["version"]) : "latest";
     const diff = expectOk(
-      await cx.api("GET", `${repo}/pulls/${number}/versions/${version}/diff`, {
+      await cx.api("GET", `${found.path}/versions/${version}/diff`, {
         query: {
           from: from as string | number,
           path: input["path"] as string | undefined,
@@ -545,7 +549,6 @@ const listInstructions: ToolDefinition = {
   inputSchema: object(
     {
       repository: REPOSITORY,
-      pull_request: PULL_REQUEST,
       branch: BRANCH,
       status: {
         type: "string",
@@ -553,18 +556,18 @@ const listInstructions: ToolDefinition = {
         description: "Default `open`: queued and delivered.",
       },
     },
-    ["repository"],
+    ["repository", "branch"],
   ),
-  outputSchema: output({ pull_request: { type: "integer" }, instructions: LIST }, ["instructions"]),
+  outputSchema: output({ branch: { type: "string" }, instructions: LIST }, ["instructions"]),
   readOnly: true,
   idempotent: true,
   async run(input, cx) {
     const repo = repositoryPath(input["repository"], cx.origin);
-    const number = await pullNumberOf(input, repo, cx);
+    const found = await pageOf(input, repo, cx);
     const status = (input["status"] as string | undefined) ?? "open";
     const listed = record(
       expectOk(
-        await cx.api("GET", `${repo}/pulls/${number}/instructions`, {
+        await cx.api("GET", `${found.path}/instructions`, {
           query: { status: status === "open" || status === "all" ? undefined : status },
         }),
         "Reading the instructions",
@@ -572,7 +575,7 @@ const listInstructions: ToolDefinition = {
     );
     const all = Array.isArray(listed["instructions"]) ? listed["instructions"] : [];
     return {
-      pull_request: number,
+      branch: found.key,
       instructions:
         status === "open"
           ? all.filter((item) => ["queued", "delivered"].includes(String(record(item)["status"])))
@@ -589,23 +592,22 @@ const markInstructionDelivered: ToolDefinition = {
   inputSchema: object(
     {
       repository: REPOSITORY,
-      pull_request: PULL_REQUEST,
       branch: BRANCH,
       instruction_id: INSTRUCTION_ID,
     },
-    ["repository", "instruction_id"],
+    ["repository", "branch", "instruction_id"],
   ),
   outputSchema: output({ instruction: ANY_OBJECT }, ["instruction"]),
   readOnly: false,
   idempotent: true,
   async run(input, cx) {
     const repo = repositoryPath(input["repository"], cx.origin);
-    const number = await pullNumberOf(input, repo, cx);
+    const found = await pageOf(input, repo, cx);
     const id = encode(String(input["instruction_id"]));
     return {
       instruction: record(
         expectOk(
-          await cx.api("PUT", `${repo}/pulls/${number}/instructions/${id}/delivered`, {
+          await cx.api("PUT", `${found.path}/instructions/${id}/delivered`, {
             body: { via: "mcp" },
           }),
           "Marking the instruction delivered",
@@ -623,7 +625,6 @@ const markInstructionAnswered: ToolDefinition = {
   inputSchema: object(
     {
       repository: REPOSITORY,
-      pull_request: PULL_REQUEST,
       branch: BRANCH,
       instruction_id: INSTRUCTION_ID,
       version: {
@@ -632,19 +633,19 @@ const markInstructionAnswered: ToolDefinition = {
         description: "The version that answers it. Omitted: the next version pushed.",
       },
     },
-    ["repository", "instruction_id"],
+    ["repository", "branch", "instruction_id"],
   ),
   outputSchema: output({ instruction: ANY_OBJECT }, ["instruction"]),
   readOnly: false,
   idempotent: true,
   async run(input, cx) {
     const repo = repositoryPath(input["repository"], cx.origin);
-    const number = await pullNumberOf(input, repo, cx);
+    const found = await pageOf(input, repo, cx);
     const id = encode(String(input["instruction_id"]));
     return {
       instruction: record(
         expectOk(
-          await cx.api("PUT", `${repo}/pulls/${number}/instructions/${id}/answered`, {
+          await cx.api("PUT", `${found.path}/instructions/${id}/answered`, {
             body: typeof input["version"] === "number" ? { version: input["version"] } : {},
           }),
           "Marking the instruction answered",
@@ -662,7 +663,6 @@ const listFindings: ToolDefinition = {
   inputSchema: object(
     {
       repository: REPOSITORY,
-      pull_request: PULL_REQUEST,
       branch: BRANCH,
       status: {
         type: "string",
@@ -671,19 +671,19 @@ const listFindings: ToolDefinition = {
       },
       version: { type: "integer", minimum: 1, description: "Only findings seen on this version." },
     },
-    ["repository"],
+    ["repository", "branch"],
   ),
-  outputSchema: output({ pull_request: { type: "integer" }, findings: LIST, tally: ANY_OBJECT }, [
+  outputSchema: output({ branch: { type: "string" }, findings: LIST, tally: ANY_OBJECT }, [
     "findings",
   ]),
   readOnly: true,
   idempotent: true,
   async run(input, cx) {
     const repo = repositoryPath(input["repository"], cx.origin);
-    const number = await pullNumberOf(input, repo, cx);
+    const found = await pageOf(input, repo, cx);
     const listed = record(
       expectOk(
-        await cx.api("GET", `${repo}/pulls/${number}/findings`, {
+        await cx.api("GET", `${found.path}/findings`, {
           query: {
             status: input["status"] as string | undefined,
             version: input["version"] as number | undefined,
@@ -693,7 +693,7 @@ const listFindings: ToolDefinition = {
       ),
     );
     return {
-      pull_request: number,
+      branch: found.key,
       findings: Array.isArray(listed["findings"]) ? listed["findings"] : [],
       tally: record(listed["tally"]),
     };
@@ -708,7 +708,6 @@ const reportFinding: ToolDefinition = {
   inputSchema: object(
     {
       repository: REPOSITORY,
-      pull_request: PULL_REQUEST,
       branch: BRANCH,
       reviewer: {
         type: "string",
@@ -775,14 +774,14 @@ const reportFinding: ToolDefinition = {
         ),
       },
     },
-    ["repository", "reviewer", "findings"],
+    ["repository", "branch", "reviewer", "findings"],
   ),
-  outputSchema: output({ pull_request: { type: "integer" }, findings: LIST }, ["findings"]),
+  outputSchema: output({ branch: { type: "string" }, findings: LIST }, ["findings"]),
   readOnly: false,
   idempotent: true,
   async run(input, cx) {
     const repo = repositoryPath(input["repository"], cx.origin);
-    const number = await pullNumberOf(input, repo, cx);
+    const found = await pageOf(input, repo, cx);
     const findings = (Array.isArray(input["findings"]) ? input["findings"] : []).map((raw) => {
       const { start_line, end_line, ...rest } = record(raw);
       return {
@@ -793,7 +792,7 @@ const reportFinding: ToolDefinition = {
     });
     const stored = record(
       expectOk(
-        await cx.api("POST", `${repo}/pulls/${number}/findings`, {
+        await cx.api("POST", `${found.path}/findings`, {
           body: {
             reviewerKind: input["reviewer"],
             ...(typeof input["version"] === "number" ? { version: input["version"] } : {}),
@@ -805,7 +804,7 @@ const reportFinding: ToolDefinition = {
       ),
     );
     return {
-      pull_request: number,
+      branch: found.key,
       findings: Array.isArray(stored["findings"]) ? stored["findings"] : [],
     };
   },
@@ -815,7 +814,7 @@ const startWork: ToolDefinition = {
   name: "start_work",
   title: "Start work from an ask",
   description:
-    "Creates a new branch and its page (a draft pull request whose body is the ask) before any code exists, so the person who asked can watch the work from the first push. Call it when you are given a task in a repository and no branch exists for it yet. Then fetch, check the branch out (`git fetch origin && git switch <branch>`), record the ask with record_trace, work, and push. If the branch already exists, skip this: the page is opened at its first push. Needs a person's credential with write access; a CI job cannot start work.",
+    "Creates a new branch and its page (a draft whose description is the ask) before any code exists, so the person who asked can watch the work from the first push. Call it when you are given a task in a repository and no branch exists for it yet. Then fetch, check the branch out (`git fetch origin && git switch <branch>`), record the ask with record_trace, work, and push. If the branch already exists, skip this: the page is opened at its first push. Needs a person's credential with write access; a CI job cannot start work.",
   inputSchema: object(
     {
       repository: REPOSITORY,
@@ -857,11 +856,15 @@ const startWork: ToolDefinition = {
   outputSchema: output(
     {
       branch: { type: "string" },
-      pull_request: { type: "integer" },
-      url: { type: "string" },
+      key: {
+        type: "string",
+        description: "The page's key: what the other tools take as `branch`.",
+      },
+      url: { type: "string", description: "The branch page, for a person to open." },
+      page: ANY_OBJECT,
       next: { type: "string" },
     },
-    ["branch", "pull_request", "url"],
+    ["branch", "key", "url"],
   ),
   readOnly: false,
   idempotent: false,
@@ -891,12 +894,14 @@ const startWork: ToolDefinition = {
         "Starting work",
       ),
     );
-    const number = Number(record(started["pullRequest"])["number"]);
+    const page = record(started["page"]);
     const branch = String(started["branch"] ?? "");
+    const key = typeof page["key"] === "string" ? page["key"] : branch;
     return {
       branch,
-      pull_request: number,
-      url: pageUrl(cx.origin, repo, number),
+      key,
+      url: pageUrl(cx.origin, repo, key),
+      page: pick(page, ["key", "title", "state", "draft", "baseRef", "headRef", "createdAt"]),
       agent: started["agent"] ?? null,
       next: `Run \`git fetch origin && git switch ${branch}\`, record the ask with record_trace, then work and push.`,
     };

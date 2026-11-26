@@ -1,7 +1,8 @@
 /**
- * Pull requests: the records, their diff and commits (through the
+ * Branch pages: the records, their diff and commits (through the
  * `RepoReader`), reviews and review threads, and merging under the base
- * branch's protection.
+ * branch's protection. A page is named by its key (`:branch`), resolved once
+ * per request by `../branch-page.ts`.
  */
 import { type SQL, sql } from "drizzle-orm";
 import { HttpApiBuilder } from "effect/http-api";
@@ -28,6 +29,7 @@ import { principalActor } from "../../auth/principal";
 import { db } from "../../db/client";
 import { pageSize } from "../../db/cursor";
 import { getNamespaceBySlug } from "../../db/namespaces";
+import { openPageOfHead, pageByNumber, pageKey } from "../../db/branch-pages";
 import {
   type PullRequestWithThread,
   type ReviewRow,
@@ -38,7 +40,6 @@ import {
   deleteReviewComment,
   dismissReview,
   editReviewComment,
-  findOpenPullRequest,
   getPendingReview,
   getPullRequest,
   getPullRequestByIssueId,
@@ -55,13 +56,15 @@ import {
   syncPullRequest,
   updatePullRequest,
 } from "../../db/pulls";
-import type { RepositoryWithOwner } from "../../db/repositories";
+import { type RepositoryWithOwner, getRepositoryById } from "../../db/repositories";
 import { latestVersionNumbers, linkVersionsToPull, markBranchForPruning } from "../../db/review";
 import { addTimelineEvent, countThreads, listThreads } from "../../db/threads";
 import { getUser, userByUsername } from "../../db/users";
 import { announcePullRequest } from "../../events/ci";
 import { queuePullRequestPlans } from "../../events/terraform";
+import { titleOf } from "../../events/versions";
 import { type RepoReader, RepoReaderError } from "../../repo/reader";
+import { pageOr404, pageOrOpen } from "../branch-page";
 import { type RepoCx, locatorOf, repoOp } from "../context";
 import { branchProtection, mayDelete } from "../protection";
 import { headRepository, headRepositoryOf, mayProposeTo, plansPullRequest } from "../repos";
@@ -82,28 +85,40 @@ import {
   BYPASSABLE,
   mayResolve,
   mergeabilityDetail,
-  pullDetail,
-  pullSummaries,
+  pageDetail,
+  pageSummaries,
   reviewCommentViewOf,
   reviewViews,
   threadsOf,
-} from "../views/pulls";
+} from "../views/branch-pages";
 import { mayChangeOwn } from "../views/threads";
 import { type ThreadFilterQuery, pageInput, threadFilters } from "./issues";
 
-const pullOr404 = async (cx: RepoCx, number: number): Promise<PullRequestWithThread> => {
-  const found = await getPullRequest(cx.repo.repository.id, number);
-  if (!found) throw notFound("No such pull request");
-  return found;
+/** A page as it is now, read again after a change. */
+const detail = async (cx: RepoCx, found: PullRequestWithThread) => {
+  const fresh = await getPullRequest(cx.repo.repository.id, found.thread.number);
+  if (!fresh) throw notFound("No such branch page");
+  return pageDetail(cx, fresh);
 };
-
-const detail = async (cx: RepoCx, number: number) => pullDetail(cx, await pullOr404(cx, number));
 
 /** The reader the head commit can be read from: the head repository's, or the base's pull ref. */
 const headInput = (cx: RepoCx, { pull }: PullRequestWithThread) =>
   pull.headRepositoryId === null || pull.headRepositoryId === cx.repo.repository.id
     ? undefined
     : pull.headRepositoryId;
+
+/**
+ * A merge commit's first line: the branch it merges, and for a fork's
+ * branch the fork it is in (`Merge branch 'feature/a' of bob/infra`).
+ */
+const mergeTitleOf = async (cx: RepoCx, { pull }: PullRequestWithThread): Promise<string> => {
+  const merged = `Merge branch '${pull.headRef}'`;
+  if (pull.headRepositoryId === null || pull.headRepositoryId === cx.repo.repository.id) {
+    return merged;
+  }
+  const head = await getRepositoryById(pull.headRepositoryId);
+  return head ? `${merged} of ${head.owner.slug}/${head.repository.name}` : merged;
+};
 
 const identityOf = async (cx: RepoCx) => {
   const user = cx.userId ? await getUser(cx.userId) : null;
@@ -113,7 +128,7 @@ const identityOf = async (cx: RepoCx) => {
   };
 };
 
-/** A pull request's side conditions on the list, as SQL over `git_pull_requests`. */
+/** A page's side conditions on the list, as SQL over `git_pull_requests`. */
 const pullFilters = async (
   cx: RepoCx,
   query: {
@@ -174,7 +189,7 @@ const BLOCKER_CODES: Record<Mergeability["blockers"][number]["code"], ErrorCode>
   must_fix_findings: "must_fix_findings",
 };
 
-/** The version of its head branch a pull request is at, for what is written on it now. */
+/** The version of its head branch a page is at, for what is written on it now. */
 const currentVersion = async (found: PullRequestWithThread): Promise<number | null> =>
   (await latestVersionNumbers([found.pull.issueId])).get(found.pull.issueId) ?? null;
 
@@ -184,7 +199,7 @@ const REVIEW_STATES = {
   request_changes: "changes_requested",
 } as const;
 
-/** What starting a CI run and a Terraform plan need, after a pull request gets a head. */
+/** What starting a CI run and a Terraform plan need, after a page gets a head. */
 const announce = (
   cx: RepoCx,
   found: PullRequestWithThread,
@@ -257,11 +272,11 @@ const anchorHunk = async (cx: RepoCx, found: PullRequestWithThread, anchor: Anch
     line: anchor.line,
     startLine: anchor.startLine,
   });
-  if (!hunk) throw unprocessable("Those lines are not part of this pull request's diff");
+  if (!hunk) throw unprocessable("Those lines are not part of this branch's diff");
   return JSON.stringify(hunk);
 };
 
-export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
+export const BranchesHandlers = HttpApiBuilder.group(GitApi, "branches", (handlers) =>
   handlers
     .handle(
       "list",
@@ -284,7 +299,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
         ]);
         const pulls = await pullRequestsFor(found.items.map((thread) => thread.id));
         return {
-          items: await pullSummaries(
+          items: await pageSummaries(
             cx,
             found.items.flatMap((thread) => {
               const pull = pulls.get(thread.id);
@@ -297,39 +312,35 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
       }),
     )
     .handle(
-      "create",
+      "propose",
       repoOp(async (cx, { payload }) => {
         const { repository } = cx.repo;
-        if (!repository.hasPullRequests) throw unprocessable("Pull requests are switched off here");
         const head = payload.headRepository
           ? await headRepository(cx, payload.headRepository)
           : cx.repo;
         const sameRepository = head.repository.id === repository.id;
-        if (sameRepository && payload.base === payload.head) {
+        const baseRef = payload.base ?? repository.defaultBranch;
+        if (sameRepository && baseRef === payload.head) {
           throw unprocessable("The base and the head are the same branch", "no_commits_between");
         }
-        await branchOr422(cx.git, payload.base);
+        await branchOr422(cx.git, baseRef);
         await branchOr422(sameRepository ? cx.git : cx.reader(locatorOf(head)), payload.head);
-        if (
-          await findOpenPullRequest(repository.id, payload.base, head.repository.id, payload.head)
-        ) {
-          throw conflict(
-            "A pull request for these branches is already open",
-            "pull_request_exists",
-          );
+        if (await openPageOfHead(repository.id, head.repository.id, payload.head)) {
+          throw conflict("This branch already has an open page", "branch_page_exists");
         }
         const comparison = await cx.git.compare({
-          base: payload.base,
+          base: baseRef,
           head: payload.head,
           headRepositoryId: sameRepository ? undefined : head.repository.id,
         });
         if (comparison.ahead === 0) {
           throw unprocessable("There is nothing to merge between them", "no_commits_between");
         }
+        const title = payload.title ?? titleOf(payload.head, null);
         const triage = canTriage(cx);
         const created = await createPullRequest({
           repositoryId: repository.id,
-          title: payload.title,
+          title,
           body: payload.body ?? "",
           authorUserId: cx.userId,
           labelIds:
@@ -339,7 +350,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
             triage && payload.milestone !== undefined
               ? await milestoneIdFor(repository.id, payload.milestone)
               : null,
-          baseRef: payload.base,
+          baseRef,
           headRepositoryId: head.repository.id,
           headRef: payload.head,
           headOid: comparison.head.commitOid,
@@ -359,7 +370,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
             conflictFiles: [],
           });
         }
-        // The pushes the branch has had so far are this pull request's versions.
+        // The pushes the branch has had so far are this page's versions.
         await linkVersionsToPull(head.repository.id, payload.head, created.pull.issueId);
         // CI fetches the head through this ref, a fork's included.
         await cx.git.setPullRef({
@@ -367,19 +378,27 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
           headRepositoryId: head.repository.id,
           oid: created.pull.headOid,
         });
-        await noteMentions(created.thread, `${payload.title}\n${payload.body ?? ""}`, cx.userId);
+        await noteMentions(created.thread, `${title}\n${payload.body ?? ""}`, cx.userId);
         announce(cx, created, "opened", head);
-        return detail(cx, created.thread.number);
+        return detail(cx, created);
+      }),
+    )
+    .handle(
+      "locate",
+      repoOp(async (cx, { params }) => {
+        const page = await pageByNumber(cx.repo.repository.id, params.number);
+        if (!page) throw notFound("No such branch page");
+        return { key: await pageKey(page) };
       }),
     )
     .handle(
       "get",
-      repoOp((cx, { params }) => detail(cx, params.number)),
+      repoOp(async (cx, { params }) => pageDetail(cx, await pageOrOpen(cx, params.branch))),
     )
     .handle(
       "update",
       repoOp(async (cx, { params, payload }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const { thread, pull } = found;
         const editsText =
           payload.title !== undefined || payload.body !== undefined || payload.base !== undefined;
@@ -392,7 +411,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
         await applyText(cx, thread, payload);
         if (payload.base !== undefined && payload.base !== pull.baseRef) {
           if (thread.state !== "open")
-            throw unprocessable("Only an open pull request can be retargeted");
+            throw unprocessable("Only an open branch page can be retargeted");
           if (pull.headRepositoryId === cx.repo.repository.id && payload.base === pull.headRef) {
             throw unprocessable("The base and the head are the same branch", "no_commits_between");
           }
@@ -410,33 +429,32 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
           });
         }
         await applyTriage(cx, thread, payload);
-        return detail(cx, params.number);
+        return detail(cx, found);
       }),
     )
     .handle(
       "close",
       repoOp(async (cx, { params }) => {
-        const { thread, pull } = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
+        const { thread, pull } = found;
         if (!isAuthor(cx, thread) && !canTriage(cx)) {
           throw forbidden("Only its author or a maintainer can close this");
         }
-        if (pull.mergedAt)
-          throw unprocessable("This pull request has been merged", "already_merged");
+        if (pull.mergedAt) throw unprocessable("This branch has been merged", "already_merged");
         await applyState(thread, "closed", { userId: cx.userId });
-        return detail(cx, params.number);
+        return detail(cx, found);
       }),
     )
     .handle(
       "reopen",
       repoOp(async (cx, { params }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const { thread, pull } = found;
         if (!isAuthor(cx, thread) && !canTriage(cx)) {
           throw forbidden("Only its author or a maintainer can reopen this");
         }
-        if (pull.mergedAt)
-          throw unprocessable("This pull request has been merged", "already_merged");
-        if (thread.state === "open") return detail(cx, params.number);
+        if (pull.mergedAt) throw unprocessable("This branch has been merged", "already_merged");
+        if (thread.state === "open") return detail(cx, found);
         const head = await headRepositoryOf(cx, pull.headRepositoryId);
         if (!head) throw unprocessable("The repository it came from is gone", "ref_not_found");
         // A fork made private since stays out of a base its readers could not see it from.
@@ -444,39 +462,31 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
           throw unprocessable("The repository it came from is private now", "ref_not_found");
         }
         const branch = await branchOr422(cx.reader(locatorOf(head.repo)), pull.headRef);
-        if (
-          await findOpenPullRequest(
-            cx.repo.repository.id,
-            pull.baseRef,
-            head.repo.repository.id,
-            pull.headRef,
-          )
-        ) {
-          throw unprocessable(
-            "Another pull request for these branches is open",
-            "pull_request_exists",
-          );
+        if (await openPageOfHead(cx.repo.repository.id, head.repo.repository.id, pull.headRef)) {
+          throw unprocessable("This branch has another open page", "branch_page_exists");
         }
         await syncPullRequest(pull.issueId, { headOid: branch.commit.oid, headRefExists: true });
         await applyState(thread, "open", { userId: cx.userId });
-        const reopened = await pullOr404(cx, params.number);
+        const reopened = await getPullRequest(cx.repo.repository.id, thread.number);
+        if (!reopened) throw notFound("No such branch page");
         await cx.git.setPullRef({
           number: thread.number,
           headRepositoryId: head.repo.repository.id,
           oid: reopened.pull.headOid,
         });
         announce(cx, reopened, "reopened", head.repo);
-        return pullDetail(cx, reopened);
+        return pageDetail(cx, reopened);
       }),
     )
     .handle(
       "setDraft",
       repoOp(async (cx, { params, payload }) => {
-        const { thread, pull } = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
+        const { thread, pull } = found;
         if (!isAuthor(cx, thread) && !accessAtLeast(cx.access, "write")) {
           throw forbidden("Only its author or someone with write access can change this");
         }
-        if (thread.state !== "open") throw unprocessable("This pull request is not open");
+        if (thread.state !== "open") throw unprocessable("This branch page is not open");
         if (pull.draft !== payload.draft) {
           await updatePullRequest(pull.issueId, { draft: payload.draft });
           await addTimelineEvent(db, {
@@ -486,13 +496,13 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
             type: payload.draft ? "converted_to_draft" : "ready_for_review",
           });
         }
-        return detail(cx, params.number);
+        return detail(cx, found);
       }),
     )
     .handle(
       "files",
       repoOp(async (cx, { params, query }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const { pull } = found;
         return cx.git.compareDiff(
           {
@@ -513,7 +523,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
     .handle(
       "commits",
       repoOp(async (cx, { params, query }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const { pull } = found;
         const commits = await cx.git.commitsBetween(
           {
@@ -531,13 +541,13 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
       "mergeability",
       repoOp(
         async (cx, { params }) =>
-          (await mergeabilityDetail(cx, await pullOr404(cx, params.number))).mergeability,
+          (await mergeabilityDetail(cx, await pageOr404(cx, params.branch))).mergeability,
       ),
     )
     .handle(
       "merge",
       repoOp(async (cx, { params, payload }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const { thread, pull } = found;
         const { repository } = cx.repo;
         if (payload.expectedHeadOid !== undefined && payload.expectedHeadOid !== pull.headOid) {
@@ -566,9 +576,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
           method: payload.method,
           title:
             payload.commitTitle ??
-            (payload.method === "squash"
-              ? `${thread.title} (#${thread.number})`
-              : `Merge pull request #${thread.number} from ${pull.headRef}`),
+            (payload.method === "squash" ? thread.title : await mergeTitleOf(cx, found)),
           message:
             payload.commitMessage ?? (payload.method === "squash" ? thread.body : thread.title),
           committer,
@@ -653,9 +661,9 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
     .handle(
       "updateBranch",
       repoOp(async (cx, { params, payload }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const { thread, pull } = found;
-        if (thread.state !== "open") throw unprocessable("This pull request is not open");
+        if (thread.state !== "open") throw unprocessable("This branch page is not open");
         const head = await headRepositoryOf(cx, pull.headRepositoryId);
         if (!head || !pull.headRefExists) {
           throw unprocessable("The head branch is gone", "ref_not_found");
@@ -684,14 +692,14 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
         if (!outcome.updated && outcome.reason === "conflicts") {
           throw unprocessable("The branch has conflicts with the base branch", "merge_conflict");
         }
-        // The push event the update sends synchronises the pull request.
+        // The push event the update sends synchronises the page.
         return { headOid: outcome.headOid };
       }),
     )
     .handle(
       "restoreBranch",
       repoOp(async (cx, { params }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const { thread, pull } = found;
         const head = await headRepositoryOf(cx, pull.headRepositoryId);
         if (!head) throw unprocessable("The repository it came from is gone", "ref_not_found");
@@ -717,7 +725,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
     .handle(
       "listReviews",
       repoOp(async (cx, { params }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const [reviews, comments] = await Promise.all([
           listReviews(found.pull.issueId, cx.userId),
           listReviewComments(found.pull.issueId, cx.userId),
@@ -728,16 +736,16 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
     .handle(
       "createReview",
       repoOp(async (cx, { params, payload }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const { thread, pull } = found;
         const userId = cx.userId!;
         requireOpenForReview(cx, found);
         const verdict = payload.event === "approve" || payload.event === "request_changes";
         if (verdict && thread.authorUserId === userId) {
-          throw unprocessable("You cannot approve or request changes on your own pull request");
+          throw unprocessable("You cannot approve or request changes on your own branch");
         }
         if (verdict && thread.state !== "open") {
-          throw unprocessable("This pull request is not open");
+          throw unprocessable("This branch page is not open");
         }
         const drafts = payload.comments ?? [];
         if (payload.event === "comment" && drafts.length === 0 && !payload.body) {
@@ -786,16 +794,16 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
     .handle(
       "submitReview",
       repoOp(async (cx, { params, payload }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const review = await getReview(found.pull.issueId, params.reviewId);
         // Somebody else's pending review does not exist, as far as the caller can tell.
         if (!review || review.authorUserId !== cx.userId) throw notFound("No such review");
         const verdict = payload.event !== "comment";
         if (verdict && found.thread.authorUserId === cx.userId) {
-          throw unprocessable("You cannot approve or request changes on your own pull request");
+          throw unprocessable("You cannot approve or request changes on your own branch");
         }
         if (verdict && found.thread.state !== "open") {
-          throw unprocessable("This pull request is not open");
+          throw unprocessable("This branch page is not open");
         }
         const submitted = await submitReview(review.id, {
           state: REVIEW_STATES[payload.event],
@@ -809,7 +817,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
     .handle(
       "discardReview",
       repoOp(async (cx, { params }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const review = await getReview(found.pull.issueId, params.reviewId);
         if (!review || review.authorUserId !== cx.userId) throw notFound("No such review");
         if (!(await deletePendingReview(review.id))) {
@@ -821,7 +829,7 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
     .handle(
       "dismissReview",
       repoOp(async (cx, { params, payload }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const review = await getReview(found.pull.issueId, params.reviewId);
         if (!review || review.state === "pending") throw notFound("No such review");
         const dismissed = await dismissReview(review.id, cx.userId, payload.reason);
@@ -841,13 +849,13 @@ export const PullsHandlers = HttpApiBuilder.group(GitApi, "pulls", (handlers) =>
     .handle(
       "listThreads",
       repoOp(async (cx, { params }) => ({
-        threads: await threadsOf(cx, await pullOr404(cx, params.number)),
+        threads: await threadsOf(cx, await pageOr404(cx, params.branch)),
       })),
     )
     .handle(
       "createReviewComment",
       repoOp(async (cx, { params, payload }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const { pull } = found;
         const userId = cx.userId!;
         requireOpenForReview(cx, found);

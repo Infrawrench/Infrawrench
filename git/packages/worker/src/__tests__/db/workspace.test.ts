@@ -18,7 +18,7 @@ import {
   gitReviews,
 } from "@infrawrench/server-core/db/schema";
 import { db, newId } from "../../db/client";
-import { type Person, type World, configured, makeWorld } from "./world";
+import { type Person, type World, configured, makeWorld, pagePath } from "./world";
 
 const OID = (digit: string) => digit.repeat(40);
 const hoursAgo = (hours: number) => new Date(Date.now() - hours * 3_600_000);
@@ -30,7 +30,7 @@ describe.skipIf(!configured)("a person's work across repositories, against a rea
   let app: { id: string; path: string };
   const ids: Record<string, string> = {};
 
-  /** A pull request as its rows, with one version a push. */
+  /** A branch page as its rows, with one version a push. */
   const pull = async (
     key: string,
     number: number,
@@ -227,6 +227,7 @@ describe.skipIf(!configured)("a person's work across repositories, against a rea
     expect(body.yours.items[0]).toMatchObject({
       state: "approved",
       summary: "Limit requests per token",
+      key: "branch-a",
       branch: "branch-a",
       latestVersion: 1,
       author: { id: alice.id },
@@ -250,6 +251,7 @@ describe.skipIf(!configured)("a person's work across repositories, against a rea
       count: 1,
       items: [
         {
+          key: "branch-b",
           title: "Cache the token lookup",
           latestVersion: 2,
           reviewedVersion: null,
@@ -262,7 +264,9 @@ describe.skipIf(!configured)("a person's work across repositories, against a rea
       ],
     });
     // Once she has reviewed the newest version there is nothing left to suggest.
-    await world.call("PUT", `${app.path}/pulls/12/versions/latest/reviewed`, { as: alice });
+    await world.call("PUT", `${pagePath(app.path, "branch-b")}/versions/latest/reviewed`, {
+      as: alice,
+    });
     expect((await home(alice)).body.suggested).toEqual({ count: 0, items: [] });
     // Bob wrote that one, and approved alice's as it stands: neither is suggested to him.
     expect((await home(bob)).body.suggested.items).toEqual([]);
@@ -280,7 +284,16 @@ describe.skipIf(!configured)("a person's work across repositories, against a rea
     expect(said).toContain("findings Cache the token lookup");
     expect(said.filter((line) => line === "pushed Cache the token lookup")).toHaveLength(2);
     const found = body.activity.find((event: Record<string, any>) => event["type"] === "findings");
-    expect(found).toMatchObject({ actor: null, version: 2, findings: { found: 1, mustFix: 1 } });
+    expect(found).toMatchObject({
+      key: "branch-b",
+      actor: null,
+      version: 2,
+      findings: { found: 1, mustFix: 1 },
+    });
+    // Every row names its page by its key.
+    expect(body.activity.every((event: Record<string, any>) => /^branch-/.test(event["key"]))).toBe(
+      true,
+    );
     const times = body.activity.map((event: Record<string, any>) => Date.parse(event["at"]));
     expect(times).toEqual([...times].sort((x: number, y: number) => y - x));
 
@@ -364,53 +377,15 @@ describe.skipIf(!configured)("a person's work across repositories, against a rea
     ).toMatchObject({ activeBranches: 0 });
   });
 
-  it("lists the pull requests and issues someone wrote, is assigned to or is mentioned in", async () => {
-    const threads = async (as: Person, query: string) =>
-      (await world.call("GET", `/api/workspace/threads?${query}`, { as })).body.items as Array<
-        Record<string, any>
-      >;
-    const created = await threads(alice, "kind=pulls&involvement=created&state=all");
-    expect(created.length).toBeGreaterThan(0);
-    expect(created.every((row) => row.isPullRequest && row.author.id === alice.id)).toBe(true);
-    expect(created.map((row) => row.number)).toContain(11);
-    // Bob's pull request is hers to look at: she is an assignee.
-    const assigned = await threads(alice, "kind=pulls&involvement=assigned");
-    expect(assigned.length).toBeGreaterThan(0);
-    expect(assigned.every((row) => row.author.id === bob.id && row.state === "open")).toBe(true);
-    // Bob's comment names her; her own note to herself does not count.
-    expect(await threads(alice, "kind=pulls&involvement=mentioned&state=all")).toMatchObject([
-      { number: 11, repository: { id: app.id }, isPullRequest: true },
-    ]);
-    expect(await threads(bob, "kind=pulls&involvement=mentioned&state=all")).toEqual([]);
-
-    const closed = newId();
-    await db.insert(gitIssues).values({
-      id: closed,
-      repositoryId: app.id,
-      number: 90,
-      isPullRequest: false,
-      title: "Limits are not documented",
-      body: `@${bob.username} knows where this goes`,
-      state: "closed",
-      authorUserId: alice.id,
-      createdAt: hoursAgo(30),
-      updatedAt: hoursAgo(20),
-    });
-    expect(await threads(alice, "kind=issues&involvement=created")).toEqual([]);
-    expect(await threads(alice, "kind=issues&involvement=created&state=closed")).toMatchObject([
-      { id: closed, number: 90, isPullRequest: false, state: "closed", draft: false },
-    ]);
-    // A description names someone as a comment does.
-    expect(await threads(bob, "kind=issues&involvement=mentioned&state=all")).toMatchObject([
-      { id: closed },
-    ]);
-    // Carol has no tie to the repository, whatever it holds.
-    for (const involvement of ["created", "assigned", "mentioned"]) {
-      expect(await threads(carol, `kind=issues&involvement=${involvement}&state=all`)).toEqual([]);
-    }
+  it("has no list of threads across repositories any more", async () => {
+    // Branches are the Changes list; issues and pages across repositories are the UI's own queries.
     expect(
-      (await world.call("GET", "/api/workspace/threads?kind=issues&involvement=created")).status,
-    ).toBe(401);
+      (
+        await world.call("GET", "/api/workspace/threads?kind=issues&involvement=created", {
+          as: alice,
+        })
+      ).status,
+    ).toBe(404);
   });
 
   it("lists the comments by other people that name the viewer", async () => {
@@ -424,7 +399,7 @@ describe.skipIf(!configured)("a person's work across repositories, against a rea
         repository: { id: app.id },
         number: 11,
         title: "Add rate limits",
-        isPullRequest: true,
+        branch: "branch-a",
         author: { id: bob.id },
         excerpt: `One thing, @${alice.username}: the limit is per token, not per key.`,
       },

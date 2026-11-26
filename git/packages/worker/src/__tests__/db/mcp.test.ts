@@ -188,9 +188,9 @@ describe.skipIf(!configured)("the MCP server, against a real Postgres", () => {
       arguments: { repository, ask: "Add rate limits to the API", branch: "rate-limits" },
     });
     expect(started.isError, textOf(started)).toBeFalsy();
-    const page = started.structuredContent as { branch: string; pull_request: number; url: string };
-    expect(page.branch).toBe("rate-limits");
-    expect(page.url).toBe(`${ORIGIN}/${repository}/pulls/${page.pull_request}`);
+    const page = started.structuredContent as { branch: string; key: string; url: string };
+    expect(page).toMatchObject({ branch: "rate-limits", key: "rate-limits" });
+    expect(page.url).toBe(`${ORIGIN}/${repository}/branches/rate-limits`);
 
     const recorded = await client.callTool({
       name: "record_trace",
@@ -235,7 +235,8 @@ describe.skipIf(!configured)("the MCP server, against a real Postgres", () => {
     });
     expect(branch.isError, textOf(branch)).toBeFalsy();
     expect(branch.structuredContent).toMatchObject({
-      pullRequest: { number: page.pull_request, draft: true, headRef: "rate-limits" },
+      key: "rate-limits",
+      page: { key: "rate-limits", draft: true, headRef: "rate-limits" },
       state: { pendingTraceEntries: 3 },
       versions: [],
     });
@@ -251,14 +252,14 @@ describe.skipIf(!configured)("the MCP server, against a real Postgres", () => {
       name: "start_work",
       arguments: { repository, ask: "Something", branch: "something" },
     });
-    const number = (started.structuredContent as { pull_request: number }).pull_request;
+    const key = (started.structuredContent as { key: string }).key;
     for (const [name, extra] of [
       ["list_instructions", {}],
       ["list_findings", {}],
     ] as const) {
       const result = await client.callTool({
         name,
-        arguments: { repository, pull_request: number, ...extra },
+        arguments: { repository, branch: key, ...extra },
       });
       expect(result.isError, `${name}: ${textOf(result)}`).toBeFalsy();
       expect(result.structuredContent).toBeTypeOf("object");
@@ -266,7 +267,7 @@ describe.skipIf(!configured)("the MCP server, against a real Postgres", () => {
     // A refusal comes back in words: a branch start work made has no version until a push.
     const report = await client.callTool({
       name: "report_finding",
-      arguments: { repository, pull_request: number, reviewer: "outside-bot", findings: [] },
+      arguments: { repository, branch: key, reviewer: "outside-bot", findings: [] },
     });
     expect(report.isError).toBe(true);
     expect(textOf(report)).toContain("no version yet");
@@ -358,7 +359,7 @@ describe.skipIf(!configured)("the MCP server, against a real Postgres", () => {
     expect(elsewhere.isError).toBe(true);
     const reading = await job.callTool({
       name: "get_branch",
-      arguments: { repository, pull_request: 1 },
+      arguments: { repository, branch: "feature" },
     });
     expect(reading.isError).toBe(true);
     expect(textOf(reading)).toContain("CI job token");

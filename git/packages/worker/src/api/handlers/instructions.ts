@@ -33,21 +33,16 @@ import {
   insertInstruction,
   listInstructions,
 } from "../../db/instructions";
-import { type PullRequestWithThread, getPullRequest } from "../../db/pulls";
+import type { PullRequestWithThread } from "../../db/pulls";
 import { versionsForPull } from "../../db/review";
 import {
   commentInstruction,
   deliverInstructions,
   findingInstruction,
 } from "../../review/instructions";
+import { pageOr404 } from "../branch-page";
 import { type RepoCx, repoOp } from "../context";
 import { iso, isoOrNull, peopleById } from "../views/repositories";
-
-const pullOr404 = async (cx: RepoCx, number: number): Promise<PullRequestWithThread> => {
-  const found = await getPullRequest(cx.repo.repository.id, number);
-  if (!found) throw notFound("No such pull request");
-  return found;
-};
 
 const instructionOr404 = async (
   found: PullRequestWithThread,
@@ -92,7 +87,7 @@ const peopleOnly = (cx: RepoCx): void => {
 
 /**
  * A job token bound to one branch (an agent session's) answers for that
- * branch's pull request and no other: it has the repository's `write` for
+ * branch's page and no other: it has the repository's `write` for
  * the gate, and this is what keeps it to its own work.
  */
 const ownBranchOnly = (cx: RepoCx, found: PullRequestWithThread): void => {
@@ -110,9 +105,9 @@ export const InstructionsHandlers = HttpApiBuilder.group(GitApi, "instructions",
       "send",
       repoOp(async (cx, { params, payload }) => {
         peopleOnly(cx);
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         if (found.thread.state !== "open") {
-          throw unprocessable("This pull request is not open: there is no work to send it to");
+          throw unprocessable("This branch page is not open: there is no work to send it to");
         }
         const extra = payload.body?.trim() ?? "";
         let body: string;
@@ -152,7 +147,7 @@ export const InstructionsHandlers = HttpApiBuilder.group(GitApi, "instructions",
     .handle(
       "list",
       repoOp(async (cx, { params, query }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         return {
           instructions: await instructionViews(
             await listInstructions(found.pull.issueId, query.status),
@@ -163,7 +158,7 @@ export const InstructionsHandlers = HttpApiBuilder.group(GitApi, "instructions",
     .handle(
       "markDelivered",
       repoOp(async (cx, { params, payload }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         ownBranchOnly(cx, found);
         const row = await instructionOr404(found, params.instructionId);
         if (row.status === "dismissed") throw unprocessable("That instruction was withdrawn");
@@ -177,7 +172,7 @@ export const InstructionsHandlers = HttpApiBuilder.group(GitApi, "instructions",
     .handle(
       "markAnswered",
       repoOp(async (cx, { params, payload }) => {
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         ownBranchOnly(cx, found);
         const row = await instructionOr404(found, params.instructionId);
         if (row.status === "dismissed") throw unprocessable("That instruction was withdrawn");
@@ -199,7 +194,7 @@ export const InstructionsHandlers = HttpApiBuilder.group(GitApi, "instructions",
       "dismiss",
       repoOp(async (cx, { params }) => {
         peopleOnly(cx);
-        const found = await pullOr404(cx, params.number);
+        const found = await pageOr404(cx, params.branch);
         const row = await instructionOr404(found, params.instructionId);
         if (row.status === "dismissed") return view(row);
         const dismissed = await dismissInstruction(row.id, cx.userId);

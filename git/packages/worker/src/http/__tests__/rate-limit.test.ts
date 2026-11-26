@@ -34,10 +34,10 @@ describe("classify", () => {
     expect(classify("GET", at(`${repo}/compare?base=a&head=b`))).toBe("heavy");
     expect(classify("GET", at(`${repo}/compare/diff?base=a&head=b`))).toBe("heavy");
     expect(classify("GET", at(`${repo}/blame?path=x`))).toBe("heavy");
-    expect(classify("GET", at(`${repo}/pulls/7/files`))).toBe("heavy");
-    expect(classify("GET", at(`${repo}/pulls/7/mergeability`))).toBe("heavy");
-    expect(classify("GET", at(`${repo}/pulls/7`))).toBe("read");
-    expect(classify("POST", at(`${repo}/pulls/7/merge`))).toBe("write");
+    expect(classify("GET", at(`${repo}/branches/feature%2Fa/files`))).toBe("heavy");
+    expect(classify("GET", at(`${repo}/branches/feature%2Fa/mergeability`))).toBe("heavy");
+    expect(classify("GET", at(`${repo}/branches/feature%2Fa`))).toBe("read");
+    expect(classify("POST", at(`${repo}/branches/feature%2Fa/merge`))).toBe("write");
     expect(classify("DELETE", at(`${repo}/branches`))).toBe("write");
     expect(classify("GET", at("/acme/infra/archive/0123.tar.gz"))).toBe("heavy");
     expect(classify("GET", at("/acme/infra/raw/0123/main.tf"))).toBe("heavy");
@@ -55,7 +55,7 @@ describe("classify", () => {
     expect(classify("GET", at("/api/explore/repos?q=terraform"))).toBe("heavy");
     expect(classify("GET", at("/api/users?q=ad"))).toBe("heavy");
     expect(classify("GET", at(`${repo}/issues?q=crash`))).toBe("heavy");
-    expect(classify("GET", at(`${repo}/pulls?q=crash`))).toBe("heavy");
+    expect(classify("GET", at(`${repo}/branch-pages?q=crash`))).toBe("heavy");
     expect(classify("GET", at(`${repo}/issues?state=open`))).toBe("read");
     expect(classify("GET", at(`${repo}/branches?q=rel`))).toBe("read");
     expect(classify("GET", at(`${repo}/tags?q=v1`))).toBe("read");

@@ -439,7 +439,7 @@ export async function diffAnchor(
   let session = await openSession(cx);
   if (input.headRepositoryId !== undefined && input.headRepositoryId !== cx.locator.id) {
     if (!(await cx.repo.importFrom(input.headRepositoryId, [input.headOid]))) {
-      throw new RepoReaderError("ref_not_found", "The pull request's head commit is not there");
+      throw new RepoReaderError("ref_not_found", "The branch's head commit is not there");
     }
     session = await openSession(cx);
   }

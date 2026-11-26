@@ -183,14 +183,15 @@ const fromCookie = async (
 const SEGMENT = "[^/]+";
 /**
  * The JSON API paths a job token bound to a branch is taken on: its agent's
- * trace and a pull request's instructions. Not commit statuses, though a
+ * trace and a branch page's instructions (the key is one percent-encoded
+ * segment, so `[^/]+` is the whole key). Not commit statuses, though a
  * plain job token reports those: a status is what a protected branch's
  * required checks read, and an agent's credential must not be able to pass
  * another change's checks.
  */
 const REF_TOKEN_API_PATHS = [
   new RegExp(`^/api/repos/${SEGMENT}/${SEGMENT}/traces(?:/.*)?$`),
-  new RegExp(`^/api/repos/${SEGMENT}/${SEGMENT}/pulls/\\d+/instructions(?:/.*)?$`),
+  new RegExp(`^/api/repos/${SEGMENT}/${SEGMENT}/branches/${SEGMENT}/instructions(?:/.*)?$`),
 ];
 
 /** Whether the API takes a branch-bound job token on this path (`refTokens`). */

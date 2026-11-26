@@ -40,7 +40,7 @@ describe.skipIf(!configured)("access boundaries, against a real Postgres", () =>
   it("takes a head only from the base's fork network, and no private head into a public base", async () => {
     const base = `/api/repos/${bob.username}/open`;
     // Alice reads her private repository, but it is no fork of Bob's: its commits stay out.
-    const unrelated = await world.call("POST", `${base}/pulls`, {
+    const unrelated = await world.call("POST", `${base}/branch-pages`, {
       as: alice,
       body: { title: "t", base: "main", head: "main", headRepository: `${alice.username}/priv` },
     });
@@ -63,7 +63,7 @@ describe.skipIf(!configured)("access boundaries, against a real Postgres", () =>
       body: { visibility: "private" },
     });
     expect(hidden.status).toBe(200);
-    const fromPrivateFork = await world.call("POST", `${base}/pulls`, {
+    const fromPrivateFork = await world.call("POST", `${base}/branch-pages`, {
       as: alice,
       body: {
         title: "t",

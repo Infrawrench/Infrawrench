@@ -1,5 +1,5 @@
 /**
- * One review run: the forge's reviewers over one version of a pull request.
+ * One review run: the forge's reviewers over one version of a branch page.
  *
  * Called by the review queue's consumer (`./queue.ts`) with the id of a
  * `git_review_runs` row. Everything it decides it decides from the database
@@ -12,7 +12,7 @@
  *   does nothing. So one run never runs twice at once, and none stays
  *   `running` for ever.
  * - **Skipped with a reason** when there is nothing to review or nobody to
- *   bill: the pull request closed, a newer version arrived, review agents
+ *   bill: the page closed, a newer version arrived, review agents
  *   were turned off, the repository is a person's own, the organisation is at
  *   its AI spend cap. The run ends `failed` with the reason as its `error`,
  *   which starts with "Skipped".
@@ -108,9 +108,9 @@ const load = async (
 ): Promise<Loaded | { readonly skipped: string }> => {
   const found = await getPullRequestByIssueId(run.pullRequestId);
   const base = found ? await getRepositoryById(found.pull.repositoryId) : null;
-  if (!found || !base) return { skipped: "Skipped: the pull request is gone" };
+  if (!found || !base) return { skipped: "Skipped: the branch page is gone" };
   if (found.thread.state !== "open") {
-    return { skipped: "Skipped: the pull request is no longer open" };
+    return { skipped: "Skipped: the branch page is no longer open" };
   }
   const versions = await versionsForPull(found.pull);
   const version = versions.find((candidate) => candidate.id === run.versionId);

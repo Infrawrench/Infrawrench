@@ -322,9 +322,6 @@ const patchOf = (payload: RepositoryUpdate): RepositoryPatch => {
     patch.topics = topics;
   }
   if (payload.features?.issues !== undefined) patch.hasIssues = payload.features.issues;
-  if (payload.features?.pullRequests !== undefined) {
-    patch.hasPullRequests = payload.features.pullRequests;
-  }
   const merge = payload.merge;
   if (merge?.allowMergeCommit !== undefined) patch.allowMergeCommit = merge.allowMergeCommit;
   if (merge?.allowSquash !== undefined) patch.allowSquash = merge.allowSquash;

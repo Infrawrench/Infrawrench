@@ -1,8 +1,10 @@
 /**
  * Reviewing work a branch at a time, as Postgres holds it
  * (`git-review-schema.ts`): the versions of a branch, who has reviewed up to
- * which, a repository's review settings, a person's review mode, the agent
- * behind a pull request, and the counts the branch page and the inbox show.
+ * which, a repository's review settings, the agent behind a branch page, and
+ * the counts the branch page and the inbox show. (`auto_open_branch_pages`
+ * and `git_users.review_mode` are in the schema still, and read by nothing:
+ * every branch has a page, and there is one way to read it.)
  *
  * Versions are numbered by the repository's Durable Object; rows here are
  * copies made by the queue consumer (`events/versions.ts`), unique on
@@ -12,7 +14,6 @@ import { type SQL, and, asc, desc, eq, gt, inArray, isNull, lte, or, sql } from 
 import {
   type GitAgentIdentity,
   type GitAgentKind,
-  type GitReviewMode,
   gitAgentLinks,
   gitBranchVersions,
   gitInstructions,
@@ -398,14 +399,12 @@ export const pendingTraceCount = async (repositoryId: string, branch: string): P
 // ---------------------------------------------------------------------------
 
 export interface ReviewSettingsValue {
-  readonly autoOpenBranchPages: boolean;
   readonly reviewAgentsEnabled: boolean;
   readonly reviewerKinds: readonly string[];
   readonly mustFixBlocksMerge: boolean;
 }
 
 export const DEFAULT_REVIEW_SETTINGS: ReviewSettingsValue = {
-  autoOpenBranchPages: true,
   reviewAgentsEnabled: false,
   reviewerKinds: ["general"],
   mustFixBlocksMerge: true,
@@ -420,7 +419,6 @@ export const getReviewSettings = async (repositoryId: string): Promise<ReviewSet
     .limit(1);
   return row
     ? {
-        autoOpenBranchPages: row.autoOpenBranchPages,
         reviewAgentsEnabled: row.reviewAgentsEnabled,
         reviewerKinds: row.reviewerKinds,
         mustFixBlocksMerge: row.mustFixBlocksMerge,
@@ -435,7 +433,6 @@ export const updateReviewSettings = async (
 ): Promise<ReviewSettingsValue> => {
   const next = { ...(await getReviewSettings(repositoryId)), ...patch };
   const values = {
-    autoOpenBranchPages: next.autoOpenBranchPages,
     reviewAgentsEnabled: next.reviewAgentsEnabled,
     reviewerKinds: [...next.reviewerKinds],
     mustFixBlocksMerge: next.mustFixBlocksMerge,
@@ -447,23 +444,6 @@ export const updateReviewSettings = async (
     .values({ repositoryId, ...values })
     .onConflictDoUpdate({ target: gitReviewSettings.repositoryId, set: values });
   return next;
-};
-
-export const getReviewMode = async (userId: string): Promise<GitReviewMode> => {
-  const [row] = await db
-    .select({ reviewMode: gitUsers.reviewMode })
-    .from(gitUsers)
-    .where(eq(gitUsers.userId, userId))
-    .limit(1);
-  return row?.reviewMode ?? "agent";
-};
-
-export const setReviewMode = async (userId: string, mode: GitReviewMode): Promise<void> => {
-  const now = new Date();
-  await db
-    .insert(gitUsers)
-    .values({ userId, reviewMode: mode })
-    .onConflictDoUpdate({ target: gitUsers.userId, set: { reviewMode: mode, updatedAt: now } });
 };
 
 // ---------------------------------------------------------------------------

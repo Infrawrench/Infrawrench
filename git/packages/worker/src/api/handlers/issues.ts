@@ -1,5 +1,5 @@
 /**
- * Issues, the comments and timeline every thread has (a pull request's
+ * Issues, the comments and timeline every thread has (a branch page's
  * too), labels and milestones.
  */
 import { HttpApiBuilder } from "effect/http-api";
@@ -65,7 +65,7 @@ import { timelinePage } from "../views/timeline";
 /** `#number`, whichever kind it is, or a 404. */
 export const threadOr404 = async (cx: RepoCx, number: number): Promise<IssueRow> => {
   const thread = await getThread(cx.repo.repository.id, number);
-  if (!thread) throw notFound("No such issue or pull request");
+  if (!thread) throw notFound("No such issue or branch page");
   return thread;
 };
 
@@ -90,7 +90,7 @@ export interface ThreadFilterQuery {
 /** A filter that names something that does not exist matches nothing. */
 const NOTHING = "00000000-0000-0000-0000-000000000000";
 
-/** The list filters issues and pull requests share, resolved to ids. */
+/** The list filters issues and branch pages share, resolved to ids. */
 export const threadFilters = async (cx: RepoCx, query: ThreadFilterQuery) => {
   const repositoryId = cx.repo.repository.id;
   const person = async (name: string | undefined): Promise<string | undefined> => {

@@ -11,25 +11,24 @@
  * only for a lineage with no pull request, and a comment already at the new
  * head is left alone.
  */
-import { and, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import type { Commit } from "@infrawrench/git-contract";
-import { gitBranchVersions, gitReviewComments } from "@infrawrench/server-core/db/schema";
+import {
+  gitBranchVersions,
+  gitIssues,
+  gitPullRequests,
+  gitReviewComments,
+} from "@infrawrench/server-core/db/schema";
 import { locatorOf } from "../api/context";
 import { mayProposeTo, plansPullRequest } from "../api/repos";
 import { db } from "../db/client";
-import {
-  type PullRequestWithThread,
-  createPullRequest,
-  findOpenPullRequest,
-  reanchorThread,
-} from "../db/pulls";
+import { type PullRequestWithThread, createPullRequestIn, reanchorThread } from "../db/pulls";
 import { settleAnswered } from "../db/instructions";
-import { getRepositoryById } from "../db/repositories";
+import { type RepositoryWithOwner, getRepositoryById } from "../db/repositories";
 import {
   type VersionRow,
   claimTraceEntries,
   getAgentLink,
-  getReviewSettings,
   insertVersion,
   keepLineage,
   latestVersionOf,
@@ -38,7 +37,12 @@ import {
   versionsForPull,
 } from "../db/review";
 import type { GitPushEvent } from "../env";
-import { type LineAnchor, RepoReaderError } from "../repo/reader";
+import {
+  type LineAnchor,
+  type ReaderComparison,
+  type RepoReader,
+  RepoReaderError,
+} from "../repo/reader";
 import { announcePullRequest } from "./ci";
 import type { PushContext } from "./consumer";
 import { queuePullRequestPlans } from "./terraform";
@@ -145,7 +149,7 @@ export const recordVersions = async (
 };
 
 /** The branch's name as a title, when no single commit names the work. */
-const titleOf = (branch: string, commits: readonly Commit[] | null): string => {
+export const titleOf = (branch: string, commits: readonly Commit[] | null): string => {
   if (commits?.length === 1) {
     const subject = commits[0]!.message.split("\n", 1)[0]!.trim();
     if (subject !== "") return subject.slice(0, 256);
@@ -155,12 +159,116 @@ const titleOf = (branch: string, commits: readonly Commit[] | null): string => {
   return title.slice(0, 256);
 };
 
+/** What {@link openDraftPage} opens a page from. */
+export interface DraftPage {
+  readonly repo: RepositoryWithOwner;
+  /** The repository's reader. */
+  readonly reader: RepoReader;
+  readonly branch: string;
+  readonly headOid: string;
+  /** The default branch to the head, as `RepoReader.compare` answered it. */
+  readonly comparison: Pick<ReaderComparison, "base" | "mergeBaseOid" | "ahead" | "stats">;
+  readonly title: string;
+  /** The pusher, or whoever opened the page; null for nobody signed in. */
+  readonly authorUserId: string | null;
+  /** The username CI is told acted. */
+  readonly actor: string | null;
+  /**
+   * Refuse when the branch has ever had a page, not only an open one: a
+   * page opened on reading a branch is for branches that never had one.
+   */
+  readonly onlyFirst: boolean;
+}
+
 /**
- * Opens the branch's page: a draft pull request against the default branch,
- * the first time a branch is pushed, where the repository has that on. Not
- * for a fork (its branches are proposed to its parent, by a person), not
- * when a pull request for the lineage exists or ever did, and not for a
- * branch with nothing of its own.
+ * Opens a branch's page as a draft against the default branch, and
+ * announces it as an opened page (CI, and Terraform plans for a branch of
+ * the repository itself). Null when the branch has an open page already
+ * (or, with `onlyFirst`, any page): the check and the insert hold one
+ * advisory lock per branch, so a push and a reader opening it at once open
+ * one page.
+ */
+export const openDraftPage = async (input: DraftPage): Promise<PullRequestWithThread | null> => {
+  const { repository } = input.repo;
+  const created = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${`git_branch_page:${repository.id}:${input.branch}`}))`,
+    );
+    const [existing] = await tx
+      .select({ id: gitPullRequests.issueId })
+      .from(gitPullRequests)
+      .innerJoin(gitIssues, eq(gitIssues.id, gitPullRequests.issueId))
+      .where(
+        and(
+          eq(gitPullRequests.repositoryId, repository.id),
+          eq(gitPullRequests.headRepositoryId, repository.id),
+          eq(gitPullRequests.headRef, input.branch),
+          ...(input.onlyFirst ? [] : [eq(gitIssues.state, "open")]),
+        ),
+      )
+      .limit(1);
+    if (existing) return null;
+    return createPullRequestIn(tx, {
+      repositoryId: repository.id,
+      title: input.title,
+      body: "",
+      authorUserId: input.authorUserId,
+      labelIds: [],
+      assigneeUserIds: [],
+      milestoneId: null,
+      baseRef: repository.defaultBranch,
+      headRepositoryId: repository.id,
+      headRef: input.branch,
+      headOid: input.headOid,
+      baseOid: input.comparison.base.commitOid,
+      mergeBaseOid: input.comparison.mergeBaseOid,
+      draft: true,
+      commitsCount: input.comparison.ahead,
+      additions: input.comparison.stats.additions,
+      deletions: input.comparison.stats.deletions,
+      changedFiles: input.comparison.stats.filesChanged,
+    });
+  });
+  if (!created) return null;
+  await linkVersionsToPull(repository.id, input.branch, created.pull.issueId);
+  await tryRead(() =>
+    input.reader.setPullRef({
+      number: created.thread.number,
+      headRepositoryId: repository.id,
+      oid: input.headOid,
+    }),
+  );
+  await announcePullRequest(input.repo, created, "opened", input.repo, input.actor);
+  if (plansPullRequest(repository.id, created.pull.headRepositoryId)) {
+    await queuePullRequestPlans({
+      repositoryId: repository.id,
+      organizationId: input.repo.owner.organizationId,
+      defaultBranch: repository.defaultBranch,
+      baseRef: created.pull.baseRef,
+      headRef: input.branch,
+      headOid: input.headOid,
+      pullNumber: created.thread.number,
+      userId: input.authorUserId,
+      fromFork: false,
+      reader: input.reader,
+      headRepositoryId: undefined,
+    });
+  }
+  return created;
+};
+
+/**
+ * Whether a repository opens pages for its branches: not a fork (its
+ * branches are proposed to its parent, by a person) and not an archived one.
+ */
+export const opensBranchPages = ({ repository }: RepositoryWithOwner): boolean =>
+  !repository.isFork && !repository.archived;
+
+/**
+ * Opens the branch's page: a draft against the default branch, the first
+ * time a branch is pushed. Not for a fork or an archived repository, not for
+ * the default branch, not when a page for the lineage exists or ever did,
+ * and not for a branch with nothing of its own.
  */
 export const openBranchPage = async (
   cx: PushContext,
@@ -172,9 +280,9 @@ export const openBranchPage = async (
   const { repository } = cx.repo;
   const newest = copied.at(-1);
   if (!newest || newest.tipOid !== update.newOid) return null;
-  if (repository.isFork || repository.archived || !repository.hasPullRequests) return null;
+  if (!opensBranchPages(cx.repo)) return null;
   if (branch === repository.defaultBranch) return null;
-  // Any version of the lineage that belongs to a pull request: the page was opened before.
+  // Any version of the lineage that belongs to a page: the page was opened before.
   const [paged] = await db
     .select({ id: gitBranchVersions.id })
     .from(gitBranchVersions)
@@ -188,60 +296,22 @@ export const openBranchPage = async (
     )
     .limit(1);
   if (paged) return null;
-  if (!(await getReviewSettings(repository.id)).autoOpenBranchPages) return null;
-  if (await findOpenPullRequest(repository.id, repository.defaultBranch, repository.id, branch)) {
-    return null;
-  }
   const comparison = await tryRead(() =>
     cx.reader.compare({ base: repository.defaultBranch, head: update.newOid }),
   );
   // Without the storage there is nothing to open it with; the next push tries again.
   if (!comparison || comparison.ahead === 0) return null;
-  const created = await createPullRequest({
-    repositoryId: repository.id,
-    title: titleOf(branch, commits),
-    body: "",
-    authorUserId: cx.userId,
-    labelIds: [],
-    assigneeUserIds: [],
-    milestoneId: null,
-    baseRef: repository.defaultBranch,
-    headRepositoryId: repository.id,
-    headRef: branch,
+  return openDraftPage({
+    repo: cx.repo,
+    reader: cx.reader,
+    branch,
     headOid: update.newOid,
-    baseOid: comparison.base.commitOid,
-    mergeBaseOid: comparison.mergeBaseOid,
-    draft: true,
-    commitsCount: comparison.ahead,
-    additions: comparison.stats.additions,
-    deletions: comparison.stats.deletions,
-    changedFiles: comparison.stats.filesChanged,
+    comparison,
+    title: titleOf(branch, commits),
+    authorUserId: cx.userId,
+    actor: cx.username,
+    onlyFirst: false,
   });
-  await linkVersionsToPull(repository.id, branch, created.pull.issueId);
-  await tryRead(() =>
-    cx.reader.setPullRef({
-      number: created.thread.number,
-      headRepositoryId: repository.id,
-      oid: update.newOid,
-    }),
-  );
-  await announcePullRequest(cx.repo, created, "opened", cx.repo, cx.username);
-  if (plansPullRequest(repository.id, created.pull.headRepositoryId)) {
-    await queuePullRequestPlans({
-      repositoryId: repository.id,
-      organizationId: cx.repo.owner.organizationId,
-      defaultBranch: repository.defaultBranch,
-      baseRef: created.pull.baseRef,
-      headRef: branch,
-      headOid: update.newOid,
-      pullNumber: created.thread.number,
-      userId: cx.userId,
-      fromFork: false,
-      reader: cx.reader,
-      headRepositoryId: undefined,
-    });
-  }
-  return created;
 };
 
 /**

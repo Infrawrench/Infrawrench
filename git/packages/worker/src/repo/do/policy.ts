@@ -81,13 +81,13 @@ export function refusal(policy: PushPolicy, update: ReceiveUpdate): string | nul
       return "protected branch: you are not allowed to push to it";
     }
   }
-  // Reviews and checks happen on a pull request, so requiring either means requiring one.
+  // Reviews and checks happen on a branch page, so requiring either means requiring one.
   if (
     protection.requirePullRequest ||
     protection.requiredApprovals > 0 ||
     protection.requiredStatusContexts.length > 0
   ) {
-    return "protected branch: changes must be made through a pull request";
+    return "protected branch: changes arrive through a branch page only";
   }
   if (update.forced && !protection.allowForcePush) {
     return "protected branch: force pushes are not allowed";

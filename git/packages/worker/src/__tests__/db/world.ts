@@ -27,6 +27,10 @@ import { type FakeStorage, fakeStorage } from "../helpers/fake-reader";
 
 export const configured = Boolean(process.env["DATABASE_URL"]);
 
+/** A branch page's API path: its key is one percent-encoded segment (`feature%2Fa`). */
+export const pagePath = (repo: string, key: string): string =>
+  `${repo}/branches/${encodeURIComponent(key)}`;
+
 export interface Person {
   readonly id: string;
   readonly username: string;
