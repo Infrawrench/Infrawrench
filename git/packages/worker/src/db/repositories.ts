@@ -290,7 +290,7 @@ export interface ListViewer {
  * collaborate on, their organisations'. Null when they have none to have
  * (signed out, in no organisation).
  */
-const tiedTo = (viewer: ListViewer): SQL | null => {
+export const tiedTo = (viewer: ListViewer): SQL | null => {
   const ties: SQL[] = [];
   if (viewer.userId !== null) {
     ties.push(eq(gitNamespaces.userId, viewer.userId));

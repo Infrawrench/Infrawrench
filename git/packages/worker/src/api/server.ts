@@ -41,6 +41,7 @@ import {
 import { T3Handlers } from "./handlers/t3";
 import { TracesHandlers } from "./handlers/traces";
 import { ReviewHandlers, VersionsHandlers } from "./handlers/versions";
+import { WorkspaceHandlers } from "./handlers/workspace";
 import { MiddlewareLive } from "./middleware";
 
 /** Every group's handlers. A group added to `GitApi` without one here does not typecheck. */
@@ -59,6 +60,7 @@ export const HandlersLive = Layer.mergeAll(
   AgentsHandlers,
   ReviewSettingsHandlers,
   ReviewHandlers,
+  WorkspaceHandlers,
   T3Handlers,
   LabelsHandlers,
   MilestonesHandlers,

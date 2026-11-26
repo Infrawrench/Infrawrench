@@ -139,6 +139,11 @@ export const API_ROUTES = {
     mode: ["GET", "/api/review/mode"],
     setMode: ["PUT", "/api/review/mode"],
   },
+  workspace: {
+    home: ["GET", "/api/workspace/home"],
+    changes: ["GET", "/api/workspace/changes"],
+    mentions: ["GET", "/api/workspace/mentions"],
+  },
   t3: {
     list: ["GET", "/api/t3/environments"],
     create: ["POST", "/api/t3/environments"],

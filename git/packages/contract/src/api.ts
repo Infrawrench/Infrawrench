@@ -21,6 +21,7 @@ import {
   VersionsGroup,
 } from "./groups/review";
 import { SessionGroup } from "./groups/session";
+import { WorkspaceGroup } from "./groups/workspace";
 import {
   AccountGroup,
   CollaboratorsGroup,
@@ -44,6 +45,7 @@ export const GIT_API_GROUPS = [
   AgentsGroup,
   ReviewSettingsGroup,
   ReviewGroup,
+  WorkspaceGroup,
   T3Group,
   LabelsGroup,
   MilestonesGroup,
@@ -73,6 +75,7 @@ export class GitApi extends withApiDefaults(
     .add(AgentsGroup)
     .add(ReviewSettingsGroup)
     .add(ReviewGroup)
+    .add(WorkspaceGroup)
     .add(T3Group)
     .add(LabelsGroup)
     .add(MilestonesGroup)
@@ -107,6 +110,7 @@ export class ReviewApi extends withApiDefaults(
     .add(AgentsGroup)
     .add(ReviewSettingsGroup)
     .add(ReviewGroup)
+    .add(WorkspaceGroup)
     .add(T3Group),
 ) {}
 export class RepositorySettingsApi extends withApiDefaults(

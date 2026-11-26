@@ -497,6 +497,17 @@ Verified against T3 Code 0.1.11. An environment serves MCP at `<origin>/mcp` wit
 - **Reading** is the repository's readers'. `list` takes `pull` or `branch`. A pull request's trace is its versions' entries plus what waits on its head branch, which for a fork's pull request is in the fork and is shown under the rule its versions are (`mayProposeTo`).
 - **Default branch.** `record` refuses it: it has no versions, so an entry there would never be claimed.
 
+### A person's work across repositories (`/api/workspace`)
+
+`db/workspace.ts` and `api/handlers/workspace.ts` answer the home page of someone in agent mode (`workspace.home`), the Changes list (`workspace.changes`) and the comments that mention them (`workspace.mentions`).
+
+- **The scope is `tiedTo`, not `visibleTo`.** A workspace is the repositories the viewer has a tie to (their own namespace's, their organisations', the ones they collaborate on), optionally one namespace's share of them. A public repository they have nothing to do with is not their work, and a private one they cannot read is in none of it: asking for a namespace they have no tie to answers an empty workspace, the same as one with nothing in it.
+- **A row's state is read in the statement that reads the row.** `changeColumns` carries the newest version, the newest verdict, the open must-fix count and whether the agent is at work as correlated subqueries, each on an index by pull request. `changeStateOf` then orders them the way the contract's `ChangeState` says. It is a list's state, not the branch page's: it reads no checks and nothing of the viewer's.
+- **"Mine" is the author or whoever connected the agent**, so a branch an agent writes for someone is theirs.
+- **Suggestions** are other people's open branches, out of draft and not with their agent, with a version newer than the viewer's mark, that the viewer has not approved at the current head. Reasons come from rows that exist (assignee, a reviewed mark, a review of theirs, a version they pushed to the repository); there is no "review requested" in the schema, and nothing is inferred from file paths, which would be a call to the repository's object per row.
+- **Activity is four reads, each newest first up to the limit**, merged: versions, reviews submitted, review runs that found something, merges. The newest twenty of all four are among the newest twenty of each.
+- **Mentions match text.** There is no table of mentions, so `listMentions` matches `@username` (`mentionPattern`, the same expression for Postgres and for the excerpt) against the comments and review comments of the viewer's repositories. That is a scan of those repositories' comments; a mentions table written when a comment is saved is what replaces it if it ever shows.
+
 ### Known gaps
 
 - A version's commit stays readable by id (the API, raw, archive) until it is pruned, which is the point, and also means a secret pushed to a branch and forced away is still readable by the repository's readers for as long as the branch lives and thirty days more. There is no way to drop one version by hand yet.
