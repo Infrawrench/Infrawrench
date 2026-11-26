@@ -18,6 +18,14 @@ When you are signed in to [git.infrawrench.com](./git-getting-started.md), the s
 
 On a narrow window the sidebar is behind the menu button in the top bar.
 
+## Inside a repository
+
+A repository has no header of its own in this layout. The top bar says where you are, as namespace / repository / page, with a lock beside a private repository's name. To the right are the repository's sections: **Code**, **Issues**, **Branches**, **CI**, **Infrastructure** and **Settings** (on a narrow window, their icons). The star and the fork, each with its count, are at the end of the bar.
+
+**Branches** is the repository's pull requests, one line each: where its review stands, its title, its number and branch, its labels, the people on it and when it last moved. The search box and the filters work as they do for issues. It is called **Pull requests** in the classic layout.
+
+<insert [A repository's Branches list on git.infrawrench.com in the sidebar layout: the top bar reading "acme / infra" with a lock, the sections Code, Issues, Branches, CI, Infrastructure and Settings with Branches current, the star and fork counts, and two one-line rows of open branches] here>
+
 ## Home
 
 The headline counts the open pull requests in the workspace. The sentence under it names the repositories that were pushed to in the range picked in the top bar (**Last 24 hours**, **Last 7 days** or **Last 30 days**). The top bar also says how many agents are working, when any is.
@@ -51,9 +59,10 @@ A row shows the first line of the pull request's description. A branch that has 
 
 The sidebar, this home page and the [branch page](./git-agents.md) are the default layout. **Classic** is the top navigation bar, a home page of your repositories and recent pushes, and pull requests as conversation, commits, checks and files. Both show the same data at the same addresses.
 
-Switch in any of three places:
+Switch in any of four places:
 
 - Your name at the foot of the sidebar, under **Open pull requests as**.
+- The top bar of a branch page, beside the repository's sections.
 - The account menu at the top right, in the classic layout.
 - **Settings > Review**.
 
