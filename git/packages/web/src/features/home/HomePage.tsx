@@ -14,8 +14,8 @@ import { EmptyState, Loading, QueryView } from "../../components/states";
 import { shortOid } from "../../lib/format";
 import { paths } from "../../lib/paths";
 import { signInHref, useSession } from "../../lib/session";
-import { InboxSection } from "../review/Inbox";
 import { useReviewMode } from "../review/mode";
+import { AgentHome } from "../workspace/AgentHome";
 import { showBidi } from "../../lib/bidi";
 
 export function HomePage() {
@@ -23,7 +23,18 @@ export function HomePage() {
   if (session.data === undefined) return <Loading shape="page" />;
   const user = session.data.user;
   if (user === null) return <SignedOutHome />;
-  return <SignedInHome username={user.username} />;
+  return <SignedInHomeByMode username={user.username} />;
+}
+
+/** The home page of the reader's mode: their work in agent mode, their repositories in classic. */
+function SignedInHomeByMode({ username }: { username: string | null }) {
+  const { mode } = useReviewMode();
+  if (mode === undefined) return <Loading shape="page" />;
+  return mode === "agent" && username !== null ? (
+    <AgentHome />
+  ) : (
+    <SignedInHome username={username} />
+  );
 }
 
 function SignedOutHome() {
@@ -58,8 +69,6 @@ function SignedOutHome() {
 
 function SignedInHome({ username }: { username: string | null }) {
   const [filter, setFilter] = useState("");
-  // The inbox is the branch page's: someone in classic mode keeps the home page as it was.
-  const { mode } = useReviewMode();
   const mine = useQuery(
     queries.repositoryLists.listMine({ query: { sort: "pushed", limit: 100 } }),
   );
@@ -140,7 +149,6 @@ function SignedInHome({ username }: { username: string | null }) {
         </section>
 
         <div className="min-w-0 space-y-6">
-          {mode === "agent" ? <InboxSection /> : null}
           <section aria-labelledby="home-activity" className="space-y-2">
             <h2 id="home-activity" className="text-sm font-semibold text-on-surface">
               Recent pushes

@@ -111,18 +111,18 @@ describe("classic mode", () => {
     expect(await screen.findByRole("navigation", { name: "Versions" }, wait)).toBeTruthy();
   });
 
-  it("keeps the home page without the inbox, which agent mode has", async () => {
+  it("keeps the home page as it was, and agent mode lists what waits on the reader", async () => {
     serve();
     await api.review.setMode({ payload: { mode: "classic" } });
     open("/");
     expect(await screen.findByRole("heading", { name: "Recent pushes" }, wait)).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Waiting on you" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Suggested for your review" })).toBeNull();
     cleanup();
     queryClient.clear();
 
     await api.review.setMode({ payload: { mode: "agent" } });
-    open("/");
-    const list = await screen.findByRole("list", { name: "Branches waiting on you" }, wait);
+    open("/reviews");
+    const list = await screen.findByRole("list", { name: "Reviews" }, wait);
     const first = within(list).getAllByRole("listitem")[0]!;
     expect(first.textContent).toContain("Peer with the shared services VPC");
     expect(first.textContent).toContain("1 must fix");
@@ -152,7 +152,9 @@ describe("the branch page", () => {
     expect(v3!.getAttribute("aria-current")).toBe("true");
 
     expect(screen.getByText("1 must-fix finding to settle")).toBeTruthy();
-    expect(screen.getByRole("link", { name: /Review/ }).getAttribute("href")).toBe(
+    // The page's own link, not the sidebar's Reviews.
+    const page = within(screen.getByRole("main"));
+    expect(page.getByRole("link", { name: /Review/ }).getAttribute("href")).toBe(
       "/acme/infra/pulls/12",
     );
     expect(screen.queryByRole("link", { name: /Files changed/ })).toBeNull();

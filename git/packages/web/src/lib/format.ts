@@ -49,6 +49,19 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
   return formatDate(iso);
 }
 
+/** `51m`, `16h`, `3d`, `5w`: an age narrow enough for the end of a dense row. */
+export function shortAge(iso: string, now: number = Date.now()): string {
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return "";
+  const seconds = Math.max(0, Math.round((now - then) / 1000));
+  if (seconds < MINUTE) return "now";
+  if (seconds < HOUR) return `${Math.floor(seconds / MINUTE)}m`;
+  if (seconds < DAY) return `${Math.floor(seconds / HOUR)}h`;
+  if (seconds < DAY * 14) return `${Math.floor(seconds / DAY)}d`;
+  if (seconds < DAY * 365) return `${Math.floor(seconds / (DAY * 7))}w`;
+  return `${Math.floor(seconds / (DAY * 365))}y`;
+}
+
 const dateFormat = new Intl.DateTimeFormat("en", {
   year: "numeric",
   month: "short",

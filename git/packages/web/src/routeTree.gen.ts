@@ -10,8 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ChangesRouteImport } from './routes/changes'
 import { Route as ExploreRouteImport } from './routes/explore'
+import { Route as MentionsRouteImport } from './routes/mentions'
 import { Route as NewRouteImport } from './routes/new'
+import { Route as ReviewsRouteImport } from './routes/reviews'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as OwnerIndexRouteImport } from './routes/$owner/index'
 import { Route as OwnerRepoRouteRouteImport } from './routes/$owner/$repo/route'
@@ -70,14 +73,29 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ChangesRoute = ChangesRouteImport.update({
+  id: '/changes',
+  path: '/changes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ExploreRoute = ExploreRouteImport.update({
   id: '/explore',
   path: '/explore',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MentionsRoute = MentionsRouteImport.update({
+  id: '/mentions',
+  path: '/mentions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const NewRoute = NewRouteImport.update({
   id: '/new',
   path: '/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ReviewsRoute = ReviewsRouteImport.update({
+  id: '/reviews',
+  path: '/reviews',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SettingsRoute = SettingsRouteImport.update({
@@ -359,8 +377,11 @@ const OwnerRepoInfrastructureWorkspaceRunsRunIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/changes': typeof ChangesRoute
   '/explore': typeof ExploreRoute
+  '/mentions': typeof MentionsRoute
   '/new': typeof NewRoute
+  '/reviews': typeof ReviewsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/$owner/$repo': typeof OwnerRepoRouteRouteWithChildren
   '/onboarding/username': typeof OnboardingUsernameRoute
@@ -416,8 +437,11 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/changes': typeof ChangesRoute
   '/explore': typeof ExploreRoute
+  '/mentions': typeof MentionsRoute
   '/new': typeof NewRoute
+  '/reviews': typeof ReviewsRoute
   '/onboarding/username': typeof OnboardingUsernameRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/review': typeof SettingsReviewRoute
@@ -469,8 +493,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/changes': typeof ChangesRoute
   '/explore': typeof ExploreRoute
+  '/mentions': typeof MentionsRoute
   '/new': typeof NewRoute
+  '/reviews': typeof ReviewsRoute
   '/settings': typeof SettingsRouteWithChildren
   '/$owner/$repo': typeof OwnerRepoRouteRouteWithChildren
   '/onboarding/username': typeof OnboardingUsernameRoute
@@ -528,8 +555,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/changes'
     | '/explore'
+    | '/mentions'
     | '/new'
+    | '/reviews'
     | '/settings'
     | '/$owner/$repo'
     | '/onboarding/username'
@@ -585,8 +615,11 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/changes'
     | '/explore'
+    | '/mentions'
     | '/new'
+    | '/reviews'
     | '/onboarding/username'
     | '/settings/keys'
     | '/settings/review'
@@ -637,8 +670,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/changes'
     | '/explore'
+    | '/mentions'
     | '/new'
+    | '/reviews'
     | '/settings'
     | '/$owner/$repo'
     | '/onboarding/username'
@@ -695,8 +731,11 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ChangesRoute: typeof ChangesRoute
   ExploreRoute: typeof ExploreRoute
+  MentionsRoute: typeof MentionsRoute
   NewRoute: typeof NewRoute
+  ReviewsRoute: typeof ReviewsRoute
   SettingsRoute: typeof SettingsRouteWithChildren
   OwnerRepoRouteRoute: typeof OwnerRepoRouteRouteWithChildren
   OnboardingUsernameRoute: typeof OnboardingUsernameRoute
@@ -712,6 +751,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/changes': {
+      id: '/changes'
+      path: '/changes'
+      fullPath: '/changes'
+      preLoaderRoute: typeof ChangesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/explore': {
       id: '/explore'
       path: '/explore'
@@ -719,11 +765,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExploreRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/mentions': {
+      id: '/mentions'
+      path: '/mentions'
+      fullPath: '/mentions'
+      preLoaderRoute: typeof MentionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/new': {
       id: '/new'
       path: '/new'
       fullPath: '/new'
       preLoaderRoute: typeof NewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/reviews': {
+      id: '/reviews'
+      path: '/reviews'
+      fullPath: '/reviews'
+      preLoaderRoute: typeof ReviewsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/settings': {
@@ -1247,8 +1307,11 @@ const OwnerRepoRouteRouteWithChildren = OwnerRepoRouteRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ChangesRoute: ChangesRoute,
   ExploreRoute: ExploreRoute,
+  MentionsRoute: MentionsRoute,
   NewRoute: NewRoute,
+  ReviewsRoute: ReviewsRoute,
   SettingsRoute: SettingsRouteWithChildren,
   OwnerRepoRouteRoute: OwnerRepoRouteRouteWithChildren,
   OnboardingUsernameRoute: OnboardingUsernameRoute,

@@ -1,7 +1,7 @@
 /** People and time, as rows name them. */
 import { useEffect, useState } from "react";
 import type { CommitSummary, Signature, UserRef } from "@infrawrench/git-contract";
-import { formatDateTime, relativeTime } from "../lib/format";
+import { formatDateTime, relativeTime, shortAge } from "../lib/format";
 import { paths } from "../lib/paths";
 import { imageSrc } from "../lib/safe-url";
 import { AppLink } from "./AppLink";
@@ -22,6 +22,16 @@ export function RelativeTime({ iso, className }: { iso: string; className?: stri
   return (
     <time dateTime={iso} title={formatDateTime(iso)} className={className}>
       {relativeTime(iso, now)}
+    </time>
+  );
+}
+
+/** `16h`: the same instant as {@link RelativeTime}, as short as it goes. */
+export function ShortAge({ iso, className }: { iso: string; className?: string }) {
+  const now = useMinuteTick();
+  return (
+    <time dateTime={iso} title={formatDateTime(iso)} className={className}>
+      {shortAge(iso, now)}
     </time>
   );
 }
