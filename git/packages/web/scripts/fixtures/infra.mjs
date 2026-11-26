@@ -895,7 +895,65 @@ const stagingPeered = edit(
 commit(jonas, 2, "staging: peer with shared services", {
   "environments/staging/main.tf": stagingPeered,
 });
+// What lets a peer in, so the branch's last version has a file with more changed
+// lines than anything is said about: the branch page shows it cut down.
+const networkPeerAccess = `
+resource "aws_security_group" "peer" {
+  for_each = var.peer_vpcs
+
+  name        = "\${var.name}-from-\${each.key}"
+  description = "What the \${each.key} VPC may reach here."
+  vpc_id      = aws_vpc.this.id
+
+  tags = merge(var.tags, {
+    Name = "\${var.name}-from-\${each.key}"
+  })
+}
+
+resource "aws_vpc_security_group_ingress_rule" "peer_https" {
+  for_each = var.peer_vpcs
+
+  security_group_id = aws_security_group.peer[each.key].id
+  description       = "HTTPS from \${each.key}"
+  cidr_ipv4         = each.value.cidr_block
+  ip_protocol       = "tcp"
+  from_port         = 443
+  to_port           = 443
+}
+
+resource "aws_vpc_security_group_ingress_rule" "peer_metrics" {
+  for_each = var.peer_vpcs
+
+  security_group_id = aws_security_group.peer[each.key].id
+  description       = "Metrics scrapes from \${each.key}"
+  cidr_ipv4         = each.value.cidr_block
+  ip_protocol       = "tcp"
+  from_port         = 9100
+  to_port           = 9100
+}
+
+resource "aws_vpc_security_group_ingress_rule" "peer_dns" {
+  for_each = var.peer_vpcs
+
+  security_group_id = aws_security_group.peer[each.key].id
+  description       = "DNS from \${each.key}"
+  cidr_ipv4         = each.value.cidr_block
+  ip_protocol       = "udp"
+  from_port         = 53
+  to_port           = 53
+}
+
+resource "aws_vpc_security_group_egress_rule" "peer_all" {
+  for_each = var.peer_vpcs
+
+  security_group_id = aws_security_group.peer[each.key].id
+  description       = "Answers back to \${each.key}"
+  cidr_ipv4         = each.value.cidr_block
+  ip_protocol       = "-1"
+}
+`;
 commit(jonas, 17, "docs: how the peering routes are laid out", {
+  "modules/network/main.tf": networkMain + networkPeerAccess,
   "docs/peering.md":
     '# Peering\n\nEach private route table gets one route per peered VPC.\n\n```hcl\npeer_vpcs = {\n  shared = { vpc_id = "vpc-...", region = "eu-central-1", cidr_block = "10.0.0.0/16" }\n}\n```\n',
   "docs/images/network.png": { bytes: diagram(480, 270, [2, 3, 2]) },

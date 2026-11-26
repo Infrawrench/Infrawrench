@@ -773,7 +773,7 @@ function seedInfra(repo: RepositoryRecord, store: RepoThreads): void {
           type: "commits",
           id: newId("push"),
           createdAt: hoursAgo(38),
-          commits: [summaryOf("55955b1")],
+          commits: [summaryOf("2c26b50")],
         },
         comment("jonas", 37.5, "Pushed the docs page. @priya the route key note is in there."),
       ],

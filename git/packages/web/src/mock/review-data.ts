@@ -196,7 +196,7 @@ function run(
 /** `acme/infra` #12: `feature/vpc-peering`, three versions by an Infrawrench agent. */
 function seedPeering(fx: GitFixture): ReviewState {
   const branch = "feature/vpc-peering";
-  const [v1, v2, v3] = [oidOf(fx, "cce1b1a"), oidOf(fx, "a825307"), oidOf(fx, "55955b1")];
+  const [v1, v2, v3] = [oidOf(fx, "cce1b1a"), oidOf(fx, "a825307"), oidOf(fx, "2c26b50")];
   const version = (
     number: number,
     tipOid: string,
@@ -303,6 +303,20 @@ function seedPeering(fx: GitFixture): ReviewState {
       50.1,
       "The shared VPC's id is a literal. A data source would need a second provider alias in every root.",
       { ...by, anchors: [{ path: "environments/staging/main.tf", startLine: 31 }] },
+    ),
+    entry(
+      "step",
+      3,
+      38.5,
+      "A security group per peer: HTTPS, metrics scrapes and DNS in, answers back out.",
+      { ...by, anchors: [{ path: "modules/network/main.tf", startLine: 131, endLine: 133 }] },
+    ),
+    entry(
+      "doubt",
+      3,
+      38.4,
+      "The way back allows every protocol to the peer's whole range. Narrower rules would have to track what shared services listens on.",
+      { ...by, anchors: [{ path: "modules/network/main.tf", startLine: 181 }] },
     ),
     entry("step", 3, 38.3, "A page on how the routes are laid out, and the diagram redrawn.", {
       ...by,

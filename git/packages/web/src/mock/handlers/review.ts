@@ -552,12 +552,13 @@ export default defineMockHandlers({
         kind: item.kind,
         body: item.body,
         anchors: [...(item.anchors ?? [])],
-        // The server's rule: said or not, there is code to show only on a line.
+        // The server's rule: a line when the writer does not say, and never without a file.
         needsCode:
-          (item.needsCode ?? true) &&
-          (item.anchors ?? []).some(
-            (anchor) => anchor.startLine !== undefined && anchor.startLine !== null,
-          ),
+          item.needsCode === undefined
+            ? (item.anchors ?? []).some(
+                (anchor) => anchor.startLine !== undefined && anchor.startLine !== null,
+              )
+            : item.needsCode && (item.anchors ?? []).length > 0,
         evidence: item.evidence ?? null,
         author: user,
         agent:
@@ -654,9 +655,9 @@ export default defineMockHandlers({
           startLine: item.startLine ?? null,
           endLine: item.endLine ?? item.startLine ?? null,
           needsCode:
-            (item.needsCode ?? true) &&
             (item.path ?? null) !== null &&
-            ((item.startLine ?? null) !== null || (item.endLine ?? null) !== null),
+            (item.needsCode ??
+              ((item.startLine ?? null) !== null || (item.endLine ?? null) !== null)),
           commitOid: version.tipOid,
           evidence: [...(item.evidence ?? [])],
           status: "open",
