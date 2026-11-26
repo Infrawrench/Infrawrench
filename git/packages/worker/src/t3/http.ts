@@ -11,7 +11,8 @@
  *   same rule the image proxy keeps). `localhost` is refused with its own
  *   sentence, because it is what a person tries first: a Worker cannot reach
  *   a machine's loopback, so the environment has to be given by an address
- *   the internet reaches.
+ *   the internet reaches. An address added through T3 Connect is checked
+ *   again on top of this (`./connect.ts`): nothing there loosens this rule.
  * - **No redirects.** A 3xx is a failure. Following one would let a public
  *   address point this Worker somewhere else after the check.
  * - **Bounded.** A timeout for the headers and the body together, and a cap

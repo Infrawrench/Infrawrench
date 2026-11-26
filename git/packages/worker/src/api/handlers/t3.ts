@@ -3,9 +3,11 @@
  * an OAuth client of the environment's MCP server.
  *
  * - **Adding one** stores its address and nothing else; it is `pending`
- *   until the person signs in to it. The address has to be `https:` and on
- *   the public internet (`t3/http.ts`): this Worker cannot reach a machine's
- *   `localhost`, and says so, pointing at T3 Connect.
+ *   until the person signs in to it. Through T3 Connect (`via:
+ *   "t3-connect"`, what the form does first) the address has to be a T3
+ *   Connect tunnel's (`t3/connect.ts`); typed as an address it has to be
+ *   `https:` and on the public internet (`t3/http.ts`). This Worker cannot
+ *   reach a machine's `localhost`, and says so, pointing at T3 Connect.
  * - **`beginOAuth`** discovers the environment's sign-in, registers this
  *   site with it and answers where to send the browser. The browser comes
  *   back to `AUTH_PATHS.t3Callback` (`t3/callback.ts`).
@@ -43,6 +45,7 @@ import {
   safeReturnTo,
   t3Deps,
 } from "../../t3/environments";
+import { connectOrigin } from "../../t3/connect";
 import { T3Error, environmentOrigin } from "../../t3/http";
 import { listThreads } from "../../t3/work";
 import { iso, isoOrNull } from "../views/repositories";
@@ -93,7 +96,10 @@ export const T3Handlers = HttpApiBuilder.group(GitApi, "t3", (handlers) =>
         const deps = t3Deps(cx.env, cx.request);
         let origin: string;
         try {
-          origin = environmentOrigin(payload.baseUrl, deps.siteHosts);
+          origin =
+            payload.via === "t3-connect"
+              ? connectOrigin(payload.baseUrl, deps.siteHosts)
+              : environmentOrigin(payload.baseUrl, deps.siteHosts);
         } catch (error) {
           throw badRequest(error instanceof T3Error ? error.message : "That is not an address");
         }

@@ -16,9 +16,12 @@
  *
  * Every address in those documents is one a server chose, so each goes
  * through the guarded fetch (`./http.ts`): public `https:` only, no
- * redirects, bounded. Nothing here stores anything; `./environments.ts`
- * does.
+ * redirects, bounded. An environment on a T3 Connect address is held to
+ * more: T3 Code serves its sign-in from the environment's own origin, so
+ * there every address has to be on that origin (`./connect.ts`). Nothing
+ * here stores anything; `./environments.ts` does.
  */
+import { isConnectOrigin } from "./connect";
 import { T3Error, type T3Http, jsonObject, publicHttpsUrl } from "./http";
 
 /** Where an environment's MCP server is, under its origin. */
@@ -131,6 +134,16 @@ export const discover = async (
     throw new T3Error("bad_answer", "The environment names no authorization server");
   }
   const issuer = publicHttpsUrl(issuerValue, siteHosts);
+  // A T3 Connect environment is its own authorization server. One that names
+  // another host is not what T3 Code serves, so nothing there is called.
+  const ownOnly = isConnectOrigin(origin);
+  const elsewhere = (): never => {
+    throw new T3Error(
+      "bad_answer",
+      "The environment's sign-in is not at its T3 Connect address, so it is not used",
+    );
+  };
+  if (ownOnly && issuer.origin !== origin) elsewhere();
 
   let metadata: Record<string, unknown> | null = null;
   for (const candidate of authorizationServerMetadataUrls(issuer)) {
@@ -149,7 +162,9 @@ export const discover = async (
       if (required) throw new T3Error("bad_answer", `The authorization server has no ${name}`);
       return undefined;
     }
-    return publicHttpsUrl(value, siteHosts).href;
+    const url = publicHttpsUrl(value, siteHosts);
+    if (ownOnly && url.origin !== origin) elsewhere();
+    return url.href;
   };
   const registrationEndpoint = endpoint("registration_endpoint", false);
   const revocationEndpoint = endpoint("revocation_endpoint", false);
