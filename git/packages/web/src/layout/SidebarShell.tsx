@@ -413,13 +413,6 @@ function VisitorSidebar({ user, appUrl }: { user: SessionUser | null; appUrl: st
             initiallyOpen
             holdsCurrent
           >
-            <NavItem
-              href={paths.namespace(shown.owner.slug)}
-              icon={shown.owner.kind === "org" ? "building" : "user"}
-              active={false}
-            >
-              {shown.owner.slug}
-            </NavItem>
             <RepositoryItem
               owner={shown.owner.slug}
               name={shown.name}
