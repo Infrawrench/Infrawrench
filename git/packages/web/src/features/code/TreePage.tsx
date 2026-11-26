@@ -21,6 +21,7 @@ import { webUrl } from "../../lib/safe-url";
 import { usePageTitle } from "../../lib/title";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { EmptyRepository } from "./EmptyRepository";
+import { Languages } from "./Languages";
 import { ReadmePanel } from "./ReadmePanel";
 import { latestCommitQuery, prefetchEntry, treeQuery } from "./requests";
 import { CloneMenu, CodeRefPicker, CommitStrip, PathBreadcrumbs } from "./shared";
@@ -313,6 +314,7 @@ function About({ repository }: { repository: Repository }) {
           <dd>{formatBytes(repository.sizeBytes)}</dd>
         </div>
       </dl>
+      <Languages languages={repository.languages} />
     </aside>
   );
 }

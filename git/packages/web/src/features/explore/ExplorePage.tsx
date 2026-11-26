@@ -6,6 +6,7 @@ import { usePages } from "../../api/queries";
 import { useGo } from "../../components/AppLink";
 import { Button } from "../../components/Button";
 import { Checkbox, Input, SearchInput, Select } from "../../components/forms";
+import { LANGUAGE_OPTIONS_ID, LanguageOptions } from "../../components/LanguageOptions";
 import { Page, PageHeader, Panel } from "../../components/Panel";
 import { RepoList } from "../../components/RepoList";
 import { EmptyState, ErrorState, Loading, LoadMore } from "../../components/states";
@@ -78,10 +79,12 @@ export function ExplorePage({ search }: { search: ExploreSearch }) {
           <Input
             aria-label="Language"
             placeholder="Language"
+            list={LANGUAGE_OPTIONS_ID}
             value={language}
             onChange={(event) => setLanguage(event.target.value)}
             className="!w-36"
           />
+          <LanguageOptions />
           <Select
             aria-label="Sort by"
             value={sort}

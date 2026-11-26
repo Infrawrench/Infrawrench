@@ -108,6 +108,14 @@ export const Repository = Schema.Struct({
   hasTerraform: Schema.Boolean.annotate({
     description: "It has Terraform workspaces: show the Infrastructure tab.",
   }),
+  languages: Schema.Array(
+    Schema.Struct({ name: Schema.String, bytes: Schema.Int }).annotate({
+      identifier: "RepositoryLanguage",
+    }),
+  ).annotate({
+    description:
+      "Bytes of each language on the default branch, most first (`languages.ts` says what counts). Empty until the first push to it has been measured.",
+  }),
   viewer: RepositoryViewer,
 }).annotate({ identifier: "Repository" });
 export type Repository = typeof Repository.Type;

@@ -159,6 +159,16 @@ export const gitRepositories = pgTable(
     deleteBranchOnMerge: boolean("delete_branch_on_merge").notNull().default(false),
     /** By bytes, from the default branch's tree; null until the first push is analysed. */
     primaryLanguage: text("primary_language"),
+    /**
+     * Bytes of each language on the default branch, most first, as the forge's
+     * language bar shows them (contract `languages.ts`). Empty until measured.
+     */
+    languages: jsonb("languages")
+      .$type<Array<{ name: string; bytes: number }>>()
+      .notNull()
+      .default([]),
+    /** The default branch's commit `languages` was measured at, so a push that did not move it measures nothing. */
+    languagesCommit: text("languages_commit"),
     /** Bytes of packs in R2, sampled after each push and repack. What storage is metered on. */
     sizeBytes: bigint("size_bytes", { mode: "number" }).notNull().default(0),
     pushedAt: timestamp("pushed_at"),

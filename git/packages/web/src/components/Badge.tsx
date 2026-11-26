@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { StatusState, Visibility } from "@infrawrench/git-contract";
+import { languageColor, type StatusState, type Visibility } from "@infrawrench/git-contract";
 import { Icon, Spinner } from "./icons";
 
 export type BadgeTone = "neutral" | "success" | "warning" | "danger" | "notice" | "outline";
@@ -75,14 +75,13 @@ export function CommitStatusIcon({
 
 /** A language's dot and name. The dot's hue is positional (the series palette), not a brand colour. */
 export function LanguageLabel({ language }: { language: string }) {
-  let hash = 0;
-  for (const char of language) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap">
       <span
         aria-hidden="true"
         className="size-2 rounded-full"
-        style={{ backgroundColor: `var(--color-series-${(hash % 8) + 1})` }}
+        // Linguist's colour, as GitHub shows it (contract `languages.ts`).
+        style={{ backgroundColor: languageColor(language) }}
       />
       {language}
     </span>

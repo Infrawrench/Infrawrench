@@ -5,6 +5,7 @@
  * (`src/repo/queries`), on the Node stand-ins for R2 and SQLite, and the
  * history reaches it the way any history does: pushed by the real `git`.
  */
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BLOB_TEXT_LIMIT_BYTES, rawPath } from "@infrawrench/git-contract";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -370,6 +371,44 @@ describeGit("the reader, with git as the judge", () => {
     const root = await reader.latestCommit({ ref: undefined, path: "" });
     expect(root.commit?.oid).toBe(fixture.at.main);
     expect(root.count).toBe(Number(await gitOut(["rev-list", "--count", "main"], { cwd: work })));
+  });
+
+  it("counts the bytes of each language, leaving out vendored, docs, minified and prose", async () => {
+    const dir = join(tempDir("languages"), "repo");
+    await git(["init", "-q", "-b", "main", dir]);
+    const put = (path: string, bytes: number) => {
+      mkdirSync(join(dir, path, ".."), { recursive: true });
+      writeFileSync(join(dir, path), "x".repeat(bytes));
+    };
+    put("src/app.ts", 300);
+    put("src/view.tsx", 200);
+    put("src/util.js", 100);
+    put("Dockerfile", 40);
+    put("infra/main.tf", 60);
+    put("README.md", 5000);
+    put("data/config.json", 5000);
+    put("vendor/lib.js", 5000);
+    put("node_modules/pkg/index.js", 5000);
+    put("docs/example.ts", 5000);
+    put("public/app.min.js", 5000);
+    await git(["add", "-A"], { cwd: dir });
+    await git(
+      ["-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "-m", "files"],
+      {
+        cwd: dir,
+      },
+    );
+    const repo = await hub.open("repo-languages");
+    await git(["push", "-q", repo.url, "main"], { cwd: dir });
+    const measured = await hub.reader("repo-languages").languages({ ref: undefined });
+    expect(measured.commitOid).toBe(await gitOut(["rev-parse", "HEAD"], { cwd: dir }));
+    expect(measured.truncated).toBe(false);
+    expect(measured.languages).toEqual([
+      { name: "TypeScript", bytes: 500 },
+      { name: "JavaScript", bytes: 100 },
+      { name: "HCL", bytes: 60 },
+      { name: "Dockerfile", bytes: 40 },
+    ]);
   });
 
   it("restates the contract's raw URL for names that need encoding", async () => {

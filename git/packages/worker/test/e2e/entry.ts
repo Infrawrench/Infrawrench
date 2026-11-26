@@ -360,7 +360,8 @@ export default {
         const body = await bucket.get(object.key);
         if (body) events.push((await body.json()) as GitEvent);
       }
-      return json(events.sort((a, b) => a.at - b.at));
+      const at = (event: GitEvent) => ("at" in event ? event.at : 0);
+      return json(events.sort((a, b) => at(a) - at(b)));
     }
     if (url.pathname === "/__test/terraform") {
       // What the routes recorded, oldest first, and the state objects in the bucket.
@@ -422,7 +423,7 @@ export default {
     const bucket = env.OBJECTS as unknown as R2Bucket;
     for (const message of batch.messages) {
       await bucket.put(
-        `__events/${message.body.at}-${message.id}.json`,
+        `__events/${"at" in message.body ? message.body.at : Date.now()}-${message.id}.json`,
         JSON.stringify(message.body),
       );
       message.ack();

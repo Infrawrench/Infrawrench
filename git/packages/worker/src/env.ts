@@ -48,7 +48,17 @@ export interface GitEventActor {
   readonly credentialId: string | null;
 }
 
-export type GitEvent = GitPushEvent;
+/**
+ * Measure a repository's languages: sent when a repository that was pushed
+ * to before languages were measured is opened (`repositories.get`), since
+ * only a push measures otherwise.
+ */
+export interface GitLanguagesEvent {
+  readonly type: "languages";
+  readonly repoId: string;
+}
+
+export type GitEvent = GitPushEvent | GitLanguagesEvent;
 
 /** A Rate Limiting binding, as much of it as is used. */
 export interface RateLimit {

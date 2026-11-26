@@ -44,7 +44,7 @@ import {
 import { searchRepositories } from "../../db/repository-lists";
 import { getUser } from "../../db/users";
 import { RepoReaderError } from "../../repo/reader";
-import { type Cx, op, repoOp } from "../context";
+import { type Cx, type RepoCx, op, repoOp } from "../context";
 import { peopleById, repositoryDetail, repositorySummaries } from "../views/repositories";
 
 const flag = (value: "true" | "false" | undefined): boolean | undefined =>
@@ -343,11 +343,36 @@ const privateParent = async (repo: RepositoryWithOwner): Promise<RepositoryWithO
   return parent && parent.repository.visibility === "private" ? parent : null;
 };
 
+/** When each repository was last asked to be measured, in this isolate. */
+const languagesAsked = new Map<string, number>();
+const LANGUAGES_ASK_EVERY_MS = 10 * 60_000;
+
+/**
+ * A repository pushed to before languages were measured has none until its
+ * next push. Opening it asks the queue to measure it, at most every ten
+ * minutes per isolate, so page views cannot flood the queue.
+ */
+const requestLanguages = (cx: RepoCx): void => {
+  const { repository } = cx.repo;
+  if (repository.isEmpty || repository.languagesCommit !== null) return;
+  const now = Date.now();
+  if (now - (languagesAsked.get(repository.id) ?? 0) < LANGUAGES_ASK_EVERY_MS) return;
+  languagesAsked.set(repository.id, now);
+  if (languagesAsked.size > 10_000) languagesAsked.clear();
+  // Inside the promise: a failure to send is background work's to log, never the page's.
+  cx.background(
+    Promise.resolve().then(() => cx.env.EVENTS.send({ type: "languages", repoId: repository.id })),
+  );
+};
+
 export const RepositoriesHandlers = HttpApiBuilder.group(GitApi, "repositories", (handlers) =>
   handlers
     .handle(
       "get",
-      repoOp((cx) => repositoryDetail(cx, cx.repo, cx)),
+      repoOp((cx) => {
+        requestLanguages(cx);
+        return repositoryDetail(cx, cx.repo, cx);
+      }),
     )
     .handle(
       "update",

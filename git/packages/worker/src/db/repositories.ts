@@ -247,6 +247,9 @@ export const recordPush = async (
     readonly tagsCount?: number;
     readonly isEmpty?: boolean;
     readonly primaryLanguage?: string | null;
+    /** Bytes per language on the default branch, measured at `languagesCommit`. */
+    readonly languages?: ReadonlyArray<{ readonly name: string; readonly bytes: number }>;
+    readonly languagesCommit?: string;
   },
 ): Promise<void> => {
   // Bound as text: a `Date` inside a raw fragment has no column to say how it is sent.
@@ -262,6 +265,8 @@ export const recordPush = async (
       ...(push.tagsCount !== undefined ? { tagsCount: push.tagsCount } : {}),
       ...(push.isEmpty !== undefined ? { isEmpty: push.isEmpty } : {}),
       ...(push.primaryLanguage !== undefined ? { primaryLanguage: push.primaryLanguage } : {}),
+      ...(push.languages !== undefined ? { languages: [...push.languages] } : {}),
+      ...(push.languagesCommit !== undefined ? { languagesCommit: push.languagesCommit } : {}),
     })
     .where(eq(gitRepositories.id, id));
 };

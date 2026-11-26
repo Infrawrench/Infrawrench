@@ -14,7 +14,7 @@ import {
   resultContentType,
   serve,
 } from "@infrawrench/git-protocol";
-import type { GitEvent } from "../../src/env";
+import type { GitEvent, GitPushEvent } from "../../src/env";
 import type { PushPolicy } from "../../src/repo/do/policy";
 import {
   type PeerRepository,
@@ -27,7 +27,8 @@ export interface NodeRepo {
   readonly repository: Repository;
   readonly bucket: MemoryBucket;
   readonly storage: NodeStorage;
-  readonly events: GitEvent[];
+  /** What the object sent: only ever pushes. */
+  readonly events: GitPushEvent[];
   readonly url: string;
   /** Stats of each request served, oldest first. */
   readonly requests: ServeStats[];
@@ -47,13 +48,13 @@ export async function startNodeRepo(
 ): Promise<NodeRepo> {
   const bucket = options.bucket ?? new MemoryBucket();
   const storage = nodeStorage();
-  const events: GitEvent[] = [];
+  const events: GitPushEvent[] = [];
   const requests: ServeStats[] = [];
   const errors: unknown[] = [];
   const repository = new Repository({
     bucket,
     storage,
-    events: { send: async (event) => void events.push(event) },
+    events: { send: async (event) => void events.push(event as GitPushEvent) },
     ...(options.limits ? { limits: options.limits } : {}),
     ...(options.now ? { now: options.now } : {}),
     ...(options.peer ? { peer: options.peer } : {}),

@@ -7,6 +7,7 @@ import type {
   TreeLastCommits,
   TreeListing,
 } from "@infrawrench/git-contract";
+import { countedLanguageOf, isCountedDirectory } from "@infrawrench/git-contract";
 import {
   GitError,
   type ObjectId,
@@ -23,7 +24,7 @@ import {
   splitLines,
   splitPath,
 } from "@infrawrench/git-ops";
-import { type RefInput, RepoReaderError } from "../reader";
+import { type RefInput, RepoReaderError, type RepositoryLanguages } from "../reader";
 import {
   type ReaderContext,
   type Session,
@@ -433,6 +434,59 @@ export async function blob(
  * or a file's header shows. Apart from `tree` and `blob`, so those answer
  * without walking history and the page shows at once.
  */
+/** Most files and directories a language count looks at before it stops. */
+export const LANGUAGE_LIMITS = { maxFiles: 100_000, maxDirectories: 20_000 } as const;
+
+/**
+ * Bytes of each language at a ref (the default branch when none is named),
+ * most first: every file `countedLanguageOf` names, outside the directories
+ * `isCountedDirectory` leaves out, sized without being read. For the push
+ * consumer, which writes the answer down; a page never waits on it.
+ */
+export async function languages(
+  cx: ReaderContext,
+  input: { readonly ref: RefInput },
+): Promise<RepositoryLanguages> {
+  const session = await openSession(cx);
+  const ref = await resolve(session, input.ref);
+  const rootTree = (await session.cache.node(ref.commitOid)).tree;
+  const files: { readonly oid: ObjectId; readonly language: string }[] = [];
+  const pending: ObjectId[] = [rootTree];
+  let directories = 0;
+  let truncated = false;
+  while (pending.length > 0) {
+    if (directories >= LANGUAGE_LIMITS.maxDirectories || files.length >= LANGUAGE_LIMITS.maxFiles) {
+      truncated = true;
+      break;
+    }
+    directories++;
+    for (const entry of await session.cache.tree(pending.pop()!)) {
+      if (entry.mode === "040000") {
+        if (isCountedDirectory(entry.name)) pending.push(entry.oid);
+      } else if (entry.mode === "100644" || entry.mode === "100755") {
+        const language = countedLanguageOf(entry.name);
+        if (language !== null) files.push({ oid: entry.oid, language });
+      }
+    }
+  }
+  const sizes = await sizesOf(
+    session,
+    files.map((file) => file.oid),
+  );
+  const bytes = new Map<string, number>();
+  for (const file of files) {
+    bytes.set(file.language, (bytes.get(file.language) ?? 0) + (sizes.get(file.oid) ?? 0));
+  }
+  return {
+    commitOid: ref.commitOid,
+    languages: [...bytes]
+      .filter(([, total]) => total > 0)
+      .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+      .map(([name, total]) => ({ name, bytes: total })),
+    truncated,
+  };
+}
+
 export async function latestCommit(
   cx: ReaderContext,
   input: { readonly ref: RefInput; readonly path: string },

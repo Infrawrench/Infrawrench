@@ -307,6 +307,17 @@ export const handlePush = async (
   };
 
   const stats = await tryRead(() => reader.stats());
+  // The language bar is the default branch's: measured when a push moved it
+  // to a commit not measured yet. Sizes come from the object's cache, so a
+  // push that changed a few files reads a few.
+  const defaultBranch = event.updates.find(
+    (update) =>
+      update.name === `${BRANCH}${repo.repository.defaultBranch}` && !ZERO.test(update.newOid),
+  );
+  const measured =
+    defaultBranch && defaultBranch.newOid !== repo.repository.languagesCommit
+      ? await tryRead(() => reader.languages({ ref: defaultBranch.newOid }))
+      : null;
   await recordPush(repo.repository.id, {
     at: new Date(event.at),
     ...(stats
@@ -315,6 +326,13 @@ export const handlePush = async (
           branchesCount: stats.branchCount,
           tagsCount: stats.tagCount,
           isEmpty: stats.isEmpty,
+        }
+      : {}),
+    ...(measured
+      ? {
+          languages: measured.languages,
+          languagesCommit: measured.commitOid,
+          primaryLanguage: measured.languages[0]?.name ?? null,
         }
       : {}),
   });
@@ -328,6 +346,27 @@ export const handlePush = async (
   }
 };
 
+/** Measures the default branch's languages when they were not measured at its tip. */
+const measureLanguages = async (
+  repoId: string,
+  env: Env,
+  readers: RepoReaderFactory = repoReaderFor,
+): Promise<void> => {
+  const repo = await getRepositoryById(repoId);
+  if (!repo || repo.repository.isEmpty) return;
+  const reader = readers(env, locatorOf(repo));
+  const measured = await tryRead(() =>
+    reader.languages({ ref: `${BRANCH}${repo.repository.defaultBranch}` }),
+  );
+  if (!measured || measured.commitOid === repo.repository.languagesCommit) return;
+  await recordPush(repoId, {
+    at: repo.repository.pushedAt ?? new Date(),
+    languages: measured.languages,
+    languagesCommit: measured.commitOid,
+    primaryLanguage: measured.languages[0]?.name ?? null,
+  });
+};
+
 export const handleGitEvent = (
   event: GitEvent,
   env: Env,
@@ -336,6 +375,8 @@ export const handleGitEvent = (
   switch (event.type) {
     case "push":
       return handlePush(event, env, readers);
+    case "languages":
+      return measureLanguages(event.repoId, env, readers);
   }
 };
 

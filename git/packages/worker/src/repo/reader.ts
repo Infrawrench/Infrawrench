@@ -68,6 +68,14 @@ import type {
 } from "@infrawrench/git-contract";
 import type { GitEventActor } from "../env";
 
+/** What `languages` answers. */
+export interface RepositoryLanguages {
+  readonly commitOid: string;
+  readonly languages: ReadonlyArray<{ readonly name: string; readonly bytes: number }>;
+  /** The walk stopped at `LANGUAGE_LIMITS` before seeing every file. */
+  readonly truncated: boolean;
+}
+
 /** Which repository a reader is for. */
 export interface RepoLocator {
   /** `git_repositories.id`: the Durable Object's name and the R2 prefix. */
@@ -466,6 +474,9 @@ export interface RepoReader {
     readonly lastCommit?: boolean;
   }): Promise<FileBlob>;
 
+  /** Bytes of each language at a ref, most first (`queries/content.ts` `languages`). */
+  languages(input: { readonly ref: RefInput }): Promise<RepositoryLanguages>;
+
   /** A path's newest commit, and at the root how many commits the ref has. */
   latestCommit(input: { readonly ref: RefInput; readonly path: string }): Promise<LatestCommit>;
 
@@ -593,6 +604,7 @@ export const unavailableRepoReader: RepoReader = {
   treeLastCommits: refuse,
   blob: refuse,
   latestCommit: refuse,
+  languages: refuse,
   readme: refuse,
   listCommits: refuse,
   commits: refuse,

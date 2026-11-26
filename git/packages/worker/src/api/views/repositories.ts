@@ -119,6 +119,7 @@ export const repositoryDetail = async (
     ...summary!,
     homepageUrl: repository.homepageUrl,
     isEmpty: repository.isEmpty,
+    languages: repository.languages,
     httpCloneUrl: httpCloneUrl(ref, siteOrigin(cx.env)),
     sshCloneUrl: sshCloneUrl(ref, sshHost(cx.env)),
     features: { issues: repository.hasIssues, pullRequests: repository.hasPullRequests },

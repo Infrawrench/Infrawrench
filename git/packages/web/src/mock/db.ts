@@ -393,6 +393,15 @@ function makeRecord(seed: Seed): RepositoryRecord {
     parent: null,
     defaultBranch: fixture?.defaultBranch ?? "main",
     primaryLanguage: seed.language,
+    // The language bar of a repository the mock shows: its own language most, then two small ones.
+    languages:
+      seed.language === null || seed.language === undefined
+        ? []
+        : [
+            { name: seed.language, bytes: 184_200 },
+            ...(seed.language === "HCL" ? [] : [{ name: "HCL", bytes: 21_400 }]),
+            { name: "Shell", bytes: 3_100 },
+          ],
     topics: seed.topics ?? [],
     starCount: stars.size,
     forkCount: seed.forks ?? 0,
@@ -523,6 +532,7 @@ export function toRepository(repo: RepositoryRecord): Repository {
     ...toSummary(repo),
     homepageUrl: repo.homepageUrl,
     isEmpty: repo.isEmpty,
+    languages: repo.languages,
     httpCloneUrl: repo.httpCloneUrl,
     sshCloneUrl: repo.sshCloneUrl,
     features: repo.features,
