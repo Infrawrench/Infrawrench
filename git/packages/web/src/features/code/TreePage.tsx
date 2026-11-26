@@ -13,7 +13,7 @@ import { LanguageLabel } from "../../components/Badge";
 import { Icon, type IconName } from "../../components/icons";
 import { Page, Panel, PanelHeader, Table, Td, Th, Tr } from "../../components/Panel";
 import { RelativeTime } from "../../components/people";
-import { ErrorState, Loading } from "../../components/states";
+import { CommitStripSkeleton, ErrorState, Loading, Skeleton } from "../../components/states";
 import { formatBytes, plural } from "../../lib/format";
 import { paths, type RepoRef } from "../../lib/paths";
 import { parentPath } from "../../lib/refs";
@@ -73,7 +73,7 @@ export function TreePage({ refName, path }: { refName: string; path: string }) {
         {tree.error && !isFile ? (
           <ErrorState error={tree.error} onRetry={() => void tree.refetch()} />
         ) : (
-          <Loading />
+          <Loading shape="table" />
         )}
       </Page>
     );
@@ -131,6 +131,10 @@ export function TreePage({ refName, path }: { refName: string; path: string }) {
   );
 }
 
+/** Requests the last-commit column may take to fill in (250 ms apart) before the table stops asking. */
+const MAX_LAST_COMMIT_STEPS = 240;
+const SKELETON_WIDTHS = ["62%", "48%", "71%", "55%", "66%", "40%"];
+
 function FileTable({
   repo,
   refName,
@@ -140,33 +144,53 @@ function FileTable({
   refName: string;
   listing: TreeListing;
 }) {
-  // The listing comes first; commits the server had no budget for follow.
+  // The listing comes first; each entry's commit follows. The server walks
+  // history a step per request and says when it is done, so keep asking
+  // until it is: one answer is often only part of the column.
   const rest = useQuery({
     ...queries.contents.treeLastCommits({
       params: repo,
       query: { ref: listing.ref.commitOid, path: listing.path },
     }),
     enabled: !listing.lastCommitsComplete,
+    staleTime: Infinity,
+    refetchInterval: (query) =>
+      query.state.data !== undefined &&
+      !query.state.data.complete &&
+      query.state.dataUpdateCount < MAX_LAST_COMMIT_STEPS
+        ? 250
+        : false,
   });
+  const walking = !listing.lastCommitsComplete && rest.data?.complete !== true && !rest.isError;
   // The header's commit and the root's count arrive after the listing.
   const latest = useQuery(latestCommitQuery(repo, listing.ref.commitOid, listing.path));
   const headCommit = listing.lastCommit ?? latest.data?.commit ?? null;
   const commitCount = listing.commitCount ?? latest.data?.count ?? null;
+  const history = (
+    <AppLink
+      href={paths.commits(repo, refName, listing.path)}
+      className="inline-flex items-center gap-1 whitespace-nowrap font-medium text-on-surface hover:underline"
+    >
+      <Icon name="history" size={12} />
+      {commitCount !== null ? plural(commitCount, "commit") : "History"}
+    </AppLink>
+  );
   return (
     <Panel>
-      {headCommit !== null ? (
-        <PanelHeader>
+      {/* Always there, so the table does not move when the commit arrives. */}
+      <PanelHeader>
+        {headCommit !== null ? (
           <CommitStrip repo={repo} commit={headCommit}>
-            <AppLink
-              href={paths.commits(repo, refName, listing.path)}
-              className="inline-flex items-center gap-1 whitespace-nowrap font-medium text-on-surface hover:underline"
-            >
-              <Icon name="history" size={12} />
-              {commitCount !== null ? plural(commitCount, "commit") : "History"}
-            </AppLink>
+            {history}
           </CommitStrip>
-        </PanelHeader>
-      ) : null}
+        ) : latest.isPending ? (
+          <span className="flex-1">
+            <CommitStripSkeleton />
+          </span>
+        ) : (
+          <span className="ml-auto">{history}</span>
+        )}
+      </PanelHeader>
       <Table caption={listing.path === "" ? "Files" : `Files in ${listing.path}`}>
         <thead className="sr-only">
           <tr>
@@ -193,7 +217,7 @@ function FileTable({
               </Td>
             </Tr>
           ) : null}
-          {listing.entries.map((entry) => {
+          {listing.entries.map((entry, index) => {
             const commit = entry.lastCommit ?? rest.data?.commits[entry.name] ?? null;
             const href =
               entry.type === "tree"
@@ -236,10 +260,19 @@ function FileTable({
                     >
                       {showBidi(commit.summary)}
                     </AppLink>
+                  ) : walking ? (
+                    <Skeleton
+                      className="h-3"
+                      width={SKELETON_WIDTHS[index % SKELETON_WIDTHS.length]!}
+                    />
                   ) : null}
                 </Td>
                 <Td className="w-28 whitespace-nowrap text-right text-on-surface-muted">
-                  {commit !== null ? <RelativeTime iso={commit.committer.when} /> : null}
+                  {commit !== null ? (
+                    <RelativeTime iso={commit.committer.when} />
+                  ) : walking ? (
+                    <Skeleton className="ml-auto h-3" width={56} />
+                  ) : null}
                 </Td>
               </Tr>
             );

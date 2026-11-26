@@ -75,7 +75,7 @@ export function ResourcesTab() {
         {resources.error ? (
           <ErrorState error={resources.error} />
         ) : resources.isLoading ? (
-          <Loading />
+          <Loading framed={false} />
         ) : resources.items.length === 0 ? (
           <EmptyState>
             {emptyResourcesLine(words.trim() !== "" || matched !== "all", workspace.resourceCount)}

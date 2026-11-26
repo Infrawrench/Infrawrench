@@ -38,7 +38,7 @@ export function BlamePage({ refName, path }: { refName: string; path: string }) 
 
   return (
     <Page>
-      <QueryView query={blame}>
+      <QueryView query={blame} shape="file">
         {(data) => (
           <>
             <div className="mb-3 flex flex-wrap items-center gap-2">

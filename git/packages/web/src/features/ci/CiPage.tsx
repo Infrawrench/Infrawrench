@@ -141,7 +141,7 @@ export function CiPage({
                 {runs.error ? (
                   <ErrorState error={runs.error} />
                 ) : runs.isLoading ? (
-                  <Loading />
+                  <Loading framed={false} />
                 ) : runs.items.length === 0 ? (
                   <EmptyState
                     action={

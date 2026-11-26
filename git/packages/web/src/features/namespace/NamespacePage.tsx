@@ -217,7 +217,7 @@ function Repositories({ namespace }: { namespace: Namespace }) {
       </div>
       <Panel>
         {list.isLoading ? (
-          <Loading />
+          <Loading framed={false} />
         ) : list.error ? (
           <ErrorState error={list.error} />
         ) : shown.length === 0 ? (
@@ -255,7 +255,7 @@ function Stars({ slug }: { slug: string }) {
     <section aria-label="Starred repositories">
       <Panel>
         {list.isLoading ? (
-          <Loading />
+          <Loading framed={false} />
         ) : list.error ? (
           <ErrorState error={list.error} />
         ) : list.items.length === 0 ? (

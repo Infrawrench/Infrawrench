@@ -149,7 +149,7 @@ export function CommitsPage({ refName, path }: { refName: string; path: string }
         )}
       </div>
       {commits.isLoading ? (
-        <Loading />
+        <Loading count={8} />
       ) : commits.error ? (
         <ErrorState error={commits.error} />
       ) : commits.items.length === 0 ? (

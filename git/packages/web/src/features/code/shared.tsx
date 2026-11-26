@@ -43,7 +43,7 @@ export function WithRefAndPath({
   const refs = useQuery(queries.contents.listRefs({ params: repo, query: { limit: 100 } }));
   if (splat === "") return <>{children({ ref: repository.defaultBranch, path: "" })}</>;
   if (refs.data === undefined) {
-    return refs.error ? <ErrorState error={refs.error} /> : <Loading />;
+    return refs.error ? <ErrorState error={refs.error} /> : <Loading shape="page" />;
   }
   const names = [...refs.data.branches, ...refs.data.tags].map((ref) => ref.name);
   return <>{children(splitRefPath(splat, names))}</>;

@@ -74,7 +74,7 @@ export function WorkspaceLayout({
         <ErrorState error={query.error} onRetry={() => void query.refetch()} />
       </Page>
     ) : (
-      <Loading />
+      <Loading shape="page" />
     );
   }
   const workspace = query.data;

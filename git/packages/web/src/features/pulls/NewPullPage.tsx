@@ -199,7 +199,7 @@ export function NewPullPage({
           <ErrorState error={comparison.error} />
         </Panel>
       ) : data === undefined ? (
-        <Loading />
+        <Loading shape="code" />
       ) : (
         <div className="space-y-4">
           {existing !== null ? (

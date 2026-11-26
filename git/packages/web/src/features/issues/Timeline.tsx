@@ -341,7 +341,7 @@ export function Timeline({
     api.issues.timeline({ ...request, query: { ...cursorQuery(cursor), limit: 100 } }),
   );
   if (timeline.error) return <ErrorState error={timeline.error} />;
-  if (timeline.isLoading) return <Loading />;
+  if (timeline.isLoading) return <Loading shape="text" />;
   const refresh = () => invalidate("issues");
   return (
     <>

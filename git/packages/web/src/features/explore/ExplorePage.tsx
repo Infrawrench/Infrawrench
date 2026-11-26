@@ -107,7 +107,7 @@ export function ExplorePage({ search }: { search: ExploreSearch }) {
       </PageHeader>
       <Panel>
         {results.isLoading ? (
-          <Loading />
+          <Loading framed={false} />
         ) : results.error ? (
           <ErrorState error={results.error} />
         ) : results.items.length === 0 ? (

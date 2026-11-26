@@ -82,7 +82,7 @@ export function PullLayout({ number, children }: { number: number; children: Rea
         </Page>
       );
     }
-    return <Loading />;
+    return <Loading shape="page" />;
   }
   const data = pull.data;
   const merged = data.state === "merged";

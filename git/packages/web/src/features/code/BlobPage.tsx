@@ -11,7 +11,7 @@ import { CodeView } from "../../components/CodeView";
 import { CopyButton, Segmented } from "../../components/controls";
 import { Icon } from "../../components/icons";
 import { Page, Panel, PanelHeader } from "../../components/Panel";
-import { ErrorState, Loading } from "../../components/states";
+import { CommitStripSkeleton, ErrorState, Loading } from "../../components/states";
 import { formatBytes, plural } from "../../lib/format";
 import { languageOfPath } from "../../lib/highlight";
 import { formatLineHash, parseLineHash, selectLine, type LineRange } from "../../lib/lines";
@@ -80,7 +80,7 @@ export function BlobPage({ refName, path }: { refName: string; path: string }) {
         {blob.error && !isDirectory ? (
           <ErrorState error={blob.error} onRetry={() => void blob.refetch()} />
         ) : (
-          <Loading />
+          <Loading shape="file" />
         )}
       </Page>
     );
@@ -93,6 +93,15 @@ function BlobView({ repo, blob }: { repo: RepoRef; blob: FileBlob }) {
   // The file shows first; the commit that last changed it follows.
   const latest = useQuery(latestCommitQuery(repo, blob.ref.commitOid, blob.path));
   const lastCommit = blob.lastCommit ?? latest.data?.commit ?? null;
+  const historyLink = (
+    <AppLink
+      href={paths.commits(repo, refName, blob.path)}
+      className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-on-surface hover:underline"
+    >
+      <Icon name="history" size={12} />
+      History
+    </AppLink>
+  );
   const markdown = isMarkdownPath(blob.path) && blob.text !== null;
   const [mode, setMode] = useState<"preview" | "code">(() =>
     markdown && parseLineHash(window.location.hash) === null ? "preview" : "code",
@@ -113,21 +122,22 @@ function BlobView({ repo, blob }: { repo: RepoRef; blob: FileBlob }) {
         <CopyButton text={blob.path} label="Copy path" />
       </div>
 
-      {lastCommit !== null ? (
-        <Panel className="mb-3">
-          <div className="flex items-center px-3 py-2">
+      {/* Always there, so the file does not move when its commit arrives. */}
+      <Panel className="mb-3">
+        <div className="flex min-h-9 items-center px-3 py-2">
+          {lastCommit !== null ? (
             <CommitStrip repo={repo} commit={lastCommit}>
-              <AppLink
-                href={paths.commits(repo, refName, blob.path)}
-                className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium text-on-surface hover:underline"
-              >
-                <Icon name="history" size={12} />
-                History
-              </AppLink>
+              {historyLink}
             </CommitStrip>
-          </div>
-        </Panel>
-      ) : null}
+          ) : latest.isPending ? (
+            <span className="flex-1">
+              <CommitStripSkeleton />
+            </span>
+          ) : (
+            <span className="ml-auto">{historyLink}</span>
+          )}
+        </div>
+      </Panel>
 
       <Panel>
         <PanelHeader

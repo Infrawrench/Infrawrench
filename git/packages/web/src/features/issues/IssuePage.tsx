@@ -49,7 +49,7 @@ export function IssuePage({ number }: { number: number }) {
         </Page>
       );
     }
-    return <Loading />;
+    return <Loading shape="page" />;
   }
   return <IssueView issue={issue.data} />;
 }

@@ -18,7 +18,7 @@ import { showBidi } from "../../lib/bidi";
 
 export function HomePage() {
   const session = useSession();
-  if (session.data === undefined) return <Loading />;
+  if (session.data === undefined) return <Loading shape="page" />;
   const user = session.data.user;
   if (user === null) return <SignedOutHome />;
   return <SignedInHome username={user.username} />;
@@ -231,7 +231,7 @@ function RecentPushes({ repositories }: { repositories: ReadonlyArray<Repository
               </span>
             </PanelHeader>
             {results[index]?.isPending === true ? (
-              <Loading />
+              <Loading framed={false} count={4} />
             ) : (
               <ul className="divide-y divide-border">
                 {commits.map((commit) => (

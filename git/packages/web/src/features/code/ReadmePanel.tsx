@@ -69,7 +69,7 @@ export function ReadmePanel({
       </PanelHeader>
       {blob.data === undefined ? (
         blob.error ? null : (
-          <Loading />
+          <Loading shape="text" framed={false} />
         )
       ) : blob.data.text === null ? null : (
         <div className="px-6 py-5">

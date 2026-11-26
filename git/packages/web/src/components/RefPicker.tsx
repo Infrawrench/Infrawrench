@@ -164,7 +164,7 @@ function RefList({
         </div>
       )}
       {refs.data === undefined ? (
-        <Loading />
+        <Loading shape="inline" />
       ) : (
         <ul
           ref={list}

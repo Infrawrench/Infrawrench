@@ -10,7 +10,7 @@ import { signInHref, useSession } from "../../lib/session";
 /** Personal settings: the signed-in person's profile and their credentials for Git. */
 export function SettingsLayout({ children }: { children: ReactNode }) {
   const session = useSession();
-  if (session.data === undefined) return <Loading />;
+  if (session.data === undefined) return <Loading shape="page" />;
   if (session.data.user === null) {
     return (
       <Page>

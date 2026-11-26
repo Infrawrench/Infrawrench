@@ -45,7 +45,7 @@ export function CommitPage({ sha }: { sha: string }) {
   );
   return (
     <Page>
-      <QueryView query={detail}>
+      <QueryView query={detail} shape="code">
         {({ commit, stats, files, filesTruncated, branches, tags, pullRequests }) => {
           const body = commit.message.slice(commit.summary.length).replace(/^\n+/, "");
           const sameCommitter =

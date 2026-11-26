@@ -228,7 +228,7 @@ export function FilesTab() {
   };
 
   if (diff.error) return <ErrorState error={diff.error} />;
-  if (diff.isLoading) return <Loading />;
+  if (diff.isLoading) return <Loading shape="code" />;
   if (diff.items.length === 0) {
     return (
       <Panel>

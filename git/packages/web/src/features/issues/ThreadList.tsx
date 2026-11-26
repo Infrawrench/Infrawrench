@@ -298,7 +298,7 @@ export function ThreadList({ kind, q }: { kind: Kind; q: string | undefined }) {
         {list.error ? (
           <ErrorState error={list.error} />
         ) : list.isLoading || (needsMilestones && milestones.data === undefined) ? (
-          <Loading />
+          <Loading framed={false} />
         ) : list.items.length === 0 ? (
           (counts?.open ?? 0) + (counts?.closed ?? 0) === 0 && !isFiltered(search) ? (
             <EmptyState

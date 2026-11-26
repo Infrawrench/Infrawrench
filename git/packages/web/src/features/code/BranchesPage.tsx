@@ -198,7 +198,7 @@ export function BranchesPage() {
         {repository.isEmpty ? (
           <EmptyState>No branches yet</EmptyState>
         ) : branches.isLoading ? (
-          <Loading />
+          <Loading framed={false} />
         ) : branches.error ? (
           <ErrorState error={branches.error} />
         ) : branches.items.length === 0 ? (

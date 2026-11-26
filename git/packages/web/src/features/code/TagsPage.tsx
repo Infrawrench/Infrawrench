@@ -42,7 +42,7 @@ export function TagsPage() {
         {repository.isEmpty ? (
           <EmptyState>No tags yet</EmptyState>
         ) : tags.isLoading ? (
-          <Loading />
+          <Loading framed={false} />
         ) : tags.error ? (
           <ErrorState error={tags.error} />
         ) : tags.items.length === 0 ? (

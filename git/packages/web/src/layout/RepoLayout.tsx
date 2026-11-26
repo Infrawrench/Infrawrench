@@ -454,7 +454,7 @@ export function RepoLayout({
         </Page>
       );
     }
-    return <Loading />;
+    return <Loading shape="page" />;
   }
   const repository = query.data;
   // The API matches names case-insensitively; link with the repository's own spelling.

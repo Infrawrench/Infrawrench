@@ -135,7 +135,7 @@ export function DiffSection({
         </Panel>
       ) : null}
       {diff.isLoading ? (
-        <Loading />
+        <Loading shape="code" />
       ) : diff.error ? (
         <ErrorState error={diff.error} />
       ) : headOid !== undefined ? (

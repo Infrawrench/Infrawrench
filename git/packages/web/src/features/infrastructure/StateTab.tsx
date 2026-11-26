@@ -138,7 +138,7 @@ export function StateTab() {
         {versions.error ? (
           <ErrorState error={versions.error} />
         ) : versions.isLoading ? (
-          <Loading />
+          <Loading framed={false} />
         ) : versions.items.length === 0 ? (
           <EmptyState>No state yet</EmptyState>
         ) : (
