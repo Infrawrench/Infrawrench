@@ -9,9 +9,11 @@
  * bounded by count already (`repo/queries/session.ts`, git-ops' `Limits`);
  * this bounds how often.
  *
- * - **Who** is counted: the signed-in person by id, an anonymous caller by
- *   address (`CF-Connecting-IP`), an IPv6 address by its /64, which is what
- *   one customer line is given (`rateLimitKey`, shared with SSH).
+ * - **Who** is counted: the signed-in person by id (whichever of their
+ *   credentials they used), an API key, a deploy key and a CI run by theirs
+ *   (`subjectOfPrincipal`), an anonymous caller by address
+ *   (`CF-Connecting-IP`), an IPv6 address by its /64, which is what one
+ *   customer line is given (`rateLimitKey`, shared with SSH).
  * - **What** is counted: four classes with their own budgets. Cheap reads,
  *   heavy reads (`classify` lists them), writes, and refused credentials:
  *   a request whose `iwg_`, `iwk_` or `iwj_` token, Basic password or
@@ -36,6 +38,7 @@
  *   seconds and says no reason when it refuses, so `Retry-After` is the
  *   period.
  */
+import type { Principal } from "../auth/principal";
 import { rateLimitKey } from "../transport/ssh/rate-limit";
 
 /** What a request costs the storage. */
@@ -96,6 +99,13 @@ const HEAVY_REPO_READS = [
   /^\/pulls\/\d+\/(files|commits|mergeability)$/,
 ];
 
+/** Lists that search when asked with `q`: explore, the people finder, issues and pull requests. */
+const SEARCHES = [
+  /^\/api\/explore\/repos$/,
+  /^\/api\/users$/,
+  /^\/api\/repos\/[^/]+\/[^/]+\/(issues|pulls)$/,
+];
+
 /** Query parameters that turn a history page into a filtered walk. */
 const WALKING_HISTORY = ["path", "author", "authorEmail", "since", "until", "follow"];
 
@@ -104,7 +114,9 @@ const WALKING_HISTORY = ["path", "author", "authorEmail", "since", "until", "fol
  * before anything is read. Writes are every method but GET and HEAD, and a
  * push (`git-receive-pack`). Heavy are the reads listed above, a history
  * page that filters or follows a path, the file table with its last-commit
- * column, archives, raw files, and a fetch or clone (`git-upload-pack`).
+ * column, archives, raw files, a fetch or clone (`git-upload-pack`), and a
+ * search (`SEARCHES`, asked with `q`). Filtering a repository's branches or
+ * tags by name is not one: it reads a list the storage already holds.
  */
 export function classify(method: string, url: URL): RateClass {
   const path = url.pathname;
@@ -114,6 +126,10 @@ export function classify(method: string, url: URL): RateClass {
   if (pushing) return "write";
   if (path.endsWith("/git-upload-pack")) return "heavy";
   if (method !== "GET" && method !== "HEAD") return "write";
+  // A search is a pattern match over a table: repositories, people, issues, pull requests.
+  if (SEARCHES.some((pattern) => pattern.test(path)) && (url.searchParams.get("q") ?? "") !== "") {
+    return "heavy";
+  }
   const repo = /^\/api\/repos\/[^/]+\/[^/]+(\/.*)?$/.exec(path);
   if (repo) {
     const rest = repo[1] ?? "";
@@ -138,6 +154,29 @@ export function subjectOf(request: Request, userId: string | null): RateSubject 
   if (userId !== null) return { key: `user:${userId}`, anonymous: false };
   const address = request.headers.get("CF-Connecting-IP");
   return { key: `addr:${address ? rateLimitKey(address) : "unknown"}`, anonymous: true };
+}
+
+/**
+ * The subject a caller who authenticated is counted against, or null for
+ * nobody (an anonymous caller is counted by address, before authentication).
+ * A person is one subject whichever credential they used: a session, a
+ * token and an SSH key share a budget, so minting tokens buys nothing. A job
+ * is counted by its run, so one busy repository's runs do not starve each
+ * other.
+ */
+export function subjectOfPrincipal(principal: Principal): RateSubject | null {
+  switch (principal.kind) {
+    case "anonymous":
+      return null;
+    case "user":
+      return { key: `user:${principal.userId}`, anonymous: false };
+    case "api-key":
+      return { key: `key:${principal.apiKeyId}`, anonymous: false };
+    case "deploy-key":
+      return { key: `deploy:${principal.keyId}`, anonymous: false };
+    case "job":
+      return { key: `job:${principal.runId ?? principal.repositoryId}`, anonymous: false };
+  }
 }
 
 // Counting

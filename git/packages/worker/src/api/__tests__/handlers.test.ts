@@ -104,6 +104,7 @@ describe("the contents group through the in-memory client", () => {
     scope: undefined,
     readers: fake.readers,
     authenticate: async () => anonymous,
+    admit: async () => null,
     cookies: [],
   };
   const makeClient = HttpApiTest.groups(GitApi, ["contents"]);
@@ -315,6 +316,52 @@ describe("the gates, where they need no database", () => {
     ] as const) {
       expect((await call(handler, path, init)).status, path).toBe(403);
     }
+  });
+
+  it("counts a request against whoever authenticated, and answers 429 past their budget", async () => {
+    // An API key: resolving it asks the database nothing more.
+    const person = {
+      kind: "api-key" as const,
+      apiKeyId: "key_1",
+      organizationId: "org_1",
+      userId: "u_1",
+      permissions: ["git:read"],
+    };
+    const counted: unknown[] = [];
+    const api = (principal: Authenticated["principal"], refuse: boolean) =>
+      makeGitApi({
+        authenticate: async () => ({ ...anonymous, principal }),
+        admit: async (request, who) => {
+          counted.push([new URL(request.url).pathname, who]);
+          return refuse
+            ? new Response("Too many requests. Try again later.\n", {
+                status: 429,
+                headers: { "retry-after": "17" },
+              })
+            : null;
+        },
+      });
+    const send = (handler: ReturnType<typeof makeGitApi>, path: string) =>
+      handler.handle(new Request(`https://git.example.test${path}`), env, ctx);
+
+    const refused = await send(api(person, true), "/api/explore/repos?q=terraform");
+    expect(refused.status).toBe(429);
+    expect(refused.headers.get("retry-after")).toBe("17");
+    expect(counted).toEqual([["/api/explore/repos", person]]);
+    // Before anything is decided about the request itself: an endpoint that would
+    // refuse this caller anyway still counts, and still answers 429.
+    expect((await send(api(person, true), "/api/user/keys")).status).toBe(429);
+    // A refused credential is a 401 and is counted as nobody.
+    counted.length = 0;
+    const bad = makeGitApi({
+      authenticate: async () => ({ ...anonymous, refused: true }),
+      admit: async () => {
+        counted.push("asked");
+        return new Response(null, { status: 429 });
+      },
+    });
+    expect((await send(bad, "/api/session")).status).toBe(401);
+    expect(counted).toEqual([]);
   });
 
   it("marks every answer private and same-origin only", async () => {

@@ -9,9 +9,16 @@
   // `webcrypto_modern_algorithms` gives the SSH server ML-KEM, so it can offer
   // the post-quantum key exchange current OpenSSH clients ask for.
   "compatibility_flags": ["nodejs_compat", "webcrypto_modern_algorithms"],
+  // The site has one origin. A `*.workers.dev` URL, of the Worker or of one
+  // of its versions, would be a second one, outside the `__Host-` cookie and
+  // the origin checks, so both are off.
   "workers_dev": false,
+  "preview_urls": false,
   "routes": [{ "pattern": "git.infrawrench.com", "custom_domain": true }],
-  "observability": { "enabled": true },
+  // Workers Logs record each request's URL. The archive route takes a job
+  // token in its query (`?token=`), so query strings are left out of logs
+  // and traces.
+  "observability": { "enabled": true, "redact_query_string": true },
   "limits": { "cpu_ms": 300000 },
 
   // Bundle-time constants. `__INFRAWRENCH_EDGE_PLUGINS__` says this bundle
@@ -60,7 +67,7 @@
   //   WORKOS_API_KEY, WORKOS_CLIENT_ID   the app's WorkOS client
   //   WORKOS_COOKIE_PASSWORD             this host's own, 32+ characters
   //   SSH_HOST_KEY                       OpenSSH private key (ed25519), PEM
-  //   GIT_JOB_TOKEN_KEY                      HMAC key for CI job tokens, 32+ characters
+  //   GIT_JOB_TOKEN_KEY                  HMAC key for CI job tokens, 32+ characters
   //   ENCRYPTION_MASTER_KEY              the app's, for `iwk_` API key hashes
   // Optional, and CI stays off for repositories here without them:
   //   CI_PROXY_URL, CI_PROXY_KEY         the app's CI proxy (server-core `ci/proxy.ts`)
@@ -92,6 +99,36 @@
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["RepoDO"] },
     { "tag": "v2", "new_sqlite_classes": ["TerraformStateDO"] },
+  ],
+
+  // How often one caller may ask, by what the request costs
+  // (`src/http/admission.ts`): cheap reads, heavy reads (a diff, a blame, a
+  // comparison, an archive, a clone, a search) and writes. A caller without a
+  // credential is counted by address, one who authenticated by who they are.
+  // The limits are `DEFAULT_RATE_BUDGETS` in `src/http/rate-limit.ts`, which
+  // is what counts where a binding is missing: change the two together.
+  // Counted per Cloudflare location; `period` is 10 or 60 seconds.
+  // `namespace_id` is a number of our choosing, unique in the account:
+  // nothing has to be created for it.
+  "ratelimits": [
+    { "name": "RL_READ_ANON", "namespace_id": "1101", "simple": { "limit": 300, "period": 60 } },
+    {
+      "name": "RL_READ_SIGNED_IN",
+      "namespace_id": "1102",
+      "simple": { "limit": 1200, "period": 60 },
+    },
+    { "name": "RL_HEAVY_ANON", "namespace_id": "1103", "simple": { "limit": 30, "period": 60 } },
+    {
+      "name": "RL_HEAVY_SIGNED_IN",
+      "namespace_id": "1104",
+      "simple": { "limit": 120, "period": 60 },
+    },
+    { "name": "RL_WRITE_ANON", "namespace_id": "1105", "simple": { "limit": 30, "period": 60 } },
+    {
+      "name": "RL_WRITE_SIGNED_IN",
+      "namespace_id": "1106",
+      "simple": { "limit": 120, "period": 60 },
+    },
   ],
 
   // The Durable Object sends a push here once the refs have moved

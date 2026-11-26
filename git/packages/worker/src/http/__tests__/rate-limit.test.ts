@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Principal } from "../../auth/principal";
 import {
   type CacheLike,
   DEFAULT_RATE_BUDGETS,
@@ -10,6 +11,7 @@ import {
   memoryCounterStore,
   refusedCredential,
   subjectOf,
+  subjectOfPrincipal,
   tooManyRequests,
   windowLimiter,
 } from "../rate-limit";
@@ -44,6 +46,54 @@ describe("classify", () => {
     expect(classify("GET", at("/acme/infra.git/info/refs?service=git-receive-pack"))).toBe("write");
     expect(classify("POST", at("/acme/infra.git/git-receive-pack"))).toBe("write");
     expect(classify("GET", at("/acme/infra"))).toBe("read");
+  });
+
+  it("counts a search as a heavy read, and a filter of names as a cheap one", () => {
+    const repo = "/api/repos/acme/infra";
+    expect(classify("GET", at("/api/explore/repos"))).toBe("read");
+    expect(classify("GET", at("/api/explore/repos?q="))).toBe("read");
+    expect(classify("GET", at("/api/explore/repos?q=terraform"))).toBe("heavy");
+    expect(classify("GET", at("/api/users?q=ad"))).toBe("heavy");
+    expect(classify("GET", at(`${repo}/issues?q=crash`))).toBe("heavy");
+    expect(classify("GET", at(`${repo}/pulls?q=crash`))).toBe("heavy");
+    expect(classify("GET", at(`${repo}/issues?state=open`))).toBe("read");
+    expect(classify("GET", at(`${repo}/branches?q=rel`))).toBe("read");
+    expect(classify("GET", at(`${repo}/tags?q=v1`))).toBe("read");
+  });
+});
+
+describe("subjectOfPrincipal", () => {
+  it("counts a person once, whichever credential they used, and nobody for nobody", () => {
+    const person = (via: "session" | "token" | "ssh-key"): Principal => ({
+      kind: "user",
+      userId: "u_1",
+      via,
+      scopes: via === "token" ? ["repo:write"] : null,
+      credentialId: via === "session" ? null : `c_${via}`,
+    });
+    for (const via of ["session", "token", "ssh-key"] as const) {
+      expect(subjectOfPrincipal(person(via))).toEqual({ key: "user:u_1", anonymous: false });
+    }
+    expect(subjectOfPrincipal({ kind: "anonymous" })).toBeNull();
+    expect(
+      subjectOfPrincipal({
+        kind: "api-key",
+        apiKeyId: "k_1",
+        organizationId: "o_1",
+        userId: "u_1",
+        permissions: [],
+      }),
+    ).toEqual({ key: "key:k_1", anonymous: false });
+    expect(
+      subjectOfPrincipal({ kind: "deploy-key", keyId: "d_1", repositoryId: "r_1", readOnly: true }),
+    ).toEqual({ key: "deploy:d_1", anonymous: false });
+    // A run is its own subject; a job token that names none shares its repository's.
+    expect(
+      subjectOfPrincipal({ kind: "job", repositoryId: "r_1", write: false, runId: "run_1" }),
+    ).toEqual({ key: "job:run_1", anonymous: false });
+    expect(
+      subjectOfPrincipal({ kind: "job", repositoryId: "r_1", write: false, runId: null }),
+    ).toEqual({ key: "job:r_1", anonymous: false });
   });
 });
 

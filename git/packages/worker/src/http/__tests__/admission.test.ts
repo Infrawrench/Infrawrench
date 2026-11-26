@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
+import type { Principal } from "../../auth/principal";
 import { cacheFailureLimiter } from "../../transport/ssh/rate-limit";
 import { CREDENTIAL_FAILURE_LIMITS, makeAdmission, presentsCredential } from "../admission";
-import { memoryCounterStore, windowLimiter } from "../rate-limit";
+import {
+  DEFAULT_RATE_BUDGETS,
+  bindingLimiter,
+  memoryCounterStore,
+  windowLimiter,
+} from "../rate-limit";
 
 const cache = () => {
   const entries = new Map<string, Response>();
@@ -53,6 +59,93 @@ describe("admission", () => {
       );
     for (let i = 0; i < 30; i++) expect(await gate.refuse(clone(i.toString(16)))).toBeNull();
     expect((await gate.refuse(clone("ffff")))?.status).toBe(429);
+  });
+
+  it("counts a caller who authenticated by who they are, against the signed-in budget", async () => {
+    const gate = admission();
+    const ada: Principal = {
+      kind: "user",
+      userId: "ada",
+      via: "token",
+      scopes: ["repo:write"],
+      credentialId: "pat_1",
+    };
+    const session: Principal = { ...ada, via: "session", scopes: null, credentialId: null };
+    const grace: Principal = { ...ada, userId: "grace" };
+    const compare = (address: string) =>
+      request(
+        "/api/repos/acme/infra/compare/diff?base=a&head=b",
+        { "cf-connecting-ip": address, authorization: "Bearer a-token" },
+        "GET",
+      );
+    const budget = DEFAULT_RATE_BUDGETS.heavy.signedIn.limit;
+    // From any address, and through either credential: one person, one budget.
+    for (let i = 0; i < budget; i++) {
+      const who = i % 2 === 0 ? ada : session;
+      expect(await gate.admit(compare(`203.0.113.${i % 250}`), who)).toBeNull();
+    }
+    const refused = await gate.admit(compare("203.0.113.7"), ada);
+    expect(refused?.status).toBe(429);
+    expect(Number(refused?.headers.get("retry-after"))).toBeGreaterThan(0);
+    expect((await gate.admit(compare("198.51.100.1"), session))?.status).toBe(429);
+    // Someone else at the same address is not held to it, nor is Ada's cheap reading.
+    expect(await gate.admit(compare("203.0.113.7"), grace)).toBeNull();
+    expect(await gate.admit(request("/api/repos/acme/infra"), ada)).toBeNull();
+    // An archive, a blame, a clone and a search come out of the same budget.
+    for (const [method, path] of [
+      ["GET", `/acme/infra/archive/${"a".repeat(40)}.tar.gz`],
+      ["GET", "/api/repos/acme/infra/blame?path=main.tf"],
+      ["POST", "/acme/infra.git/git-upload-pack"],
+      ["GET", "/api/explore/repos?q=terraform"],
+    ] as const) {
+      expect((await gate.admit(request(path, {}, method), ada))?.status, path).toBe(429);
+    }
+    // Writes have their own.
+    const merge = () => request("/api/repos/acme/infra/pulls/7/merge", {}, "POST");
+    for (let i = 0; i < DEFAULT_RATE_BUDGETS.write.signedIn.limit; i++) {
+      expect(await gate.admit(merge(), ada)).toBeNull();
+    }
+    expect((await gate.admit(merge(), ada))?.status).toBe(429);
+    // Nobody is counted here for being nobody: that was done by address, before.
+    for (let i = 0; i < 100; i++) {
+      expect(await gate.admit(compare("203.0.113.9"), { kind: "anonymous" })).toBeNull();
+    }
+  });
+
+  it("asks the signed-in bindings by principal when the Worker has them", async () => {
+    const asked: string[] = [];
+    const binding = (name: string, allow: boolean) => ({
+      limit: async ({ key }: { key: string }) => {
+        asked.push(`${name} ${key}`);
+        return { success: allow };
+      },
+    });
+    const gate = makeAdmission(
+      bindingLimiter(
+        {
+          "heavy:signedIn": binding("heavy", false),
+          "write:signedIn": binding("write", true),
+          "heavy:anonymous": binding("anonymous", true),
+        },
+        60,
+      ),
+      cacheFailureLimiter(cache(), CREDENTIAL_FAILURE_LIMITS),
+    );
+    const key: Principal = {
+      kind: "api-key",
+      apiKeyId: "k_1",
+      organizationId: "o_1",
+      userId: "u_1",
+      permissions: ["git:write"],
+    };
+    const blame = request("/api/repos/acme/infra/blame?path=x", { authorization: "Bearer k" });
+    expect((await gate.admit(blame, key))?.status).toBe(429);
+    expect(
+      await gate.admit(request("/acme/infra.git/git-receive-pack", {}, "POST"), key),
+    ).toBeNull();
+    // No binding for cheap reads here, and no fallback: let through.
+    expect(await gate.admit(request("/api/repos/acme/infra"), key)).toBeNull();
+    expect(asked).toEqual(["heavy key:k_1", "write key:k_1"]);
   });
 
   it("does not count a caller who brings a credential against the anonymous budget", async () => {

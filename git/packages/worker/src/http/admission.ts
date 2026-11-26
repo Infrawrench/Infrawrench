@@ -13,16 +13,21 @@
  *   guessing tokens. The limit is generous: a build machine with an expired
  *   token retries, and many people can share one address.
  *
- * A caller with a credential that is accepted is not counted here: who it
- * is, is only known after authentication, and counting it by address would
- * hold a whole office to one visitor's budget. The UI's own files are never
- * counted.
+ * - **A caller with a credential that is accepted** is counted once it is
+ *   known who it is (`admit`): by the API's authentication and by the Git
+ *   routes, each right after it resolves the principal. It is counted by
+ *   principal and never by address, which would hold a whole office to one
+ *   visitor's budget, against the signed-in budgets: the same three classes,
+ *   four times as generous.
+ *
+ * The UI's own files are never counted.
  *
  * The counts live in Cloudflare's Rate Limiting bindings where the Worker
  * has them (`RL_*`, optional in `Env`), else in the data centre's cache,
  * else in the isolate. Each is best effort in its own way; none fails a
  * request when it cannot count.
  */
+import type { Principal } from "../auth/principal";
 import type { Env } from "../env";
 import {
   type CacheLike,
@@ -40,6 +45,7 @@ import {
   memoryCounterStore,
   refusedCredential,
   subjectOf,
+  subjectOfPrincipal,
   tooManyRequests,
   windowLimiter,
 } from "./rate-limit";
@@ -52,6 +58,22 @@ export interface Admission {
   refuse(request: Request): Promise<Response | null>;
   /** Counts a refused credential. Resolves when it is written down. */
   record(request: Request, response: Response): Promise<void>;
+  /**
+   * Counts a request against the caller it authenticated as. The 429 when
+   * that caller is past its budget for this kind of request, or null: for
+   * the request that may go ahead, and for an anonymous caller, who was
+   * counted by address already.
+   */
+  admit(request: RequestShape, principal: Principal): Promise<Response | null>;
+}
+
+/** `Admission.admit`, as the routes that authenticate take it. */
+export type Admit = Admission["admit"];
+
+/** What `admit` reads of a request: enough to say what it costs. */
+export interface RequestShape {
+  readonly method: string;
+  readonly url: string;
 }
 
 const SESSION_COOKIE = /(?:^|;\s*)(?:__Host-)?iwg-session=/;
@@ -87,6 +109,14 @@ export const makeAdmission = (limiter: RateLimiter, failures: FailureLimiter): A
     if (!address || !refusedCredential(request, response)) return;
     await failures.failed(failureKey(address)).catch(() => undefined);
   },
+  async admit(request, principal) {
+    const subject = subjectOfPrincipal(principal);
+    if (subject === null) return null;
+    const decision = await limiter
+      .take(classify(request.method, new URL(request.url)), subject)
+      .catch(() => null);
+    return decision && !decision.allowed ? tooManyRequests(decision) : null;
+  },
 });
 
 let shared: { readonly env: Env; readonly admission: Admission } | null = null;
@@ -109,6 +139,9 @@ export const admissionFor = (env: Env): Admission => {
       ...(env.RL_READ_ANON ? { "read:anonymous": env.RL_READ_ANON } : {}),
       ...(env.RL_HEAVY_ANON ? { "heavy:anonymous": env.RL_HEAVY_ANON } : {}),
       ...(env.RL_WRITE_ANON ? { "write:anonymous": env.RL_WRITE_ANON } : {}),
+      ...(env.RL_READ_SIGNED_IN ? { "read:signedIn": env.RL_READ_SIGNED_IN } : {}),
+      ...(env.RL_HEAVY_SIGNED_IN ? { "heavy:signedIn": env.RL_HEAVY_SIGNED_IN } : {}),
+      ...(env.RL_WRITE_SIGNED_IN ? { "write:signedIn": env.RL_WRITE_SIGNED_IN } : {}),
     },
     60,
     windowLimiter(store),

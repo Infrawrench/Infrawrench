@@ -329,6 +329,53 @@ describe("git routes", () => {
     );
   });
 
+  it("counts every route against whoever authenticated, before it looks anything up", async () => {
+    const resolved: string[] = [];
+    const dir: GitDirectory = {
+      ...directory({ "alice/demo": { access: "write" } }, user),
+      resolveRepository: async (owner, name) => {
+        resolved.push(`${owner}/${name}`);
+        return null;
+      },
+    };
+    const counted: Array<{ path: string; principal: Principal }> = [];
+    const tooMany = () => new Response("Too many requests.\n", { status: 429 });
+    const call = (method: string, path: string, refuse: boolean) =>
+      gitHttp(new Request(`https://git.example${path}`, { method }), env, dir, async (r, p) => {
+        counted.push({ path: new URL(r.url).pathname, principal: p });
+        return refuse ? tooMany() : null;
+      });
+    const routes = [
+      ["GET", "/alice/demo.git/info/refs?service=git-upload-pack"],
+      ["POST", "/alice/demo.git/git-upload-pack"],
+      ["POST", "/alice/demo.git/git-receive-pack"],
+      ["GET", `/alice/demo/raw/${SHA}/README.md`],
+      ["GET", `/alice/demo/archive/${SHA}.tar.gz`],
+    ] as const;
+    for (const [method, path] of routes) {
+      expect((await call(method, path, true))?.status, path).toBe(429);
+    }
+    expect(counted.map((each) => each.principal)).toEqual(routes.map(() => user));
+    // Refused before the repository was asked for: a caller past its budget costs nothing more.
+    expect(resolved).toEqual([]);
+    // Let in, the request goes on to the repository.
+    await call("GET", "/alice/demo.git/info/refs?service=git-upload-pack", false);
+    expect(resolved).toEqual(["alice/demo"]);
+    // A refused credential is a 401 and is never counted as anyone.
+    counted.length = 0;
+    const refused = await gitHttp(
+      new Request("https://git.example/alice/demo.git/info/refs?service=git-upload-pack"),
+      env,
+      directory({}, "refused"),
+      async (r, p) => {
+        counted.push({ path: new URL(r.url).pathname, principal: p });
+        return tooMany();
+      },
+    );
+    expect(refused?.status).toBe(401);
+    expect(counted).toEqual([]);
+  });
+
   it("takes an archive token only from the archive route's query", async () => {
     const dir = directory({ "alice/private": { access: "none" } }, ANONYMOUS);
     const response = await get(`/alice/private/archive/${SHA}.tar.gz?token=iwj_forged`, dir);

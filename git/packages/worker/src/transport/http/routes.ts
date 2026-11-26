@@ -35,6 +35,7 @@ import { hasAccess } from "../../auth/access";
 import { BASIC_CHALLENGE } from "../../auth/credentials";
 import { ANONYMOUS, type Principal, principalActor } from "../../auth/principal";
 import type { Env } from "../../env";
+import type { Admit } from "../../http/admission";
 import { repoClient } from "../../repo/do/client";
 import type { GitDirectory, RequestLike, ResolvedRepository } from "../directory";
 import { parseRepositoryPath } from "../directory";
@@ -194,12 +195,14 @@ const withoutCookie = (request: Request): RequestLike => ({
 
 /**
  * Serves a git request, or returns null when the request is not one of
- * this module's.
+ * this module's. `admit` counts the request against whoever it authenticated
+ * as, right after authentication (`http/admission.ts`).
  */
 export async function gitHttp(
   request: Request,
   env: Pick<Env, "REPO">,
   directory: GitDirectory,
+  admit: Admit = async () => null,
 ): Promise<Response | null> {
   const url = new URL(request.url);
   const route = matchGitRoute(request.method, url.pathname);
@@ -218,6 +221,8 @@ export async function gitHttp(
       if (auth.refused) return unauthorized();
       principal = auth.principal;
     }
+    const limited = await admit(request, principal);
+    if (limited) return limited;
     const allowed = await gate(directory, principal, route.owner, route.name, "read");
     if (!allowed.ok) return allowed.response;
     const { repository } = allowed;
@@ -244,6 +249,8 @@ export async function gitHttp(
     // The browser's routes: the UI's images and download links carry the session cookie.
     const auth = await directory.authenticate(request);
     if (auth.refused) return unauthorized();
+    const limited = await admit(request, auth.principal);
+    if (limited) return limited;
     const allowed = await gate(directory, auth.principal, route.owner, route.name, "read");
     if (!allowed.ok) return allowed.response;
     const entry = await repoClient(env, allowed.repository.id).readPath(route.sha, route.path);
@@ -257,6 +264,8 @@ export async function gitHttp(
   const auth = await directory.authenticate(withoutCookie(request));
   if (auth.refused) return unauthorized();
   const principal = auth.principal ?? ANONYMOUS;
+  const limited = await admit(request, principal);
+  if (limited) return limited;
 
   const service = route.kind === "service" ? route.service : url.searchParams.get("service");
   if (!isGitService(service)) {

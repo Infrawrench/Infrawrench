@@ -15,17 +15,21 @@ Deploys are `.github/workflows/git-deploy.yml`, on pushes to `main` that touch t
 
 ## Bindings (`wrangler.jsonc`)
 
-| Binding      | What                                                                                      | Made by                                         |
-| ------------ | ----------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `HYPERDRIVE` | The app's Hyperdrive, in front of the app's Postgres. The forge's tables are in it.       | The app (`infra/README.md`, "Cloudflare edge"). |
-| `OBJECTS`    | R2 bucket `infrawrench-git`: packs and their indexes, Terraform state versions.           | `setup.mjs bucket`                              |
-| `REPO`       | Durable Object namespace, class `RepoDO`, one object per repository.                      | The deploy (migration `v1`).                    |
-| `EVENTS`     | Queue `infrawrench-git-events`, produced by `RepoDO` and consumed by this Worker.         | `setup.mjs queues`                              |
-|              | Dead letter queue `infrawrench-git-events-dlq`: a push event that failed five deliveries. | `setup.mjs queues`                              |
-| `ASSETS`     | `../web/dist`, the built UI. The Worker runs first for every request.                     | `vite build`, in the deploy.                    |
-| `connect`    | TCP port 8788 under `wrangler dev`. In production port 22 arrives through Spectrum.       | `setup.mjs spectrum`                            |
+| Binding           | What                                                                                                                                                                                                        | Made by                                                           |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `HYPERDRIVE`      | The app's Hyperdrive, in front of the app's Postgres. The forge's tables are in it.                                                                                                                         | The app (`infra/README.md`, "Cloudflare edge").                   |
+| `OBJECTS`         | R2 bucket `infrawrench-git`: packs and their indexes, Terraform state versions.                                                                                                                             | `setup.mjs bucket`                                                |
+| `REPO`            | Durable Object namespace, class `RepoDO`, one object per repository.                                                                                                                                        | The deploy (migration `v1`).                                      |
+| `TERRAFORM_STATE` | Durable Object namespace, class `TerraformStateDO`, one object per Terraform workspace.                                                                                                                     | The deploy (migration `v2`).                                      |
+| `RL_*`            | Six Rate Limiting bindings (`ratelimits`): cheap reads, heavy reads and writes, each for callers without a credential (`_ANON`, by address) and for callers who authenticated (`_SIGNED_IN`, by principal). | Nothing: a `namespace_id` is a number chosen in `wrangler.jsonc`. |
+| `EVENTS`          | Queue `infrawrench-git-events`, produced by `RepoDO` and consumed by this Worker.                                                                                                                           | `setup.mjs queues`                                                |
+|                   | Dead letter queue `infrawrench-git-events-dlq`: a push event that failed five deliveries.                                                                                                                   | `setup.mjs queues`                                                |
+| `ASSETS`          | `../web/dist`, the built UI. The Worker runs first for every request.                                                                                                                                       | `vite build`, in the deploy.                                      |
+| `connect`         | TCP port 8788 under `wrangler dev`. In production port 22 arrives through Spectrum.                                                                                                                         | `setup.mjs spectrum`                                              |
 
-`TERRAFORM_STATE` (a Durable Object per Terraform workspace) is typed in `src/env.ts` and joins `wrangler.jsonc`, with a `v2` migration, in the change that exports its class.
+The rate limits are counted per Cloudflare location and are approximate; their limits are `DEFAULT_RATE_BUDGETS` in `src/http/rate-limit.ts`, which a test holds the bindings to. Without the bindings (local development, the tests) the same budgets are counted in the data centre's cache.
+
+Two settings there are about what the site exposes, and a test holds both: `preview_urls` is off beside `workers_dev`, so no `*.workers.dev` URL is a second origin, and `observability.redact_query_string` keeps query strings out of Workers Logs, since the archive route takes a job token in its query.
 
 ## Variables (`vars` in `wrangler.jsonc`)
 

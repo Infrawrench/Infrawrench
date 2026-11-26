@@ -23,6 +23,7 @@ import {
 } from "@infrawrench/server-core/runtime/request-scope";
 import { type RepoAccessLevel, forbidden } from "@infrawrench/git-contract";
 import type { Authenticated } from "../auth/authenticate";
+import type { Admit } from "../http/admission";
 import { ANONYMOUS, type Principal } from "../auth/principal";
 import type { RepositoryWithOwner } from "../db/repositories";
 import type { Env } from "../env";
@@ -43,6 +44,8 @@ export interface Invocation {
   readonly readers: RepoReaderFactory;
   /** Resolves the request's credential (`auth/authenticate.ts`); tests pass their own. */
   readonly authenticate: (request: Request, env: Env) => Promise<Authenticated>;
+  /** Counts the request against whoever it authenticated as (`http/admission.ts`). */
+  readonly admit: Admit;
   /**
    * `Set-Cookie` lines for whatever response this request ends in, refusals
    * included: a refreshed session, a cleared one. The entry (`./server.ts`)

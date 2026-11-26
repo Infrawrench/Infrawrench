@@ -50,6 +50,11 @@ export interface GitEventActor {
 
 export type GitEvent = GitPushEvent;
 
+/** A Rate Limiting binding, as much of it as is used. */
+export interface RateLimit {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 export interface Env {
   /** Hyperdrive in front of the app's Postgres. A per-invocation client: `db/client.ts`. */
   readonly HYPERDRIVE: Hyperdrive;
@@ -67,13 +72,18 @@ export interface Env {
    */
   readonly ASSETS?: Fetcher;
   /**
-   * Cloudflare Rate Limiting bindings for callers without a credential
-   * (`http/admission.ts`): cheap reads, heavy reads, writes. Optional:
-   * without them the counts are kept in the data centre's cache.
+   * Cloudflare Rate Limiting bindings (`ratelimits` in wrangler.jsonc,
+   * `http/admission.ts`): cheap reads, heavy reads and writes, for callers
+   * without a credential (by address) and for callers who authenticated (by
+   * principal). Optional: without them the counts are kept in the data
+   * centre's cache, which local development and the tests use.
    */
-  readonly RL_READ_ANON?: { limit(options: { key: string }): Promise<{ success: boolean }> };
-  readonly RL_HEAVY_ANON?: { limit(options: { key: string }): Promise<{ success: boolean }> };
-  readonly RL_WRITE_ANON?: { limit(options: { key: string }): Promise<{ success: boolean }> };
+  readonly RL_READ_ANON?: RateLimit;
+  readonly RL_HEAVY_ANON?: RateLimit;
+  readonly RL_WRITE_ANON?: RateLimit;
+  readonly RL_READ_SIGNED_IN?: RateLimit;
+  readonly RL_HEAVY_SIGNED_IN?: RateLimit;
+  readonly RL_WRITE_SIGNED_IN?: RateLimit;
 
   // Secrets (`wrangler secret put`, or the deploy's edge-env upload).
   /** WorkOS API key: the client secret of the code and refresh-token exchanges. */

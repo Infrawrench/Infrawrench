@@ -14,6 +14,10 @@
 // spectrum. Each reads what is there first and changes nothing that is
 // already right, so the script can be run again at any point.
 //
+// The Worker's Rate Limiting bindings (`ratelimits` in wrangler.jsonc) have
+// no step: a binding's `namespace_id` is a number the configuration chooses,
+// and the deploy is what makes it count.
+//
 // Needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the environment
 // (never as arguments, which a process list shows). The token: Workers
 // Scripts, Workers R2 Storage and Queues (edit), Hyperdrive (read), and on

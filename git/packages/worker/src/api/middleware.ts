@@ -12,7 +12,7 @@
  * Both also leave what the handlers read on the fiber (`AuthRef`, `RepoRef`).
  */
 import { Context, Effect, Layer } from "effect";
-import { HttpRouter } from "effect/http";
+import { HttpRouter, HttpServerResponse } from "effect/http";
 import {
   AllowedWhenArchived,
   Authentication,
@@ -88,6 +88,9 @@ export const AuthenticationLive = Layer.succeed(Authentication)((httpEffect, { e
     if (authenticated.refused) return yield* unauthorized("That credential was not accepted");
 
     const principal = authenticated.principal;
+    // Now that it is known who is asking: their budget for this kind of request.
+    const limited = yield* inScope((inv) => inv.admit(inv.request, principal));
+    if (limited !== null) return HttpServerResponse.raw(limited);
     if (principal.kind === "job" && !JOB_GROUPS.has(group.identifier)) {
       return yield* forbidden("A CI job token reads over Git and reports commit statuses");
     }

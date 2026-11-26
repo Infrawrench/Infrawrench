@@ -6,13 +6,17 @@
 import type { Socket } from "@cloudflare/workers-types/index";
 import type { WaitUntil } from "../db/client";
 import type { Env } from "../env";
+import { admissionFor } from "../http/admission";
 import { databaseDirectory } from "./directory-db";
 import { gitHttp } from "./http/routes";
 import { sshConnect } from "./ssh/host";
 import { cacheFailureLimiter, defaultCache } from "./ssh/rate-limit";
 
 export function gitFetch(request: Request, env: Env, ctx: WaitUntil): Promise<Response | null> {
-  return gitHttp(request, env, databaseDirectory(env, ctx));
+  const admission = admissionFor(env);
+  return gitHttp(request, env, databaseDirectory(env, ctx), (counted, principal) =>
+    admission.admit(counted, principal),
+  );
 }
 
 export function gitConnect(socket: Socket, env: Env, ctx: WaitUntil): Promise<void> {

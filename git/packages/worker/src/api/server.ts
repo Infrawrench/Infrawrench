@@ -18,6 +18,7 @@ import {
 } from "@infrawrench/git-contract";
 import { currentRequestScope } from "@infrawrench/server-core/runtime/request-scope";
 import { type Authenticated, authenticateRequest } from "../auth/authenticate";
+import { type Admit, admissionFor } from "../http/admission";
 import type { Env } from "../env";
 import { type RepoReaderFactory, repoReaderFor } from "../repo/select";
 import { type Invocation, InvocationRef } from "./context";
@@ -62,6 +63,11 @@ const Unmatched = HttpRouter.add("*", "/api/*", json({ error: "Not found" }, 404
 export interface GitApiOptions {
   /** Resolves a request's credential. Tests pass a fixed caller. */
   readonly authenticate?: (request: Request, env: Env) => Promise<Authenticated>;
+  /**
+   * Counts a request against the caller it authenticated as. The Worker's
+   * own admission unless a test passes another.
+   */
+  readonly admit?: Admit;
   /** Makes a repository's reader. Tests pass a fake. */
   readonly readers?: RepoReaderFactory;
   /**
@@ -101,6 +107,8 @@ export const makeGitApi = (options: GitApiOptions = {}): GitApiHandler => {
         scope: currentRequestScope(),
         readers: options.readers ?? repoReaderFor,
         authenticate: options.authenticate ?? authenticateRequest,
+        admit:
+          options.admit ?? ((counted, principal) => admissionFor(env).admit(counted, principal)),
         cookies: [],
       };
       // HEAD is the GET route without its body.
