@@ -221,10 +221,11 @@ jobs:
       cd git/packages/worker
       GIT_WORKER_E2E=1 pnpm exec vitest run \
         --reporter=default --reporter=json --outputFile=/tmp/vitest-report.json
-      # The four that measure this repository's history (GIT_WORKER_BENCH).
+      # The five that measure this repository's history (GIT_WORKER_BENCH).
       node "$root/.infrawrench/ci/no-skips.mjs" /tmp/vitest-report.json \
         --allow test/memory.test.ts --allow test/e2e/monorepo.test.ts \
-        --allow test/pack-bench.test.ts --allow test/reader-bench.test.ts
+        --allow test/pack-bench.test.ts --allow test/reader-bench.test.ts \
+        --allow test/e2e/reader.test.ts
 
       # Over TCP: the image's first, socket-only server answers on its socket
       # while it is still initialising.

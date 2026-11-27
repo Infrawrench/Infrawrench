@@ -11,6 +11,13 @@ import {
 } from "../watch/forge.js";
 import { createGitPort } from "../watch/git.js";
 
+/** The `git` a shell finds on PATH, or null where there is none. */
+function gitOnPath(): string | null {
+  const found = spawnSync("/bin/sh", ["-c", "command -v git"], { encoding: "utf8" });
+  const where = found.status === 0 ? found.stdout.trim() : "";
+  return where === "" ? null : where;
+}
+
 // Each test runs dozens of real git processes, and `pnpm test` runs next to everything else.
 vi.setConfig({ testTimeout: 60_000 });
 
@@ -152,8 +159,12 @@ describe.skipIf(!hasGit)("the forge's git port against a real repository", () =>
     expect(refs()).toBe(before);
   });
 
-  it("never puts the token on a command line", async () => {
-    const real = execFileSync("/bin/sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+  // Watches every argument git is given through a wrapper on PATH, so it needs
+  // a git that is a file on PATH. A CI sandbox's git is not (its shell cannot
+  // find one), and there the test beside it, that git is handed the token
+  // from the environment, is what holds.
+  it.skipIf(gitOnPath() === null)("never puts the token on a command line", async () => {
+    const real = gitOnPath()!;
     const bin = path.join(base, "bin");
     const log = path.join(base, "argv.log");
     fs.mkdirSync(bin);

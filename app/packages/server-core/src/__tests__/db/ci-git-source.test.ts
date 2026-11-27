@@ -238,6 +238,7 @@ describe.skipIf(!configured)(
         state: "pending",
         description: "Running",
         targetUrl: `https://app.example.test/org/${orgId}/ci/${accepted!.id}`,
+        ciRunId: accepted!.id,
       });
     });
 
