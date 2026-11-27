@@ -73,6 +73,7 @@ const session: Session = {
   signInUrl: "/auth/sign-in",
   appUrl: "https://app.example.test",
   sshEnabled: true,
+  reservedNamesAllowed: false,
 };
 
 describe("ownersOf", () => {

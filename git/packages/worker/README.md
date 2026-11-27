@@ -67,6 +67,7 @@ Six are required: `wrangler deploy` refuses without them (`secrets.required`), a
 | `CLOUDFLARE_ACCOUNT_ID` | Optional. The Cloudflare account of the app's AI Gateway, which the review agents call Claude through. | `app_env`, uploaded by each deploy when set. | Review agents do not run: a push queues no run, and asking for one answers 422 saying they are not set up. Everything else about review (versions, findings a reviewer of your own reports, the merge block) works. |
 | `AI_GATEWAY_ID` | Optional. That gateway's name. | `app_env`, uploaded by each deploy when set. | As without `CLOUDFLARE_ACCOUNT_ID`: all three or none. |
 | `AI_GATEWAY_TOKEN` | Optional. A Cloudflare API token with the AI Gateway Run permission. The Worker holds no Anthropic key. | `app_env`, uploaded by each deploy when set. | As without `CLOUDFLARE_ACCOUNT_ID`. |
+| `INFRAWRENCH_PLATFORM_ADMIN_EMAILS` | Optional. The app's platform admins, comma separated: they may give an organisation a reserved name from Settings > Organisations, as in the app. | `app_env`, uploaded by each deploy when set. | Nobody may take a reserved name on the forge. |
 
 Nothing else the app has is given to this Worker: the deploy passes on those keys of the edge-env secret and no others. `CI_ARTIFACT_SIGNING_KEY` and the `GITHUB_APP_*` variables are read by server-core modules the bundle includes but this Worker never reaches (a run's downloads and GitHub repositories are the app's).
 

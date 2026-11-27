@@ -328,6 +328,20 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
       status: 400,
       body: { code: "username_reserved" },
     });
+    // A platform admin of the app may give an organisation a reserved name, as in the app.
+    const env = world.env as { INFRAWRENCH_PLATFORM_ADMIN_EMAILS?: string };
+    env.INFRAWRENCH_PLATFORM_ADMIN_EMAILS = `someone@example.test, ${erin.email.toUpperCase()}`;
+    expect((await world.call("GET", "/api/session", { as: erin })).body.reservedNamesAllowed).toBe(
+      true,
+    );
+    expect(
+      (await world.call("GET", "/api/session/username-availability?username=explore", { as: erin }))
+        .body,
+    ).toMatchObject({ available: true });
+    expect((await world.call("GET", "/api/session", { as: dave })).body.reservedNamesAllowed).toBe(
+      false,
+    );
+    delete env.INFRAWRENCH_PLATFORM_ADMIN_EMAILS;
     expect(await claim(erin, "-nope")).toMatchObject({
       status: 400,
       body: { code: "name_invalid" },

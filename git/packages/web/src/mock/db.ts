@@ -119,6 +119,7 @@ export function session(): Session {
       signInUrl: "/auth/sign-in",
       appUrl: APP_URL,
       sshEnabled: true,
+      reservedNamesAllowed: false,
     };
   }
   const own = namespaces.find((n) => n.userId === user.id && user.username !== null);
@@ -174,6 +175,7 @@ export function session(): Session {
     signInUrl: "/auth/sign-in",
     appUrl: APP_URL,
     sshEnabled: true,
+    reservedNamesAllowed: false,
   };
 }
 

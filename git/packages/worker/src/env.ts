@@ -153,6 +153,11 @@ export interface Env {
    * pages, and an inbound connection is closed at once. Anything else is on.
    */
   readonly SSH_ENABLED?: string;
+  /**
+   * The app's platform admins (`INFRAWRENCH_PLATFORM_ADMIN_EMAILS`, comma
+   * separated), who may give an organisation a reserved name, as in the app.
+   */
+  readonly INFRAWRENCH_PLATFORM_ADMIN_EMAILS?: string;
   /** The Infrawrench app's origin, for links back. */
   readonly APP_ORIGIN?: string;
 }
@@ -168,6 +173,19 @@ export const sshHost = (env: Pick<Env, "SSH_HOST" | "SITE_ORIGIN">): string =>
   env.SSH_HOST !== undefined && env.SSH_HOST !== ""
     ? env.SSH_HOST
     : new URL(siteOrigin(env)).hostname;
+
+/** Whether this email is one of the app's platform admins (the app's `auth/platform-admin.ts`). */
+export const isPlatformAdmin = (
+  env: Pick<Env, "INFRAWRENCH_PLATFORM_ADMIN_EMAILS">,
+  email: string | null | undefined,
+): boolean =>
+  email !== null &&
+  email !== undefined &&
+  (env.INFRAWRENCH_PLATFORM_ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((entry) => entry.trim().toLowerCase())
+    .filter(Boolean)
+    .includes(email.toLowerCase());
 
 /** Whether Git over SSH is offered (`SSH_ENABLED`). */
 export const sshEnabled = (env: Pick<Env, "SSH_ENABLED">): boolean => env.SSH_ENABLED !== "false";

@@ -62,7 +62,7 @@ import {
 import { getOrganization, isMember } from "../../db/organizations";
 import { countVisibleRepositories } from "../../db/repository-lists";
 import { getGitUser, getUser } from "../../db/users";
-import { appOrigin, sshEnabled } from "../../env";
+import { appOrigin, isPlatformAdmin, sshEnabled } from "../../env";
 import { type Cx, op } from "../context";
 import { iso } from "../views/repositories";
 
@@ -252,6 +252,7 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
           signInUrl: AUTH_PATHS.signIn,
           appUrl: appOrigin(cx.env),
           sshEnabled: sshEnabled(cx.env),
+          reservedNamesAllowed: false,
         };
         const userId = cx.principal.kind === "user" ? cx.principal.userId : null;
         const user = userId ? await getUser(userId) : null;
@@ -331,6 +332,7 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
                 },
           organizations,
           ...base,
+          reservedNamesAllowed: isPlatformAdmin(cx.env, user.email),
         };
       }),
     )
@@ -347,7 +349,12 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
       op(async (cx, { query }) => {
         const username = query.username;
         const problem = namespaceSlugProblem(username);
-        if (problem !== null) {
+        // A platform admin is told whether a reserved name is free, for an organisation's claim.
+        const adminAsks =
+          problem === "reserved" &&
+          cx.principal.kind === "user" &&
+          isPlatformAdmin(cx.env, (await getUser(cx.principal.userId))?.email);
+        if (problem !== null && !adminAsks) {
           return {
             username,
             available: false,
@@ -542,9 +549,12 @@ export const NamespacesHandlers = HttpApiBuilder.group(GitApi, "namespaces", (ha
         const userId = cx.principal.userId;
         const organization = await getOrganization(params.orgId);
         if (!organization) throw notFound("No such organisation");
-        // The app lets a platform admin take a reserved name (`mayUseReservedNames`).
-        // Nobody does here: that stays in the app's Settings > Git.
-        checkSlug(payload.slug, "name_invalid", "username_reserved");
+        // A platform admin may give an organisation a reserved name, as in the
+        // app's Settings > Git (`mayUseReservedNames`); the shape rules still hold.
+        const admin = isPlatformAdmin(cx.env, (await getUser(userId))?.email);
+        if (!(admin && namespaceSlugProblem(payload.slug) === "reserved")) {
+          checkSlug(payload.slug, "name_invalid", "username_reserved");
+        }
         // An organisation's namespace needs a paid plan, as in the app. One that
         // has a namespace is not asked: it is answered 409 below, whatever its plan.
         if ((await getNamespaceForOrganization(organization.id)) === null) {

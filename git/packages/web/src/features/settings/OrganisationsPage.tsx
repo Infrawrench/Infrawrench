@@ -33,15 +33,22 @@ const SITE_HOST = SITE_ORIGIN.replace(/^https?:\/\//, "");
 const NAME_CODES = new Set(["namespace_taken", "name_invalid", "username_reserved"]);
 
 function ClaimForm({ organization }: { organization: SessionOrganization }) {
+  const session = useSession();
   const [typed, setTyped] = useState<string | null>(null);
   // Lower case, as a URL reads; the person can type it otherwise.
   const value = typed ?? suggestSlug(organization.name).toLowerCase();
-  const problem = namespaceSlugProblem(value);
+  // A platform admin may give an organisation a reserved name; the shape rules still hold.
+  const reservedAllowed = session.data?.reservedNamesAllowed === true;
+  const nameProblem = (slug: string) => {
+    const found = namespaceSlugProblem(slug);
+    return found === "reserved" && reservedAllowed ? null : found;
+  };
+  const problem = nameProblem(value);
   const settled = useDebounced(value, 300);
   // A name is one list for people and organisations: this asks it.
   const availability = useQuery({
     ...queries.session.usernameAvailability({ query: { username: settled } }),
-    enabled: settled !== "" && namespaceSlugProblem(settled) === null,
+    enabled: settled !== "" && nameProblem(settled) === null,
     staleTime: 10_000,
   });
   const checked = availability.data?.username === value ? availability.data : undefined;

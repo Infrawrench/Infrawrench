@@ -249,6 +249,7 @@ describe("plan limits", () => {
       signInUrl: "/auth/sign-in",
       appUrl: "https://app.example.test",
       sshEnabled: true,
+      reservedNamesAllowed: false,
     });
     expect(session.organizations[0]?.defaultVisibility).toBe("public");
     expect(session.personal?.privateRepositories).toBe(false);
