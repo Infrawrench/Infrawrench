@@ -6373,7 +6373,7 @@ The app never embeds the forge: it links out and keeps the organisation's own se
 
 ### The shell and a person's work
 
-There is one UI for everyone, in one sidebar shell. Someone signed in gets the workspace switcher, Home (a page of their work), Your work (Changes, Reviews, Mentions), a group per namespace with its repositories and the account menu at the foot; a signed-out reader gets the same shell reduced to the site's name, Explore, the public repository they are on and Sign in at the foot. `git/packages/web/NOTES.md` and `git/packages/worker/NOTES.md` ("A person's work across repositories") have the detail. What binds a change:
+There is one UI for everyone, in one sidebar shell. Someone signed in gets the workspace switcher, Home (a page of their work), Your work (Changes, Reviews, Mentions), the selected workspace's repositories (the sidebar follows the workspace picked, and the repository being read) and the account menu at the foot; a signed-out reader gets the same shell reduced to the site's name, Explore, the public repository they are on and Sign in at the foot. `git/packages/web/NOTES.md` and `git/packages/worker/NOTES.md` ("A person's work across repositories") have the detail. What binds a change:
 
 - **The frame is chosen in one place** (`web/src/routes/__root.tsx`). A page never asks which frame it is in: it renders `TopBar` and the shell places it.
 - **`/api/workspace` is scoped by `tiedTo`**, the repositories the viewer has a tie to, never `visibleTo`. Anything added to it goes behind the same scope, and reads what a row shows in the row's own statement.

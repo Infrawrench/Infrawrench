@@ -112,7 +112,7 @@ Public repositories are free. Private repositories and storage follow the organi
 
 ## Style
 
-The app's look: `@infrawrench/ui`'s tokens and components, dense layouts, no blurbs. A page has a name and its controls; explanation goes in the docs. Every page sits beside one sidebar: for someone signed in, the workspace switcher, Home, Your work (Changes, Reviews, Mentions), a group per namespace with its repositories and the account menu at the foot; for a signed-out reader, the site's name, Explore, the public repository being read and Sign in. A repository has no header: the top bar names it and holds its sections, and the Code tab is the file table with the README below.
+The app's look: `@infrawrench/ui`'s tokens and components, dense layouts, no blurbs. A page has a name and its controls; explanation goes in the docs. Every page sits beside one sidebar: for someone signed in, the workspace switcher, Home, Your work (Changes, Reviews, Mentions), the selected workspace's repositories (the sidebar follows the workspace picked, and the repository being read) and the account menu at the foot; for a signed-out reader, the site's name, Explore, the public repository being read and Sign in. A repository has no header: the top bar names it and holds its sections, and the Code tab is the file table with the README below.
 
 ## Local development
 

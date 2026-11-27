@@ -153,7 +153,7 @@ describe("home", () => {
 });
 
 describe("the sidebar", () => {
-  it("lists the reader's work and each namespace's repositories, the others folded", async () => {
+  it("lists the reader's work and only the selected workspace's repositories", async () => {
     open("/");
     await screen.findByRole("heading", { name: /active branches/ }, wait);
     const nav = sidebar();
@@ -165,17 +165,58 @@ describe("the sidebar", () => {
     ]) {
       expect(nav.getByRole("link", { name: name! }).getAttribute("href")).toBe(href);
     }
-    expect(nav.getByRole("link", { name: "infra" }).getAttribute("href")).toBe("/acme/infra");
-    // Tidewater is not the workspace: its repositories are a click away.
+    // One flat list under the workspace's name, which does not fold.
+    const acme = within(nav.getByRole("list", { name: "Acme" }));
+    expect(acme.getByRole("link", { name: "infra" }).getAttribute("href")).toBe("/acme/infra");
+    expect(nav.queryByRole("button", { name: "Acme" })).toBeNull();
+    // No other namespace is in the sidebar, folded or not.
     expect(nav.queryByRole("link", { name: "ledger" })).toBeNull();
-    const tidewater = nav.getByRole("button", { name: "Tidewater" });
-    expect(tidewater.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(tidewater);
-    expect(nav.getByRole("link", { name: "ledger" }).getAttribute("href")).toBe(
-      "/tidewater/ledger",
-    );
+    expect(nav.queryByText("Tidewater")).toBeNull();
+    expect(nav.queryByText("Mara Lindqvist")).toBeNull();
     fireEvent.click(nav.getByRole("button", { name: "Your work" }));
     expect(nav.queryByRole("link", { name: "Changes" })).toBeNull();
+  });
+
+  it("swaps the list when another workspace is picked", async () => {
+    open("/");
+    await screen.findByRole("heading", { name: /active branches/ }, wait);
+    fireEvent.click(screen.getByRole("button", { name: "Workspace: Acme" }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Tidewater" }));
+    const nav = sidebar();
+    const tidewater = within(await nav.findByRole("list", { name: "Tidewater" }, wait));
+    expect(tidewater.getByRole("link", { name: "ledger" }).getAttribute("href")).toBe(
+      "/tidewater/ledger",
+    );
+    expect(nav.queryByRole("list", { name: "Acme" })).toBeNull();
+    expect(nav.queryByRole("link", { name: "edge-router" })).toBeNull();
+  });
+
+  it("switches to the workspace of the repository shown", async () => {
+    open("/tidewater/ledger");
+    await screen.findByRole("navigation", { name: "Repository" }, wait);
+    const nav = sidebar();
+    const tidewater = within(await nav.findByRole("list", { name: "Tidewater" }, wait));
+    expect(tidewater.getByRole("link", { name: "ledger" }).getAttribute("aria-current")).toBe(
+      "page",
+    );
+    expect(nav.queryByRole("list", { name: "Acme" })).toBeNull();
+    expect(nav.queryByRole("list", { name: "Viewing" })).toBeNull();
+    // The choice is kept: the switcher and the pages that follow it say the same.
+    await waitFor(() => expect(localStorage.getItem("git-workspace")).toBe("tidewater"), wait);
+    expect(screen.getByRole("button", { name: "Workspace: Tidewater" })).toBeTruthy();
+  });
+
+  it("keeps the workspace on somebody else's repository, which it shows as Viewing", async () => {
+    open("/jonas/edge-router");
+    await screen.findByRole("navigation", { name: "Repository" }, wait);
+    const nav = sidebar();
+    const viewing = within(await nav.findByRole("list", { name: "Viewing" }, wait));
+    expect(viewing.getByRole("link", { name: "edge-router" }).getAttribute("href")).toBe(
+      "/jonas/edge-router",
+    );
+    expect(nav.getByRole("list", { name: "Acme" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Workspace: Acme" })).toBeTruthy();
+    expect(localStorage.getItem("git-workspace")).toBeNull();
   });
 
   it("frames a repository's pages, with the repository marked and named in the bar", async () => {

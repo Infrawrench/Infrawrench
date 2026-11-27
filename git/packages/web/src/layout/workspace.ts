@@ -46,7 +46,7 @@ const subscribe = (listener: () => void) => {
   return () => listeners.delete(listener);
 };
 
-/** A small remembered open-or-closed flag: a sidebar group. */
+/** A small remembered open-or-closed flag: a folding part of the sidebar. */
 export function useStoredFlag(key: string, initial: boolean): [boolean, (next: boolean) => void] {
   const stored = useSyncExternalStore(subscribe, () => {
     try {
@@ -68,6 +68,16 @@ export function useStoredFlag(key: string, initial: boolean): [boolean, (next: b
   );
   return [stored === null ? initial : stored === "1", set];
 }
+
+/**
+ * The workspace whose namespace is `owner`, or null when the reader has no
+ * tie to it (somebody else's public repository). Slugs compare lowercased.
+ */
+export const workspaceOwning = (
+  workspaces: ReadonlyArray<Workspace>,
+  owner: string,
+): Workspace | null =>
+  workspaces.find((workspace) => workspace.slug.toLowerCase() === owner.toLowerCase()) ?? null;
 
 export interface Workspaces {
   /** Undefined until the session and the repositories are known. */

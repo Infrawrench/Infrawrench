@@ -3,8 +3,8 @@
  * page, which has a bar of its own.
  *
  * - Someone signed in with a username: the workspace, Home, their work
- *   (Changes, Reviews, Mentions), each namespace's repositories with a mark
- *   on the ones an agent is working in, and themselves at the foot.
+ *   (Changes, Reviews, Mentions), the selected workspace's repositories with
+ *   a mark on the ones an agent is working in, and themselves at the foot.
  * - Anyone else (signed out, or still choosing a username): the site's name,
  *   Explore, the repository being read and its namespace, and Sign in (or
  *   the account menu) at the foot.
@@ -25,7 +25,7 @@ import { paths } from "../lib/paths";
 import { signInHref, type SessionData } from "../lib/session";
 import { accountName, useAccountMenuItems } from "./account-menu";
 import { BarTitle, useBarSlot } from "./TopBar";
-import { type Workspace, useStoredFlag, useWorkspaces } from "./workspace";
+import { type Workspace, useStoredFlag, useWorkspaces, workspaceOwning } from "./workspace";
 
 /** The Infrawrench mark (`brand/mark.svg`), drawn in the text colour. */
 export function BrandMark({ size = 20 }: { size?: number }) {
@@ -118,6 +118,25 @@ function Group({
           {children}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+/** A titled part of the sidebar that does not fold: the workspace's repositories. */
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  const heading = useId();
+  return (
+    <div className="mt-5">
+      <h2
+        id={heading}
+        title={title}
+        className="flex h-7 items-center px-2 text-xs font-normal text-on-surface-muted"
+      >
+        <span className="truncate">{title}</span>
+      </h2>
+      <ul aria-labelledby={heading} className="mt-0.5 space-y-px">
+        {children}
+      </ul>
     </div>
   );
 }
@@ -440,12 +459,24 @@ function MemberSidebar({
   unclaimed: boolean;
 }) {
   const pathname = useLocation({ select: (location) => location.pathname });
-  const { workspaces, current, select } = useWorkspaces();
+  const { workspaces, current: chosen, select } = useWorkspaces();
   const working = useAgentRepositories();
-  // The current workspace's repositories first, open; the others folded.
-  const ordered = [...(workspaces ?? [])].sort(
-    (a, b) => Number(b.slug === current?.slug) - Number(a.slug === current?.slug),
-  );
+  const here = repositoryOf(pathname);
+  // A repository of another of the reader's workspaces: the sidebar is that workspace's.
+  const owning = here !== null ? workspaceOwning(workspaces ?? [], here.owner) : null;
+  const current = owning ?? chosen;
+  const follow = owning !== null && owning.slug !== chosen?.slug ? owning.slug : null;
+  useEffect(() => {
+    if (follow !== null) select(follow);
+  }, [follow, select]);
+  // Somebody else's repository: shown above the list, from the cache its layout fills.
+  const foreign = here !== null && workspaces !== undefined && owning === null;
+  const viewed = useQuery({
+    ...queries.repositories.get({ params: here ?? { owner: "", repo: "" } }),
+    enabled: foreign,
+    retry: false,
+  });
+  const viewing = foreign ? viewed.data : undefined;
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-2.5">
@@ -479,20 +510,27 @@ function MemberSidebar({
             Mentions
           </NavItem>
         </Group>
-        {ordered.map((workspace) => (
-          <Group
-            key={workspace.slug}
-            id={`ns:${workspace.slug}`}
-            title={workspace.name}
-            initiallyOpen={workspace.slug === current?.slug}
-            holdsCurrent={workspace.repositories.some((repository) =>
-              isIn(pathname, repository.owner.slug, repository.name),
-            )}
-          >
-            {workspace.repositories.length === 0 ? (
-              <li className="px-2 py-1 text-xs text-on-surface-muted">No repositories</li>
+        {viewing !== undefined ? (
+          <Section title="Viewing">
+            <RepositoryItem
+              owner={viewing.owner.slug}
+              name={viewing.name}
+              visibility={viewing.visibility}
+              active
+            />
+          </Section>
+        ) : null}
+        {current !== null ? (
+          <Section title={current.name}>
+            {current.repositories.length === 0 ? (
+              <>
+                <li className="px-2 py-1 text-xs text-on-surface-muted">No repositories</li>
+                <NavItem href={paths.newRepository(current.slug)} icon="plus" active={false}>
+                  New repository
+                </NavItem>
+              </>
             ) : (
-              workspace.repositories.map((repository) => (
+              current.repositories.map((repository) => (
                 <RepositoryItem
                   key={repository.id}
                   owner={repository.owner.slug}
@@ -503,8 +541,8 @@ function MemberSidebar({
                 />
               ))
             )}
-          </Group>
-        ))}
+          </Section>
+        ) : null}
       </nav>
       <div className="shrink-0 px-2.5 py-2">
         <AccountButton user={user} appUrl={appUrl} />

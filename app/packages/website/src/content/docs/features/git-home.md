@@ -13,8 +13,8 @@ A sidebar runs down the left of every page of [git.infrawrench.com](./git-gettin
 - **Workspace**, at the top, is the namespace the home page and the lists are of: one of your organisations, your own namespace, or a namespace you collaborate in. Pick another from its menu. The same menu opens the namespace's page, creates a repository and opens **Explore**. The magnifier beside it searches repositories.
 - **Home** is the page described below.
 - **Your work** holds **Changes**, **Reviews** and **Mentions**.
-- Each namespace you have repositories in is a group that lists them. The current workspace's group is open; click a group's name to fold or unfold it.
-- The repository you are in opens under its name: **Recent issues**, its five most recently updated open issues, and **Recently edited branches**, the five branches with the latest changes. Each folds like a group.
+- Under the workspace's name are its repositories, and only its: pick another workspace and the list changes with it. Opening a repository of another of your workspaces switches to that workspace. A repository that belongs to none of them, such as someone else's public repository, appears in a **Viewing** row above the list and leaves the workspace as it was. A workspace with no repositories shows **New repository**.
+- The repository you are in opens under its name: **Recent issues**, its five most recently updated open issues, and **Recently edited branches**, the five branches with the latest changes. Click either heading to fold or unfold it.
 - Your name, at the foot, opens your repositories, your stars, **Settings** and **Sign out**.
 
 On a narrow window the sidebar is behind the menu button in the top bar.
