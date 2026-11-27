@@ -36,6 +36,10 @@ export interface ServeStats {
   refsUpdated: number;
   /** How the pack was made: `everything`, `objects` (stored bytes reused) or `rebuilt`. */
   packSource: "everything" | "objects" | "rebuilt" | null;
+  /** Milliseconds spent choosing a fetch's objects, before its pack's first byte. */
+  selectMillis: number;
+  /** Milliseconds from a fetch's pack's first byte to its last, the client's pace included. */
+  packMillis: number;
 }
 
 export interface Context {

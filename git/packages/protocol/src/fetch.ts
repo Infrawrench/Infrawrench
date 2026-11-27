@@ -11,6 +11,7 @@ import {
   SIDE_BAND_PROGRESS,
   concatBytes,
   encodeSideBand,
+  encodeSideBandRun,
   iterateBytes,
   writePack,
 } from "@infrawrench/git-core";
@@ -24,6 +25,7 @@ import {
   selectCommits,
   selectObjects,
   shallowByDepth,
+  shallowEdges,
   shallowByRule,
 } from "./walk";
 
@@ -223,6 +225,22 @@ export async function buildPack(
   onProgress: (text: string) => void,
 ): Promise<PackOutput> {
   const { backend } = ctx;
+  const started = Date.now();
+  const pack = await choosePack(ctx, graph, listing, request, plan, common, onProgress);
+  ctx.stats.selectMillis += Date.now() - started;
+  return pack;
+}
+
+async function choosePack(
+  ctx: Context,
+  graph: CommitGraph,
+  listing: RefListing,
+  request: FetchRequest,
+  plan: FetchPlan,
+  common: readonly ObjectId[],
+  onProgress: (text: string) => void,
+): Promise<PackOutput> {
+  const { backend } = ctx;
   const whole = common.length === 0 && request.clientShallow.length === 0 && !deepens(request);
   if (whole && backend.packEverything) {
     // A clone: everything, provided the client asked for every branch and tag.
@@ -248,9 +266,13 @@ export async function buildPack(
     new Set(request.clientShallow),
     new Set(plan.shallow.unshallow),
   );
+  // A shallow client's history is cut, so what it has is not found by walking down to it.
+  const edges = wantsShallowInfo(request)
+    ? await shallowEdges(graph, commits.edges, common)
+    : commits.edges;
   const selection = await selectObjects(graph, {
     commits: commits.commits,
-    edges: commits.edges,
+    edges,
     tags: plan.wants.tags,
     trees: plan.wants.trees,
     blobs: plan.wants.blobs,
@@ -311,6 +333,7 @@ export async function* sendPack(
   const before = progress();
   if (before.length > 0) yield concatBytes(before);
   let bytes = 0;
+  const started = Date.now();
   if (sideBand === 0) {
     for await (const chunk of iterateBytes(pack.stream)) {
       bytes += chunk.length;
@@ -328,18 +351,19 @@ export async function* sendPack(
       held.push(chunk);
       heldBytes += chunk.length;
       if (heldBytes < room) continue;
-      const all = concatBytes(held);
-      const whole = all.length - (all.length % room);
-      yield concatBytes(encodeSideBand(SIDE_BAND_DATA, all.subarray(0, whole), sideBand));
-      held = whole < all.length ? [all.subarray(whole)] : [];
-      heldBytes = all.length - whole;
+      const whole = heldBytes - (heldBytes % room);
+      yield encodeSideBandRun(SIDE_BAND_DATA, held, whole, sideBand);
+      // What did not fill a packet is the end of the last piece: less than a packet of it.
+      const last = held[held.length - 1]!;
+      const rest = heldBytes - whole;
+      held = rest > 0 ? [last.subarray(last.length - rest)] : [];
+      heldBytes = rest;
     }
-    if (heldBytes > 0) {
-      yield concatBytes(encodeSideBand(SIDE_BAND_DATA, concatBytes(held), sideBand));
-    }
+    if (heldBytes > 0) yield encodeSideBandRun(SIDE_BAND_DATA, held, heldBytes, sideBand);
   }
   ctx.stats.objectsSent += pack.objectCount;
   ctx.stats.packBytesSent += bytes;
+  ctx.stats.packMillis += Date.now() - started;
   pendingProgress.push(
     `Total ${pack.objectCount} (delta 0), reused ${pack.objectCount} (delta 0)\n`,
   );

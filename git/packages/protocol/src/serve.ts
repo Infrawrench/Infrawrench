@@ -34,6 +34,8 @@ export interface ServeOptions {
   readonly stats?: ServeStats;
   /** A failure that was not the client's doing. The client is told "internal error". */
   readonly onError?: (error: unknown) => void;
+  /** The conversation is over, however it ended: `stats` is as final as it gets. */
+  readonly onEnd?: () => void;
 }
 
 export function newServeStats(): ServeStats {
@@ -44,6 +46,8 @@ export function newServeStats(): ServeStats {
     packBytesReceived: 0,
     refsUpdated: 0,
     packSource: null,
+    selectMillis: 0,
+    packMillis: 0,
   };
 }
 
@@ -83,6 +87,11 @@ export function serve(options: ServeOptions): ReadableStream<Uint8Array> {
         : concatBytes(encodeSideBand(SIDE_BAND_ERROR, `${message}\n`, ctx.errorBand));
     } finally {
       await ctx.reader.cancel().catch(() => undefined);
+      try {
+        options.onEnd?.();
+      } catch {
+        // A host's bookkeeping never changes how a conversation ends.
+      }
     }
   }
   return streamFrom(run());
