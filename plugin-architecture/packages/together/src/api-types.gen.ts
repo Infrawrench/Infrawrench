@@ -249,7 +249,29 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getAllEvaluationJobs"];
+        /** @deprecated */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                    status?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EvaluationJob"][];
+                    };
+                };
+            };
+        };
         put?: never;
         post?: never;
         delete?: never;
@@ -265,7 +287,28 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["getEvaluationJobDetails"];
+        /** @deprecated */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["EvaluationJob"];
+                    };
+                };
+            };
+        };
         put?: never;
         post?: never;
         delete?: never;
@@ -1289,6 +1332,7 @@ export interface components {
             /** @enum {string} */
             status: "SUPPORTED_MODEL_STATUS_RECOMMENDED" | "SUPPORTED_MODEL_STATUS_SUPPORTED" | "SUPPORTED_MODEL_STATUS_DEPRECATED" | "SUPPORTED_MODEL_STATUS_HIDDEN";
             tags?: string[];
+            readonly unitPrices?: components["schemas"]["DE.SupportedModelUnitPrice"][];
             /** Format: date-time */
             updatedAt: string;
         };
@@ -1320,6 +1364,14 @@ export interface components {
             input?: number;
             /** Format: double */
             output?: number;
+        };
+        "DE.SupportedModelUnitPrice": {
+            /** Format: double */
+            priceUsd: number;
+            /** @enum {string} */
+            tier: "PRICING_TIER_STANDARD" | "PRICING_TIER_BATCH" | "PRICING_TIER_REALTIME";
+            /** @enum {string} */
+            unit: "PRICING_UNIT_AUDIO_MINUTE" | "PRICING_UNIT_MILLION_CHARACTERS";
         };
         "DE.ThroughputMetrics": {
             avgBatchDepth?: number;
@@ -1361,6 +1413,7 @@ export interface components {
                 type: string;
             };
         };
+        /** @deprecated */
         EvaluationClassifyResults: {
             generation_fail_count?: number | null;
             invalid_label_count?: number | null;
@@ -1369,6 +1422,7 @@ export interface components {
             pass_percentage?: number | null;
             result_file_id?: string;
         };
+        /** @deprecated */
         EvaluationCompareResults: {
             A_wins?: number;
             B_wins?: number;
@@ -1377,6 +1431,7 @@ export interface components {
             result_file_id?: string;
             Ties?: number;
         };
+        /** @deprecated */
         EvaluationJob: {
             /** Format: date-time */
             created_at?: string;
@@ -1396,12 +1451,14 @@ export interface components {
             updated_at?: string;
             workflow_id?: string;
         };
+        /** @deprecated */
         EvaluationJobStatusUpdate: {
             message?: string;
             status?: string;
             /** Format: date-time */
             timestamp?: string;
         };
+        /** @deprecated */
         EvaluationScoreResults: {
             aggregated_scores?: {
                 mean_score?: number;
@@ -1709,7 +1766,7 @@ export interface components {
             /** Format: date-time */
             first_ready_at?: string;
             /** @enum {string} */
-            gpu_type: "H100_SXM" | "H200_SXM" | "RTX_6000_PCI" | "L40_PCIE" | "B200_SXM" | "H100_SXM_INF" | "B300_SXM" | "GB200_SXM";
+            gpu_type: "H100_SXM" | "H200_SXM" | "RTX_6000_PCI" | "L40_PCIE" | "B200_SXM" | "H100_SXM_INF" | "B300_SXM" | "GB200_NVL";
             gpu_worker_nodes: components["schemas"]["GPUClusterGPUWorkerNode"][];
             install_traefik?: boolean;
             is_in_substrate?: boolean;
@@ -2324,49 +2381,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RegionListResponse"];
-                };
-            };
-        };
-    };
-    getAllEvaluationJobs: {
-        parameters: {
-            query?: {
-                limit?: number;
-                status?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EvaluationJob"][];
-                };
-            };
-        };
-    };
-    getEvaluationJobDetails: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["EvaluationJob"];
                 };
             };
         };
