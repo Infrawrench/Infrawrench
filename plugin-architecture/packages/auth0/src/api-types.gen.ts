@@ -1008,7 +1008,7 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        Client: Client_8cffcdf3;
+        Client: Client_832e0428;
         ClientAddonAWS: {
             lifetime_in_seconds?: number;
             principal?: string;
@@ -1241,6 +1241,8 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        ClientAllowPersonalAgentBrowserJoin: boolean;
+        ClientAllowPersonalAgentBrowserJoinOrNull: boolean | null;
         /**
          * @default ip
          * @enum {string}
@@ -1605,6 +1607,11 @@ export interface components {
         }) | null;
         /** @enum {string} */
         ConnectionIdentifierPrecedenceEnum: "email" | "phone_number" | "username";
+        /** @enum {string} */
+        ConnectionIdTokenEncryptedResponseAlgEnum: "RSA-OAEP-256" | "RSA-OAEP-384" | "RSA-OAEP-512" | "ECDH-ES" | "ECDH-ES+A128KW" | "ECDH-ES+A192KW" | "ECDH-ES+A256KW";
+        /** @enum {string} */
+        ConnectionIdTokenEncryptedResponseEncEnum: "A128CBC-HS256" | "A192CBC-HS384" | "A256CBC-HS512" | "A128GCM" | "A192GCM" | "A256GCM";
+        ConnectionIdTokenEncryptedResponseEncs: components["schemas"]["ConnectionIdTokenEncryptedResponseEncEnum"][];
         ConnectionIdTokenSessionExpirySupported: boolean;
         /** @enum {string} */
         ConnectionIdTokenSignedResponseAlgEnum: "ES256" | "ES384" | "PS256" | "PS384" | "RS256" | "RS384" | "RS512";
@@ -1622,6 +1629,7 @@ export interface components {
         };
         ConnectionPasskeyAuthenticationMethod: {
             enabled?: boolean;
+            signup_behavior?: components["schemas"]["ConnectionSignupBehaviorEnum"];
         };
         /** @enum {string} */
         ConnectionPasskeyChallengeUIEnum: "both" | "autofill" | "button";
@@ -1667,6 +1675,7 @@ export interface components {
             active?: boolean;
             custom?: string[];
             default?: components["schemas"]["PasswordDefaultDictionariesEnum"];
+            match_type?: components["schemas"]["PasswordDictionaryMatchTypeEnum"];
         };
         ConnectionPasswordOptionsHistory: {
             active?: boolean;
@@ -1681,7 +1690,7 @@ export interface components {
         ConnectionPhoneOtpAuthenticationMethod: {
             enabled?: boolean;
         };
-        ConnectionPropertiesOptions: ConnectionPropertiesOptions_acf7de7d;
+        ConnectionPropertiesOptions: ConnectionPropertiesOptions_63cd29cc;
         /** Format: uri */
         ConnectionPushedAuthorizationRequestEndpoint: string;
         ConnectionsDiscoveryUrl: string | null;
@@ -1811,6 +1820,7 @@ export interface components {
             addons?: components["schemas"]["ClientAddons"];
             /** Format: agent-id-or-null */
             agent_id?: string | null;
+            allow_personal_agent_browser_join?: components["schemas"]["ClientAllowPersonalAgentBrowserJoin"];
             allowed_clients?: string[];
             allowed_logout_urls?: string[];
             allowed_origins?: string[];
@@ -1837,6 +1847,7 @@ export interface components {
             express_configuration?: components["schemas"]["ExpressConfiguration"];
             fedcm_login?: components["schemas"]["FedCMLogin"];
             form_template?: string;
+            google_account_linking?: components["schemas"]["GoogleAccountLinkingConfigurationCreate"];
             grant_types?: string[];
             identity_assertion_authorization_grant?: components["schemas"]["CreateIdentityAssertionAuthorizationGrant"];
             /** Format: absolute-https-uri-with-placeholders-or-empty */
@@ -1880,7 +1891,7 @@ export interface components {
             token_vault_privileged_access?: components["schemas"]["ClientTokenVaultPrivilegedAccessWithPublicKey"];
             web_origins?: string[];
         };
-        CreateClientResponseContent: Client_8cffcdf3;
+        CreateClientResponseContent: Client_832e0428;
         CreateConnectionRequestContent: {
             authentication?: components["schemas"]["ConnectionAuthenticationPurpose"];
             connected_accounts?: components["schemas"]["ConnectionConnectedAccountsPurpose"];
@@ -2077,8 +2088,9 @@ export interface components {
             token_lifetime?: number;
             token_lifetime_for_anonymous_access_tokens?: number | null;
             type?: components["schemas"]["ResourceServerTypeEnum"];
+            use_for_personal_agent_protocol?: components["schemas"]["ResourceServerUseForPersonalAgentProtocol"];
         };
-        CreateResourceServerResponseContent: CreateResourceServerResponseContent_595d54a2;
+        CreateResourceServerResponseContent: CreateResourceServerResponseContent_a4fbca59;
         CreateRoleRequestContent: {
             description?: string;
             name: string;
@@ -2317,8 +2329,8 @@ export interface components {
             active?: boolean;
             default_method?: components["schemas"]["DefaultMethodEmailIdentifierEnum"];
         };
-        ExpressConfiguration: ExpressConfiguration_961b97fc;
-        ExpressConfigurationOrNull: ExpressConfiguration_961b97fc | null;
+        ExpressConfiguration: ExpressConfiguration_1fd82c74;
+        ExpressConfigurationOrNull: ExpressConfiguration_1fd82c74 | null;
         FedCMLogin: {
             google?: components["schemas"]["FedCMLoginGoogle"];
         };
@@ -2355,7 +2367,7 @@ export interface components {
         };
         GetBreachedPasswordDetectionSettingsResponseContent: GetBreachedPasswordDetectionSettingsResponseContent_071b7c00;
         GetBruteForceSettingsResponseContent: GetBruteForceSettingsResponseContent_eb076cc6;
-        GetClientResponseContent: Client_8cffcdf3;
+        GetClientResponseContent: Client_832e0428;
         GetConnectionEnabledClientsResponseContent: {
             clients: components["schemas"]["ConnectionEnabledClient"][];
             next?: string;
@@ -2397,7 +2409,7 @@ export interface components {
         };
         GetLogStreamResponseContent: CreateLogStreamResponseContent_28cbcf67;
         GetOrganizationResponseContent: GetOrganizationResponseContent_e16d9399;
-        GetResourceServerResponseContent: CreateResourceServerResponseContent_595d54a2;
+        GetResourceServerResponseContent: CreateResourceServerResponseContent_a4fbca59;
         GetRoleResponseContent: {
             description?: string;
             id?: string;
@@ -2411,8 +2423,17 @@ export interface components {
             shields?: components["schemas"]["SuspiciousIPThrottlingShieldsEnum"][];
             stage?: components["schemas"]["SuspiciousIPThrottlingStage"];
         };
-        GetTenantSettingsResponseContent: GetTenantSettingsResponseContent_f9dda1c1;
+        GetTenantSettingsResponseContent: GetTenantSettingsResponseContent_9b326421;
         GetUserResponseContent: CreateUserResponseContent_964b2aae;
+        GoogleAccountLinkingConfiguration: {
+            allow_streamlined_linking?: boolean;
+        };
+        GoogleAccountLinkingConfigurationCreate: {
+            allow_streamlined_linking?: boolean;
+        };
+        GoogleAccountLinkingConfigurationOrNull: {
+            allow_streamlined_linking?: boolean;
+        } | null;
         HttpCustomHeader: {
             header?: string;
             value?: string;
@@ -2439,6 +2460,8 @@ export interface components {
          * @enum {string}
          */
         IdentityProviderOnlyAuth0Enum: "auth0";
+        /** @enum {string} */
+        IncludeUserProfileSizeHeaderEnum: "true";
         Integration: {
             /** @default awesome-auth0-integration */
             catalog_id?: string;
@@ -2764,7 +2787,7 @@ export interface components {
             [key: string]: unknown;
         };
         /** @enum {string} */
-        LogStreamFilterGroupNameEnum: "auth.login.fail" | "auth.login.notification" | "auth.login.success" | "auth.logout.fail" | "auth.logout.success" | "auth.signup.fail" | "auth.signup.success" | "auth.silent_auth.fail" | "auth.silent_auth.success" | "auth.token_exchange.fail" | "auth.token_exchange.success" | "management.fail" | "management.success" | "scim.event" | "system.notification" | "user.fail" | "user.notification" | "user.success" | "actions" | "other";
+        LogStreamFilterGroupNameEnum: "auth.login.fail" | "auth.login.notification" | "auth.login.success" | "auth.logout.fail" | "auth.logout.success" | "auth.signup.fail" | "auth.signup.success" | "auth.silent_auth.fail" | "auth.silent_auth.success" | "auth.token_exchange.fail" | "auth.token_exchange.success" | "management.fail" | "management.success" | "scim.event" | "system.notification" | "user.fail" | "user.notification" | "user.success" | "actions" | "agent_gateway.authentication.fail" | "agent_gateway.operation.fail" | "agent_gateway.operation.success" | "other";
         /** @enum {string} */
         LogStreamFilterTypeEnum: "category";
         /** @enum {string} */
@@ -3004,6 +3027,8 @@ export interface components {
         /** @enum {string} */
         PasswordDefaultDictionariesEnum: "en_10k" | "en_100k";
         /** @enum {string} */
+        PasswordDictionaryMatchTypeEnum: "exact" | "substring";
+        /** @enum {string} */
         PasswordIdenticalCharactersPolicyEnum: "allow" | "block";
         /** @enum {string} */
         PasswordMaxLengthExceededPolicyEnum: "truncate" | "error";
@@ -3068,7 +3093,7 @@ export interface components {
          * @enum {string}
          */
         RefreshTokenRotationTypeEnum: "rotating" | "non-rotating";
-        ResourceServer: CreateResourceServerResponseContent_595d54a2;
+        ResourceServer: CreateResourceServerResponseContent_a4fbca59;
         ResourceServerAccessToken: {
             claims_mapping?: components["schemas"]["ResourceServerAccessTokenClaimsMapping"];
         } | null;
@@ -3152,7 +3177,8 @@ export interface components {
             pem: string;
         };
         /** @enum {string|null} */
-        ResourceServerTypeEnum: "universal_commerce_protocol_server" | null;
+        ResourceServerTypeEnum: "universal_commerce_protocol_server" | "model_context_protocol_server" | null;
+        ResourceServerUseForPersonalAgentProtocol: boolean;
         Role: {
             description?: string;
             id?: string;
@@ -3174,7 +3200,7 @@ export interface components {
             picture?: string;
             user_id?: string;
         };
-        RotateClientSecretResponseContent: Client_8cffcdf3;
+        RotateClientSecretResponseContent: Client_832e0428;
         /** @enum {string} */
         SearchEngineVersionsEnum: "v1" | "v2" | "v3";
         /**
@@ -3303,7 +3329,6 @@ export interface components {
             enable_public_signup_user_exists_error?: boolean;
             enable_sso?: boolean;
             enforce_client_authentication_on_passwordless_start?: boolean;
-            genai_trial?: boolean;
             improved_signup_bot_detection_in_classic?: boolean;
             local_resource_discovery?: boolean;
             mfa_show_factor_list_on_enrollment?: boolean;
@@ -3333,6 +3358,8 @@ export interface components {
             /** @default  */
             html?: string;
         } | null;
+        TenantSettingsPersonalAgentProtocolCompanyDomains: string[] | null;
+        TenantSettingsPersonalAgentProtocolCompanyDomainsResponse: string[];
         /**
          * @default audience
          * @enum {string}
@@ -3443,6 +3470,7 @@ export interface components {
             addons?: components["schemas"]["ClientAddons"];
             /** Format: agent-id-or-null */
             agent_id?: string | null;
+            allow_personal_agent_browser_join?: components["schemas"]["ClientAllowPersonalAgentBrowserJoinOrNull"];
             allowed_clients?: string[];
             allowed_logout_urls?: string[];
             allowed_origins?: string[];
@@ -3469,6 +3497,7 @@ export interface components {
             express_configuration?: components["schemas"]["ExpressConfigurationOrNull"];
             fedcm_login?: components["schemas"]["FedCMLoginPatch"];
             form_template?: string;
+            google_account_linking?: components["schemas"]["GoogleAccountLinkingConfigurationOrNull"];
             grant_types?: string[];
             identity_assertion_authorization_grant?: components["schemas"]["UpdateIdentityAssertionAuthorizationGrant"];
             /** Format: absolute-https-uri-with-placeholders-or-empty */
@@ -3511,8 +3540,8 @@ export interface components {
             token_vault_privileged_access?: components["schemas"]["ClientTokenVaultPrivilegedAccessWithCredentialId"];
             web_origins?: string[];
         };
-        UpdateClientResponseContent: Client_8cffcdf3;
-        UpdateConnectionOptions: (ConnectionPropertiesOptions_acf7de7d) | null;
+        UpdateClientResponseContent: Client_832e0428;
+        UpdateConnectionOptions: (ConnectionPropertiesOptions_63cd29cc) | null;
         UpdateConnectionRequestContent: {
             authentication?: components["schemas"]["ConnectionAuthenticationPurpose"];
             connected_accounts?: components["schemas"]["ConnectionConnectedAccountsPurpose"];
@@ -3595,8 +3624,9 @@ export interface components {
             token_lifetime_for_anonymous_access_tokens?: number | null;
             token_lifetime_for_web?: number;
             type?: components["schemas"]["ResourceServerTypeEnum"];
+            use_for_personal_agent_protocol?: components["schemas"]["ResourceServerUseForPersonalAgentProtocol"];
         };
-        UpdateResourceServerResponseContent: CreateResourceServerResponseContent_595d54a2;
+        UpdateResourceServerResponseContent: CreateResourceServerResponseContent_a4fbca59;
         UpdateRoleRequestContent: {
             description?: string;
             name?: string;
@@ -3668,6 +3698,7 @@ export interface components {
             legacy_sandbox_version?: string;
             mtls?: components["schemas"]["TenantSettingsMTLS"];
             oidc_logout?: components["schemas"]["TenantOIDCLogoutSettings"];
+            personal_agent_protocol_company_domains?: components["schemas"]["TenantSettingsPersonalAgentProtocolCompanyDomains"];
             phone_consolidated_experience?: boolean;
             /**
              * Format: absolute-uri-or-empty
@@ -3697,7 +3728,7 @@ export interface components {
              */
             support_url?: string;
         };
-        UpdateTenantSettingsResponseContent: GetTenantSettingsResponseContent_f9dda1c1;
+        UpdateTenantSettingsResponseContent: GetTenantSettingsResponseContent_9b326421;
         UpdateTokenQuota: {
             client_credentials: components["schemas"]["TokenQuotaClientCredentials"];
         } | null;
@@ -5760,7 +5791,9 @@ export interface operations {
                 fields?: string;
                 include_fields?: boolean;
             };
-            header?: never;
+            header?: {
+                "Auth0-Include-User-Profile-Size"?: components["schemas"]["IncludeUserProfileSizeHeaderEnum"];
+            };
             path: {
                 id: string;
             };
@@ -5770,6 +5803,7 @@ export interface operations {
         responses: {
             200: {
                 headers: {
+                    "Auth0-User-Profile-Size"?: number;
                     [name: string]: unknown;
                 };
                 content: {
@@ -6018,10 +6052,11 @@ type ActionDeployedVersion_effa94ea = {
      */
     updated_at?: string;
 };
-type Client_8cffcdf3 = {
+type Client_832e0428 = {
     addons?: components["schemas"]["ClientAddons"];
     /** Format: agent-id */
     agent_id?: string;
+    allow_personal_agent_browser_join?: components["schemas"]["ClientAllowPersonalAgentBrowserJoin"];
     allowed_clients?: string[];
     allowed_logout_urls?: string[];
     allowed_origins?: string[];
@@ -6065,6 +6100,7 @@ type Client_8cffcdf3 = {
     form_template?: string;
     /** @default false */
     global?: boolean;
+    google_account_linking?: components["schemas"]["GoogleAccountLinkingConfiguration"];
     grant_types?: string[];
     identity_assertion_authorization_grant?: components["schemas"]["IdentityAssertionAuthorizationGrant"];
     /** Format: absolute-https-uri-with-placeholders-or-empty */
@@ -6118,13 +6154,15 @@ type Client_8cffcdf3 = {
 } & {
     [key: string]: unknown;
 };
-type ConnectionPropertiesOptions_acf7de7d = {
+type ConnectionPropertiesOptions_63cd29cc = {
+    allowed_audiences?: string[] | null;
     api_enable_groups?: boolean;
     api_enable_users?: boolean;
     assertion_decryption_settings?: components["schemas"]["ConnectionAssertionDecryptionSettings"];
     attributes?: components["schemas"]["ConnectionAttributes"];
     authentication_methods?: components["schemas"]["ConnectionAuthenticationMethods"];
     basic_profile?: boolean;
+    client_id?: string | null;
     configuration?: {
         [key: string]: string | null;
     } | null;
@@ -6142,6 +6180,8 @@ type ConnectionPropertiesOptions_acf7de7d = {
     ext_is_suspended?: boolean;
     ext_profile?: boolean;
     gateway_authentication?: components["schemas"]["ConnectionGatewayAuthentication"];
+    id_token_encrypted_response_alg?: components["schemas"]["ConnectionIdTokenEncryptedResponseAlgEnum"];
+    id_token_encrypted_response_encs?: components["schemas"]["ConnectionIdTokenEncryptedResponseEncs"];
     id_token_session_expiry_supported?: components["schemas"]["ConnectionIdTokenSessionExpirySupported"];
     id_token_signed_response_algs?: components["schemas"]["ConnectionIdTokenSignedResponseAlgs"];
     import_mode?: boolean;
@@ -6209,7 +6249,7 @@ type CreateCustomDomainResponseContent_a5d1eed5 = {
     verification: components["schemas"]["DomainVerification"];
 };
 type CreateLogStreamResponseContent_28cbcf67 = components["schemas"]["LogStreamHttpResponseSchema"] | components["schemas"]["LogStreamEventBridgeResponseSchema"] | components["schemas"]["LogStreamEventGridResponseSchema"] | components["schemas"]["LogStreamDatadogResponseSchema"] | components["schemas"]["LogStreamSplunkResponseSchema"] | components["schemas"]["LogStreamSumoResponseSchema"] | components["schemas"]["LogStreamSegmentResponseSchema"] | components["schemas"]["LogStreamMixpanelResponseSchema"];
-type CreateResourceServerResponseContent_595d54a2 = {
+type CreateResourceServerResponseContent_a4fbca59 = {
     access_token?: components["schemas"]["ResourceServerAccessToken"];
     agent_subject_claims?: components["schemas"]["ResourceServerAgentSubjectClaimsResponseEnum"];
     allow_offline_access?: boolean;
@@ -6238,6 +6278,7 @@ type CreateResourceServerResponseContent_595d54a2 = {
     token_lifetime_for_anonymous_access_tokens?: number;
     token_lifetime_for_web?: number;
     type?: components["schemas"]["ResourceServerTypeEnum"];
+    use_for_personal_agent_protocol?: components["schemas"]["ResourceServerUseForPersonalAgentProtocol"];
 };
 type CreateUserResponseContent_964b2aae = {
     app_metadata?: components["schemas"]["UserAppMetadataSchema"];
@@ -6302,7 +6343,7 @@ type CustomDomain_d4110e87 = {
     type: components["schemas"]["CustomDomainTypeEnum"];
     verification?: components["schemas"]["DomainVerification"];
 };
-type ExpressConfiguration_961b97fc = {
+type ExpressConfiguration_1fd82c74 = {
     admin_login_domain: string;
     /** Format: connection-profile-id */
     connection_profile_id: string;
@@ -6314,6 +6355,8 @@ type ExpressConfiguration_961b97fc = {
     oin_submission_id?: string;
     /** Format: client-id */
     okta_oin_client_id: string;
+    /** Format: okta-oin-listing-url */
+    okta_oin_listing_url?: string;
     /** Format: user-attribute-profile-id */
     user_attribute_profile_id: string;
 };
@@ -6353,7 +6396,7 @@ type GetOrganizationResponseContent_e16d9399 = {
 } & {
     [key: string]: unknown;
 };
-type GetTenantSettingsResponseContent_f9dda1c1 = {
+type GetTenantSettingsResponseContent_9b326421 = {
     access_token?: components["schemas"]["ResourceServerAccessToken"];
     acr_values_supported?: string[] | null;
     /** @default false */
@@ -6398,6 +6441,7 @@ type GetTenantSettingsResponseContent_f9dda1c1 = {
     legacy_sandbox_version?: string;
     mtls?: components["schemas"]["TenantSettingsMTLS"];
     oidc_logout?: components["schemas"]["TenantOIDCLogoutSettings"];
+    personal_agent_protocol_company_domains?: components["schemas"]["TenantSettingsPersonalAgentProtocolCompanyDomainsResponse"];
     phone_consolidated_experience?: boolean;
     /**
      * Format: absolute-uri-or-empty
