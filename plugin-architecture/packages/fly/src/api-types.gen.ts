@@ -514,7 +514,8 @@ export interface components {
             network?: string;
             network_cidr?: string;
             organization?: components["schemas"]["AppOrganizationInfo"];
-            status?: string;
+            /** @enum {string} */
+            status?: "pending" | "deployed" | "suspended";
             volume_count?: number;
         };
         AppOrganizationInfo: {
@@ -614,7 +615,8 @@ export interface components {
         CheckStatus: {
             name?: string;
             output?: string;
-            status?: string;
+            /** @enum {string} */
+            status?: "passing" | "warning" | "critical";
             updated_at?: string;
         };
         createAcmeCertificateRequest: {
@@ -673,7 +675,8 @@ export interface components {
             compute?: components["schemas"]["fly.MachineGuest"];
             compute_image?: string;
             encrypted?: boolean;
-            fstype?: string;
+            /** @enum {string} */
+            fstype?: "ext4" | "raw";
             name?: string;
             region?: string;
             require_unique_zone?: boolean;
@@ -812,6 +815,7 @@ export interface components {
             pristine?: boolean;
         };
         "fly.MachineCacheDrive": {
+            path?: string;
             size_mb?: number;
         };
         "fly.MachineCheck": {
@@ -831,7 +835,7 @@ export interface components {
         };
         "fly.MachineConfig": {
             auto_destroy?: boolean;
-            cache_drive?: components["schemas"]["fly.MachineCacheDrive"];
+            cache_disk?: components["schemas"]["fly.MachineCacheDrive"];
             checks?: {
                 [key: string]: components["schemas"]["fly.MachineCheck"];
             };
@@ -1099,13 +1103,14 @@ export interface components {
         };
         "main.regionResponse": {
             nearest?: string;
-            regions?: components["schemas"]["main.regionRow"][];
+            Regions?: components["schemas"]["main.regionRow"][];
         };
         "main.regionRow": {
             code: string;
             deprecated?: boolean;
             gateway_available?: boolean;
-            geo_region?: string;
+            /** @enum {string} */
+            geo_region?: "africa" | "asia_pacific" | "europe" | "north_america" | "south_america";
             latitude?: number;
             longitude?: number;
             mpg_available?: boolean;
@@ -1113,7 +1118,7 @@ export interface components {
             requires_paid_plan?: boolean;
         };
         /** @enum {string} */
-        "main.statusCode": "unknown" | "insufficient_capacity" | "volume_placement_capacity" | "name_taken";
+        "main.statusCode": "unknown" | "insufficient_capacity" | "volume_placement_capacity" | "exec_request_too_large" | "exec_output_too_large" | "name_taken";
         OkResponse: {
             ok?: boolean;
         };
@@ -1159,7 +1164,7 @@ export interface components {
             /** @enum {string} */
             pg_major_version?: "16" | "17";
             /** @enum {string} */
-            plan?: "basic" | "starter" | "launch" | "scale" | "Performance";
+            plan?: "dev-256" | "basic" | "starter" | "launch" | "scale" | "Performance";
             postgis_enabled?: boolean;
             region?: string;
             replicas?: number;
@@ -1179,7 +1184,7 @@ export interface components {
             id: string;
             name?: string;
             /** @enum {string} */
-            plan?: "basic" | "starter" | "launch" | "scale" | "Performance";
+            plan?: "dev-256" | "basic" | "starter" | "launch" | "scale" | "Performance";
             region?: string;
             /** @enum {string} */
             status?: "creating" | "initializing" | "ready" | "deleting" | "deleted" | "failed";
