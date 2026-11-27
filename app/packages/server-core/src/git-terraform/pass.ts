@@ -6,13 +6,21 @@
  * 2. links each workspace whose state changed to the organisation's
  *    resources (`link.ts`);
  * 3. prices the plans that are waiting for it (`plan-cost.ts`): the forge
- *    hands over what pricing needs of a plan once, and deletes it.
+ *    hands over what pricing needs of a plan once, and deletes it;
+ * 4. prices the forge's scans of repositories' Terraform from their
+ *    configuration (`config-cost.ts`): list prices, and the organisation's
+ *    accounts where a plugin maps a type.
  *
  * Each step claims little per pass and logs its own failures, so a forge
  * that is away costs a pass nothing but a warning.
  */
 import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import type { PlanPricingInputs, PlanSummary } from "@infrawrench/git-terraform";
+import type {
+  ConfigurationEstimate,
+  ConfigurationPricingInputs,
+  PlanPricingInputs,
+  PlanSummary,
+} from "@infrawrench/git-terraform";
 
 import { startStrandedTerraformRuns, terraformRunUrls } from "../ci/terraform.js";
 import { estimateResourceCost } from "../cost/estimate.js";
@@ -22,11 +30,15 @@ import {
   gitNamespaces,
   gitRepositories,
   gitTerraformRuns,
+  gitTerraformScans,
   gitTerraformWorkspaceAccounts,
   gitTerraformWorkspaces,
   type TerraformRunCostDelta,
 } from "../db/schema.js";
+import { warehouseHostServices } from "../host-services.js";
 import { loadCapabilities } from "../iac/service.js";
+import { loadPlugins } from "../plugin-loader.js";
+import { priceConfiguration } from "./config-cost.js";
 import { forgeFetch, runTerraformLinkPass } from "./link.js";
 import { priceTerraformPlan } from "./plan-cost.js";
 
@@ -123,12 +135,91 @@ export async function runTerraformPlanCostPass(limit = 5): Promise<number> {
   return due.length;
 }
 
+/**
+ * Prices the scans waiting for it, oldest first. A scan that fails stays
+ * `pending` and is tried again on a later pass, for as long as it is seven
+ * days old; after that nobody is waiting for it. Returns how many it settled.
+ */
+export async function runTerraformScanPricingPass(limit = 5): Promise<number> {
+  const due = await db
+    .select({
+      id: gitTerraformScans.id,
+      pricingInputs: gitTerraformScans.pricingInputs,
+      organizationId: gitNamespaces.organizationId,
+    })
+    .from(gitTerraformScans)
+    .innerJoin(gitRepositories, eq(gitRepositories.id, gitTerraformScans.repositoryId))
+    .innerJoin(gitNamespaces, eq(gitNamespaces.id, gitRepositories.namespaceId))
+    .where(
+      and(
+        eq(gitTerraformScans.pricingStatus, "pending"),
+        sql`${gitTerraformScans.createdAt} > now() - interval '7 days'`,
+      ),
+    )
+    .orderBy(gitTerraformScans.createdAt)
+    .limit(limit);
+  if (due.length === 0) return 0;
+
+  const capabilities = await loadCapabilities();
+  const names = new Map(
+    (await loadPlugins()).map((loaded) => [
+      loaded.plugin.manifest.id,
+      loaded.plugin.manifest.displayName,
+    ]),
+  );
+  const pricing = warehouseHostServices().instancePricing;
+  let settled = 0;
+  for (const scan of due) {
+    try {
+      const accountRows =
+        scan.organizationId === null
+          ? []
+          : await db
+              .select({ id: accounts.id, pluginId: accounts.pluginId })
+              .from(accounts)
+              .where(
+                and(eq(accounts.organizationId, scan.organizationId), isNull(accounts.deletedAt)),
+              )
+              .orderBy(accounts.createdAt);
+      const estimates: Record<string, ConfigurationEstimate> = {};
+      let sourced = pricing !== undefined;
+      for (const inputs of scan.pricingInputs as unknown as ConfigurationPricingInputs[]) {
+        const priced = await priceConfiguration(scan.organizationId, inputs, {
+          capabilities,
+          estimate: estimateResourceCost,
+          pricing,
+          accounts: accountRows,
+          pluginName: (pluginId) => names.get(pluginId) ?? pluginId,
+        });
+        estimates[inputs.root] = priced.estimate;
+        if (priced.sourced) sourced = true;
+      }
+      await db
+        .update(gitTerraformScans)
+        .set({
+          estimates: estimates as unknown as Record<string, Record<string, unknown>>,
+          // No price source at all on this deployment: say so rather than show nothing priced.
+          pricingStatus: sourced ? "priced" : "unavailable",
+          pricedAt: new Date(),
+        })
+        .where(
+          and(eq(gitTerraformScans.id, scan.id), eq(gitTerraformScans.pricingStatus, "pending")),
+        );
+      settled++;
+    } catch (err) {
+      console.warn(`[terraform] could not price the scan ${scan.id}:`, err);
+    }
+  }
+  return settled;
+}
+
 /** One tick of everything above. Each step's failure is its own. */
 export async function runGitTerraformPass(): Promise<void> {
   for (const [name, step] of [
     ["start", () => startStrandedTerraformRuns()],
     ["link", () => runTerraformLinkPass()],
     ["price", () => runTerraformPlanCostPass()],
+    ["estimate", () => runTerraformScanPricingPass()],
   ] as const) {
     try {
       await step();
