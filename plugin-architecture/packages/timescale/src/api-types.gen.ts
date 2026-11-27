@@ -1189,7 +1189,9 @@ export interface components {
             environment?: string;
         };
         ServiceMetrics: {
+            cpu_millicores?: number | null;
             memory_mb?: number | null;
+            /** @deprecated */
             milli_cpu?: number | null;
             storage_mb?: number | null;
         } | null;
