@@ -249,6 +249,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @deprecated */
         get: operations["DirectoryGroupsController_list"];
         put?: never;
         post?: never;
@@ -265,6 +266,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @deprecated */
         get: operations["DirectoryGroupsController_find"];
         put?: never;
         post?: never;
@@ -281,6 +283,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @deprecated */
         get: operations["DirectoryUsersController_list"];
         put?: never;
         post?: never;
@@ -297,6 +300,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
+        /** @deprecated */
         get: operations["DirectoryUsersController_find"];
         put?: never;
         post?: never;
@@ -1151,9 +1155,26 @@ export interface components {
             code: "email_change_not_allowed";
             message: string;
         };
+        EmailDomainNotDeliverableErrorBody: {
+            /** @constant */
+            code: "email_domain_not_deliverable";
+            message: string;
+        };
         EmailNotAvailableErrorBody: {
             /** @constant */
             code: "email_not_available";
+            message: string;
+        };
+        EntitiesNotFoundErrorBodyWithIdsList: {
+            /** @constant */
+            code: "entities_not_found";
+            ids: string[];
+            message: string;
+        };
+        EntityNotFoundErrorBodyWithEntityId: {
+            /** @constant */
+            code: "entity_not_found";
+            entity_id: string;
             message: string;
         };
         ErrorBody: {
@@ -1264,7 +1285,7 @@ export interface components {
             context?: components["schemas"]["EventContextDto"];
             /** Format: date-time */
             created_at: string;
-            data: data_564757c9;
+            data: data_013096c3;
             /** @constant */
             event: "agent.blueprint.created";
             id: string;
@@ -1291,7 +1312,7 @@ export interface components {
             context?: components["schemas"]["EventContextDto"];
             /** Format: date-time */
             created_at: string;
-            data: data_564757c9;
+            data: data_013096c3;
             /** @constant */
             event: "agent.blueprint.updated";
             id: string;
@@ -1416,6 +1437,7 @@ export interface components {
                 id: string;
                 /** @constant */
                 object: "agent_registration_claim";
+                organization_id?: string;
                 updated_at: string;
             };
             /** @constant */
@@ -1594,6 +1616,45 @@ export interface components {
             };
             /** @constant */
             event: "api_key.updated";
+            id: string;
+            /** @constant */
+            object: "event";
+        } | {
+            context?: components["schemas"]["EventContextDto"];
+            /** Format: date-time */
+            created_at: string;
+            data: {
+                client_id: string;
+                error: {
+                    code: string;
+                    message: string;
+                };
+                grant_type: string;
+                issuer: string | null;
+                signature_verified?: boolean;
+                unverified_email_domain?: string | null;
+            };
+            /** @constant */
+            event: "application.token_exchange_failed";
+            id: string;
+            /** @constant */
+            object: "event";
+        } | {
+            context?: components["schemas"]["EventContextDto"];
+            /** Format: date-time */
+            created_at: string;
+            data: {
+                client_id: string;
+                connection_id: string | null;
+                email: string;
+                grant_type: string;
+                issuer: string;
+                jti: string;
+                organization_id: string | null;
+                user_id: string;
+            };
+            /** @constant */
+            event: "application.token_exchange_succeeded";
             id: string;
             /** @constant */
             object: "event";
@@ -2090,6 +2151,31 @@ export interface components {
             };
             /** @constant */
             event: "connection.saml_certificate_renewed";
+            id: string;
+            /** @constant */
+            object: "event";
+        } | {
+            context?: components["schemas"]["EventContextDto"];
+            /** Format: date-time */
+            created_at: string;
+            data: {
+                certificate: {
+                    /** @enum {string} */
+                    certificate_type: "ResponseSigning" | "RequestSigning" | "ResponseEncryption";
+                    /** Format: date-time */
+                    expiry_date: string;
+                    /** Format: date-time */
+                    previous_expiry_date?: string;
+                };
+                connection: {
+                    id: string;
+                    organization_id?: string;
+                };
+                /** Format: date-time */
+                replaced_at: string;
+            };
+            /** @constant */
+            event: "connection.saml_certificate_replaced";
             id: string;
             /** @constant */
             object: "event";
@@ -2683,6 +2769,36 @@ export interface components {
             data: data_cbe6ddb8;
             /** @constant */
             event: "invitation.revoked";
+            id: string;
+            /** @constant */
+            object: "event";
+        } | {
+            context?: components["schemas"]["EventContextDto"];
+            /** Format: date-time */
+            created_at: string;
+            data: components["schemas"]["IssuerTrust"];
+            /** @constant */
+            event: "issuer_trust.created";
+            id: string;
+            /** @constant */
+            object: "event";
+        } | {
+            context?: components["schemas"]["EventContextDto"];
+            /** Format: date-time */
+            created_at: string;
+            data: components["schemas"]["IssuerTrust"];
+            /** @constant */
+            event: "issuer_trust.deleted";
+            id: string;
+            /** @constant */
+            object: "event";
+        } | {
+            context?: components["schemas"]["EventContextDto"];
+            /** Format: date-time */
+            created_at: string;
+            data: components["schemas"]["IssuerTrust"];
+            /** @constant */
+            event: "issuer_trust.updated";
             id: string;
             /** @constant */
             object: "event";
@@ -3626,6 +3742,20 @@ export interface components {
             code: "invalid_url";
             message: string;
         };
+        IssuerTrust: {
+            /** Format: date-time */
+            created_at: string;
+            enabled: boolean;
+            id: string;
+            issuer: string;
+            /** @constant */
+            object: "issuer_trust";
+            organization_id: string;
+            /** @constant */
+            type: "claude";
+            /** Format: date-time */
+            updated_at: string;
+        };
         MultipleRolesNotEnabledErrorBody: {
             /** @constant */
             code: "multiple_roles_not_enabled";
@@ -3822,6 +3952,12 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
             user_id: string | null;
+        };
+        PolicyDeniedErrorBody: {
+            /** @constant */
+            code: "policy_denied";
+            message: string;
+            radar_detection_id?: string;
         };
         PortalLinkResponse: {
             /** Format: password */
@@ -4417,6 +4553,7 @@ export interface operations {
                 order?: components["schemas"]["PaginationOrder"];
                 organization_id?: string;
                 search?: string;
+                state?: "active" | "inactive" | "validating";
             };
             header?: never;
             path?: never;
@@ -5818,6 +5955,33 @@ type context_e15f8596 = {
         };
     };
 };
+type data_013096c3 = {
+    created_at: string;
+    description: string | null;
+    id: string;
+    invocable_as: {
+        instance_types: ("delegated" | "autonomous")[];
+    };
+    invocable_by: {
+        organization_ids: string[];
+        role_slugs: string[];
+    };
+    name: string;
+    /** @constant */
+    object: "agent_blueprint";
+    /** @deprecated */
+    permissions: string[];
+    scoped_permissions?: {
+        instance_types: ("delegated" | "autonomous")[];
+        slug: string;
+    }[];
+    session_settings: {
+        access_token_ttl_seconds: number;
+        max_age_seconds: number;
+        refresh_token_ttl_seconds: number;
+    };
+    updated_at: string;
+};
 type data_2d90d736 = {
     /** @enum {string} */
     auth_method: "cross_app_auth" | "external_auth" | "impersonation" | "magic_code" | "migrated_session" | "oauth" | "passkey" | "password" | "sso" | "unknown";
@@ -5842,28 +6006,6 @@ type data_2d90d736 = {
     updated_at: string;
     user_agent: string | null;
     user_id: string;
-};
-type data_564757c9 = {
-    created_at: string;
-    description: string | null;
-    id: string;
-    invocable_as: {
-        instance_types: ("delegated" | "autonomous")[];
-    };
-    invocable_by: {
-        organization_ids: string[];
-        role_slugs: string[];
-    };
-    name: string;
-    /** @constant */
-    object: "agent_blueprint";
-    permissions: string[];
-    session_settings: {
-        access_token_ttl_seconds: number;
-        max_age_seconds: number;
-        refresh_token_ttl_seconds: number;
-    };
-    updated_at: string;
 };
 type data_588a432c = {
     created_at: string;
