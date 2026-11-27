@@ -21,6 +21,7 @@ import { Route as OwnerRepoRouteRouteImport } from './routes/$owner/$repo/route'
 import { Route as OnboardingUsernameRouteImport } from './routes/onboarding.username'
 import { Route as SettingsIndexRouteImport } from './routes/settings.index'
 import { Route as SettingsKeysRouteImport } from './routes/settings.keys'
+import { Route as SettingsOrganisationsRouteImport } from './routes/settings.organisations'
 import { Route as SettingsT3RouteImport } from './routes/settings.t3'
 import { Route as SettingsTokensRouteImport } from './routes/settings.tokens'
 import { Route as OwnerRepoIndexRouteImport } from './routes/$owner/$repo/index'
@@ -124,6 +125,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
 const SettingsKeysRoute = SettingsKeysRouteImport.update({
   id: '/keys',
   path: '/keys',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsOrganisationsRoute = SettingsOrganisationsRouteImport.update({
+  id: '/organisations',
+  path: '/organisations',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsT3Route = SettingsT3RouteImport.update({
@@ -371,6 +377,7 @@ export interface FileRoutesByFullPath {
   '/$owner/$repo': typeof OwnerRepoRouteRouteWithChildren
   '/onboarding/username': typeof OnboardingUsernameRoute
   '/settings/keys': typeof SettingsKeysRoute
+  '/settings/organisations': typeof SettingsOrganisationsRoute
   '/settings/t3': typeof SettingsT3Route
   '/settings/tokens': typeof SettingsTokensRoute
   '/$owner/': typeof OwnerIndexRoute
@@ -427,6 +434,7 @@ export interface FileRoutesByTo {
   '/reviews': typeof ReviewsRoute
   '/onboarding/username': typeof OnboardingUsernameRoute
   '/settings/keys': typeof SettingsKeysRoute
+  '/settings/organisations': typeof SettingsOrganisationsRoute
   '/settings/t3': typeof SettingsT3Route
   '/settings/tokens': typeof SettingsTokensRoute
   '/$owner': typeof OwnerIndexRoute
@@ -484,6 +492,7 @@ export interface FileRoutesById {
   '/$owner/$repo': typeof OwnerRepoRouteRouteWithChildren
   '/onboarding/username': typeof OnboardingUsernameRoute
   '/settings/keys': typeof SettingsKeysRoute
+  '/settings/organisations': typeof SettingsOrganisationsRoute
   '/settings/t3': typeof SettingsT3Route
   '/settings/tokens': typeof SettingsTokensRoute
   '/$owner/': typeof OwnerIndexRoute
@@ -544,6 +553,7 @@ export interface FileRouteTypes {
     | '/$owner/$repo'
     | '/onboarding/username'
     | '/settings/keys'
+    | '/settings/organisations'
     | '/settings/t3'
     | '/settings/tokens'
     | '/$owner/'
@@ -600,6 +610,7 @@ export interface FileRouteTypes {
     | '/reviews'
     | '/onboarding/username'
     | '/settings/keys'
+    | '/settings/organisations'
     | '/settings/t3'
     | '/settings/tokens'
     | '/$owner'
@@ -656,6 +667,7 @@ export interface FileRouteTypes {
     | '/$owner/$repo'
     | '/onboarding/username'
     | '/settings/keys'
+    | '/settings/organisations'
     | '/settings/t3'
     | '/settings/tokens'
     | '/$owner/'
@@ -801,6 +813,13 @@ declare module '@tanstack/react-router' {
       path: '/keys'
       fullPath: '/settings/keys'
       preLoaderRoute: typeof SettingsKeysRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/organisations': {
+      id: '/settings/organisations'
+      path: '/organisations'
+      fullPath: '/settings/organisations'
+      preLoaderRoute: typeof SettingsOrganisationsRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/t3': {
@@ -1116,6 +1135,7 @@ declare module '@tanstack/react-router' {
 
 interface SettingsRouteChildren {
   SettingsKeysRoute: typeof SettingsKeysRoute
+  SettingsOrganisationsRoute: typeof SettingsOrganisationsRoute
   SettingsT3Route: typeof SettingsT3Route
   SettingsTokensRoute: typeof SettingsTokensRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -1123,6 +1143,7 @@ interface SettingsRouteChildren {
 
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsKeysRoute: SettingsKeysRoute,
+  SettingsOrganisationsRoute: SettingsOrganisationsRoute,
   SettingsT3Route: SettingsT3Route,
   SettingsTokensRoute: SettingsTokensRoute,
   SettingsIndexRoute: SettingsIndexRoute,

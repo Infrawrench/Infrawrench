@@ -43,7 +43,7 @@ export const paths = {
   explore: (query: { q?: string; language?: string } = {}) => `/explore${search(query)}`,
   newRepository: (owner?: string) => `/new${search({ owner })}`,
   onboardingUsername: (returnTo?: string) => `/onboarding/username${search({ returnTo })}`,
-  /** Personal settings: profile, SSH keys, tokens. */
+  /** Personal settings: profile, organisations, SSH keys, tokens. */
   settings: (section?: string) =>
     section === undefined ? "/settings" : `/settings/${seg(section)}`,
 

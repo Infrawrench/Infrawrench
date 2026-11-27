@@ -4,7 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { REPOSITORY_NAME_MAX_LENGTH, type Visibility } from "@infrawrench/git-contract";
 import { ApiError, api } from "../../api/client";
 import { invalidate } from "../../api/queries";
-import { useGo } from "../../components/AppLink";
+import { AppLink, useGo } from "../../components/AppLink";
 import { Button, ButtonLink, buttonClass } from "../../components/Button";
 import { Checkbox, Field, Input, RadioCards, Select, Textarea } from "../../components/forms";
 import { Icon } from "../../components/icons";
@@ -35,15 +35,26 @@ export function NewRepositoryPage({ owner: initialOwner }: { owner?: string | un
   }
   const owners = ownersOf(session.data);
   if (owners.length === 0) return <Loading shape="page" width="narrow" />;
-  return <NewRepositoryForm owners={owners} initialOwner={initialOwner} />;
+  return (
+    <NewRepositoryForm
+      owners={owners}
+      initialOwner={initialOwner}
+      unclaimed={session.data.organizations
+        .filter((organization) => organization.canClaimNamespace)
+        .map((organization) => organization.name)}
+    />
+  );
 }
 
 function NewRepositoryForm({
   owners,
   initialOwner,
+  unclaimed,
 }: {
   owners: ReadonlyArray<Owner>;
   initialOwner: string | undefined;
+  /** The names of organisations the person can claim a name for, which are not owners yet. */
+  unclaimed: ReadonlyArray<string>;
 }) {
   const go = useGo();
   const [ownerSlug, setOwnerSlug] = useState(
@@ -147,6 +158,18 @@ function NewRepositoryForm({
             )}
           </Field>
         </div>
+
+        {unclaimed.length > 0 ? (
+          <p className="text-xs text-on-surface-muted">
+            {unclaimed.join(", ")} {unclaimed.length === 1 ? "has" : "have"} no name here yet.{" "}
+            <AppLink
+              href={paths.settings("organisations")}
+              className="text-on-surface-secondary underline"
+            >
+              Claim one
+            </AppLink>
+          </p>
+        ) : null}
 
         <Field label="Description" optional>
           {(control) => (

@@ -26,6 +26,8 @@ const session: Session = {
       name: "Acme",
       namespace: "acme",
       permissions: ["git:read", "git:write"],
+      gitEnabled: true, // git-feature-flag
+      namespacePlanRefusal: null,
       canClaimNamespace: false,
       privateRepositories: true,
       privateRepositoryRefusal: null,
@@ -36,6 +38,8 @@ const session: Session = {
       name: "Tidewater",
       namespace: "tidewater",
       permissions: ["git:read", "git:write"],
+      gitEnabled: true, // git-feature-flag
+      namespacePlanRefusal: null,
       canClaimNamespace: false,
       privateRepositories: false,
       privateRepositoryRefusal: REFUSAL,
@@ -46,6 +50,8 @@ const session: Session = {
       name: "Readers",
       namespace: "readers",
       permissions: ["git:read"],
+      gitEnabled: true, // git-feature-flag
+      namespacePlanRefusal: null,
       canClaimNamespace: false,
       privateRepositories: true,
       privateRepositoryRefusal: null,
@@ -56,6 +62,8 @@ const session: Session = {
       name: "Unclaimed",
       namespace: null,
       permissions: ["git:read", "git:write", "git:admin"],
+      gitEnabled: true, // git-feature-flag
+      namespacePlanRefusal: null,
       canClaimNamespace: true,
       privateRepositories: true,
       privateRepositoryRefusal: null,

@@ -8,6 +8,7 @@
  */
 import {
   httpCloneUrl,
+  namespaceClaimRefusal,
   privateRepositoryRefusal,
   sshCloneUrl,
   type ForgePlan,
@@ -121,19 +122,26 @@ export function session(): Session {
           name: n.displayName ?? n.slug,
           namespace: n.slug,
           permissions: ["git:read", "git:write", "git:admin"] as const,
+          gitEnabled: true, // git-feature-flag
+          namespacePlanRefusal: null,
           canClaimNamespace: false,
           ...fits(n),
         })),
-      {
-        id: "org_northwind",
-        name: "Northwind Labs",
+      ...unclaimedOrganizations.map((organization) => ({
+        id: organization.id,
+        name: organization.name,
         namespace: null,
-        permissions: ["git:read", "git:write", "git:admin"],
-        canClaimNamespace: true,
+        permissions: organization.permissions,
+        gitEnabled: organization.gitEnabled, // git-feature-flag
+        namespacePlanRefusal: namespaceClaimRefusal(organization.plan),
+        canClaimNamespace:
+          organization.gitEnabled &&
+          organization.plan === "paid" &&
+          organization.permissions.includes("git:admin"),
         privateRepositories: true,
         privateRepositoryRefusal: null,
-        defaultVisibility: "private",
-      },
+        defaultVisibility: "private" as const,
+      })),
     ],
     signInUrl: "/auth/sign-in",
     appUrl: APP_URL,
@@ -217,6 +225,75 @@ export const namespaces: NamespaceRecord[] = [
     defaultVisibility: "private",
   })),
 ];
+
+/**
+ * Organisations the signed-in person belongs to that have no namespace yet:
+ * one they can claim, one whose administrators must, one on the free plan and
+ * one without Git.
+ */
+export const unclaimedOrganizations: Array<{
+  readonly id: string;
+  readonly name: string;
+  readonly permissions: ReadonlyArray<"git:read" | "git:write" | "git:admin">;
+  readonly gitEnabled: boolean; // git-feature-flag
+  readonly plan: "free" | "paid";
+}> = [
+  {
+    id: "org_northwind",
+    name: "Northwind Labs",
+    permissions: ["git:read", "git:write", "git:admin"],
+    gitEnabled: true,
+    plan: "paid",
+  },
+  {
+    id: "org_harbour",
+    name: "Harbour Works",
+    permissions: ["git:read", "git:write"],
+    gitEnabled: true,
+    plan: "paid",
+  },
+  {
+    id: "org_saltmarsh",
+    name: "Saltmarsh Studio",
+    permissions: ["git:read", "git:write", "git:admin"],
+    gitEnabled: true,
+    plan: "free",
+  },
+  {
+    id: "org_lowland",
+    name: "Lowland Freight",
+    permissions: ["git:read", "git:write", "git:admin"],
+    gitEnabled: false,
+    plan: "paid",
+  },
+];
+
+/** An organisation takes its namespace: it leaves the unclaimed list for `namespaces`. */
+export function claimOrganizationNamespace(organizationId: string, slug: string): NamespaceRecord {
+  const index = unclaimedOrganizations.findIndex(
+    (organization) => organization.id === organizationId,
+  );
+  const organization = unclaimedOrganizations[index]!;
+  unclaimedOrganizations.splice(index, 1);
+  const record: NamespaceRecord = {
+    id: `ns_${slug.toLowerCase()}`,
+    slug,
+    kind: "org",
+    displayName: organization.name,
+    description: null,
+    avatarUrl: null,
+    websiteUrl: null,
+    location: null,
+    userId: null,
+    organizationId,
+    appUrl: `${APP_URL}/org/${organizationId}`,
+    createdAt: new Date().toISOString(),
+    plan: "paid",
+    defaultVisibility: "private",
+  };
+  namespaces.push(record);
+  return record;
+}
 
 export function findNamespace(slug: string): NamespaceRecord {
   const found = namespaces.find((n) => n.slug.toLowerCase() === slug.toLowerCase());

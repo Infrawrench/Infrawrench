@@ -40,6 +40,11 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
                 icon: <Icon name="user" size={13} />,
                 exact: true,
               },
+              {
+                label: "Organisations",
+                href: paths.settings("organisations"),
+                icon: <Icon name="building" size={13} />,
+              },
               ...(session.data.sshEnabled
                 ? [
                     {

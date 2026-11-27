@@ -275,10 +275,13 @@ function WorkspaceSwitcher({
   workspaces,
   current,
   select,
+  unclaimed,
 }: {
   workspaces: ReadonlyArray<Workspace>;
   current: Workspace | null;
   select: (slug: string) => void;
+  /** An organisation of the reader's that they can give a name here. */
+  unclaimed: boolean;
 }) {
   return (
     <Menu
@@ -327,6 +330,15 @@ function WorkspaceSwitcher({
           icon: <Icon name="plus" />,
           separated: current === null,
         },
+        ...(unclaimed
+          ? [
+              {
+                label: "Add an organisation",
+                href: paths.settings("organisations"),
+                icon: <Icon name="building" />,
+              },
+            ]
+          : []),
         { label: "Explore", href: paths.explore(), icon: <Icon name="globe" /> },
       ]}
     />
@@ -414,7 +426,15 @@ function SearchLink() {
 }
 
 /** The sidebar of someone signed in with a name to work under. */
-function MemberSidebar({ user, appUrl }: { user: SessionUser; appUrl: string }) {
+function MemberSidebar({
+  user,
+  appUrl,
+  unclaimed,
+}: {
+  user: SessionUser;
+  appUrl: string;
+  unclaimed: boolean;
+}) {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { workspaces, current, select } = useWorkspaces();
   const working = useAgentRepositories();
@@ -425,7 +445,12 @@ function MemberSidebar({ user, appUrl }: { user: SessionUser; appUrl: string }) 
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-2.5">
-        <WorkspaceSwitcher workspaces={workspaces ?? []} current={current} select={select} />
+        <WorkspaceSwitcher
+          workspaces={workspaces ?? []}
+          current={current}
+          select={select}
+          unclaimed={unclaimed}
+        />
         <SearchLink />
       </div>
       <nav aria-label="Workspace" className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
@@ -599,7 +624,11 @@ export function SidebarShell({ session, children }: { session: SessionData; chil
         }`}
       >
         {member ? (
-          <MemberSidebar user={user} appUrl={session.appUrl} />
+          <MemberSidebar
+            user={user}
+            appUrl={session.appUrl}
+            unclaimed={session.organizations.some((organization) => organization.canClaimNamespace)}
+          />
         ) : (
           <VisitorSidebar user={user} appUrl={session.appUrl} />
         )}
