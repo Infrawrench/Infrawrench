@@ -320,6 +320,11 @@ export interface components {
             };
         }) | null;
         context_param: string;
+        contributor: {
+            access_key?: string;
+            custom_id?: string;
+            external_id?: string;
+        };
         coordinate_pair: number[];
         coordinates_response: {
             custom?: number[][];
@@ -400,6 +405,7 @@ export interface components {
             coordinates?: components["schemas"]["coordinates_response"];
             /** Format: date-time */
             created_at?: string;
+            created_by?: components["schemas"]["contributor"];
             derivatives?: {
                 id?: string;
                 /** Format: uri */
@@ -471,6 +477,7 @@ export interface components {
             type?: components["schemas"]["delivery_type_all"];
             /** Format: date-time */
             uploaded_at?: string;
+            uploaded_by?: components["schemas"]["contributor"];
             /** Format: uri */
             url?: string;
             version?: number;
@@ -631,6 +638,7 @@ export interface components {
              */
             access_mode?: "public" | "authenticated";
             accessibility_analysis?: boolean;
+            ai_generated?: boolean;
             asset_folder?: string;
             async?: boolean;
             auto_chaptering?: boolean;
@@ -754,7 +762,7 @@ export interface components {
             type?: components["schemas"]["upload_delivery_type"];
         };
         /** @enum {string} */
-        uri_type: "webhook" | "flow";
+        uri_type: "webhook" | "flow" | "poll";
         usage_response: {
             bandwidth?: {
                 limit?: number;
