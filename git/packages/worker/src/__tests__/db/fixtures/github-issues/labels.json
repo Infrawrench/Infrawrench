@@ -1,0 +1,29 @@
+[
+  {
+    "id": 5100001,
+    "node_id": "LA_kwDOexample0001",
+    "url": "https://api.github.com/repos/acme-example/widgets/labels/bug",
+    "name": "bug",
+    "color": "d73a4a",
+    "default": true,
+    "description": "Something isn't working"
+  },
+  {
+    "id": 5100002,
+    "node_id": "LA_kwDOexample0002",
+    "url": "https://api.github.com/repos/acme-example/widgets/labels/enhancement",
+    "name": "enhancement",
+    "color": "a2eeef",
+    "default": true,
+    "description": "New feature or request"
+  },
+  {
+    "id": 5100003,
+    "node_id": "LA_kwDOexample0003",
+    "url": "https://api.github.com/repos/acme-example/widgets/labels/good%20first%20issue",
+    "name": "good first issue",
+    "color": "7057ff",
+    "default": true,
+    "description": null
+  }
+]

@@ -5,6 +5,7 @@
  */
 import { and, eq, inArray } from "drizzle-orm";
 import {
+  type ImportedFrom,
   type Issue,
   type IssueSummary,
   type Label,
@@ -82,9 +83,30 @@ export const threadFieldsFor = async (rows: readonly IssueRow[]) => {
   return { fields, person };
 };
 
+/** Where an imported issue or comment came from. Null for one written here. */
+export const importedFrom = (row: {
+  readonly importSource: IssueRow["importSource"];
+  readonly importAuthor: string | null;
+  readonly importUrl: string | null;
+  readonly importNumber?: number | null;
+}): ImportedFrom | null =>
+  row.importSource === null
+    ? null
+    : {
+        source: row.importSource,
+        author: row.importAuthor,
+        url: row.importUrl,
+        number: row.importNumber ?? null,
+      };
+
 export const issueSummaries = async (rows: readonly IssueRow[]): Promise<IssueSummary[]> => {
   const { fields } = await threadFieldsFor(rows);
-  return rows.map((row) => ({ ...fields(row), state: row.state, stateReason: row.stateReason }));
+  return rows.map((row) => ({
+    ...fields(row),
+    state: row.state,
+    stateReason: row.stateReason,
+    imported: importedFrom(row),
+  }));
 };
 
 /** What the viewer may do to a thread. */
@@ -114,6 +136,7 @@ export const issueDetail = async (cx: RepoCx, row: IssueRow): Promise<Issue> => 
     ...fields(row),
     state: row.state,
     stateReason: row.stateReason,
+    imported: importedFrom(row),
     ...threadBody(row, person),
     viewer: threadViewer(cx, row),
   };
@@ -189,6 +212,7 @@ export const commentViews = async (
       authorAccess: badge(row.authorUserId, thread.authorUserId),
       viewerCanEdit: mine,
       viewerCanDelete: mine,
+      imported: importedFrom(row),
     };
   });
 };

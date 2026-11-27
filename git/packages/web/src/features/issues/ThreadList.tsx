@@ -24,6 +24,7 @@ import { formatCount } from "../../lib/format";
 import { paths, type RepoRef } from "../../lib/paths";
 import { signInHref, useSession } from "../../lib/session";
 import { ChangeStateIcon, Chip, WorkRow, personOf, type RowPerson } from "../workspace/rows";
+import { importedAuthorName } from "./ImportedFrom";
 import {
   DEFAULT_SEARCH_TEXT,
   EMPTY_SEARCH,
@@ -406,6 +407,12 @@ function ThreadWorkRow({ row, labelHref }: { row: Row; labelHref: (name: string)
   const page = isPage(row) ? row : null;
   // The author first, then whoever it is assigned to, each once.
   const people: RowPerson[] = [];
+  // An imported issue whose author has no account here: their name at the source.
+  const importedAuthor =
+    page === null && row.author === null && "imported" in row
+      ? importedAuthorName(row.imported)
+      : null;
+  if (importedAuthor !== null) people.push({ name: importedAuthor });
   for (const user of [row.author, ...row.assignees]) {
     const person = personOf(user);
     if (person !== null && !people.some((known) => known.name === person.name)) people.push(person);

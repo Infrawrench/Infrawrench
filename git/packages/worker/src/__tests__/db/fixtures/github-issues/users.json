@@ -1,0 +1,47 @@
+{
+  "mona-example": {
+    "login": "mona-example",
+    "id": 5300001,
+    "node_id": "U_kgDOexample0001",
+    "type": "User",
+    "site_admin": false,
+    "name": "Mona Example",
+    "company": null,
+    "email": "MONA-EMAIL",
+    "public_repos": 4,
+    "created_at": "2019-04-01T00:00:00Z"
+  },
+  "hubot-example": {
+    "login": "hubot-example",
+    "id": 5300002,
+    "node_id": "U_kgDOexample0002",
+    "type": "User",
+    "site_admin": false,
+    "name": null,
+    "email": "HUBOT-EMAIL",
+    "public_repos": 1,
+    "created_at": "2020-06-01T00:00:00Z"
+  },
+  "casey-example": {
+    "login": "casey-example",
+    "id": 5300003,
+    "node_id": "U_kgDOexample0003",
+    "type": "User",
+    "site_admin": false,
+    "name": "Casey Example",
+    "email": null,
+    "public_repos": 9,
+    "created_at": "2018-02-01T00:00:00Z"
+  },
+  "drew-example": {
+    "login": "drew-example",
+    "id": 5300004,
+    "node_id": "U_kgDOexample0004",
+    "type": "User",
+    "site_admin": false,
+    "name": "Drew Example",
+    "email": null,
+    "public_repos": 0,
+    "created_at": "2022-09-01T00:00:00Z"
+  }
+}
