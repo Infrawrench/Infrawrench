@@ -206,7 +206,7 @@ export interface components {
             };
         };
         /** @enum {string} */
-        SpeechModel: "universal-3-5-pro" | "universal-2";
+        SpeechModel: "assemblyai-stt-3-7" | "universal-2";
         /** @enum {string} */
         SubstitutionPolicy: "entity_name" | "hash";
         SummarizationRequestBody: {
@@ -316,7 +316,7 @@ export interface components {
             speaker_labels?: boolean | null;
             speakers_expected?: number | null;
             /** @deprecated */
-            speech_model: components["schemas"]["SpeechModel"] | null;
+            speech_model: string | null;
             speech_model_used?: components["schemas"]["SpeechModel"];
             speech_models?: components["schemas"]["SpeechModel"][] | null;
             /** Format: float */
@@ -360,7 +360,7 @@ export interface components {
             to: string;
         };
         /** @enum {string} */
-        TranscriptLanguageCode: "en" | "en_au" | "en_uk" | "en_us" | "es" | "fr" | "de" | "it" | "pt" | "nl" | "af" | "sq" | "am" | "ar" | "hy" | "as" | "az" | "ba" | "eu" | "be" | "bn" | "bs" | "br" | "bg" | "my" | "ca" | "zh" | "hr" | "cs" | "da" | "et" | "fo" | "fi" | "gl" | "ka" | "el" | "gu" | "ht" | "ha" | "haw" | "he" | "hi" | "hu" | "is" | "id" | "ja" | "jw" | "kn" | "kk" | "km" | "ko" | "lo" | "la" | "lv" | "ln" | "lt" | "lb" | "mk" | "mg" | "ms" | "ml" | "mt" | "mi" | "mr" | "mn" | "ne" | "no" | "nn" | "oc" | "pa" | "ps" | "fa" | "pl" | "ro" | "ru" | "sa" | "sr" | "sn" | "sd" | "si" | "sk" | "sl" | "so" | "su" | "sw" | "sv" | "tl" | "tg" | "ta" | "tt" | "te" | "th" | "bo" | "tr" | "tk" | "uk" | "ur" | "uz" | "vi" | "cy" | "yi" | "yo";
+        TranscriptLanguageCode: "en" | "en_au" | "en_uk" | "en_us" | "es" | "fr" | "de" | "it" | "pt" | "nl" | "af" | "sq" | "am" | "ar" | "hy" | "as" | "az" | "ba" | "eu" | "be" | "bn" | "bs" | "br" | "bg" | "my" | "ca" | "zh" | "yue" | "hr" | "cs" | "da" | "et" | "fo" | "fi" | "gl" | "ka" | "el" | "gu" | "ht" | "ha" | "haw" | "he" | "hi" | "hu" | "is" | "id" | "ja" | "jw" | "kn" | "kk" | "km" | "ko" | "lo" | "la" | "lv" | "ln" | "lt" | "lb" | "mk" | "mg" | "ms" | "ml" | "mt" | "mi" | "mr" | "mn" | "ne" | "no" | "nn" | "oc" | "pa" | "ps" | "fa" | "pl" | "ro" | "ru" | "sa" | "sr" | "sn" | "sd" | "si" | "sk" | "sl" | "so" | "su" | "sw" | "sv" | "tl" | "tg" | "ta" | "tt" | "te" | "th" | "bo" | "tr" | "tk" | "uk" | "ur" | "uz" | "vi" | "cy" | "yi" | "yo" | "xh" | "zu";
         TranscriptList: {
             page_details: components["schemas"]["PageDetails"];
             transcripts: components["schemas"]["TranscriptListItem"][];
@@ -397,13 +397,12 @@ export interface components {
              * @default false
              */
             custom_topics?: boolean;
-            /** @default false */
             disfluencies?: boolean;
             /**
              * @default null
              * @enum {string|null}
              */
-            domain?: "medical-v1" | null;
+            domain?: "medical-v1" | "veterinary-v1" | null;
             /** @default false */
             entity_detection?: boolean;
             /** @default false */
@@ -462,11 +461,10 @@ export interface components {
             /** @default null */
             speakers_expected?: number | null;
             /** @deprecated */
-            speech_model?: components["schemas"]["SpeechModel"] | null;
+            speech_model?: string | null;
             /**
              * @default [
-             *       "universal-3-5-pro",
-             *       "universal-2"
+             *       "assemblyai-stt-3-7"
              *     ]
              */
             speech_models?: string[];
