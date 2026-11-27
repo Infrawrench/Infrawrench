@@ -69,6 +69,11 @@ afterEach(() => {
 
 const sidebar = () => within(screen.getByRole("navigation", { name: "Workspace" }));
 
+/** The home's Start work: a link to one repository's form, or a menu button. */
+const startWork = (): HTMLElement =>
+  screen.queryByRole("link", { name: "Start work" }) ??
+  screen.getByRole("button", { name: "Start work" });
+
 describe("home", () => {
   it("counts the team's branches and lists the reader's, the team's and the suggested", async () => {
     open("/");
@@ -132,13 +137,22 @@ describe("home", () => {
     expect(
       await screen.findByRole("heading", { name: "Your team has 2 active branches" }, wait),
     ).toBeTruthy();
+    // Start work stays on the right with branches open, not only on an empty home.
+    expect(startWork()).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Workspace: Tidewater" }));
     fireEvent.click(await screen.findByRole("menuitemradio", { name: "Mara Lindqvist" }));
     expect(await screen.findByRole("heading", { name: "No active branches" }, wait)).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Start work" }).getAttribute("href")).toMatch(
-      /^\/mara\/[^/]+\/start$/,
-    );
+    const start = startWork();
+    if (start.tagName === "A") {
+      expect(start.getAttribute("href")).toMatch(/^\/mara\/[^/]+\/start$/);
+    } else {
+      // Several repositories: a menu of them, each to its own form.
+      fireEvent.click(start);
+      const items = await screen.findAllByRole("menuitem");
+      expect(items.length).toBeGreaterThan(1);
+      for (const item of items) expect(item.getAttribute("href")).toMatch(/^\/mara\/[^/]+\/start$/);
+    }
   });
 
   it("looks as far back as the range says", async () => {

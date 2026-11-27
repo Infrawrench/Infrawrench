@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ActivityEvent, WorkspaceHome } from "@infrawrench/git-contract";
 import { queries } from "../../api/queries";
 import { AppLink, useGo } from "../../components/AppLink";
-import { ButtonLink } from "../../components/Button";
+import { ButtonLink, buttonClass } from "../../components/Button";
 import { Icon } from "../../components/icons";
 import { Menu } from "../../components/Menu";
 import { Avatar, ShortAge } from "../../components/people";
@@ -149,38 +149,75 @@ function HomeSkeleton() {
 }
 
 function Lead({ home, workspace }: { home: WorkspaceHome; workspace: Workspace }) {
-  const first = workspace.repositories.find((repository) => !repository.archived);
   return (
     <div className={section}>
-      <div className={column}>
-        <Avatar
-          name={workspace.name}
-          src={workspace.avatarUrl}
-          size={40}
-          square={workspace.kind === "org"}
-        />
-        <h2 className="mt-5 text-4xl leading-tight font-semibold tracking-tight text-on-surface md:text-[2.75rem]">
-          {headline(home)}
-        </h2>
-        <p className="mt-2.5 text-[15px] text-on-surface-secondary">{pushedSentence(home)}</p>
-        {home.activeBranches === 0 ? (
-          <div className="mt-5">
-            {first !== undefined ? (
-              <ButtonLink
-                variant="primary"
-                href={paths.startWork({ owner: first.owner.slug, repo: first.name })}
-              >
-                Start work
-              </ButtonLink>
-            ) : (
-              <ButtonLink variant="primary" href={paths.newRepository(workspace.slug)}>
-                New repository
-              </ButtonLink>
-            )}
-          </div>
-        ) : null}
+      <div className={`${column} flex items-start justify-between gap-6`}>
+        <div className="min-w-0">
+          <Avatar
+            name={workspace.name}
+            src={workspace.avatarUrl}
+            size={40}
+            square={workspace.kind === "org"}
+          />
+          <h2 className="mt-5 text-4xl leading-tight font-semibold tracking-tight text-on-surface md:text-[2.75rem]">
+            {headline(home)}
+          </h2>
+          <p className="mt-2.5 text-[15px] text-on-surface-secondary">{pushedSentence(home)}</p>
+        </div>
+        <div className="shrink-0">
+          <StartWork workspace={workspace} />
+        </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Start work on a new branch: straight to the one repository's form, or a
+ * menu of them when the workspace has several. A workspace with none offers
+ * a repository first.
+ */
+function StartWork({ workspace }: { workspace: Workspace }) {
+  const open = workspace.repositories.filter((repository) => !repository.archived);
+  const only = open.length === 1 ? open[0] : undefined;
+  if (open.length === 0) {
+    return (
+      <ButtonLink variant="primary" href={paths.newRepository(workspace.slug)}>
+        New repository
+      </ButtonLink>
+    );
+  }
+  if (only !== undefined) {
+    return (
+      <ButtonLink
+        variant="primary"
+        href={paths.startWork({ owner: only.owner.slug, repo: only.name })}
+      >
+        Start work
+      </ButtonLink>
+    );
+  }
+  return (
+    <Menu
+      label="Start work in"
+      align="end"
+      header="Start work in"
+      items={open.map((repository) => ({
+        label: repository.name,
+        href: paths.startWork({ owner: repository.owner.slug, repo: repository.name }),
+      }))}
+      trigger={({ props }) => (
+        <button
+          {...props}
+          type="button"
+          aria-haspopup="menu"
+          className={buttonClass("primary", "md", "gap-1.5")}
+        >
+          Start work
+          <Icon name="chevronDown" size={13} />
+        </button>
+      )}
+    />
   );
 }
 
