@@ -1145,6 +1145,7 @@ export interface components {
             external_discord_enabled: boolean | null;
             external_discord_secret: string | null;
             external_email_enabled: boolean | null;
+            external_email_magic_link_disabled: boolean | null;
             external_facebook_client_id: string | null;
             external_facebook_email_optional: boolean | null;
             external_facebook_enabled: boolean | null;
@@ -1381,7 +1382,7 @@ export interface components {
             ref: string;
             release_channel: string;
             /** @enum {string} */
-            status: "INACTIVE" | "ACTIVE_HEALTHY" | "ACTIVE_UNHEALTHY" | "COMING_UP" | "UNKNOWN" | "GOING_DOWN" | "INIT_FAILED" | "REMOVED" | "RESTORING" | "UPGRADING" | "PAUSING" | "RESTORE_FAILED" | "RESTARTING" | "PAUSE_FAILED" | "RESIZING" | "PROMOTING";
+            status: "INACTIVE" | "ACTIVE_HEALTHY" | "ACTIVE_UNHEALTHY" | "COMING_UP" | "UNKNOWN" | "GOING_DOWN" | "INIT_FAILED" | "REMOVED" | "RESTORING" | "UPGRADING" | "PAUSING" | "RESTORE_FAILED" | "RESTARTING" | "PAUSE_FAILED" | "RESIZING" | "PROMOTING" | "RIGHTSIZING";
         };
         BranchResponse_Output: {
             /** Format: date-time */
@@ -1402,7 +1403,7 @@ export interface components {
             /** Format: int32 */
             pr_number?: number;
             /** @enum {string} */
-            preview_project_status?: "INACTIVE" | "ACTIVE_HEALTHY" | "ACTIVE_UNHEALTHY" | "COMING_UP" | "UNKNOWN" | "GOING_DOWN" | "INIT_FAILED" | "REMOVED" | "RESTORING" | "UPGRADING" | "PAUSING" | "RESTORE_FAILED" | "RESTARTING" | "PAUSE_FAILED" | "RESIZING" | "PROMOTING";
+            preview_project_status?: "INACTIVE" | "ACTIVE_HEALTHY" | "ACTIVE_UNHEALTHY" | "COMING_UP" | "UNKNOWN" | "GOING_DOWN" | "INIT_FAILED" | "REMOVED" | "RESTORING" | "UPGRADING" | "PAUSING" | "RESTORE_FAILED" | "RESTARTING" | "PAUSE_FAILED" | "RESIZING" | "PROMOTING" | "RIGHTSIZING";
             project_ref: string;
             /** Format: date-time */
             review_requested_at?: string;
@@ -1462,6 +1463,7 @@ export interface components {
                     };
                 };
             };
+            dedicated_scope?: boolean;
             domains?: string[];
             metadata_url?: string;
             metadata_xml?: string;
@@ -1469,7 +1471,7 @@ export interface components {
             /** @enum {string} */
             type: "saml";
         };
-        CreateProviderResponse_Output: CreateProviderResponse_Output_28b63fab;
+        CreateProviderResponse_Output: CreateProviderResponse_Output_498cdaa7;
         CreateSecretBody: {
             name: string;
             value: string;
@@ -1551,7 +1553,7 @@ export interface components {
             jwks_url?: string;
             oidc_issuer_url?: string;
         };
-        DeleteProviderResponse_Output: CreateProviderResponse_Output_28b63fab;
+        DeleteProviderResponse_Output: CreateProviderResponse_Output_498cdaa7;
         DeleteSecretsBody: string[];
         DeployFunctionResponse_Output: {
             /** Format: int64 */
@@ -1636,7 +1638,7 @@ export interface components {
             }[];
         };
         ListProvidersResponse_Output: {
-            items: CreateProviderResponse_Output_28b63fab[];
+            items: CreateProviderResponse_Output_498cdaa7[];
         };
         NetworkBanResponse_Output: {
             banned_ipv4_addresses: string[];
@@ -1699,7 +1701,7 @@ export interface components {
                 ref: string;
                 region: string;
                 /** @enum {string} */
-                status: "INACTIVE" | "ACTIVE_HEALTHY" | "ACTIVE_UNHEALTHY" | "COMING_UP" | "UNKNOWN" | "GOING_DOWN" | "INIT_FAILED" | "REMOVED" | "RESTORING" | "UPGRADING" | "PAUSING" | "RESTORE_FAILED" | "RESTARTING" | "PAUSE_FAILED" | "RESIZING" | "PROMOTING";
+                status: "INACTIVE" | "ACTIVE_HEALTHY" | "ACTIVE_UNHEALTHY" | "COMING_UP" | "UNKNOWN" | "GOING_DOWN" | "INIT_FAILED" | "REMOVED" | "RESTORING" | "UPGRADING" | "PAUSING" | "RESTORE_FAILED" | "RESTARTING" | "PAUSE_FAILED" | "RESIZING" | "PROMOTING" | "RIGHTSIZING";
             }[];
         };
         OrganizationResponseV1_Output: {
@@ -2041,6 +2043,7 @@ export interface components {
             external_discord_enabled?: boolean | null;
             external_discord_secret?: string | null;
             external_email_enabled?: boolean | null;
+            external_email_magic_link_disabled?: boolean;
             external_facebook_client_id?: string | null;
             external_facebook_email_optional?: boolean | null;
             external_facebook_enabled?: boolean | null;
@@ -2363,7 +2366,33 @@ export interface components {
             metadata_xml?: string;
             name_id_format?: string;
         };
-        UpdateProviderResponse_Output: CreateProviderResponse_Output_28b63fab;
+        UpdateProviderResponse_Output: {
+            created_at?: string;
+            domains?: {
+                created_at?: string;
+                domain?: string;
+                updated_at?: string;
+            }[];
+            id: string;
+            saml?: {
+                attribute_mapping?: {
+                    keys: {
+                        [key: string]: {
+                            array?: boolean;
+                            default?: Record<string, never> | number | string | boolean;
+                            name?: string;
+                            names?: string[];
+                        };
+                    };
+                };
+                entity_id: string;
+                metadata_url?: string;
+                metadata_xml?: string;
+                /** @enum {string} */
+                name_id_format?: "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified" | "urn:oasis:names:tc:SAML:2.0:nameid-format:transient" | "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress" | "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent";
+            };
+            updated_at?: string;
+        };
         UpdateRealtimeConfigBody: {
             connection_pool?: number;
             max_bytes_per_second?: number;
@@ -2441,8 +2470,16 @@ export interface components {
             walg_enabled: boolean;
         };
         V1CreateProjectBody: {
+            /** Format: uri */
+            auth_site_url?: string;
+            data_api_exposed_schemas?: string[];
+            data_api_revoke_default_privileges?: boolean;
+            data_api_use_api_schema?: boolean;
             db_pass: string;
+            db_sql?: string;
             desired_instance_size?: string;
+            github_installation_id?: number;
+            github_repository_id?: number;
             high_availability?: boolean;
             /** @deprecated */
             kps_enabled?: boolean;
@@ -2491,7 +2528,6 @@ export interface components {
                 status: string;
             };
             result?: {
-                /** Format: date-time */
                 timestamp: string;
                 total_auth_requests: number;
                 total_realtime_requests: number;
@@ -2584,7 +2620,7 @@ export interface components {
             ref: string;
             region: string;
             /** @enum {string} */
-            status: "INACTIVE" | "ACTIVE_HEALTHY" | "ACTIVE_UNHEALTHY" | "COMING_UP" | "UNKNOWN" | "GOING_DOWN" | "INIT_FAILED" | "REMOVED" | "RESTORING" | "UPGRADING" | "PAUSING" | "RESTORE_FAILED" | "RESTARTING" | "PAUSE_FAILED" | "RESIZING" | "PROMOTING";
+            status: "INACTIVE" | "ACTIVE_HEALTHY" | "ACTIVE_UNHEALTHY" | "COMING_UP" | "UNKNOWN" | "GOING_DOWN" | "INIT_FAILED" | "REMOVED" | "RESTORING" | "UPGRADING" | "PAUSING" | "RESTORE_FAILED" | "RESTARTING" | "PAUSE_FAILED" | "RESIZING" | "PROMOTING" | "RIGHTSIZING";
         };
         V1ProjectWithDatabaseResponse_Output: {
             created_at: string;
@@ -2603,9 +2639,11 @@ export interface components {
             ref: string;
             region: string;
             /** @enum {string} */
-            status: "INACTIVE" | "ACTIVE_HEALTHY" | "ACTIVE_UNHEALTHY" | "COMING_UP" | "UNKNOWN" | "GOING_DOWN" | "INIT_FAILED" | "REMOVED" | "RESTORING" | "UPGRADING" | "PAUSING" | "RESTORE_FAILED" | "RESTARTING" | "PAUSE_FAILED" | "RESIZING" | "PROMOTING";
+            status: "INACTIVE" | "ACTIVE_HEALTHY" | "ACTIVE_UNHEALTHY" | "COMING_UP" | "UNKNOWN" | "GOING_DOWN" | "INIT_FAILED" | "REMOVED" | "RESTORING" | "UPGRADING" | "PAUSING" | "RESTORE_FAILED" | "RESTARTING" | "PAUSE_FAILED" | "RESIZING" | "PROMOTING" | "RIGHTSIZING";
         };
         V1RunQueryBody: {
+            /** @default true */
+            disable_statement_timeout?: boolean;
             parameters?: unknown[];
             query: string;
             read_only?: boolean;
@@ -3043,6 +3081,7 @@ export interface operations {
             query?: {
                 iso_timestamp_end?: string;
                 iso_timestamp_start?: string;
+                lql?: string;
                 sql?: string;
             };
             header?: never;
@@ -4709,7 +4748,7 @@ export interface operations {
         };
     };
 }
-type CreateProviderResponse_Output_28b63fab = {
+type CreateProviderResponse_Output_498cdaa7 = {
     created_at?: string;
     domains?: {
         created_at?: string;
@@ -4728,6 +4767,7 @@ type CreateProviderResponse_Output_28b63fab = {
                 };
             };
         };
+        dedicated_scope?: boolean | null;
         entity_id: string;
         metadata_url?: string;
         metadata_xml?: string;
