@@ -9,8 +9,8 @@ import {
 } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
 import { queries, usePages } from "../../api/queries";
-import { ButtonLink } from "../../components/Button";
-import { LinkTabs } from "../../components/controls";
+import { Button, ButtonLink } from "../../components/Button";
+import { Dialog, LinkTabs } from "../../components/controls";
 import { SearchInput, Select } from "../../components/forms";
 import { Icon } from "../../components/icons";
 import { Page, Panel, PanelHeader } from "../../components/Panel";
@@ -21,7 +21,9 @@ import { formatDate, plural } from "../../lib/format";
 import { paths } from "../../lib/paths";
 import { webUrl } from "../../lib/safe-url";
 import { SORT_LABEL, type RepositorySortName } from "../explore/ExplorePage";
+import { BioText } from "./BioText";
 import { BotPage } from "./BotPage";
+import { OrganisationPicture, ProfileForm } from "./ProfileForm";
 
 type ListType = (typeof REPOSITORY_LIST_TYPES)[number];
 
@@ -87,6 +89,7 @@ function Profile({ namespace }: { namespace: Namespace }) {
   const name = namespace.displayName ?? namespace.slug;
   // The address is the person's own text: a link only when it is a web address.
   const website = webUrl(namespace.websiteUrl);
+  const [editing, setEditing] = useState(false);
   return (
     <aside aria-label="Profile" className="space-y-3 text-xs">
       <div className="flex items-center gap-3 lg:flex-col lg:items-start">
@@ -97,7 +100,7 @@ function Profile({ namespace }: { namespace: Namespace }) {
         </div>
       </div>
       {namespace.description !== null && namespace.description !== "" ? (
-        <p className="text-on-surface-secondary">{namespace.description}</p>
+        <BioText text={namespace.description} className="text-on-surface-secondary" />
       ) : null}
       <dl className="space-y-1.5 text-on-surface-muted">
         <div className="flex items-center gap-1.5">
@@ -133,6 +136,31 @@ function Profile({ namespace }: { namespace: Namespace }) {
           <dd>{formatDate(namespace.createdAt)}</dd>
         </div>
       </dl>
+      {!namespace.viewer.canAdminister ? null : namespace.kind === "org" ? (
+        // An organisation's profile is edited here, by its administrators.
+        <div>
+          <Button size="sm" onClick={() => setEditing(true)}>
+            <Icon name="pencil" size={12} />
+            Edit profile
+          </Button>
+          <Dialog open={editing} onClose={() => setEditing(false)} title="Edit profile">
+            <OrganisationPicture namespace={namespace} />
+            <ProfileForm
+              key={namespace.slug}
+              namespace={namespace}
+              onSaved={() => setEditing(false)}
+            />
+          </Dialog>
+        </div>
+      ) : (
+        // A person's own is in their settings, beside their username.
+        <div>
+          <ButtonLink size="sm" href={paths.settings()}>
+            <Icon name="pencil" size={12} />
+            Edit profile
+          </ButtonLink>
+        </div>
+      )}
       {namespace.appUrl !== null ? (
         <a
           href={namespace.appUrl}

@@ -99,6 +99,19 @@ export function safeImageUrl(value: string | null | undefined): string | null {
 /** The mock API answers in the browser, with no Worker behind it to fetch images. */
 const PROXIED = import.meta.env.VITE_GIT_MOCK !== "1";
 
+type OwnImageResolver = (path: string) => string | null;
+
+let ownImage: OwnImageResolver | null = null;
+
+/**
+ * The dev mock's hook, and nothing else's: a picture the Worker would serve
+ * from this site (an organisation's upload, `/-/avatar/...`) as the `data:`
+ * URL the mock holds it as.
+ */
+export function setOwnImageResolver(next: OwnImageResolver): void {
+  ownImage = next;
+}
+
 /**
  * The `src` for an image: a reference on this site as it is, an image from
  * another site through the Worker (`/-/image?url=`), so its host sees
@@ -109,5 +122,7 @@ const PROXIED = import.meta.env.VITE_GIT_MOCK !== "1";
 export function imageSrc(value: string | null | undefined): string | null {
   const safe = safeImageUrl(value);
   if (safe === null) return null;
+  const own = ownImage?.(safe) ?? null;
+  if (own !== null) return own;
   return PROXIED && webUrl(safe) !== null ? imageProxyPath(safe) : safe;
 }

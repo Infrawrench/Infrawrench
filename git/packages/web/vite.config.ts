@@ -28,6 +28,8 @@ export default defineConfig({
       "^/[^/]+/[^/]+/(raw|archive)/": WORKER,
       // Images from other sites (`images/proxy.ts`).
       "^/-/image(\\?|$)": WORKER,
+      // An organisation's uploaded picture (contract `urls.ts` `avatarPath`, worker `images/avatar.ts`).
+      "^/-/avatar/": WORKER,
       // Link preview images (contract `urls.ts` `ogImagePath`, worker `og/mount.ts`).
       "^/-/og/": WORKER,
       // Terraform writes and unlocks with a query (`state?ID=<lock>`), and Vite matches the URL with it.

@@ -16,6 +16,18 @@ import {
   users,
   visibleRepositories,
 } from "../db";
+import { dropMockAvatar, storeMockAvatar } from "../profile-data";
+
+/** The organisation whose picture a member may change, as the API gates it. */
+function organisationForPicture(slug: string) {
+  requireUser();
+  const record = findNamespace(slug);
+  if (!isMember(record)) throw mockError(403, "Only its owner can edit this profile");
+  if (record.kind !== "org") {
+    throw badRequest("A person's picture is the one on their Infrawrench account");
+  }
+  return record;
+}
 
 function toNamespace(slug: string): Namespace {
   const record = findNamespace(slug);
@@ -41,8 +53,24 @@ export default defineMockHandlers({
     update: ({ params, payload }) => {
       requireUser();
       const record = findNamespace(params.namespace);
-      if (!isMember(record)) throw mockError(403, "Forbidden");
+      if (!isMember(record)) throw mockError(403, "Only its owner can edit this profile");
+      if (payload.websiteUrl != null && !/^https?:\/\/[^\s]+$/i.test(payload.websiteUrl)) {
+        throw badRequest("The website must be an http or https URL");
+      }
       Object.assign(record, payload);
+      return toNamespace(record.slug);
+    },
+    setAvatar: async ({ params, payload }) => {
+      const record = organisationForPicture(params.namespace);
+      const path = await storeMockAvatar(record.id, payload.image);
+      if (record.avatarUrl !== path) dropMockAvatar(record.avatarUrl);
+      record.avatarUrl = path;
+      return toNamespace(record.slug);
+    },
+    removeAvatar: ({ params }) => {
+      const record = organisationForPicture(params.namespace);
+      dropMockAvatar(record.avatarUrl);
+      record.avatarUrl = null;
       return toNamespace(record.slug);
     },
     claimForOrganization: ({ params, payload }) => {

@@ -16,6 +16,8 @@ export const API_ROUTES = {
   namespaces: {
     get: ["GET", "/api/namespaces/:namespace"],
     update: ["PATCH", "/api/namespaces/:namespace"],
+    setAvatar: ["PUT", "/api/namespaces/:namespace/avatar"],
+    removeAvatar: ["DELETE", "/api/namespaces/:namespace/avatar"],
     claimForOrganization: ["POST", "/api/orgs/:orgId/namespace"],
     renameForOrganization: ["PUT", "/api/orgs/:orgId/namespace"],
     searchUsers: ["GET", "/api/users"],

@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { NAME_MAX_LENGTH, type Namespace } from "@infrawrench/git-contract";
+import { NAME_MAX_LENGTH } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
 import { invalidate, queries } from "../../api/queries";
 import { Button, ButtonLink, buttonClass } from "../../components/Button";
-import { Field, Input, Select, Textarea } from "../../components/forms";
+import { Field, Input, Select } from "../../components/forms";
 import { Icon } from "../../components/icons";
 import { Panel } from "../../components/Panel";
 import { Avatar } from "../../components/people";
@@ -14,6 +14,7 @@ import { useDebounced } from "../../lib/name-availability";
 import { paths } from "../../lib/paths";
 import { RUNS_IN_NONE, runsInHint, runsInOrganizationId } from "../../lib/runs-in";
 import { type SessionData, useSession } from "../../lib/session";
+import { ProfileForm } from "../namespace/ProfileForm";
 import { UsernameCheckoutNotice, priceLabel } from "../onboarding/username-checkout";
 import { useGo } from "../../components/AppLink";
 import { CommitEmails, useCommitEmails } from "./CommitEmails";
@@ -92,93 +93,6 @@ function UsernameForm({ current }: { current: string }) {
         )}
       </Field>
       <InlineError error={rename.error ?? checkout.error} />
-    </form>
-  );
-}
-
-function ProfileForm({ namespace }: { namespace: Namespace }) {
-  const [displayName, setDisplayName] = useState(namespace.displayName ?? "");
-  const [description, setDescription] = useState(namespace.description ?? "");
-  const [website, setWebsite] = useState(namespace.websiteUrl ?? "");
-  const [location, setLocation] = useState(namespace.location ?? "");
-  const blank = (value: string) => (value.trim() === "" ? null : value.trim());
-  const save = useMutation({
-    mutationFn: () =>
-      api.namespaces.update({
-        params: { namespace: namespace.slug },
-        payload: {
-          displayName: blank(displayName),
-          description: blank(description),
-          websiteUrl: blank(website),
-          location: blank(location),
-        },
-      }),
-    onSuccess: () => {
-      void invalidate("namespaces");
-      void invalidate("session");
-    },
-  });
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    save.mutate();
-  };
-  return (
-    <form onSubmit={submit} className="space-y-3">
-      <Field label="Name" optional>
-        {(control) => (
-          <Input
-            {...control}
-            value={displayName}
-            maxLength={100}
-            onChange={(event) => setDisplayName(event.target.value)}
-            className="max-w-sm"
-          />
-        )}
-      </Field>
-      <Field label="Bio" optional>
-        {(control) => (
-          <Textarea
-            {...control}
-            rows={3}
-            value={description}
-            maxLength={500}
-            onChange={(event) => setDescription(event.target.value)}
-          />
-        )}
-      </Field>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Website" optional>
-          {(control) => (
-            <Input
-              {...control}
-              type="url"
-              value={website}
-              maxLength={500}
-              placeholder="https://"
-              onChange={(event) => setWebsite(event.target.value)}
-            />
-          )}
-        </Field>
-        <Field label="Location" optional>
-          {(control) => (
-            <Input
-              {...control}
-              value={location}
-              maxLength={100}
-              onChange={(event) => setLocation(event.target.value)}
-            />
-          )}
-        </Field>
-      </div>
-      <div className="flex items-center gap-2">
-        <Button type="submit" variant="primary" busy={save.isPending}>
-          Save profile
-        </Button>
-        <span role="status" className="text-xs text-on-surface-muted">
-          {save.isSuccess && !save.isPending ? "Saved" : ""}
-        </span>
-        <InlineError error={save.error} />
-      </div>
     </form>
   );
 }

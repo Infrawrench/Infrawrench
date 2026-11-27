@@ -9,9 +9,11 @@
 import { ApiError, setTransport } from "../api/client";
 import type { WireRequest } from "../api/types";
 import { setRawResolver } from "../lib/raw";
+import { setOwnImageResolver } from "../lib/safe-url";
 import { findRepository, gitOf } from "./db";
 import type { MockHandlers } from "./define";
 import { blobAt, rawDataUrl, resolveRef } from "./git";
+import { mockAvatar } from "./profile-data";
 
 type AnyHandler = (request: WireRequest) => unknown;
 
@@ -43,6 +45,7 @@ export function installMock(): void {
       return null;
     }
   });
+  setOwnImageResolver(mockAvatar);
   setTransport(async ({ group, endpoint, request }) => {
     if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
     const handler = handlers.get(`${group}.${endpoint}`);

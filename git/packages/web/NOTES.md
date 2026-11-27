@@ -230,6 +230,15 @@ The mock keeps each of these features' state beside the handlers: `threads-data.
 - **Diff context expands in the browser**: the view fetches the new side's blob once and fills the gaps between hunks itself, rather than asking for the diff again with more context.
 - **Syntax highlighting is Shiki's core with the JavaScript regex engine**, no WebAssembly, one chunk per grammar. Tokens carry both themes' colours and CSS picks by colour scheme.
 
+## Commit checks and profiles
+
+- **A commit's checks are `CommitChecks`** (`components/CommitChecks.tsx`), wherever a commit is summarised and its repository is known: `CommitStrip` (above a listing and a file), `CommitRow`, the commit page's title, a branch page's header and its Commits tab, `ThreadList` rows (the head's `status`), the timeline's pushed commits and All branches. It draws the combined state the row already carries (`CommitSummary.status`, `BranchPageSummary.status`) as a button and reads the list (`statuses.forRef`, one request for one commit) only when pressed, so a page of rows costs nothing more. `live` is for the one commit a page is about: it asks at once and every four seconds while a check runs. `CommitStatusIcon` stays for a place with no repository in reach. A tree listing's rows show no checks on purpose.
+- **Its box is drawn in `document.body`** with `position: fixed` at the button (`placeChecksBox`), not with `Popover`: `Panel` and `Table` clip what overflows them, and a `WorkRow`'s chips sit above a neighbour's content. It closes on Escape, a press outside and focus leaving, and takes the focus when it opens so Tab reaches its links.
+- **"Details" is `checkHref`** (`lib/checks.ts`): the run's page here (`paths.ciRun`) when the status has a `runId`, else the reporter's `targetUrl` through `safeLinkUrl`. The merge box and the Checks tab use the same function. Statuses CI wrote before `runId` existed link to the app's run page, as they always did.
+- **A bio is `BioText`** (`features/namespace/`): `lib/autolink.ts` splits the text into text and `http(s)` addresses (`webUrl` decides, so no other scheme links), and each part is a React text node. It is one paragraph: newlines collapse.
+- **`ProfileForm` is shared** by Settings > Profile (a person) and the Edit profile dialog on an organisation's page (`viewer.canAdminister`, which is `git:admin` in a session). `OrganisationPicture` uploads as it is chosen: `lib/avatar-upload.ts` draws the centre square at 512 pixels at most and sends its PNG (a JPEG when the PNG is past 1 MB) as base64. People have no upload: their picture is their account's.
+- **An uploaded picture's `avatarUrl` is a path on this site** (`/-/avatar/...`), which `imageSrc` leaves alone. The mock keeps uploads as `data:` URLs (`mock/profile-data.ts`) and `setOwnImageResolver` hands them to `imageSrc`; nothing else may call it.
+
 ## What comes from a repository is text (after the security review)
 
 Everything a user can write reaches the page as React text; there is no HTML sink in `src/` and raw HTML in Markdown is never rendered. The rules that keep it so:
