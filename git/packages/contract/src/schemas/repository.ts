@@ -107,7 +107,8 @@ export const Repository = Schema.Struct({
     description: "The default branch has `.infrawrench/ci/*.yml`, or the repository has runs.",
   }),
   hasTerraform: Schema.Boolean.annotate({
-    description: "It has Terraform workspaces: show the Infrastructure tab.",
+    description:
+      "It has Terraform workspaces, or a scan found Terraform roots in it: show the Infrastructure tab.",
   }),
   languages: Schema.Array(
     Schema.Struct({ name: Schema.String, bytes: Schema.Int }).annotate({

@@ -284,6 +284,7 @@
     "./ownership/notify": "./src/ownership/notify.ts",
     "./iac/store": "./src/iac/store.ts",
     "./iac/service": "./src/iac/service.ts",
+    "./git-terraform/config-cost": "./src/git-terraform/config-cost.ts",
     "./git-terraform/link": "./src/git-terraform/link.ts",
     "./git-terraform/managed": "./src/git-terraform/managed.ts",
     "./git-terraform/pass": "./src/git-terraform/pass.ts",

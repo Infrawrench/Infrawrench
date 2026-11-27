@@ -4,9 +4,14 @@ import { queries } from "../../api/queries";
 import { AppLink } from "../../components/AppLink";
 import { Button } from "../../components/Button";
 import { Icon } from "../../components/icons";
+import { Badge } from "../../components/Badge";
+import { Table, Td, Th, Tr } from "../../components/Panel";
+import { Skeleton } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
-import type { TerraformRun } from "@infrawrench/git-contract";
+import type { TerraformConfigurationRootChange, TerraformRun } from "@infrawrench/git-contract";
+import { formatMoney, formatMoneyDelta } from "../../lib/amounts";
 import { paths } from "../../lib/paths";
+import { changePending, rootLabel } from "../infrastructure/configurations";
 import {
   CostDelta,
   PlanCounts,
@@ -15,13 +20,99 @@ import {
   terraformStatusLabel,
 } from "../infrastructure/PlanSummary";
 
-/** The newest plan of each workspace for a branch: what merging it would change, and cost. */
+/** A change to the monthly bill from configuration, signed and coloured by direction. */
+function ConfigurationDelta({ change }: { change: TerraformConfigurationRootChange }) {
+  if (change.status === "pending") {
+    return (
+      <span className="inline-flex" aria-label="Estimating">
+        <Skeleton className="h-3" width={72} />
+      </span>
+    );
+  }
+  if (change.monthlyDelta === null || change.currency === null) {
+    return <span className="text-on-surface-muted">Not priced</span>;
+  }
+  const tone =
+    change.monthlyDelta > 0 ? "text-danger" : change.monthlyDelta < 0 ? "text-success" : "";
+  return (
+    <span className={`whitespace-nowrap font-mono text-[11px] ${tone}`}>
+      {formatMoneyDelta(change.monthlyDelta, change.currency)}
+      <span className="font-sans text-on-surface-muted"> / month</span>
+    </span>
+  );
+}
+
+function ConfigurationLines({ change }: { change: TerraformConfigurationRootChange }) {
+  const currency = change.currency ?? "USD";
+  const amount = (value: number | null) => (value === null ? "" : formatMoney(value, currency));
+  return (
+    <div>
+      {change.lines.length > 0 ? (
+        <Table caption="Monthly estimate by resource">
+          <thead>
+            <tr>
+              <Th>Resource</Th>
+              <Th className="text-right">Before</Th>
+              <Th className="text-right">After</Th>
+              <Th className="text-right">Change</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {change.lines.map((line) => (
+              <Tr key={line.address}>
+                <Td className="font-mono text-on-surface">{line.address}</Td>
+                <Td className="text-right font-mono">{amount(line.monthlyBefore)}</Td>
+                <Td className="text-right font-mono">{amount(line.monthlyAfter)}</Td>
+                <Td
+                  className={`text-right font-mono ${
+                    line.monthlyDelta > 0
+                      ? "text-danger"
+                      : line.monthlyDelta < 0
+                        ? "text-success"
+                        : ""
+                  }`}
+                >
+                  {formatMoneyDelta(line.monthlyDelta, currency)}
+                </Td>
+              </Tr>
+            ))}
+          </tbody>
+        </Table>
+      ) : null}
+      {change.unpriced.length > 0 ? (
+        <div className="border-t border-border px-3 py-2 text-xs first:border-t-0">
+          <p className="mb-1 font-medium text-on-surface-secondary">Not priced</p>
+          <ul className="space-y-0.5">
+            {change.unpriced.map((item) => (
+              <li key={item.address} className="flex flex-wrap gap-x-2">
+                <span className="font-mono text-on-surface">{item.address}</span>
+                <span className="text-on-surface-muted">{item.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The newest plan of each workspace for a branch: what merging it would
+ * change, and cost. Beside them, the estimate from configuration of each
+ * root the branch changes that no plan has priced (the server leaves out a
+ * root a plan covers, so a root never shows two numbers).
+ */
 export function InfrastructureBox({ branchKey }: { branchKey: string }) {
   const repo = useRepoRef();
   const repository = useRepository();
   const runs = useQuery({
     ...queries.terraform.listRuns({ params: repo, query: { page: branchKey, limit: 50 } }),
     enabled: repository.hasTerraform,
+  });
+  const configuration = useQuery({
+    ...queries.terraform.configurationChange({ params: repo, query: { page: branchKey } }),
+    enabled: !repository.isEmpty,
+    refetchInterval: (query) => (changePending(query.state.data) ? 10_000 : false),
   });
   const [open, setOpen] = useState<string | null>(null);
 
@@ -30,7 +121,10 @@ export function InfrastructureBox({ branchKey }: { branchKey: string }) {
   for (const run of runs.data?.items ?? []) {
     if (!newest.has(run.workspace.id)) newest.set(run.workspace.id, run);
   }
-  if (newest.size === 0) return null;
+  const estimated = [...(configuration.data?.roots ?? [])].sort((a, b) =>
+    a.path.localeCompare(b.path),
+  );
+  if (newest.size === 0 && estimated.length === 0) return null;
 
   return (
     <section
@@ -85,6 +179,51 @@ export function InfrastructureBox({ branchKey }: { branchKey: string }) {
               </li>
             );
           })}
+        {estimated.map((change) => {
+          const key = `configuration:${change.path}`;
+          const expanded = open === key;
+          const hasDetail = change.lines.length > 0 || change.unpriced.length > 0;
+          return (
+            <li key={key} className="border-t border-border first:border-t-0">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-xs">
+                <Icon name="folder" size={13} className="text-on-surface-muted" />
+                <span className="font-mono font-medium text-on-surface">
+                  {rootLabel(change.path)}
+                </span>
+                {change.workspace !== null ? (
+                  <AppLink
+                    href={paths.workspace(repo, change.workspace)}
+                    className="text-on-surface-secondary hover:underline"
+                  >
+                    {change.workspace}
+                  </AppLink>
+                ) : null}
+                <span className="text-on-surface-muted">Estimate from configuration</span>
+                <span className="flex flex-1 flex-wrap items-center justify-end gap-3">
+                  {change.status === "priced" && !change.complete ? (
+                    <Badge tone="warning">Partial</Badge>
+                  ) : null}
+                  <ConfigurationDelta change={change} />
+                  {hasDetail && change.status !== "pending" ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-expanded={expanded}
+                      onClick={() => setOpen(expanded ? null : key)}
+                    >
+                      {expanded ? "Hide" : "Show"}
+                    </Button>
+                  ) : null}
+                </span>
+              </div>
+              {expanded ? (
+                <div className="border-t border-border">
+                  <ConfigurationLines change={change} />
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

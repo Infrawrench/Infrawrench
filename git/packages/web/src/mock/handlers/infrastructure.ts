@@ -15,13 +15,14 @@ import {
   ACCOUNTS,
   findWorkspace,
   restoreVersion,
-  rootsOf,
   stateDocument,
   terraformOf,
   toRun,
   toWorkspace,
   type WorkspaceRecord,
 } from "../terraform-data";
+import { configurationChangeOf, scanOf } from "../terraform-scan-data";
+import { findPage } from "../threads-data";
 
 const origin = (): string => window.location.origin;
 
@@ -59,9 +60,16 @@ export default defineMockHandlers({
           .sort((a, b) => a.name.localeCompare(b.name)),
       };
     },
-    listRoots: ({ params, query }) => {
+    scan: ({ params, query }) => {
       const repo = findRepository(params.owner, params.repo);
-      return { roots: rootsOf(repo, query?.ref) };
+      if (repo.isEmpty) throw unprocessable("The repository is empty", "repository_empty");
+      return scanOf(repo, query?.ref);
+    },
+    configurationChange: ({ params, query }) => {
+      const repo = findRepository(params.owner, params.repo);
+      const page = findPage(repo, query.page).page;
+      if (page === null) throw notFound("Branch page not found");
+      return configurationChangeOf(repo, page);
     },
     listAccounts: ({ params }) => {
       const repo = findRepository(params.owner, params.repo);

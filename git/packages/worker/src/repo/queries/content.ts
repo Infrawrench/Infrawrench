@@ -24,7 +24,18 @@ import {
   splitLines,
   splitPath,
 } from "@infrawrench/git-ops";
-import { type RefInput, RepoReaderError, type RepositoryLanguages } from "../reader";
+import {
+  SNAPSHOT_LIMITS,
+  type TerraformSnapshotFile,
+  isSkippedDirectory,
+  isTerraformScanFile,
+} from "@infrawrench/git-terraform";
+import {
+  type RefInput,
+  RepoReaderError,
+  type RepositoryLanguages,
+  type TerraformFiles,
+} from "../reader";
 import {
   type ReaderContext,
   type Session,
@@ -485,6 +496,71 @@ export async function languages(
       .map(([name, total]) => ({ name, bytes: total })),
     truncated,
   };
+}
+
+/**
+ * Every Terraform file at a ref, with its text, in one walk beside the data:
+ * a Terraform scan's input. Bounded by `SNAPSHOT_LIMITS`; past any bound the
+ * answer says `truncated`. Kept by tree, so asking again for a commit with the
+ * same tree (another branch, a push that changed no file) reads nothing.
+ */
+export async function terraformFiles(
+  cx: ReaderContext,
+  input: { readonly ref: RefInput },
+): Promise<TerraformFiles> {
+  const session = await openSession(cx);
+  const ref = await resolve(session, input.ref);
+  const treeOid = (await session.cache.node(ref.commitOid)).tree;
+  const known = cx.state.terraform.get(treeOid) as Omit<TerraformFiles, "commitOid"> | undefined;
+  if (known) return { commitOid: ref.commitOid, ...known };
+
+  const found: { readonly path: string; readonly oid: ObjectId }[] = [];
+  const pending: { readonly oid: ObjectId; readonly path: string }[] = [{ oid: treeOid, path: "" }];
+  let directories = 0;
+  let truncated = false;
+  while (pending.length > 0) {
+    if (directories >= SNAPSHOT_LIMITS.maxDirectories) {
+      truncated = true;
+      break;
+    }
+    directories++;
+    const here = pending.pop()!;
+    for (const entry of await session.cache.tree(here.oid)) {
+      const path = here.path === "" ? entry.name : `${here.path}/${entry.name}`;
+      if (entry.mode === "040000") {
+        if (!isSkippedDirectory(entry.name)) pending.push({ oid: entry.oid, path });
+      } else if (
+        (entry.mode === "100644" || entry.mode === "100755") &&
+        isTerraformScanFile(entry.name)
+      ) {
+        if (found.length >= SNAPSHOT_LIMITS.maxFiles) truncated = true;
+        else found.push({ path, oid: entry.oid });
+      }
+    }
+  }
+  found.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+  const sizes = await sizesOf(
+    session,
+    found.map((file) => file.oid),
+  );
+  const files: TerraformSnapshotFile[] = [];
+  let total = 0;
+  for (const file of found) {
+    const size = sizes.get(file.oid) ?? 0;
+    let text: string | null = null;
+    if (size <= SNAPSHOT_LIMITS.maxFileBytes) {
+      if (total + size > SNAPSHOT_LIMITS.maxTotalBytes) truncated = true;
+      else {
+        const data = await session.cache.blob(file.oid);
+        total += data.length;
+        text = isBinary(data) ? null : decodeTextStrict(data);
+      }
+    }
+    files.push({ path: file.path, text, size });
+  }
+  const answer = { treeOid, snapshot: { files, truncated } };
+  cx.state.terraform.set(treeOid, answer);
+  return { commitOid: ref.commitOid, ...answer };
 }
 
 export async function latestCommit(

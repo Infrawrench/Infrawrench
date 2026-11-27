@@ -1,4 +1,10 @@
-import type { TerraformDirectory } from "./discover.js";
+import type { ModuleCall } from "./discover.js";
+
+/** What `rootsTouchedBy` reads of a directory. */
+export interface TouchedDirectory {
+  readonly path: string;
+  readonly moduleCalls: ReadonlyArray<Pick<ModuleCall, "localPath">>;
+}
 
 /**
  * Which roots a set of changed files touches: a file under the root, or
@@ -13,7 +19,7 @@ import type { TerraformDirectory } from "./discover.js";
 export function rootsTouchedBy(
   rootPaths: readonly string[],
   changedPaths: readonly string[],
-  directories: readonly TerraformDirectory[],
+  directories: readonly TouchedDirectory[],
 ): Set<string> {
   const byPath = new Map(directories.map((directory) => [directory.path, directory]));
   const under = (directory: string, file: string): boolean =>

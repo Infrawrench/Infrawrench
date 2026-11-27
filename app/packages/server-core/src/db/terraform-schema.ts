@@ -347,3 +347,60 @@ export const gitTerraformManagedResources = pgTable(
     ),
   }),
 );
+
+export type GitTerraformScanPricingStatus = "pending" | "priced" | "unavailable";
+
+/**
+ * A repository's Terraform at one tree, read from its files
+ * (`@infrawrench/git-terraform` `scanTerraformSnapshot`): the roots and what
+ * each declares (`summary`), what pricing each needs (`pricingInputs`), and
+ * once the gateway's pass has priced them, each root's estimate from
+ * configuration (`estimates`, by root path).
+ *
+ * Keyed by the tree, not the commit: a push that changes no file reuses the
+ * scan, and so does every branch at the same tree. `scannerVersion` is the
+ * scanner's own (`TERRAFORM_SCANNER_VERSION`); a newer scanner scans again.
+ *
+ * `pricingInputs` carries attribute values as the configuration writes them
+ * (an instance type, a disk size; never an attribute named like a
+ * credential, never a sensitive variable). They are the repository's own
+ * text, readable by whoever reads the repository, and the API never serves
+ * them.
+ */
+export const gitTerraformScans = pgTable(
+  "git_terraform_scans",
+  {
+    id: text("id").primaryKey(),
+    repositoryId: text("repository_id")
+      .notNull()
+      .references(() => gitRepositories.id, { onDelete: "cascade" }),
+    treeOid: text("tree_oid").notNull(),
+    scannerVersion: integer("scanner_version").notNull(),
+    /** The commit it was first scanned at. */
+    commitOid: text("commit_oid").notNull(),
+    /** `TerraformScanSummary`. */
+    summary: jsonb("summary").$type<Record<string, unknown>>().notNull(),
+    /** `ConfigurationPricingInputs[]`, one per root. */
+    pricingInputs: jsonb("pricing_inputs").$type<Record<string, unknown>[]>().notNull(),
+    /** `ConfigurationEstimate` by root path; null until priced. */
+    estimates: jsonb("estimates").$type<Record<string, Record<string, unknown>> | null>(),
+    pricingStatus: text("pricing_status")
+      .$type<GitTerraformScanPricingStatus>()
+      .notNull()
+      .default("pending"),
+    pricedAt: timestamp("priced_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    treeIdx: uniqueIndex("git_terraform_scans_tree_idx").on(
+      t.repositoryId,
+      t.treeOid,
+      t.scannerVersion,
+    ),
+    pendingIdx: index("git_terraform_scans_pending_idx").on(t.pricingStatus, t.createdAt),
+    statusValid: check(
+      "git_terraform_scans_pricing_status_valid",
+      sql`${t.pricingStatus} IN ('pending', 'priced', 'unavailable')`,
+    ),
+  }),
+);

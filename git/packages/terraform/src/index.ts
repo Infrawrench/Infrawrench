@@ -122,3 +122,65 @@ export {
 } from "./plan/pricing.js";
 export { pinnedRelease, pinnedVersions } from "./pipeline/releases.js";
 export { rootsTouchedBy } from "./roots/touched.js";
+
+export {
+  EMPTY_SCOPE,
+  UNKNOWN,
+  evaluate,
+  fromJson,
+  hasUnknown,
+  isUnknown,
+  type HclValue,
+  type Scope,
+  type Unknown,
+} from "./roots/expr.js";
+export {
+  directoryModel,
+  isAutoTfvars,
+  tfvarsValues,
+  type DirectoryModel,
+  type Expression,
+  type ModuleModel,
+  type ProviderModel,
+  type ResourceModel,
+  type VariableModel,
+} from "./roots/model.js";
+export {
+  MAX_CONFIGURATION_RESOURCES,
+  MAX_INACTIVE_LISTED,
+  configurationPricingInputs,
+  providerOf,
+  valueOf,
+  type ConfigurationPricingInputs,
+  type ConfigurationResource,
+  type ConfigurationValue,
+} from "./estimate/inputs.js";
+export {
+  compareConfigurationEstimates,
+  type ConfigurationCostChange,
+  type ConfigurationCostChangeLine,
+  type ConfigurationCostLine,
+  type ConfigurationEstimate,
+  type ConfigurationOther,
+  type ConfigurationUnpriced,
+} from "./estimate/estimate.js";
+export {
+  SNAPSHOT_LIMITS,
+  TERRAFORM_SCANNER_VERSION,
+  isSkippedDirectory,
+  isTerraformScanFile,
+  reachableModules,
+  scanTerraformSnapshot,
+  snapshotTreeReader,
+  type ScannedRoot,
+  type TerraformScanResult,
+  type TerraformSnapshot,
+  type TerraformSnapshotFile,
+} from "./scan/scan.js";
+export {
+  MAX_SUMMARY_TYPES,
+  summarizeRoot,
+  summarizeScan,
+  type TerraformRootSummary,
+  type TerraformScanSummary,
+} from "./scan/summary.js";

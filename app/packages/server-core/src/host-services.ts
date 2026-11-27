@@ -490,7 +490,7 @@ function oauthHostServices(
  * without its read-only token (a self-hosted deployment), when plugins fall back
  * to their providers' own price APIs.
  */
-function warehouseHostServices(): Pick<HostServices, "instancePricing"> {
+export function warehouseHostServices(): Pick<HostServices, "instancePricing"> {
   const token = process.env["PRICING_WAREHOUSE_READ_TOKEN"];
   if (!token) return {};
   const config = { token, url: process.env["PRICING_WAREHOUSE_URL"] };

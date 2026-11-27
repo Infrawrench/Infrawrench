@@ -411,6 +411,45 @@ describeGit("the reader, with git as the judge", () => {
     ]);
   });
 
+  it("reads every Terraform file of a commit in one walk, and a tree once", async () => {
+    const dir = join(tempDir("terraform-files"), "repo");
+    await git(["init", "-q", "-b", "main", dir]);
+    const put = (path: string, text: string | Buffer) => {
+      mkdirSync(join(dir, path, ".."), { recursive: true });
+      writeFileSync(join(dir, path), text);
+    };
+    put("envs/prod/main.tf", 'module "net" {\n  source = "../../modules/net"\n}\n');
+    put("envs/prod/terraform.tfvars", 'region = "eu-west-1"\n');
+    put("envs/prod/.terraform.lock.hcl", "# locks\n");
+    put("modules/net/main.tf.json", '{"resource": {}}\n');
+    put("modules/net/README.md", "# net\n");
+    put("envs/prod/.terraform/providers/x.tf", "skipped\n");
+    put("node_modules/pkg/main.tf", "skipped\n");
+    put("binary.tf", Buffer.from([0, 1, 2, 255, 254]));
+    await git(["add", "-A", "-f"], { cwd: dir });
+    await git(["-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "-m", "tf"], {
+      cwd: dir,
+    });
+    const repo = await hub.open("repo-terraform");
+    await git(["push", "-q", repo.url, "main"], { cwd: dir });
+    const reader = hub.reader("repo-terraform");
+    const read = await reader.terraformFiles({ ref: undefined });
+    expect(read.commitOid).toBe(await gitOut(["rev-parse", "HEAD"], { cwd: dir }));
+    expect(read.treeOid).toBe(await gitOut(["rev-parse", "HEAD^{tree}"], { cwd: dir }));
+    expect(read.snapshot.truncated).toBe(false);
+    expect(read.snapshot.files.map((file) => [file.path, file.text !== null])).toEqual([
+      ["binary.tf", false],
+      ["envs/prod/.terraform.lock.hcl", true],
+      ["envs/prod/main.tf", true],
+      ["envs/prod/terraform.tfvars", true],
+      ["modules/net/main.tf.json", true],
+    ]);
+    expect(read.snapshot.files[2]!.text).toContain("../../modules/net");
+    // The same tree again is answered from the object's memory, with the commit asked about.
+    const again = await reader.terraformFiles({ ref: read.commitOid });
+    expect(again).toEqual(read);
+  });
+
   it("restates the contract's raw URL for names that need encoding", async () => {
     const odd = await hub.open("repo-odd");
     const dir = await initRepo("odd");

@@ -41,7 +41,7 @@ import { type RepoReader, RepoReaderError } from "../repo/reader";
 import { type RepoReaderFactory, repoReaderFor } from "../repo/select";
 import { announcePullRequest, announcePush } from "./ci";
 import { queueReviewForVersion } from "./reviews";
-import { queueMergeApplies, queuePullRequestPlans } from "./terraform";
+import { queueMergeApplies, queuePullRequestPlans, scanAhead } from "./terraform";
 import { branchDeleted, carryThreads, openBranchPage, recordVersions } from "./versions";
 import { describeError } from "../http/log";
 
@@ -170,6 +170,8 @@ const syncHead = async (
     pull: { ...pull, headOid: update.newOid, baseOid },
   };
   await announcePullRequest(base, synced, "synchronize", cx.repo, cx.username);
+  // The page's cost change from configuration, priced before anyone opens it.
+  await scanAhead(baseReader, base.repository.id, [update.newOid, pull.mergeBaseOid]);
   // A fork's head never queues a plan in its base (`plansPullRequest`).
   if (!plansPullRequest(base.repository.id, pull.headRepositoryId)) return;
   await queuePullRequestPlans({
@@ -354,6 +356,9 @@ export const handlePush = async (
         }
       : {}),
   });
+
+  // The Infrastructure tab's roots and estimates, read ahead of the first visit.
+  if (defaultBranch) await scanAhead(reader, repo.repository.id, [defaultBranch.newOid]);
 
   for (const update of event.updates) {
     if (update.name.startsWith(BRANCH)) {

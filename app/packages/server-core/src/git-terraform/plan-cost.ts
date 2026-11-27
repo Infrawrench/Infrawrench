@@ -24,6 +24,7 @@ import {
   deriveTerraformAttributeFieldMap,
   terraformAttributesToFields,
   type TerraformAttributeFieldMap,
+  type TerraformLiteral,
 } from "@infrawrench/client-core";
 import type { PlanPricingChange, PlanPricingInputs } from "@infrawrench/git-terraform";
 import type { CostEstimate } from "@infrawrench/plugin-base";
@@ -59,17 +60,27 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
 }
 
 /**
- * The monthly cost change of a plan's resource changes, priced through the
- * workspace's linked accounts. A resource of a provider no linked account
- * covers, of a type no plugin maps, or whose price the provider does not
- * answer is unpriced.
+ * Prices one resource's attributes through the organisation's accounts: the
+ * first linked account of a plugin whose derived type map maps the Terraform
+ * type. Answers the estimate, null for "nothing" (no attributes, a delete's
+ * side), or undefined when it cannot be priced (no mapping, no account, the
+ * provider did not answer). Shared by plan pricing and configuration
+ * estimates (`config-cost.ts`).
  */
-export async function priceTerraformPlan(
+export function accountPricer(
   organizationId: string,
   accounts: readonly PlanCostAccount[],
-  inputs: PlanPricingInputs,
   deps: PlanCostDeps,
-): Promise<TerraformRunCostDelta> {
+): {
+  /** The plugin that maps a type, when one does (whether or not an account exists). */
+  readonly pluginFor: (terraformType: string) => string | null;
+  /** Whether the organisation has an account of the plugin to price through. */
+  readonly hasAccount: (pluginId: string) => boolean;
+  readonly price: (
+    terraformType: string,
+    attributes: Readonly<Record<string, TerraformLiteral>> | null,
+  ) => Promise<CostEstimate | null | undefined>;
+} {
   const { capabilityFor, typeMap } = deps.capabilities;
   const accountByPlugin = new Map<string, string>();
   for (const account of accounts) {
@@ -85,33 +96,51 @@ export async function priceTerraformPlan(
     }
     return map;
   };
+  return {
+    pluginFor: (terraformType) => typeMap.byTerraformType.get(terraformType)?.[0]?.pluginId ?? null,
+    hasAccount: (pluginId) => accountByPlugin.has(pluginId),
+    price: async (terraformType, attributes) => {
+      if (attributes === null) return null;
+      const mapping = (typeMap.byTerraformType.get(terraformType) ?? []).find((m) =>
+        accountByPlugin.has(m.pluginId),
+      );
+      if (!mapping) return undefined;
+      const fields = terraformAttributesToFields(mapFor(mapping.pluginId, mapping.resourceTypeId), {
+        ...attributes,
+      });
+      const estimate = await withTimeout(
+        deps
+          .estimate(organizationId, {
+            accountId: accountByPlugin.get(mapping.pluginId)!,
+            resourceTypeId: mapping.resourceTypeId,
+            fields,
+          })
+          .catch(() => null),
+        ESTIMATE_TIMEOUT_MS,
+      );
+      return estimate ?? undefined;
+    },
+  };
+}
 
+/**
+ * The monthly cost change of a plan's resource changes, priced through the
+ * workspace's linked accounts. A resource of a provider no linked account
+ * covers, of a type no plugin maps, or whose price the provider does not
+ * answer is unpriced.
+ */
+export async function priceTerraformPlan(
+  organizationId: string,
+  accounts: readonly PlanCostAccount[],
+  inputs: PlanPricingInputs,
+  deps: PlanCostDeps,
+): Promise<TerraformRunCostDelta> {
+  const pricer = accountPricer(organizationId, accounts, deps);
   /** A side's monthly cost; `undefined` when it exists and could not be priced. */
-  const side = async (
+  const side = (
     change: PlanPricingChange,
     attributes: PlanPricingChange["before"],
-  ): Promise<CostEstimate | null | undefined> => {
-    if (attributes === null) return null;
-    const mapping = (typeMap.byTerraformType.get(change.type) ?? []).find((m) =>
-      accountByPlugin.has(m.pluginId),
-    );
-    if (!mapping) return undefined;
-    const fields = terraformAttributesToFields(
-      mapFor(mapping.pluginId, mapping.resourceTypeId),
-      attributes,
-    );
-    const estimate = await withTimeout(
-      deps
-        .estimate(organizationId, {
-          accountId: accountByPlugin.get(mapping.pluginId)!,
-          resourceTypeId: mapping.resourceTypeId,
-          fields,
-        })
-        .catch(() => null),
-      ESTIMATE_TIMEOUT_MS,
-    );
-    return estimate ?? undefined;
-  };
+  ): Promise<CostEstimate | null | undefined> => pricer.price(change.type, attributes);
 
   const byCurrency = new Map<string, number>();
   let priced = 0;

@@ -60,6 +60,8 @@ export interface ModuleCall {
   readonly source: string | null;
   /** For a `./` or `../` source: the directory it names, relative to the repository. */
   readonly localPath: string | null;
+  /** The `version` constraint (registry sources), as written. */
+  readonly version?: string | null;
 }
 
 export interface TerraformVariable {
@@ -81,6 +83,10 @@ export interface TerraformDirectory {
   readonly providers: readonly string[];
   /** `required_providers`: local name to source (`hashicorp/aws`), or null where none is given. */
   readonly requiredProviders: Readonly<Record<string, string | null>>;
+  /** `required_providers`: local name to its version constraint, or null where none is given. */
+  readonly providerVersions: Readonly<Record<string, string | null>>;
+  /** The backend's settings that are plain literals, credentials left out (`bucket`, `key`, `region`). */
+  readonly backendSettings: Readonly<Record<string, string>>;
   readonly requiredVersion: string | null;
   readonly moduleCalls: readonly ModuleCall[];
   /** Directories here that call this one as a module. */
@@ -88,6 +94,17 @@ export interface TerraformDirectory {
   readonly variables: readonly TerraformVariable[];
   readonly resourceCount: number;
   readonly dataSourceCount: number;
+  /** Managed resources by type, as declared (before `count` and `for_each`). */
+  readonly resourceTypes: Readonly<Record<string, number>>;
+  /** Data sources by type. */
+  readonly dataSourceTypes: Readonly<Record<string, number>>;
+  readonly outputCount: number;
+  /** `.terraform.lock.hcl` is committed beside it. */
+  readonly lockFile: boolean;
+  /** Variable files beside it (`*.tfvars`, `*.tfvars.json`), by name. */
+  readonly tfvarsFiles: readonly string[];
+  /** It reads `terraform.workspace`: it behaves differently per CLI workspace. */
+  readonly usesWorkspace: boolean;
   /** Files that could not be read as HCL, with why. Their contents count for nothing. */
   readonly unreadable: readonly { readonly file: string; readonly reason: string }[];
 }
@@ -133,6 +150,14 @@ export function resolveLocalSource(directory: string, source: string): string | 
 
 interface Declared {
   backend: string | null;
+  backendSettings: Record<string, string>;
+  providerVersions: Record<string, string | null>;
+  resourceTypes: Record<string, number>;
+  dataSourceTypes: Record<string, number>;
+  outputCount: number;
+  usesWorkspace: boolean;
+  lockFile: boolean;
+  tfvarsFiles: string[];
   providers: Set<string>;
   requiredProviders: Record<string, string | null>;
   requiredVersion: string | null;
@@ -143,7 +168,22 @@ interface Declared {
   unreadable: { file: string; reason: string }[];
 }
 
+/** Backend settings that name credentials: never kept, even as literals. */
+const SECRET_SETTING =
+  /(access_key|secret|token|password|credential|private|sas|client_certificate|auth|key_material)/i;
+
+function literalSetting(expression: string): string | null {
+  const text = literalString(expression);
+  if (text !== null) return text;
+  return /^(true|false|-?[0-9]+(\.[0-9]+)?)$/.test(expression) ? expression : null;
+}
+
+const bump = (counts: Record<string, number>, key: string, by = 1) => {
+  counts[key] = (counts[key] ?? 0) + by;
+};
+
 function readHcl(directory: string, source: string, into: Declared): void {
+  if (source.includes("terraform.workspace")) into.usesWorkspace = true;
   for (const item of hclItems(source)) {
     if (item.kind !== "block") continue;
     switch (item.type) {
@@ -153,15 +193,31 @@ function readHcl(directory: string, source: string, into: Declared): void {
             if (inner.name === "required_version") {
               into.requiredVersion = literalString(inner.expression) ?? into.requiredVersion;
             }
-          } else if (inner.type === "backend") {
-            into.backend = inner.labels[0] ?? into.backend;
-          } else if (inner.type === "cloud") {
-            into.backend = "cloud";
+          } else if (inner.type === "backend" || inner.type === "cloud") {
+            into.backend = inner.type === "cloud" ? "cloud" : (inner.labels[0] ?? into.backend);
+            for (const setting of hclItems(inner.body)) {
+              if (setting.kind === "block") {
+                // `cloud { workspaces { name = "x" } }`, and `remote` the same.
+                for (const nested of hclItems(setting.body)) {
+                  if (nested.kind !== "attribute" || SECRET_SETTING.test(nested.name)) continue;
+                  const value = literalSetting(nested.expression);
+                  if (value !== null)
+                    into.backendSettings[`${setting.type}.${nested.name}`] = value;
+                }
+                continue;
+              }
+              if (SECRET_SETTING.test(setting.name)) continue;
+              const value = literalSetting(setting.expression);
+              if (value !== null) into.backendSettings[setting.name] = value;
+            }
           } else if (inner.type === "required_providers") {
             for (const provider of hclItems(inner.body)) {
               if (provider.kind !== "attribute") continue;
               const source = /(?:^|[\s{,])source\s*=\s*"([^"$%\\]+)"/.exec(provider.expression);
-              into.requiredProviders[provider.name] = source?.[1] ?? null;
+              const version = /(?:^|[\s{,])version\s*=\s*"([^"$%\\]+)"/.exec(provider.expression);
+              into.requiredProviders[provider.name] =
+                source?.[1] ?? literalString(provider.expression);
+              into.providerVersions[provider.name] = version?.[1] ?? null;
             }
           }
         }
@@ -176,10 +232,14 @@ function readHcl(directory: string, source: string, into: Declared): void {
           (inner) => inner.kind === "attribute" && inner.name === "source",
         );
         const source = attribute?.kind === "attribute" ? literalString(attribute.expression) : null;
+        const version = hclItems(item.body).find(
+          (inner) => inner.kind === "attribute" && inner.name === "version",
+        );
         into.moduleCalls.push({
           name,
           source,
           localPath: source === null ? null : resolveLocalSource(directory, source),
+          version: version?.kind === "attribute" ? literalString(version.expression) : null,
         });
         break;
       }
@@ -199,9 +259,14 @@ function readHcl(directory: string, source: string, into: Declared): void {
       }
       case "resource":
         into.resourceCount += 1;
+        if (item.labels[0]) bump(into.resourceTypes, item.labels[0]);
         break;
       case "data":
         into.dataSourceCount += 1;
+        if (item.labels[0]) bump(into.dataSourceTypes, item.labels[0]);
+        break;
+      case "output":
+        into.outputCount += 1;
         break;
     }
   }
@@ -217,12 +282,22 @@ function readJson(directory: string, source: string, into: Declared): void {
     throw new Error("The file is not valid JSON.");
   }
   if (!isRecord(doc)) return;
+  if (source.includes("terraform.workspace")) into.usesWorkspace = true;
   const each = (value: unknown): Record<string, unknown>[] =>
     (Array.isArray(value) ? value : [value]).filter(isRecord);
 
   for (const terraform of each(doc["terraform"])) {
     for (const backend of each(terraform["backend"])) {
-      into.backend = Object.keys(backend)[0] ?? into.backend;
+      const type = Object.keys(backend)[0];
+      into.backend = type ?? into.backend;
+      for (const settings of type === undefined ? [] : each(backend[type])) {
+        for (const [name, value] of Object.entries(settings)) {
+          if (SECRET_SETTING.test(name)) continue;
+          if (["string", "number", "boolean"].includes(typeof value)) {
+            into.backendSettings[name] = String(value);
+          }
+        }
+      }
     }
     if (terraform["cloud"] !== undefined) into.backend = "cloud";
     if (typeof terraform["required_version"] === "string") {
@@ -231,7 +306,13 @@ function readJson(directory: string, source: string, into: Declared): void {
     for (const required of each(terraform["required_providers"])) {
       for (const [name, value] of Object.entries(required)) {
         into.requiredProviders[name] =
-          isRecord(value) && typeof value["source"] === "string" ? value["source"] : null;
+          isRecord(value) && typeof value["source"] === "string"
+            ? value["source"]
+            : typeof value === "string"
+              ? value
+              : null;
+        into.providerVersions[name] =
+          isRecord(value) && typeof value["version"] === "string" ? value["version"] : null;
       }
     }
   }
@@ -246,9 +327,11 @@ function readJson(directory: string, source: string, into: Declared): void {
         name,
         source,
         localPath: source === null ? null : resolveLocalSource(directory, source),
+        version: isRecord(value) && typeof value["version"] === "string" ? value["version"] : null,
       });
     }
   }
+  for (const outputs of each(doc["output"])) into.outputCount += Object.keys(outputs).length;
   for (const variables of each(doc["variable"])) {
     for (const [name, value] of Object.entries(variables)) {
       into.variables.push({
@@ -270,6 +353,16 @@ function readJson(directory: string, source: string, into: Declared): void {
     );
   into.resourceCount += count(doc["resource"]);
   into.dataSourceCount += count(doc["data"]);
+  for (const [field, counts] of [
+    ["resource", into.resourceTypes],
+    ["data", into.dataSourceTypes],
+  ] as const) {
+    for (const types of each(doc[field])) {
+      for (const [type, named] of Object.entries(types)) {
+        if (isRecord(named)) bump(counts, type, Object.keys(named).length);
+      }
+    }
+  }
 }
 
 function classify(
@@ -314,6 +407,8 @@ export async function discoverTerraformDirectories(
     const { path, depth } = next;
     const entries = await tree.list(path);
     const files: string[] = [];
+    let lockFile = false;
+    const tfvarsFiles: string[] = [];
     for (const entry of entries) {
       if (entry.kind === "directory") {
         // Dot directories hold tooling (`.terraform`, `.git`), never roots of their own.
@@ -325,6 +420,10 @@ export async function discoverTerraformDirectories(
         else queue.push({ path: join(path, entry.name), depth: depth + 1 });
       } else if (isTerraformFile(entry.name) && !entry.name.startsWith(".")) {
         files.push(entry.name);
+      } else if (entry.name === ".terraform.lock.hcl") {
+        lockFile = true;
+      } else if (/\.tfvars(\.json)?$/.test(entry.name)) {
+        tfvarsFiles.push(entry.name);
       }
     }
     if (files.length === 0) continue;
@@ -333,6 +432,14 @@ export async function discoverTerraformDirectories(
 
     const declared: Declared = {
       backend: null,
+      backendSettings: {},
+      providerVersions: {},
+      resourceTypes: {},
+      dataSourceTypes: {},
+      outputCount: 0,
+      usesWorkspace: false,
+      lockFile,
+      tfvarsFiles: tfvarsFiles.sort(),
       providers: new Set(),
       requiredProviders: {},
       requiredVersion: null,
@@ -381,14 +488,22 @@ export async function discoverTerraformDirectories(
       path,
       ...classify(path, declared, callers),
       backend: declared.backend,
+      backendSettings: declared.backendSettings,
       providers: [...declared.providers].sort(),
       requiredProviders: declared.requiredProviders,
+      providerVersions: declared.providerVersions,
       requiredVersion: declared.requiredVersion,
       moduleCalls: declared.moduleCalls,
       calledBy: callers,
       variables: declared.variables,
       resourceCount: declared.resourceCount,
       dataSourceCount: declared.dataSourceCount,
+      resourceTypes: declared.resourceTypes,
+      dataSourceTypes: declared.dataSourceTypes,
+      outputCount: declared.outputCount,
+      lockFile: declared.lockFile,
+      tfvarsFiles: declared.tfvarsFiles,
+      usesWorkspace: declared.usesWorkspace,
       unreadable: declared.unreadable,
     });
   }

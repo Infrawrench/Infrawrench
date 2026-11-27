@@ -12,7 +12,11 @@ import {
   httpCloneUrl,
   sshCloneUrl,
 } from "@infrawrench/git-contract";
-import { ciRuns, gitTerraformWorkspaces } from "@infrawrench/server-core/db/schema";
+import {
+  ciRuns,
+  gitTerraformScans,
+  gitTerraformWorkspaces,
+} from "@infrawrench/server-core/db/schema";
 import { db } from "../../db/client";
 import { type RepositoryWithOwner, starredAmong } from "../../db/repositories";
 import { visibleRepositoriesById } from "../../db/repository-lists";
@@ -110,8 +114,12 @@ export const repositoryDetail = async (
   const [summary] = await repositorySummaries(cx, [found]);
   const [hasCi, hasTerraform] = await Promise.all([
     exists(sql`select 1 from ${ciRuns} where ${ciRuns.gitRepositoryId} = ${repository.id}`),
+    // Workspaces, or a scan that found a root: Terraform nobody runs here yet still shows.
     exists(
-      sql`select 1 from ${gitTerraformWorkspaces} where ${gitTerraformWorkspaces.repositoryId} = ${repository.id}`,
+      sql`select 1 from ${gitTerraformWorkspaces} where ${gitTerraformWorkspaces.repositoryId} = ${repository.id}
+          union all
+          select 1 from ${gitTerraformScans} where ${gitTerraformScans.repositoryId} = ${repository.id}
+            and jsonb_array_length(${gitTerraformScans.summary}->'roots') > 0`,
     ),
   ]);
   const ref = { owner: owner.slug, repo: repository.name };
