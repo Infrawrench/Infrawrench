@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ANY_GIT_JOB_TOKEN_AGENT,
   ANY_GIT_JOB_TOKEN_REF,
   ANY_GIT_JOB_TOKEN_WORKSPACE,
   GIT_JOB_TOKEN_MAX_TTL_SECONDS,
@@ -66,8 +67,8 @@ describe("git job tokens", () => {
       ok: false,
       reason: "access",
     });
-    expect((await verifyGitJobToken(KEY, read, { access: "read" }, NOW)).ok).toBe(true);
-    expect((await verifyGitJobToken(KEY, write, { access: "read" }, NOW)).ok).toBe(true);
+    expect((await verifyGitJobToken(KEY, read, { access: "read" as const }, NOW)).ok).toBe(true);
+    expect((await verifyGitJobToken(KEY, write, { access: "read" as const }, NOW)).ok).toBe(true);
     expect((await verifyGitJobToken(KEY, write, { access: "write" }, NOW)).ok).toBe(true);
   });
 
@@ -112,7 +113,7 @@ describe("git job tokens", () => {
     });
     // Smart HTTP and the raw route never name a commit, so they refuse it.
     expect(await verifyGitJobToken(KEY, token, {}, NOW)).toEqual({ ok: false, reason: "access" });
-    expect(await verifyGitJobToken(KEY, token, { access: "read" }, NOW)).toEqual({
+    expect(await verifyGitJobToken(KEY, token, { access: "read" as const }, NOW)).toEqual({
       ok: false,
       reason: "access",
     });
@@ -210,7 +211,7 @@ describe("git job tokens", () => {
     // raw file, a workspace's state.
     const elsewhere: Array<Parameters<typeof verifyGitJobToken>[2]> = [
       {},
-      { access: "read" },
+      { access: "read" as const },
       { commit: "c".repeat(40) },
       { workspace: ANY_GIT_JOB_TOKEN_WORKSPACE },
     ];
@@ -251,6 +252,65 @@ describe("git job tokens", () => {
     await expect(signGitJobToken(KEY, claims({ ref, workspace: "ws-1" }), NOW)).rejects.toThrow();
     for (const bad of ["main", "refs/tags/v1", "refs/heads/", "refs/heads/a..b", "refs/heads/a/"]) {
       await expect(signGitJobToken(KEY, claims({ ref: bad }), NOW), bad).rejects.toThrow();
+    }
+  });
+
+  it("keeps an agent's token to where its branch's markers are served", async () => {
+    const agent = "refs/heads/work/fix-login";
+    const token = await signGitJobToken(KEY, claims({ agent, access: "write" }), NOW);
+    const bound = { ok: true, claims: claims({ agent, access: "write" }) };
+    expect(await verifyGitJobToken(KEY, token, { agent: ANY_GIT_JOB_TOKEN_AGENT }, NOW)).toEqual(
+      bound,
+    );
+    expect(await verifyGitJobToken(KEY, token, { agent }, NOW)).toEqual(bound);
+    // Another branch's markers.
+    expect(await verifyGitJobToken(KEY, token, { agent: "refs/heads/main" }, NOW)).toEqual({
+      ok: false,
+      reason: "access",
+    });
+    // Git (which names any ref), an archive, a workspace and a plain check all refuse it.
+    const others: Parameters<typeof verifyGitJobToken>[2][] = [
+      {},
+      { access: "read" as const },
+      { ref: ANY_GIT_JOB_TOKEN_REF },
+      { ref: agent },
+      { commit: "c".repeat(40) },
+      { workspace: ANY_GIT_JOB_TOKEN_WORKSPACE },
+    ];
+    for (const expect_ of others) {
+      expect(await verifyGitJobToken(KEY, token, expect_, NOW)).toEqual({
+        ok: false,
+        reason: "access",
+      });
+    }
+    // Another repository, and after its time.
+    expect(
+      await verifyGitJobToken(
+        KEY,
+        token,
+        { agent: ANY_GIT_JOB_TOKEN_AGENT, repositoryId: "another" },
+        NOW,
+      ),
+    ).toEqual({ ok: false, reason: "repository" });
+    expect(
+      await verifyGitJobToken(KEY, token, { agent: ANY_GIT_JOB_TOKEN_AGENT }, NOW + 600_000),
+    ).toEqual({ ok: false, reason: "expired" });
+    // A token without the claim is not made an agent's by a verifier that serves them.
+    const plain = await signGitJobToken(KEY, claims({ access: "write" }), NOW);
+    expect((await verifyGitJobToken(KEY, plain, { agent: ANY_GIT_JOB_TOKEN_AGENT }, NOW)).ok).toBe(
+      true,
+    );
+  });
+
+  it("does not sign an agent's token bound to anything else, or to what is not a branch", async () => {
+    const agent = "refs/heads/work/a";
+    await expect(signGitJobToken(KEY, claims({ agent, ref: agent }), NOW)).rejects.toThrow();
+    await expect(
+      signGitJobToken(KEY, claims({ agent, commit: "c".repeat(40) }), NOW),
+    ).rejects.toThrow();
+    await expect(signGitJobToken(KEY, claims({ agent, workspace: "ws-1" }), NOW)).rejects.toThrow();
+    for (const bad of ["main", "refs/tags/v1", "refs/heads/a..b"]) {
+      await expect(signGitJobToken(KEY, claims({ agent: bad }), NOW), bad).rejects.toThrow();
     }
   });
 
