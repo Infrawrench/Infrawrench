@@ -23,9 +23,9 @@ describe("a commit email's code", () => {
       forgeUrl: "https://git.infrawrench.com",
     });
     expect(message.to).toBe("mara@old.example");
-    expect(message.subject).toBe("Confirm mara@old.example for commits in Acme");
+    expect(message.subject).toBe("Verify mara@old.example for commits in Acme");
     expect(message.text).toContain(
-      "Mara Lindqvist (mara@acme.example) asked for commits made with mara@old.example to be shown as theirs in Acme's repositories on git.infrawrench.com.",
+      "Mara Lindqvist (mara@acme.example) asked to verify mara@old.example as theirs for commits in Acme's repositories on git.infrawrench.com.",
     );
     expect(message.text).toContain("The code is ABCD-2345");
     expect(message.text).toContain("https://git.infrawrench.com/settings/organisations");
@@ -44,9 +44,9 @@ describe("a commit email's code", () => {
       requesterEmail: "mara@acme.example",
       forgeUrl: "https://git.infrawrench.com",
     });
-    expect(message.subject).toBe("Confirm mara@old.example for commits in your own repositories");
+    expect(message.subject).toBe("Verify mara@old.example for commits in your own repositories");
     expect(message.text).toContain(
-      "Mara Lindqvist (mara@acme.example) asked for commits made with mara@old.example to be shown as theirs in their own repositories on git.infrawrench.com.",
+      "Mara Lindqvist (mara@acme.example) asked to verify mara@old.example as theirs for commits in their own repositories on git.infrawrench.com.",
     );
     expect(message.text).toContain(
       "Enter it under Settings > Profile: https://git.infrawrench.com/settings\n",

@@ -1,11 +1,13 @@
 /**
  * Who a commit's addresses are, against a real Postgres: the bot accounts,
- * then the person whose account has the address, then the member who
- * verified it in the repository's organisation (and nowhere else), or, in a
- * person's own repository, that person's own addresses. And the
- * way an address gets verified: asked for on the forge, mailed by the app's
- * pass (server-core's `runGitCommitEmailPass`, called here as the poller
- * calls it), typed back once, in time, by the person who asked.
+ * then the person whose account has the address, then the member who added
+ * it in the repository's organisation (and nowhere else), or, in a person's
+ * own repository, that person's own addresses. An address counts from the
+ * moment it is added. And the way one gets verified, which is optional:
+ * asked for on the forge, mailed by the app's pass (server-core's
+ * `runGitCommitEmailPass`, called here as the poller calls it), typed back
+ * once, in time, by the person who asked; in an organisation that takes the
+ * address over from a member who only added it.
  */
 import { and, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -89,10 +91,16 @@ describe.skipIf(!configured)("commit emails", () => {
     world.call("POST", `/api/user/commit-emails/${id}/verify`, { as, body: { code } });
   const list = async (as: Person): Promise<Array<Record<string, any>>> =>
     (await world.call("GET", "/api/user/commit-emails", { as })).body.emails;
+  const remove = (as: Person, id: string) =>
+    world.call("DELETE", `/api/user/commit-emails/${id}`, { as });
+  /** Ask for a code, which adding an address does not. */
+  const send = (as: Person, id: string) =>
+    world.call("POST", `/api/user/commit-emails/${id}/send`, { as });
   /** Add and verify in one go. */
   const proved = async (as: Person, organizationId: string | null, email: string) => {
     const added = await add(as, organizationId, email);
     expect(added.status, JSON.stringify(added.body)).toBe(200);
+    expect((await send(as, added.body.id)).status).toBe(200);
     await pass();
     const done = await verify(as, added.body.id, codeFor(email));
     expect(done.status, JSON.stringify(done.body)).toBe(200);
@@ -202,34 +210,46 @@ describe.skipIf(!configured)("commit emails", () => {
     expect(taken.body.error).toBe("That name belongs to a bot account");
   });
 
-  it("counts an address for nothing until its code is typed back", async () => {
-    const email = address("ada-pending");
+  it("counts an address from the moment it is added, and verifies it only when asked", async () => {
+    const email = address("ada-added");
     const added = await add(ada, acme.id, ` ${email.toUpperCase()} `);
     expect(added.status).toBe(200);
     expect(added.body).toMatchObject({
       organizationId: acme.id,
       email,
+      active: true,
       verifiedAt: null,
+      codeRequestedAt: null,
       codeSentAt: null,
     });
-    expect(await who(inAcme.id, email)).toBeNull();
+    // Hers at once, whatever the case, and nothing is mailed.
+    expect((await who(inAcme.id, email.toUpperCase()))?.username).toBe(ada.username);
+    expect(await pass()).toBe(0);
+    expect(outbox.some((sent) => sent.to === email)).toBe(false);
+
+    // Verifying is asked for, and the address goes on counting meanwhile.
+    const asked = await send(ada, added.body.id);
+    expect(asked.status).toBe(200);
+    expect(asked.body.codeRequestedAt).not.toBeNull();
     expect(await pass()).toBe(1);
-    // Mailed, and still nobody's.
     expect(
       (await list(ada)).find((row) => row["id"] === added.body.id)?.["codeSentAt"],
     ).not.toBeNull();
-    expect(await who(inAcme.id, email)).toBeNull();
+    expect((await who(inAcme.id, email))?.username).toBe(ada.username);
     const message = outbox.at(-1)!;
     expect(message.to).toBe(email);
+    expect(message.subject).toBe(`Verify ${email} for commits in acme`);
     expect(message.text).toContain(ada.email);
-    expect(message.text).toContain("acme");
     // The pass does not mail the same request twice.
     expect(await pass()).toBe(0);
 
     const done = await verify(ada, added.body.id, codeFor(email).toLowerCase().replace("-", " "));
     expect(done.status).toBe(200);
+    expect(done.body).toMatchObject({ active: true });
     expect(done.body.verifiedAt).not.toBeNull();
-    expect((await who(inAcme.id, email.toUpperCase()))?.username).toBe(ada.username);
+    expect((await who(inAcme.id, email))?.username).toBe(ada.username);
+    // Verified already: no more codes.
+    expect((await send(ada, added.body.id)).status).toBe(409);
   });
 
   it("resolves an address in its organisation's repositories and nowhere else", async () => {
@@ -260,16 +280,13 @@ describe.skipIf(!configured)("commit emails", () => {
   });
 
   it("puts the account's address before an alias", async () => {
-    // Cy is no member of Acme, so Ben may add Cy's address there and prove it.
+    // Cy is no member of Acme, so Ben may add Cy's address there.
     const stolen = await add(ben, acme.id, cy.email);
     expect(stolen.status).toBe(200);
-    await db
-      .update(gitCommitEmails)
-      .set({ verifiedAt: new Date() })
-      .where(eq(gitCommitEmails.id, stolen.body.id));
+    expect(stolen.body.active).toBe(true);
     // The address is on Cy's account: it is Cy everywhere.
     expect((await who(inAcme.id, cy.email))?.username).toBe(cy.username);
-    await world.call("DELETE", `/api/user/commit-emails/${stolen.body.id}`, { as: ben });
+    await remove(ben, stolen.body.id);
   });
 
   it("refuses an address that is another member's, a bot's or not an address", async () => {
@@ -286,7 +303,12 @@ describe.skipIf(!configured)("commit emails", () => {
     expect((await refused(ben, nameless.email.toUpperCase()))[0]).toBe(409);
     const email = address("ada-held");
     await proved(ada, acme.id, email);
-    expect((await refused(ben, email))[1]).toBe("email_taken");
+    // Verified, it is hers alone.
+    expect(await refused(ben, email)).toEqual([
+      409,
+      "email_taken",
+      "That address belongs to another member of the organisation",
+    ]);
     expect(await refused(ada, email)).toEqual([
       409,
       "email_taken",
@@ -315,27 +337,80 @@ describe.skipIf(!configured)("commit emails", () => {
     ).toBe(403);
   });
 
-  it("gives the address to whoever proves it first when two members ask", async () => {
-    const email = address("raced");
-    const [first, second] = [await add(ada, acme.id, email), await add(ben, acme.id, email)];
-    expect([first.status, second.status]).toEqual([200, 200]);
-    await pass();
-    // One message each, each with its own code.
-    const codes = outbox.filter((sent) => sent.to === email).map((sent) => sent.text);
-    expect(codes).toHaveLength(2);
-    expect((await verify(ben, second.body.id, codeFor(email))).status).toBe(200);
-    // Ada's code is whichever of the two is not Ben's: try both, neither gets her in.
-    for (const text of codes) {
-      const code = /The code is (\S+)/.exec(text)![1]!;
-      const answer = await verify(ada, first.body.id, code);
-      expect([400, 409]).toContain(answer.status);
-    }
+  it("gives an address to the member who added it first, and to whoever verifies it", async () => {
+    const email = address("contested");
+    const first = await add(ada, acme.id, email);
+    expect(first.body).toMatchObject({ active: true, codeRequestedAt: null });
+    // Ben's waits, with a code on its way: verifying is the only way it will count.
+    const second = await add(ben, acme.id, email);
+    expect(second.status).toBe(200);
+    expect(second.body).toMatchObject({ active: false, verifiedAt: null });
+    expect(second.body.codeRequestedAt).not.toBeNull();
+    expect((await who(inAcme.id, email))?.username).toBe(ada.username);
+    // One active row an address in an organisation, whatever the code above does.
+    await expect(
+      db.update(gitCommitEmails).set({ active: true }).where(eq(gitCommitEmails.id, second.body.id)),
+    ).rejects.toThrow();
+    expect(await pass()).toBe(1);
+    expect(outbox.at(-1)!.to).toBe(email);
+    expect((await who(inAcme.id, email))?.username).toBe(ada.username);
+
+    // Verified, it is Ben's, and what Ada added is gone.
+    const done = await verify(ben, second.body.id, codeFor(email));
+    expect(done.status).toBe(200);
+    expect(done.body).toMatchObject({ active: true });
+    expect(done.body.verifiedAt).not.toBeNull();
     expect((await who(inAcme.id, email))?.username).toBe(ben.username);
+    expect((await list(ada)).some((row) => row["id"] === first.body.id)).toBe(false);
+    // Nobody adds it now, and it stays Ben's.
+    const late = await add(ada, acme.id, email);
+    expect([late.status, late.body.code]).toEqual([409, "email_taken"]);
+    expect((await who(inAcme.id, email))?.username).toBe(ben.username);
+  });
+
+  it("removes what was waiting when the member who has the address verifies it", async () => {
+    const email = address("kept");
+    const first = await add(ada, acme.id, email);
+    const second = await add(ben, acme.id, email);
+    expect(second.body.active).toBe(false);
+    expect((await send(ada, first.body.id)).status).toBe(200);
+    await pass();
+    // Two codes went out, one each: the newest is Ada's, and Ben's does not open her row.
+    const codes = outbox
+      .filter((sent) => sent.to === email)
+      .map((sent) => /The code is (\S+)/.exec(sent.text)![1]!);
+    expect(codes).toHaveLength(2);
+    expect((await verify(ada, first.body.id, codes[0]!)).status).toBe(400);
+    expect((await verify(ada, first.body.id, codes[1]!)).status).toBe(200);
+    expect((await who(inAcme.id, email))?.username).toBe(ada.username);
+    expect((await list(ben)).some((row) => row["id"] === second.body.id)).toBe(false);
+    // Ben's code is for a row that is gone.
+    expect((await verify(ben, second.body.id, codes[0]!)).status).toBe(404);
+  });
+
+  it("lets the oldest waiting address count when the member who had it removes it", async () => {
+    const email = address("handed-on");
+    const first = await add(ada, acme.id, email);
+    const second = await add(ben, acme.id, email);
+    expect(second.body.active).toBe(false);
+    // Removing a row that waits changes nothing for the one that counts.
+    expect((await remove(ben, second.body.id)).status).toBe(200);
+    expect((await who(inAcme.id, email))?.username).toBe(ada.username);
+    const again = await add(ben, acme.id, email);
+    expect(again.body.active).toBe(false);
+    expect((await remove(ada, first.body.id)).status).toBe(200);
+    expect((await who(inAcme.id, email))?.username).toBe(ben.username);
+    expect((await list(ben)).find((row) => row["id"] === again.body.id)).toMatchObject({
+      active: true,
+      verifiedAt: null,
+    });
+    await pass();
   });
 
   it("takes a code once, in time, for a few tries, from the person who asked", async () => {
     const email = address("ben-code");
     const added = await add(ben, acme.id, email);
+    expect((await send(ben, added.body.id)).status).toBe(200);
     const sentAt = new Date();
     await pass(sentAt);
     const code = codeFor(email);
@@ -357,9 +432,7 @@ describe.skipIf(!configured)("commit emails", () => {
     expect([spent.status, spent.body.error]).toEqual([400, "Too many wrong codes. Send another"]);
 
     // Asking again too soon is refused; a minute later another is mailed, and the old one is dead.
-    const soon = await world.call("POST", `/api/user/commit-emails/${added.body.id}/send`, {
-      as: ben,
-    });
+    const soon = await send(ben, added.body.id);
     expect(soon.status).toBe(409);
     await db
       .update(gitCommitEmails)
@@ -368,9 +441,7 @@ describe.skipIf(!configured)("commit emails", () => {
         sentAt: new Date(Date.now() - 5 * 60_000),
       })
       .where(eq(gitCommitEmails.id, added.body.id));
-    const again = await world.call("POST", `/api/user/commit-emails/${added.body.id}/send`, {
-      as: ben,
-    });
+    const again = await send(ben, added.body.id);
     expect(again.status).toBe(200);
     expect(await pass()).toBe(1);
     const fresh = codeFor(email);
@@ -410,6 +481,7 @@ describe.skipIf(!configured)("commit emails", () => {
   it("gives a row back when the message does not leave, and stops trying after a while", async () => {
     const email = address("ada-bounce");
     const added = await add(ada, acme.id, email);
+    expect((await send(ada, added.body.id)).status).toBe(200);
     const failing = () =>
       runGitCommitEmailPass({
         send: async (message) => {
@@ -422,14 +494,16 @@ describe.skipIf(!configured)("commit emails", () => {
       .select()
       .from(gitCommitEmails)
       .where(eq(gitCommitEmails.id, added.body.id));
-    // Owed still, and no code that nobody received is good.
-    expect(row).toMatchObject({ sentAt: null, codeHash: null });
+    // Owed still, and no code that nobody received is good. The address counts all the same.
+    expect(row).toMatchObject({ sentAt: null, codeHash: null, active: true });
+    expect((await who(inAcme.id, email))?.username).toBe(ada.username);
     expect(await pass()).toBe(1);
     expect(outbox.at(-1)!.to).toBe(email);
 
     // A request the app could not send for a quarter of an hour is left for the person to repeat.
     const stale = address("ada-stale");
     const old = await add(ada, acme.id, stale);
+    await send(ada, old.body.id);
     await db
       .update(gitCommitEmails)
       .set({ sendRequestedAt: new Date(Date.now() - 20 * 60_000) })
@@ -467,8 +541,13 @@ describe.skipIf(!configured)("commit emails", () => {
       role: "member",
     });
     const email = address("leaver");
-    const id = await proved(leaver, acme.id, email);
+    // Added and never verified: it counts while they are a member.
+    const id = (await add(leaver, acme.id, email)).body.id as string;
     expect((await who(inAcme.id, email))?.username).toBe(leaver.username);
+    const waiting = await add(ben, acme.id, email);
+    expect(waiting.body.active).toBe(false);
+    const verified = address("leaver-verified");
+    const verifiedId = await proved(leaver, acme.id, verified);
 
     await db
       .delete(organizationMembers)
@@ -478,15 +557,22 @@ describe.skipIf(!configured)("commit emails", () => {
           eq(organizationMembers.organizationId, acme.id),
         ),
       );
-    // At once, with the row still there.
+    // At once, with the rows still there, verified or not.
     expect(await who(inAcme.id, email)).toBeNull();
+    expect(await who(inAcme.id, verified)).toBeNull();
     expect(await list(leaver)).toEqual([]);
-    expect((await db.select().from(gitCommitEmails).where(eq(gitCommitEmails.id, id))).length).toBe(
-      1,
-    );
-    // And the address is free for a member: the row they left holds it for nobody.
-    await proved(ben, acme.id, email);
-    expect((await who(inAcme.id, email))?.username).toBe(ben.username);
+    expect(
+      (
+        await db
+          .select()
+          .from(gitCommitEmails)
+          .where(inArray(gitCommitEmails.id, [id, verifiedId]))
+      ).length,
+    ).toBe(2);
+    // The verified one is free for a member: the row they left holds it for nobody.
+    const taken = await add(ada, acme.id, verified);
+    expect(taken.body).toMatchObject({ active: true });
+    expect((await who(inAcme.id, verified))?.username).toBe(ada.username);
     // The pass removes what people who left kept.
     const kept = await add(ada, acme.id, address("sweep-me"));
     await db
@@ -499,9 +585,14 @@ describe.skipIf(!configured)("commit emails", () => {
         await db
           .select()
           .from(gitCommitEmails)
-          .where(inArray(gitCommitEmails.id, [id, kept.body.id]))
+          .where(inArray(gitCommitEmails.id, [id, verifiedId, kept.body.id]))
       ).length,
     ).toBe(0);
+    // And the address Ben was waiting for is his.
+    expect((await list(ben)).find((row) => row["id"] === waiting.body.id)).toMatchObject({
+      active: true,
+    });
+    expect((await who(inAcme.id, email))?.username).toBe(ben.username);
   });
 
   describe("in a person's own namespace", () => {
@@ -509,14 +600,21 @@ describe.skipIf(!configured)("commit emails", () => {
       const email = address("ada-own");
       const added = await add(ada, null, ` ${email.toUpperCase()} `);
       expect(added.status, JSON.stringify(added.body)).toBe(200);
-      expect(added.body).toMatchObject({ organizationId: null, email, verifiedAt: null });
-      // Nobody's until the code is typed back.
-      expect(await who(adasOwn.id, email)).toBeNull();
+      expect(added.body).toMatchObject({
+        organizationId: null,
+        email,
+        active: true,
+        verifiedAt: null,
+        codeRequestedAt: null,
+      });
+      // Hers at once, with nothing mailed.
+      expect((await who(adasOwn.id, email))?.username).toBe(ada.username);
+      expect(await pass()).toBe(0);
+      expect((await send(ada, added.body.id)).status).toBe(200);
       expect(await pass()).toBe(1);
-      expect(await who(adasOwn.id, email)).toBeNull();
       const message = outbox.at(-1)!;
       expect(message.to).toBe(email);
-      expect(message.subject).toBe(`Confirm ${email} for commits in your own repositories`);
+      expect(message.subject).toBe(`Verify ${email} for commits in your own repositories`);
       expect(message.text).toContain(ada.email);
       expect(message.text).toContain("their own repositories");
       expect(message.text).toContain("Settings > Profile: ");
@@ -613,6 +711,7 @@ describe.skipIf(!configured)("commit emails", () => {
     it("refuses the code when the address has become someone's account address since", async () => {
       const email = address("claimed-later");
       const added = await add(ada, null, email);
+      await send(ada, added.body.id);
       await pass();
       const late = await world.person("latecomer");
       await db.update(users).set({ email }).where(eq(users.id, late.id));
@@ -622,15 +721,16 @@ describe.skipIf(!configured)("commit emails", () => {
     });
 
     it("neither blocks nor is blocked by the same address in an organisation or in someone else's namespace", async () => {
-      // Hers first, then a member's in the organisation.
+      // Hers first, then a member's in the organisation: each counts at once, unverified.
       const first = address("both-ways-1");
-      await proved(ada, null, first);
-      await proved(ben, acme.id, first);
+      expect((await add(ada, null, first)).body.active).toBe(true);
+      expect((await add(ben, acme.id, first)).body.active).toBe(true);
       // The organisation's first, then hers; and Ben's own as well.
       const second = address("both-ways-2");
       await proved(ben, acme.id, second);
       await proved(ada, null, second);
-      await proved(ben, null, second);
+      // Another person's own namespace is another place: nothing waits there.
+      expect((await add(ben, null, second)).body.active).toBe(true);
       for (const email of [first, second]) {
         expect((await who(adasOwn.id, email))?.username).toBe(ada.username);
         expect((await who(inAcme.id, email))?.username).toBe(ben.username);
@@ -645,9 +745,9 @@ describe.skipIf(!configured)("commit emails", () => {
     });
 
     it("puts the account's address before the owner's alias", async () => {
-      // Proved before the address was anyone's account's: the account still wins.
+      // Added before the address was anyone's account's: the account still wins.
       const email = address("ada-then-account");
-      await proved(ada, null, email);
+      await add(ada, null, email);
       const late = await world.person("account-first");
       await db.update(users).set({ email }).where(eq(users.id, late.id));
       expect((await who(adasOwn.id, email))?.username).toBe(late.username);

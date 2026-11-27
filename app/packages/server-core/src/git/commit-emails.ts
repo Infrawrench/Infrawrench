@@ -5,12 +5,14 @@
  * place's repositories a commit with one is shown as theirs; anywhere else
  * the same address reads as it always did.
  *
- * - **An address counts once it is proved.** The person asks on the forge
- *   (Settings > Organisations, or Settings > Profile for their own
- *   repositories), a code is mailed to the address, and they type it back
- *   while signed in. Whoever only holds the mailbox cannot
- *   finish it for them, and whoever only holds the account cannot take an
- *   address they do not read.
+ * - **An address counts from the moment it is added.** Nothing is proved: it
+ *   is a layer over what a commit says, in one place, and the place's people
+ *   are the ones who see it.
+ * - **Proving is optional.** The person asks on the forge (Settings >
+ *   Organisations, or Settings > Profile for their own repositories), a code
+ *   is mailed to the address, and they type it back while signed in. A proved
+ *   address says so beside it, and in an organisation nobody else can have
+ *   it: proving takes the address over from a member who only added it.
  * - **The forge asks and the app sends.** The forge's Worker holds no mail
  *   key, so it stamps `send_requested_at`; {@link runGitCommitEmailPass}, a
  *   pass of the app's poller, makes the code, stores its hash and mails it.
@@ -18,20 +20,36 @@
  * - **It counts only while the person is a member.** Every read that turns
  *   an organisation's address into a person joins `organization_members`,
  *   and the pass deletes the rows of people who have left.
- * - **One member per address.** An address that is another member's account
- *   email, or one they have proved, is refused; the partial unique index
- *   settles two people proving the same one at once.
+ * - **One member per address, and the first one has it.** An address that is
+ *   another member's account email, or one they have proved, is refused. One
+ *   another member only added can be added too, but that row waits
+ *   (`active` false) and counts for nothing until its code is typed back,
+ *   which removes the other member's row. A unique index over the active
+ *   rows settles two people adding the same one at once. When the member who
+ *   had it removes it or leaves, the oldest row waiting takes its place.
  * - **A person's own namespace has nobody else in it**, so the only address
  *   refused there for being someone else's is the one on another person's
  *   account, anywhere on the site: nobody shows that person's commits as
- *   their own. The two kinds never meet: an address proved in a person's own
- *   namespace does not stop anyone proving it in an organisation, nor the
+ *   their own. The two kinds never meet: an address in a person's own
+ *   namespace does not stop anyone having it in an organisation, nor the
  *   other way round.
  *
  * Postgres and the mail transport only, and imported by the forge's Worker:
  * nothing here may reach plugin code or a socket driver.
  */
-import { and, eq, gt, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
+import {
+  TransactionRollbackError,
+  and,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { gitBotForEmail } from "@infrawrench/client-core";
 
 import { gitBaseUrl } from "../ci/source.js";
@@ -44,7 +62,7 @@ import {
   sendEmails,
 } from "../email.js";
 
-/** How many addresses one person keeps in one organisation, or in their own namespace, proved or not. */
+/** How many addresses one person keeps in one organisation, or in their own namespace, waiting ones included. */
 export const GIT_COMMIT_EMAIL_LIMIT = 10;
 /** How long a mailed code works. */
 export const GIT_COMMIT_EMAIL_CODE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -64,8 +82,13 @@ export interface GitCommitEmail {
   /** The organisation the address counts in. Null: the person's own namespace. */
   organizationId: string | null;
   email: string;
+  /** Whether it counts. False only in an organisation: another member holds the address until this one is proved. */
+  active: boolean;
+  /** When it was proved. Null: nobody asked, or not yet. */
   verifiedAt: Date | null;
-  /** When a code was last mailed. Null while the first one is on its way. */
+  /** When a code was last asked for. Null: never. */
+  sendRequestedAt: Date | null;
+  /** When a code was last mailed. Before `sendRequestedAt`, or null with one asked for: it is on its way. */
   sentAt: Date | null;
   createdAt: Date;
 }
@@ -106,7 +129,9 @@ const columns = {
   id: gitCommitEmails.id,
   organizationId: gitCommitEmails.organizationId,
   email: gitCommitEmails.email,
+  active: gitCommitEmails.active,
   verifiedAt: gitCommitEmails.verifiedAt,
+  sendRequestedAt: gitCommitEmails.sendRequestedAt,
   sentAt: gitCommitEmails.sentAt,
   createdAt: gitCommitEmails.createdAt,
 };
@@ -144,12 +169,11 @@ const stillMember = sql`(${gitCommitEmails.organizationId} is null or exists (
 ))`;
 
 /**
- * Whether `email` is another member's in the organisation: the address on
- * their account, or one they have proved. Someone who has left is no member,
- * whatever rows they left. In a person's own namespace (null) it is whether
- * the address is on anyone else's account at all.
+ * Whether `email` is the address on someone else's account: another member's
+ * in an organisation, anyone's at all in a person's own namespace (null).
+ * Such an address is that person's everywhere already, and nobody adds it.
  */
-const takenByAnotherMember = async (
+const onAnotherAccount = async (
   organizationId: string | null,
   userId: string,
   email: string,
@@ -174,21 +198,34 @@ const takenByAnotherMember = async (
       ),
     )
     .limit(1);
-  if (account !== undefined) return true;
-  const [proved] = await db
-    .select({ id: gitCommitEmails.id })
+  return account !== undefined;
+};
+
+/**
+ * How another member holds `email` in the organisation: proved, only added,
+ * or (null) not at all. Someone who has left is no member, whatever rows
+ * they left, and a row that waits holds nothing.
+ */
+const heldByAnotherMember = async (
+  organizationId: string,
+  userId: string,
+  email: string,
+): Promise<"verified" | "added" | null> => {
+  const [held] = await db
+    .select({ verifiedAt: gitCommitEmails.verifiedAt })
     .from(gitCommitEmails)
     .where(
       and(
         eq(gitCommitEmails.organizationId, organizationId),
         eq(gitCommitEmails.email, email),
         ne(gitCommitEmails.userId, userId),
-        isNotNull(gitCommitEmails.verifiedAt),
+        eq(gitCommitEmails.active, true),
         stillMember,
       ),
     )
     .limit(1);
-  return proved !== undefined;
+  if (held === undefined) return null;
+  return held.verifiedAt === null ? "added" : "verified";
 };
 
 /** The rows people who have left an organisation kept for an address: they hold it for nobody. */
@@ -204,6 +241,50 @@ const dropDeparted = async (organizationId?: string, email?: string): Promise<vo
         sql`not ${stillMember}`,
       ),
     );
+};
+
+/**
+ * Where an organisation's address has nobody holding it any more (the member
+ * removed it, or left), the oldest row waiting for it counts from here on.
+ */
+const promoteWaiting = async (organizationId?: string, email?: string): Promise<void> => {
+  try {
+    await db
+      .update(gitCommitEmails)
+      .set({ active: true })
+      .where(
+        and(
+          eq(gitCommitEmails.active, false),
+          isNotNull(gitCommitEmails.organizationId),
+          organizationId === undefined
+            ? undefined
+            : eq(gitCommitEmails.organizationId, organizationId),
+          email === undefined ? undefined : eq(gitCommitEmails.email, email),
+          sql`not exists (
+            select 1 from ${gitCommitEmails} holder
+            where holder.organization_id = ${gitCommitEmails.organizationId}
+              and holder.email = ${gitCommitEmails.email}
+              and holder.active
+          )`,
+          sql`${gitCommitEmails.id} = (
+            select waiting.id from ${gitCommitEmails} waiting
+            where waiting.organization_id = ${gitCommitEmails.organizationId}
+              and waiting.email = ${gitCommitEmails.email}
+              and not waiting.active
+              and exists (
+                select 1 from ${organizationMembers} member
+                where member.organization_id = waiting.organization_id
+                  and member.user_id = waiting.user_id
+              )
+            order by waiting.created_at, waiting.id
+            limit 1
+          )`,
+        ),
+      );
+  } catch (error) {
+    // Someone took the address in the same moment: the row goes on waiting.
+    if (!isUniqueViolation(error)) throw error;
+  }
 };
 
 /** A person's addresses in their own namespace and in these organisations, the oldest first. */
@@ -230,8 +311,11 @@ export async function listGitCommitEmails(
 
 /**
  * Add an address for a member, or (a null organisation) for a person's own
- * namespace, and ask for its code. Adding one that is already waiting asks
- * again instead (as {@link resendGitCommitEmail}).
+ * namespace. It counts at once, and no code is mailed unless one is asked
+ * for ({@link resendGitCommitEmail}). The exception is an organisation's
+ * address another member has added without proving it: the new row waits
+ * (`active` false) and its code is asked for here, since proving it is the
+ * only way it will count.
  */
 export async function addGitCommitEmail(input: {
   organizationId: string | null;
@@ -258,19 +342,15 @@ export async function addGitCommitEmail(input: {
   if (me.email.toLowerCase() === email) {
     return refuse(400, "email_invalid", "That is the address on your account already");
   }
-  if (await takenByAnotherMember(input.organizationId, input.userId, email)) {
+  if (await onAnotherAccount(input.organizationId, input.userId, email)) {
     return refuse(409, "email_taken", takenMessage(input.organizationId));
   }
   const mine = await db
-    .select({ ...columns, sendRequestedAt: gitCommitEmails.sendRequestedAt })
+    .select({ email: gitCommitEmails.email })
     .from(gitCommitEmails)
     .where(and(inScope(input.organizationId), eq(gitCommitEmails.userId, input.userId)));
-  const existing = mine.find((row) => row.email === email);
-  if (existing !== undefined) {
-    if (existing.verifiedAt !== null) {
-      return refuse(409, "email_taken", "You have added that address already");
-    }
-    return resendGitCommitEmail({ id: existing.id, userId: input.userId, now });
+  if (mine.some((row) => row.email === email)) {
+    return refuse(409, "email_taken", "You have added that address already");
   }
   if (mine.length >= GIT_COMMIT_EMAIL_LIMIT) {
     return refuse(
@@ -281,6 +361,13 @@ export async function addGitCommitEmail(input: {
         : `An organisation takes at most ${GIT_COMMIT_EMAIL_LIMIT} commit emails per member`,
     );
   }
+  let held: "verified" | "added" | null = null;
+  if (input.organizationId !== null) {
+    await dropDeparted(input.organizationId, email);
+    await promoteWaiting(input.organizationId, email);
+    held = await heldByAnotherMember(input.organizationId, input.userId, email);
+    if (held === "verified") return refuse(409, "email_taken", TAKEN);
+  }
   const [row] = await db
     .insert(gitCommitEmails)
     .values({
@@ -288,17 +375,18 @@ export async function addGitCommitEmail(input: {
       organizationId: input.organizationId,
       userId: input.userId,
       email,
-      sendRequestedAt: now,
+      active: held === null,
+      sendRequestedAt: held === null ? null : now,
       createdAt: now,
     })
     .onConflictDoNothing()
     .returning(columns);
-  // Lost a race with the same request: the row is there, and its code is on its way.
-  if (!row) return refuse(409, "email_taken", "You have added that address already");
+  // Lost a race: with the same request, or with another member adding the address.
+  if (!row) return refuse(409, "email_taken", "That address was added a moment ago. Try again");
   return { ok: true, email: row };
 }
 
-/** Ask for another code for an address that is still waiting. */
+/** Ask for a code for an address that is not proved: the first one, or another. */
 export async function resendGitCommitEmail(input: {
   id: string;
   userId: string;
@@ -306,7 +394,7 @@ export async function resendGitCommitEmail(input: {
 }): Promise<GitCommitEmailResult> {
   const now = input.now ?? new Date();
   const [row] = await db
-    .select({ ...columns, sendRequestedAt: gitCommitEmails.sendRequestedAt })
+    .select(columns)
     .from(gitCommitEmails)
     .where(and(eq(gitCommitEmails.id, input.id), eq(gitCommitEmails.userId, input.userId)))
     .limit(1);
@@ -349,7 +437,9 @@ const sameHash = (a: string, b: string): boolean => {
 /**
  * Prove an address with the code mailed to it. The code works once, until it
  * expires, for {@link GIT_COMMIT_EMAIL_CODE_ATTEMPTS} wrong tries; after any
- * of those another must be sent.
+ * of those another must be sent. In an organisation the proved address is
+ * this member's alone: the rows other members added for it are removed, and
+ * a row that was waiting counts from here on.
  */
 export async function verifyGitCommitEmail(input: {
   id: string;
@@ -386,45 +476,87 @@ export async function verifyGitCommitEmail(input: {
     return refuse(400, "code_invalid", "That code is not right");
   }
   // Someone may have joined with the address, or proved it, since it was added.
-  if (await takenByAnotherMember(row.organizationId, input.userId, row.email)) {
+  if (await onAnotherAccount(row.organizationId, input.userId, row.email)) {
     return refuse(409, "email_taken", takenMessage(row.organizationId));
   }
-  // Nobody leaves their own namespace: only an organisation has rows to drop.
-  if (row.organizationId !== null) await dropDeparted(row.organizationId, row.email);
+  const organizationId = row.organizationId;
+  if (organizationId !== null) {
+    // Nobody leaves their own namespace: only an organisation has rows to drop.
+    await dropDeparted(organizationId, row.email);
+    if ((await heldByAnotherMember(organizationId, input.userId, row.email)) === "verified") {
+      return refuse(409, "email_taken", TAKEN);
+    }
+  }
   try {
-    // The hash in the condition is what makes the code single-use: a second
-    // request with it finds nothing to update.
-    const [verified] = await db
-      .update(gitCommitEmails)
-      .set({ verifiedAt: now, codeHash: null, codeExpiresAt: null, codeAttempts: 0 })
-      .where(
-        and(
-          eq(gitCommitEmails.id, row.id),
-          isNull(gitCommitEmails.verifiedAt),
-          eq(gitCommitEmails.codeHash, codeHash),
-        ),
-      )
-      .returning(columns);
+    const verified = await db.transaction(async (tx) => {
+      // The address is this member's from here on: what others added for it, counting or waiting, goes.
+      if (organizationId !== null) {
+        await tx
+          .delete(gitCommitEmails)
+          .where(
+            and(
+              eq(gitCommitEmails.organizationId, organizationId),
+              eq(gitCommitEmails.email, row.email),
+              ne(gitCommitEmails.userId, input.userId),
+              isNull(gitCommitEmails.verifiedAt),
+            ),
+          );
+      }
+      // The hash in the condition is what makes the code single-use: a second
+      // request with it finds nothing to update.
+      const [updated] = await tx
+        .update(gitCommitEmails)
+        .set({
+          verifiedAt: now,
+          active: true,
+          codeHash: null,
+          codeExpiresAt: null,
+          codeAttempts: 0,
+        })
+        .where(
+          and(
+            eq(gitCommitEmails.id, row.id),
+            isNull(gitCommitEmails.verifiedAt),
+            eq(gitCommitEmails.codeHash, codeHash),
+          ),
+        )
+        .returning(columns);
+      // Nothing proved, nothing taken over: the others keep their rows.
+      if (!updated) tx.rollback();
+      return updated;
+    });
     if (!verified) return refuse(400, "code_invalid", "That code has been used. Send another");
     return { ok: true, email: verified };
   } catch (error) {
-    if (isUniqueViolation(error)) {
-      return refuse(409, "email_taken", takenMessage(row.organizationId));
+    if (isUniqueViolation(error)) return refuse(409, "email_taken", TAKEN);
+    if (error instanceof TransactionRollbackError) {
+      return refuse(400, "code_invalid", "That code has been used. Send another");
     }
     throw error;
   }
 }
 
-/** Remove one of a person's addresses, proved or not. False when it is not theirs. */
+/**
+ * Remove one of a person's addresses, proved or not. False when it is not
+ * theirs. In an organisation, a row that was waiting for it takes its place.
+ */
 export async function removeGitCommitEmail(input: {
   id: string;
   userId: string;
 }): Promise<boolean> {
-  const removed = await db
+  const [removed] = await db
     .delete(gitCommitEmails)
     .where(and(eq(gitCommitEmails.id, input.id), eq(gitCommitEmails.userId, input.userId)))
-    .returning({ id: gitCommitEmails.id });
-  return removed.length > 0;
+    .returning({
+      organizationId: gitCommitEmails.organizationId,
+      email: gitCommitEmails.email,
+      active: gitCommitEmails.active,
+    });
+  if (!removed) return false;
+  if (removed.organizationId !== null && removed.active) {
+    await promoteWaiting(removed.organizationId, removed.email);
+  }
+  return true;
 }
 
 /** A fresh code, as it is shown: `ABCD-EFGH`. */
@@ -454,12 +586,12 @@ export function gitCommitEmailMessage(input: {
   return {
     to: input.to,
     subject: personal
-      ? `Confirm ${input.to} for commits in your own repositories`
-      : `Confirm ${input.to} for commits in ${input.organization}`,
+      ? `Verify ${input.to} for commits in your own repositories`
+      : `Verify ${input.to} for commits in ${input.organization}`,
     text: [
       personal
-        ? `${input.requester} (${input.requesterEmail}) asked for commits made with ${input.to} to be shown as theirs in their own repositories on ${host}.`
-        : `${input.requester} (${input.requesterEmail}) asked for commits made with ${input.to} to be shown as theirs in ${input.organization}'s repositories on ${host}.`,
+        ? `${input.requester} (${input.requesterEmail}) asked to verify ${input.to} as theirs for commits in their own repositories on ${host}.`
+        : `${input.requester} (${input.requesterEmail}) asked to verify ${input.to} as theirs for commits in ${input.organization}'s repositories on ${host}.`,
       "",
       `The code is ${input.code}`,
       "",
@@ -468,7 +600,7 @@ export function gitCommitEmailMessage(input: {
         : `Enter it under Settings > Organisations: ${input.forgeUrl}/settings/organisations`,
       "It works for 24 hours.",
       "",
-      "If you did not ask for this, ignore this message. Nothing changes without the code.",
+      "If you did not ask for this, ignore this message. The address is not verified without the code.",
     ].join("\n"),
   };
 }
@@ -483,7 +615,8 @@ export interface GitCommitEmailPassOptions {
 
 /**
  * The poller's pass: drop the addresses of people who have left their
- * organisation, then mail a code to every address that is owed one. A row is
+ * organisation, let the rows that waited for those count, then mail a code
+ * to every address that is owed one. A row is
  * taken by stamping `sent_at` in the statement that stores the code's hash,
  * so two instances never mail one request twice; a send that fails gives the
  * row back, and it is tried again until the request is fifteen minutes old.
@@ -494,7 +627,8 @@ export async function runGitCommitEmailPass(
 ): Promise<number> {
   const now = options.now ?? new Date();
   await dropDeparted();
-  // Without a mail provider nothing can be sent: the rows wait, and the forge says a code is on its way.
+  await promoteWaiting();
+  // Without a mail provider nothing can be sent: the forge says a code is on its way, and the address counts as it did.
   if (options.send === undefined && !isEmailConfigured()) return 0;
   const send =
     options.send ??

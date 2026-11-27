@@ -149,10 +149,15 @@ export const gitUsers = pgTable("git_users", {
  * (`git/commit-emails.ts`): in one organisation's repositories
  * (`organizationId` set), or in the repositories of the person's own
  * namespace (`organizationId` null). There a commit with it is shown as
- * theirs. Never sitewide, and it counts only while `verifiedAt` is set and,
- * for an organisation's, the person is still a member.
+ * theirs from the moment it is added, with no proof asked: it is a layer over
+ * what the commit says, never sitewide, and an organisation's counts only
+ * while the person is still a member.
  *
- * The person proves the address is theirs with a code mailed to it. The
+ * `active` is whether the row counts. An organisation has one active row per
+ * address: a second member who adds an address someone holds unproved gets a
+ * row that waits (`active` false) until they prove it, which takes it over.
+ *
+ * Proving is optional (`verifiedAt`), with a code mailed to the address. The
  * forge only asks (`sendRequestedAt`); the app's poller makes the code, keeps
  * its hash here and sends it (`sentAt`), because the forge's Worker holds no
  * mail key. The code is good until `codeExpiresAt`, for a few tries
@@ -171,6 +176,9 @@ export const gitCommitEmails = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     /** Lowercased. */
     email: text("email").notNull(),
+    /** Whether the row counts. False: it waits for its proof, because another member holds the address. */
+    active: boolean("active").notNull().default(true),
+    /** When the person proved the address is theirs. Null: never asked, or not yet. */
     verifiedAt: timestamp("verified_at"),
     /** SHA-256 of the row's id and the code, hex. Null until one is sent and once it is used. */
     codeHash: text("code_hash"),
@@ -194,14 +202,14 @@ export const gitCommitEmails = pgTable(
       .on(t.userId, t.email)
       .where(sql`${t.organizationId} IS NULL`),
     /**
-     * An address is one member's in an organisation, once it is proved. A
+     * An address is one member's in an organisation, proved or not. A
      * person's own namespace has nobody else in it, and its rows (a null
-     * organisation) are outside this index: the same address can be proved
-     * in an organisation by someone else.
+     * organisation, which Postgres counts as distinct) are outside this
+     * index: the same address can be someone else's in an organisation.
      */
-    verifiedIdx: uniqueIndex("git_commit_emails_verified_idx")
+    activeIdx: uniqueIndex("git_commit_emails_active_idx")
       .on(t.organizationId, t.email)
-      .where(sql`${t.verifiedAt} IS NOT NULL`),
+      .where(sql`${t.active}`),
     /** The poller's question: which rows are owed a code. */
     owedIdx: index("git_commit_emails_owed_idx")
       .on(t.sendRequestedAt)

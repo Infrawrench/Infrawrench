@@ -194,8 +194,8 @@ export type AccessTokenCreated = typeof AccessTokenCreated.Type;
 /**
  * An extra address a person's commits carry in one place: one organisation
  * they are a member of, or their own namespace. In that place's repositories
- * a commit with it is shown as theirs, once they have proved the address
- * with the code mailed to it.
+ * a commit with it is shown as theirs from the moment it is added. Proving
+ * the address with a code mailed to it is optional.
  */
 export const CommitEmail = Schema.Struct({
   id: Schema.String,
@@ -204,11 +204,20 @@ export const CommitEmail = Schema.Struct({
       "The organisation whose repositories the address counts in. Null: the repositories of the caller's own namespace.",
   }),
   email: Schema.String.annotate({ description: "Lowercased." }),
+  active: Schema.Boolean.annotate({
+    description:
+      "Whether the address counts. False only in an organisation, when another member added the address first: it counts once verified, which takes it over.",
+  }),
   verifiedAt: Schema.NullOr(IsoDateTime).annotate({
-    description: "Null until the code is entered: the address counts for nothing before.",
+    description:
+      "When the code mailed to the address was entered. Null: not verified, which an address does not need to count.",
+  }),
+  codeRequestedAt: Schema.NullOr(IsoDateTime).annotate({
+    description: "When a code was last asked for. Null: never.",
   }),
   codeSentAt: Schema.NullOr(IsoDateTime).annotate({
-    description: "When a code was last mailed. Null while the first is on its way.",
+    description:
+      "When a code was last mailed. Null, or before `codeRequestedAt`: the one asked for is on its way.",
   }),
   createdAt: IsoDateTime,
 }).annotate({ identifier: "CommitEmail" });

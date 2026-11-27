@@ -449,7 +449,9 @@ const commitEmailView = (row: GitCommitEmail): CommitEmail => ({
   id: row.id,
   organizationId: row.organizationId,
   email: row.email,
+  active: row.active,
   verifiedAt: isoOrNull(row.verifiedAt),
+  codeRequestedAt: isoOrNull(row.sendRequestedAt),
   codeSentAt: isoOrNull(row.sentAt),
   createdAt: iso(row.createdAt),
 });

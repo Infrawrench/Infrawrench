@@ -1,10 +1,10 @@
 /**
  * What Postgres adds to the commits a `RepoReader` answers: the Infrawrench
  * user an author's email belongs to (or the bot account, which needs no
- * lookup; or, in an organisation's repository, the member who verified the
+ * lookup; or, in an organisation's repository, the member who added the
  * address there), and the commit's combined status.
  */
-import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { botUserForEmail, type CommitSummary, type UserRef } from "@infrawrench/git-contract";
 import { alias } from "drizzle-orm/pg-core";
 import {
@@ -43,11 +43,13 @@ export const usersByEmail = async (emails: readonly string[]): Promise<Map<strin
 };
 
 /**
- * People by the commit emails they have verified for the repository's
+ * People by the commit emails they have added for the repository's
  * namespace (`git_commit_emails`, server-core `git/commit-emails.ts`): in an
  * organisation's repository, its members' addresses there; in a person's own,
- * the addresses that person verified for their own repositories, and nobody
- * else's. An organisation's addresses never count in a person's repository,
+ * the addresses that person added for their own repositories, and nobody
+ * else's. An address counts whether or not it was verified; only a row that
+ * waits for its code (`active` false, another member has the address) does
+ * not. An organisation's addresses never count in a person's repository,
  * connected to that organisation or not, and a person's never count in an
  * organisation's or in someone else's. Someone who has left the organisation
  * is not found, whatever rows they left, and as with {@link usersByEmail}
@@ -74,7 +76,7 @@ export const usersByCommitEmail = async (
     .innerJoin(
       gitCommitEmails,
       and(
-        isNotNull(gitCommitEmails.verifiedAt),
+        eq(gitCommitEmails.active, true),
         or(
           and(
             eq(owner.kind, "org"),
@@ -138,7 +140,7 @@ export const commitDecorator = async (
       : Promise.resolve(new Map<string, CommitSummary["status"]>()),
   ]);
   // A bot's address is the bot whatever the commit calls it; then the person
-  // whose account has the address; then whoever verified it for the
+  // whose account has the address; then whoever added it for the
   // repository's namespace: a member in an organisation's, the owner in their own.
   const user = (email: string) => {
     const lower = email.toLowerCase();

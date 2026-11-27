@@ -235,7 +235,7 @@ export class AccountGroup extends HttpApiGroup.make("account")
       .annotate(OpenApi.Summary, "The caller's commit emails")
       .annotate(
         OpenApi.Description,
-        "The extra addresses the caller's commits carry, in each organisation they are a member of and in their own namespace. An address counts only in the repositories of its organisation, or of the caller's own namespace when it has none, and only once verified.",
+        "The extra addresses the caller's commits carry, in each organisation they are a member of and in their own namespace. An address counts only in the repositories of its organisation, or of the caller's own namespace when it has none. It counts as soon as it is added; verifying it is optional.",
       )
       .annotate(SuccessDescription, "Commit emails, the oldest first"),
     HttpApiEndpoint.post("addCommitEmail", "/commit-emails", {
@@ -247,17 +247,20 @@ export class AccountGroup extends HttpApiGroup.make("account")
       .annotate(OpenApi.Summary, "Add a commit email")
       .annotate(
         OpenApi.Description,
-        "In an organisation, or with a null `organizationId` in the caller's own namespace. Mails a code to the address. 400 `email_invalid`; 403 `not_a_member`; 409 `email_taken` when it is another member's account address or one they have verified, or, in the caller's own namespace, the address on anyone else's account.",
+        "In an organisation, or with a null `organizationId` in the caller's own namespace. The address counts at once and no code is mailed. In an organisation, an address another member has added without verifying it comes back with `active` false and a code on its way: it counts once verified. 400 `email_invalid`; 403 `not_a_member`; 409 `email_taken` when it is another member's account address or one they have verified, or, in the caller's own namespace, the address on anyone else's account.",
       )
-      .annotate(SuccessDescription, "The address, not yet verified"),
+      .annotate(SuccessDescription, "The address"),
     HttpApiEndpoint.post("sendCommitEmailCode", "/commit-emails/:emailId/send", {
       params: { emailId: Schema.String },
       success: CommitEmail,
       error: [NotFound, Forbidden, Conflict],
     })
       .annotate(RequiresUser, true)
-      .annotate(OpenApi.Summary, "Mail another code")
-      .annotate(OpenApi.Description, "409 when one was asked for less than a minute ago.")
+      .annotate(OpenApi.Summary, "Mail a code to verify a commit email")
+      .annotate(
+        OpenApi.Description,
+        "The first code or another. 409 when one was asked for less than a minute ago, or the address is verified already.",
+      )
       .annotate(SuccessDescription, "The address"),
     HttpApiEndpoint.post("verifyCommitEmail", "/commit-emails/:emailId/verify", {
       params: { emailId: Schema.String },
@@ -269,7 +272,7 @@ export class AccountGroup extends HttpApiGroup.make("account")
       .annotate(OpenApi.Summary, "Verify a commit email with its code")
       .annotate(
         OpenApi.Description,
-        "400 `code_invalid` for a wrong, expired or used code; a code works once, for a day and for five wrong tries.",
+        "Optional: an address counts without it. In an organisation, a verified address is the caller's alone: what other members added for it is removed, and nobody else can add it. 400 `code_invalid` for a wrong, expired or used code; a code works once, for a day and for five wrong tries. 409 `email_taken` when another member verified it first.",
       )
       .annotate(SuccessDescription, "The address, verified"),
     HttpApiEndpoint.delete("removeCommitEmail", "/commit-emails/:emailId", {
