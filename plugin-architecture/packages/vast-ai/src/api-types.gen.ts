@@ -901,16 +901,27 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": {
-                    /** @default 2.5 */
+                    /** @default 3 */
                     cold_mult?: number;
                     /** @default 5 */
                     cold_workers?: number;
-                    /** @default default-endpoint */
                     endpoint_name?: string;
+                    /**
+                     * @default active
+                     * @enum {string}
+                     */
+                    endpoint_state?: "active" | "suspended" | "stopped";
+                    inactivity_timeout?: number;
+                    /** @default 30 */
+                    max_queue_time?: number;
                     /** @default 20 */
                     max_workers?: number;
-                    /** @default 10 */
+                    /** @default 0 */
+                    min_cold_load?: number;
+                    /** @default 0 */
                     min_load?: number;
+                    /** @default 10 */
+                    target_queue_time?: number;
                     /** @default 0.9 */
                     target_util?: number;
                 };
@@ -945,8 +956,14 @@ export interface operations {
                     cold_mult?: number;
                     cold_workers?: number;
                     endpoint_name?: string;
+                    /** @enum {string} */
+                    endpoint_state?: "active" | "suspended" | "stopped";
+                    inactivity_timeout?: number;
+                    max_queue_time?: number;
                     max_workers?: number;
+                    min_cold_load?: number;
                     min_load?: number;
+                    target_queue_time?: number;
                     target_util?: number;
                 };
             };
@@ -1604,27 +1621,14 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": {
-                    /** @default 3 */
-                    cold_mult?: number;
-                    /** @default 3 */
-                    cold_workers?: number;
                     endpoint_id?: number;
                     endpoint_name?: string;
-                    /** @default 24 */
+                    /** @default 8 */
                     gpu_ram?: number;
                     launch_args?: string;
-                    /** @default 20 */
-                    max_workers?: number;
-                    /** @default 1 */
-                    min_load?: number;
-                    /** @default verified=true rentable=true rented=false */
-                    search_params?: string;
-                    /** @default 0.9 */
-                    target_util?: number;
+                    search_params: string;
                     template_hash?: string;
                     template_id?: number;
-                    /** @default 3 */
-                    test_workers?: number;
                 };
             };
         };
@@ -1654,19 +1658,12 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": {
-                    cold_mult?: number;
-                    endpoint_id?: number;
-                    endpoint_name?: string;
+                    endpoint_id: number;
                     gpu_ram?: number;
                     launch_args?: string;
-                    min_load?: number;
-                    /** @default verified=true rentable=true rented=false */
                     search_params?: string;
-                    target_util?: number;
                     template_hash?: string;
                     template_id?: number;
-                    /** @default 3 */
-                    test_workers?: number;
                 };
             };
         };
