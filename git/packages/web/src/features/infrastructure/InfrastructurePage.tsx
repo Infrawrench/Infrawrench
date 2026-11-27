@@ -10,13 +10,15 @@ import { Checkbox, Field, Input } from "../../components/forms";
 import { Icon } from "../../components/icons";
 import { Page, PageHeader, Panel, PanelHeader, Table, Td, Th, Tr } from "../../components/Panel";
 import { RelativeTime } from "../../components/people";
-import { EmptyState, InlineError, QueryView } from "../../components/states";
+import { EmptyState, InlineError, Loading, QueryView } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { formatMoney } from "../../lib/amounts";
 import type { TerraformRoot, TerraformWorkspace } from "@infrawrench/git-contract";
 import { paths } from "../../lib/paths";
 import { AccountsPicker, accountLabel } from "./AccountsPicker";
 import { WORKSPACE_NAME, WORKSPACE_NAME_RULE, suggestWorkspaceName } from "./backend-snippet";
+import { ConfigurationsPanel } from "./ConfigurationsPanel";
+import { infrastructureView, rootLabel, scanPending } from "./configurations";
 import {
   PlanCounts,
   TerraformStatusIcon,
@@ -35,7 +37,11 @@ function AddWorkspaceDialog({
 }) {
   const repo = useRepoRef();
   const go = useGo();
-  const [name, setName] = useState(() => suggestWorkspaceName(root.path, taken));
+  const [name, setName] = useState(() =>
+    taken.includes(root.suggestedWorkspace)
+      ? suggestWorkspaceName(root.path, taken)
+      : root.suggestedWorkspace,
+  );
   const [accountIds, setAccountIds] = useState<string[]>([]);
   const [approval, setApproval] = useState(true);
   const create = useMutation({
@@ -80,8 +86,7 @@ function AddWorkspaceDialog({
     >
       <form onSubmit={submit} className="space-y-3">
         <p className="text-on-surface-muted">
-          Root{" "}
-          <span className="font-mono text-on-surface">{root.path === "" ? "/" : root.path}</span>
+          Root <span className="font-mono text-on-surface">{rootLabel(root.path)}</span>
         </p>
         <Field label="Name" error={name === "" ? null : problem}>
           {(control) => (
@@ -198,18 +203,21 @@ export function InfrastructurePage() {
   const repository = useRepository();
   const admin = repository.viewer.canAdminister;
   const workspaces = useQuery(queries.terraform.listWorkspaces({ params: repo }));
-  const roots = useQuery({
-    ...queries.terraform.listRoots({ params: repo }),
-    enabled: admin && !repository.isEmpty,
+  const scan = useQuery({
+    ...queries.terraform.scan({ params: repo }),
+    enabled: !repository.isEmpty,
+    // An estimate is worked out by the app in the background: ask again until it is.
+    refetchInterval: (query) => (scanPending(query.state.data) ? 10_000 : false),
   });
   const [adding, setAdding] = useState<TerraformRoot | null>(null);
+  const scanSettled = repository.isEmpty || scan.isSuccess || scan.isError;
 
   return (
     <Page>
       <PageHeader title="Infrastructure" />
       <QueryView query={workspaces}>
         {({ workspaces: items }) => {
-          const open = (roots.data?.roots ?? []).filter((root) => root.workspaces.length === 0);
+          const view = infrastructureView(items.length, scan.data, scanSettled);
           const totals = new Map<string, number>();
           for (const workspace of items) {
             if (workspace.monthlyCost === null) continue;
@@ -218,34 +226,22 @@ export function InfrastructurePage() {
           }
           return (
             <div className="space-y-4">
-              <Panel>
-                <PanelHeader
-                  actions={
-                    totals.size > 0 ? (
-                      <span>
-                        {[...totals]
-                          .map(([currency, amount]) => formatMoney(amount, currency))
-                          .join(" + ")}{" "}
-                        a month
-                      </span>
-                    ) : undefined
-                  }
-                >
-                  Workspaces
-                </PanelHeader>
-                {items.length === 0 ? (
-                  <EmptyState
-                    action={
-                      open[0] !== undefined ? (
-                        <Button onClick={() => setAdding(open[0]!)}>Add workspace</Button>
+              {items.length > 0 ? (
+                <Panel>
+                  <PanelHeader
+                    actions={
+                      totals.size > 0 ? (
+                        <span>
+                          {[...totals]
+                            .map(([currency, amount]) => formatMoney(amount, currency))
+                            .join(" + ")}{" "}
+                          a month
+                        </span>
                       ) : undefined
                     }
                   >
-                    {admin && roots.data !== undefined && open.length === 0
-                      ? "No Terraform roots on the default branch"
-                      : "No workspaces yet"}
-                  </EmptyState>
-                ) : (
+                    Workspaces
+                  </PanelHeader>
                   <div className="overflow-x-auto">
                     <Table caption="Terraform workspaces">
                       <thead>
@@ -265,36 +261,28 @@ export function InfrastructurePage() {
                       </tbody>
                     </Table>
                   </div>
-                )}
-              </Panel>
-              {open.length > 0 ? (
-                <Panel>
-                  <PanelHeader>Roots without a workspace</PanelHeader>
-                  <ul>
-                    {open.map((root) => (
-                      <li
-                        key={root.path}
-                        className="flex flex-wrap items-center gap-3 border-t border-border px-3 py-2 text-xs first:border-t-0"
-                      >
-                        <Icon name="folder" size={13} className="text-on-surface-muted" />
-                        <AppLink
-                          href={paths.tree(repo, repository.defaultBranch, root.path)}
-                          className="font-mono text-on-surface hover:underline"
-                        >
-                          {root.path === "" ? "/" : root.path}
-                        </AppLink>
-                        {root.backend !== null ? (
-                          <Badge tone="outline">backend "{root.backend}"</Badge>
-                        ) : null}
-                        <span className="flex-1" />
-                        <Button size="sm" onClick={() => setAdding(root)}>
-                          <Icon name="plus" size={11} />
-                          Add workspace
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
                 </Panel>
+              ) : null}
+              {view === "loading" ? (
+                <Panel>
+                  <PanelHeader>Configurations</PanelHeader>
+                  <Loading shape="rows" count={2} framed={false} />
+                </Panel>
+              ) : view === "empty" ? (
+                <Panel>
+                  {scan.isError ? (
+                    <InlineError error={scan.error} />
+                  ) : (
+                    <EmptyState>No Terraform on the default branch</EmptyState>
+                  )}
+                </Panel>
+              ) : scan.data !== undefined && scan.data.roots.length > 0 ? (
+                <ConfigurationsPanel
+                  scan={scan.data}
+                  onAdd={admin && !repository.archived ? setAdding : null}
+                />
+              ) : scan.isError ? (
+                <InlineError error={scan.error} />
               ) : null}
               {adding !== null ? (
                 <AddWorkspaceDialog

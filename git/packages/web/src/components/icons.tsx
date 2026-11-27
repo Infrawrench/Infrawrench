@@ -100,6 +100,7 @@ const glyphs = {
       <circle cx="12" cy="12" r="1" />
     </>
   ),
+  cloud: <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" />,
   clock: (
     <>
       <circle cx="12" cy="12" r="10" />
