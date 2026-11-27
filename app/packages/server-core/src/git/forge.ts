@@ -27,6 +27,7 @@ import { db } from "../db/client.js";
 import { organizations } from "../db/core-schema.js";
 import { ciRuns, gitNamespaces, gitRepositories } from "../db/schema.js";
 import { gitOrganizationClaimRefusal, gitQuota } from "./quota.js";
+import { gitUsernameHeld } from "./short-usernames.js";
 
 type NamespaceRow = typeof gitNamespaces.$inferSelect;
 
@@ -120,6 +121,10 @@ export async function setGitForgeNamespace(
   }
   const current = await namespaceOf(organizationId);
   if (current?.slug === slug) return { namespace: namespaceView(current), change: "none" };
+  // A short username someone is paying for is taken, for an organisation too.
+  if (await gitUsernameHeld(slug)) {
+    throw new GitForgeError(409, "namespace_taken", "That name is taken");
+  }
   const now = new Date();
   try {
     if (current) {

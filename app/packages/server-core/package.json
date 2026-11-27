@@ -387,6 +387,7 @@
     "./git/billing": "./src/git/billing.ts",
     "./git/forge": "./src/git/forge.ts",
     "./git/quota": "./src/git/quota.ts",
+    "./git/short-usernames": "./src/git/short-usernames.ts",
     "./git/workspace": "./src/git/workspace.ts",
     "./billing/ai-pricing": "./src/billing/ai-pricing.ts",
     "./billing/ai-usage": "./src/billing/ai-usage.ts",
