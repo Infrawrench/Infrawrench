@@ -40,7 +40,7 @@ const sources = import.meta.glob<string>("./*/**/*.md", {
 });
 
 /** Homepage order: the ones listed here first, then the rest by id. */
-const ORDER = ["infrawrench-cli", "infraenv", "migrate-github-actions"];
+const ORDER = ["infrawrench-cli", "infraenv", "migrate-github-actions", "infrawrench-git"];
 
 function load(): Skill[] {
   const skills: Skill[] = [];

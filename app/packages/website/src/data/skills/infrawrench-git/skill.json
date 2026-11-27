@@ -1,0 +1,5 @@
+{
+  "title": "git.infrawrench.com and Infrawrench CI",
+  "summary": "Works in a repository on git.infrawrench.com the way its reviewers read it: records the work on each push, answers what they send back, and writes CI jobs that put notes on the branch's page.",
+  "description": "Work in a Git repository hosted on git.infrawrench.com (its remote is git.infrawrench.com) and with Infrawrench CI (.infrawrench/ci/*.yml). Use when writing or reviewing code on a branch there, when the infrawrench-git MCP server is connected or should be, when asked to record a trace, answer reviewer instructions or report findings, or when writing a CI job that should leave must-fix, should-fix, note, doubt, decision, step or evidence notes on a branch's page."
+}

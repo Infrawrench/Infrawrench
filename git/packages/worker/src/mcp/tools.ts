@@ -665,7 +665,7 @@ const listFindings: ToolDefinition = {
   name: "list_findings",
   title: "What review agents found",
   description:
-    "Lists what review agents found on a branch, in file then line order, with a tally. Each finding has a severity (`must_fix` holds the merge until it is fixed, dismissed or overridden; `should_fix`; `note`), a title and body, the file and lines, and its evidence. Call it after a push to see what to fix: fix `must_fix` findings, or say why not in a `doubt` or `decision` trace entry. A finding is marked fixed by the reviewer's next run, not by you.",
+    "Lists what review agents and CI jobs found on a branch, in file then line order, with a tally. Each finding has a severity (`must_fix` holds the merge until it is fixed, dismissed or overridden; `should_fix`; `note`), a title and body, the file and lines, and its evidence. Call it after a push to see what to fix: fix `must_fix` findings, or say why not in a `doubt` or `decision` trace entry. A finding is marked fixed by the reviewer's next run, not by you: one whose reviewer is `ci:<pipeline>/<job>` came from that Infrawrench CI job's note commands, and is fixed when the job next passes without printing it.",
   inputSchema: object(
     {
       repository: REPOSITORY,
@@ -710,7 +710,7 @@ const reportFinding: ToolDefinition = {
   name: "report_finding",
   title: "Report review findings",
   description:
-    "Reports what you found reviewing a version of a branch. For an agent that reviews work, not the one that wrote it. Read the change first (get_branch, get_version_diff), then report one finding per problem: a `severity` (`must_fix` only for what must not merge: a bug, a security problem, something the ask said to do and the change does not; `should_fix` for what ought to change; `note` for the rest), a short `title`, a `body` saying what is wrong and what would fix it, the `path` and lines, and `evidence` (the code, a command you ran and its output, a failing test). Set `complete: true` when this is everything you find on the version: your earlier findings that are not in the list are then marked fixed. A finding with the same `fingerprint` as one already known updates it, and one a person dismissed stays dismissed. Needs write access.",
+    "Reports what you found reviewing a version of a branch. For an agent that reviews work, not the one that wrote it. A check that already runs as an Infrawrench CI job does not need this tool: the job prints note commands (`::must-fix file=...,line=...::message`) and its findings appear under the job's name. Read the change first (get_branch, get_version_diff), then report one finding per problem: a `severity` (`must_fix` only for what must not merge: a bug, a security problem, something the ask said to do and the change does not; `should_fix` for what ought to change; `note` for the rest), a short `title`, a `body` saying what is wrong and what would fix it, the `path` and lines, and `evidence` (the code, a command you ran and its output, a failing test). Set `complete: true` when this is everything you find on the version: your earlier findings that are not in the list are then marked fixed. A finding with the same `fingerprint` as one already known updates it, and one a person dismissed stays dismissed. Needs write access.",
   inputSchema: object(
     {
       repository: REPOSITORY,
@@ -720,7 +720,7 @@ const reportFinding: ToolDefinition = {
         minLength: 1,
         maxLength: 64,
         description:
-          "What kind of reviewer you are: `general`, `security`, `tests`, `terraform`, `intent`, or your own name for it. Findings are grouped by it.",
+          "A name of your own for the reviewer you are (`claude-review`, `semgrep`). Findings are grouped by it, and `complete` answers for this name alone. Not `general`, `security`, `tests`, `terraform` or `intent`, which are the forge's own reviewers, and not a name starting `ci:`, which is Infrawrench CI's: both are refused.",
       },
       version: {
         type: "integer",

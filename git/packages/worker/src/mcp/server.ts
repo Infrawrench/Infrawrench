@@ -14,6 +14,12 @@ export const MCP_SERVER_TITLE = "git.infrawrench.com";
 /** Bumped when a tool is added, removed or changes what it takes. */
 export const MCP_SERVER_VERSION = "1.0.0";
 
+/**
+ * The agent skill for the forge and Infrawrench CI together, as one file an
+ * agent can fetch. It is the website's (`app/packages/website/src/data/skills/infrawrench-git/`).
+ */
+export const MCP_SKILL_URL = "https://infrawrench.com/skills/infrawrench-git.md";
+
 /** What a client shows the model about the server as a whole. */
 export const MCP_INSTRUCTIONS = [
   "This is git.infrawrench.com, a Git forge where a branch is reviewed as a record of versions: every push to a branch makes a version, and what you record about your work is attached to it.",
@@ -26,6 +32,10 @@ export const MCP_INSTRUCTIONS = [
   "If you review code here: read the change with get_branch and get_version_diff, then report_finding.",
   "",
   "If you are given a task and no branch exists yet: start_work makes the branch and its page from the ask.",
+  "",
+  `A check that runs in Infrawrench CI needs none of these tools to report: a job prints note commands (\`::must-fix file=src/a.ts,line=3::message\`, \`::doubt ...::...\`) and they appear on the branch's page under the job's name.`,
+  "",
+  `The skill for working here, with the trace kinds, the instruction flow and the CI note commands: ${MCP_SKILL_URL}`,
 ].join("\n");
 
 export type ServerContext = Omit<ToolContext, "clientName"> & {
