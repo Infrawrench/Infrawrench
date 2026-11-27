@@ -2202,6 +2202,7 @@ export interface operations {
                 name?: string;
                 page?: number;
                 per_page?: number;
+                sort?: ("id" | "id:asc" | "id:desc" | "name" | "name:asc" | "name:desc")[];
             };
             header?: never;
             path?: never;
