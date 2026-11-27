@@ -22,12 +22,15 @@ const { ciLogLineUrl, findingInputs, landCiNotes, landRunNotes, notesJobs, trace
 const { jobsOf, CACHED_REASON } = await import("../runs");
 import type { ProxyRun } from "../proxy";
 
-const report = (jobs: NonNullable<NonNullable<ProxyRun["result"]>["pipelines"]>[0]["report"]) =>
-  ({
-    id: "proxy-1",
-    state: "finished",
-    result: { passed: true, pipelines: [{ outcome: "ran", name: "lint", report: jobs }] },
-  }) satisfies ProxyRun;
+type Report = NonNullable<
+  NonNullable<NonNullable<ProxyRun["result"]>["pipelines"]>[number]["report"]
+>;
+
+const report = (jobs: Report): ProxyRun => ({
+  id: "proxy-1",
+  state: "finished",
+  result: { passed: true, pipelines: [{ outcome: "ran", name: "lint", report: jobs }] },
+});
 
 const source = (note: { logLine: number }) => ({
   text: `line ${note.logLine}`,
