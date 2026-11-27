@@ -804,6 +804,7 @@ export interface components {
              * @enum {string}
              */
             type: "AwsS3";
+            use_new_events_schema?: boolean;
         };
         AzureBlobDestinationConfig: {
             compression?: components["schemas"]["CompressionEnum"] | components["schemas"]["NullEnum"];
@@ -819,6 +820,7 @@ export interface components {
              * @enum {string}
              */
             type: "AzureBlob";
+            use_new_events_schema?: boolean;
         };
         /** @enum {string} */
         BaseCurrencyEnum: BaseCurrencyEnum_6f395811;
@@ -987,6 +989,7 @@ export interface components {
             type: "BigQuery";
             /** @default false */
             use_json_type?: boolean;
+            use_new_events_schema?: boolean;
         };
         BillingManagedByPartner: {
             partner_name: string;
@@ -1029,6 +1032,16 @@ export interface components {
             trial?: unknown;
             usage_summary?: unknown;
         };
+        BillingSpendTimeSeriesResponse: {
+            customer_id?: number;
+            next?: string;
+            pricing_reset_dates?: string[];
+            results: components["schemas"]["BillingTimeSeriesPoint"][];
+            status?: string;
+            team_id_options?: number[];
+            total_count?: number;
+            type?: string;
+        };
         BillingTimeSeriesPoint: {
             breakdown_type?: components["schemas"]["BreakdownTypeEnum"] | components["schemas"]["NullEnum"];
             breakdown_value?: string | string[] | null;
@@ -1036,15 +1049,6 @@ export interface components {
             dates?: string[];
             id?: number;
             label?: string;
-        };
-        BillingTimeSeriesResponse: {
-            customer_id?: number;
-            next?: string;
-            results: components["schemas"]["BillingTimeSeriesPoint"][];
-            status?: string;
-            team_id_options?: number[];
-            total_count?: number;
-            type?: string;
         };
         /** @enum {unknown} */
         BlankEnum: "";
@@ -1147,6 +1151,7 @@ export interface components {
             readonly pending_version: number | null;
             query?: unknown;
             readonly realtime: components["schemas"]["CohortRealtimeReadiness"] | null;
+            realtime_enabled?: boolean;
             readonly search_match_type: components["schemas"]["SearchMatchTypeEnum"] | components["schemas"]["NullEnum"];
             readonly version: number | null;
         };
@@ -1220,12 +1225,16 @@ export interface components {
         };
         CohortRealtimeReadiness: {
             build: components["schemas"]["CohortHistoryBuild"] | null;
+            history_limit_days: number | null;
             /** Format: date-time */
             ready_at: string | null;
+            reason: components["schemas"]["CohortRealtimeUnavailableReasonEnum"] | components["schemas"]["NullEnum"];
             state: components["schemas"]["CohortRealtimeStateEnum"];
         };
         /** @enum {string} */
-        CohortRealtimeStateEnum: "static" | "person_properties" | "daily" | "building" | "rebuilding" | "ready" | "needs_attention";
+        CohortRealtimeStateEnum: "static" | "person_properties" | "daily" | "off" | "building" | "rebuilding" | "ready" | "needs_attention";
+        /** @enum {string} */
+        CohortRealtimeUnavailableReasonEnum: "history_over_limit" | "too_large_to_build" | "unsupported_criteria" | "action_criteria" | "includes_non_realtime_cohort" | "members_over_limit" | "test_account_filter" | "unsupported_time_range";
         /** @enum {string} */
         CohortTypeEnum: "static" | "person_property" | "behavioral" | "realtime" | "analytical";
         CompareFilter: {
@@ -1474,6 +1483,7 @@ export interface components {
             type: "Databricks";
             /** @default true */
             use_automatic_schema_evolution?: boolean;
+            use_new_events_schema?: boolean;
             /** @default true */
             use_variant_type?: boolean;
         };
@@ -1574,6 +1584,8 @@ export interface components {
             /** @default false */
             set_repository_as_team_default?: boolean;
         };
+        /** @enum {string} */
+        ErrorTrackingAIFeatureEnum: "issue_summaries";
         ErrorTrackingIssueFilter: {
             key: string;
             /** @default null */
@@ -1725,6 +1737,8 @@ export interface components {
             exposure_criteria?: components["schemas"]["ExperimentApiExposureCriteria"] | null;
             readonly feature_flag: components["schemas"]["MinimalFeatureFlag"];
             feature_flag_key: string;
+            /** Format: uuid */
+            feature_flag_rule_id?: string | null;
             filters?: unknown;
             /** Format: uuid */
             readonly flag_cleanup_task_id: string | null;
@@ -1854,6 +1868,8 @@ export interface components {
             /** @default null */
             numerator_outlier_handling?: components["schemas"]["ExperimentMetricOutlierHandling"] | null;
             /** @default null */
+            quantile?: number | null;
+            /** @default null */
             retention_window_end?: number | null;
             /** @default null */
             retention_window_start?: number | null;
@@ -1873,6 +1889,8 @@ export interface components {
             upper_bound_percentile?: number | null;
             /** @default null */
             uuid?: string | null;
+            /** @default null */
+            value_format?: components["schemas"]["ExperimentMetricValueFormat"] | null;
         };
         ExperimentApiPropertyBreakdown: {
             property: string;
@@ -2057,6 +2075,8 @@ export interface components {
             /** @default null */
             uuid?: string | null;
             /** @default null */
+            value_format?: components["schemas"]["ExperimentMetricValueFormat"] | null;
+            /** @default null */
             version?: number | null;
         };
         ExperimentHealth: {
@@ -2064,13 +2084,39 @@ export interface components {
             findings: components["schemas"]["ExperimentHealthFinding"][];
             setup?: components["schemas"]["ExperimentHealthSetup"] | null;
         };
+        ExperimentHealthAnalysisSetup: {
+            baseline_variant: string;
+            /** Format: double */
+            confidence_level: number;
+            cuped: boolean;
+            cuped_from_project_default: boolean;
+            cuped_lookback_days: number | null;
+            cuped_lookback_days_from_project_default: boolean;
+            excluded_variants: string[];
+            filters_test_accounts: boolean | null;
+            metrics_without_cuped_support: string[];
+            multiple_variant_handling: components["schemas"]["ExperimentHealthMultipleVariantHandlingEnum"] | components["schemas"]["NullEnum"];
+            only_count_matured_users: boolean;
+            sequential_testing: boolean | null;
+            sequential_testing_from_project_default: boolean;
+            stats_method: components["schemas"]["StatsMethodEnum"];
+            test_account_filter_count: number;
+        };
         /** @enum {string} */
-        ExperimentHealthCheckKeyEnum: "flag_state" | "flag_shared" | "flag_history" | "split_changed_mid_run" | "bucketing_changed_mid_run" | "release_conditions_changed_mid_run" | "flag_variants_mismatch" | "forced_variant_release_condition" | "new_flag_no_traffic" | "no_metric" | "metric_event_not_ingested" | "metric_cannot_compile" | "metric_calculation_failed" | "metric_all_zero" | "exposure_criteria_cannot_match" | "exposure_filters" | "early_significance" | "metrics_not_matured" | "zero_exposures" | "test_account_filter_removes_exposures" | "srm" | "bias_risk_multiple_excluded" | "multiple_variants_share";
+        ExperimentHealthCheckKeyEnum: "flag_state" | "flag_shared" | "flag_history" | "split_changed_mid_run" | "bucketing_changed_mid_run" | "release_conditions_changed_mid_run" | "flag_variants_mismatch" | "forced_variant_release_condition" | "new_flag_no_traffic" | "no_metric" | "metric_event_not_ingested" | "metric_uses_feature_flag_called" | "metric_cannot_compile" | "metric_calculation_failed" | "metric_all_zero" | "exposure_criteria_cannot_match" | "exposure_filters" | "early_significance" | "metrics_not_matured" | "result_ready" | "stale_experiment" | "zero_exposures" | "test_account_filter_removes_exposures" | "srm" | "unserved_variant_exposures" | "bias_risk_multiple_excluded" | "multiple_variants_share" | "events_billing_limit" | "feature_flags_billing_limit" | "exposure_rows_left_out";
         ExperimentHealthCheckResult: {
             description: string;
             key: components["schemas"]["ExperimentHealthCheckKeyEnum"];
             name: string;
             reason: string | null;
+            rows: {
+                [key: string]: string | number | boolean | {
+                    aggregation_group_type_index: number | null;
+                    groups: {
+                        [key: string]: unknown;
+                    }[];
+                } | null;
+            }[];
             rule: components["schemas"]["ExperimentHealthCheckRule"] | null;
             status: components["schemas"]["ExperimentHealthCheckStatusEnum"];
             values: {
@@ -2087,6 +2133,11 @@ export interface components {
         };
         /** @enum {string} */
         ExperimentHealthCheckStatusEnum: "passed" | "finding" | "not_applicable" | "not_checked";
+        ExperimentHealthExposureSetup: {
+            action: string | null;
+            activation: string | null;
+            event: string | null;
+        };
         ExperimentHealthFinding: {
             actions: components["schemas"]["ExperimentHealthFindingActionKindEnum"][];
             check: components["schemas"]["ExperimentHealthCheckKeyEnum"];
@@ -2102,16 +2153,20 @@ export interface components {
             title: string;
         };
         /** @enum {string} */
-        ExperimentHealthFindingActionKindEnum: "open_feature_flag" | "open_feature_flag_history" | "adjust_distribution" | "use_first_seen_variant" | "add_primary_metric" | "add_secondary_metric" | "edit_exposure_criteria" | "edit_release_conditions";
+        ExperimentHealthFindingActionKindEnum: "open_feature_flag" | "open_feature_flag_history" | "adjust_distribution" | "use_first_seen_variant" | "add_primary_metric" | "add_secondary_metric" | "edit_exposure_criteria" | "edit_release_conditions" | "end_experiment" | "freeze_exposure" | "move_start_date";
         /** @enum {string} */
-        ExperimentHealthFindingCodeEnum: "flag_off_while_running" | "variant_shipped_while_running" | "flag_live_after_end" | "flag_live_before_launch" | "bias_risk_multiple_excluded" | "multiple_variants_share" | "no_metric" | "metric_event_not_ingested" | "metric_cannot_compile" | "metric_calculation_failed" | "metric_all_zero" | "exposure_criteria_cannot_match" | "exposure_filter_on_dynamic_cohort" | "srm" | "zero_exposures" | "test_account_filter_removes_exposures" | "forced_variant_release_condition" | "flag_variants_mismatch" | "split_changed_mid_run" | "bucketing_changed_mid_run" | "release_conditions_changed_mid_run" | "new_flag_no_traffic" | "early_significance" | "metrics_not_matured" | "flag_shared";
+        ExperimentHealthFindingCodeEnum: "flag_off_while_running" | "variant_shipped_while_running" | "flag_live_after_end" | "flag_live_before_launch" | "bias_risk_multiple_excluded" | "multiple_variants_share" | "no_metric" | "metric_event_not_ingested" | "metric_uses_feature_flag_called" | "metric_cannot_compile" | "metric_calculation_failed" | "metric_all_zero" | "exposure_criteria_cannot_match" | "exposure_filter_on_dynamic_cohort" | "srm" | "zero_exposures" | "test_account_filter_removes_exposures" | "unserved_variant_exposures" | "events_billing_limit" | "feature_flags_billing_limit" | "forced_variant_release_condition" | "flag_variants_mismatch" | "split_changed_mid_run" | "bucketing_changed_mid_run" | "release_conditions_changed_mid_run" | "new_flag_no_traffic" | "early_significance" | "metrics_not_matured" | "result_ready" | "flag_shared" | "stale_experiment" | "exposure_rows_left_out";
         /** @enum {string} */
         ExperimentHealthFindingSeverityEnum: "critical" | "warning" | "info";
+        /** @enum {string} */
+        ExperimentHealthMultipleVariantHandlingEnum: "exclude" | "first_seen";
         ExperimentHealthReleaseCondition: {
             aggregation_group_type_index: number | null;
             property_count: number;
+            reachable: boolean | null;
             /** Format: double */
             rollout_percentage: number;
+            variant: string | null;
         };
         ExperimentHealthRuleMinimum: {
             /** Format: double */
@@ -2124,15 +2179,17 @@ export interface components {
         ExperimentHealthRuleTestEnum: "chi_squared";
         ExperimentHealthSetup: {
             aggregation_group_type_index: number | null;
+            analysis: components["schemas"]["ExperimentHealthAnalysisSetup"];
             bucketing_identifier: components["schemas"]["BucketingIdentifierEnum"];
             early_exit: boolean;
             ensure_experience_continuity: boolean;
             evaluation_contexts: string[];
             evaluation_runtime: components["schemas"]["EvaluationRuntimeEnum"];
+            exposure: components["schemas"]["ExperimentHealthExposureSetup"] | null;
             release_conditions: components["schemas"]["ExperimentHealthReleaseCondition"][];
         };
         /** @enum {string} */
-        ExperimentHealthValueKeyEnum: "exposed_count" | "compared_count" | "multiple_variant_count" | "multiple_variant_percentage" | "multiple_variant_handling" | "p_value" | "since_launch_hours" | "exposed_without_test_account_filter_count" | "kept_by_test_account_filter_percentage" | "only_count_matured_users" | "primary_metric_count" | "waiting_metric_count" | "metric_count" | "completed_metric_count" | "failed_metric_count" | "calculated_at" | "flag_active" | "flag_deleted" | "flag_rolled_out" | "shipped_variant";
+        ExperimentHealthValueKeyEnum: "exposed_count" | "compared_count" | "multiple_variant_count" | "multiple_variant_percentage" | "multiple_variant_handling" | "p_value" | "since_launch_hours" | "exposed_without_test_account_filter_count" | "kept_by_test_account_filter_percentage" | "unserved_exposed_count" | "unserved_exposed_percentage" | "only_count_matured_users" | "primary_metric_count" | "secondary_metric_count" | "waiting_metric_count" | "metric_count" | "completed_metric_count" | "failed_metric_count" | "calculated_at" | "flag_active" | "flag_deleted" | "flag_rolled_out" | "shipped_variant" | "flag_last_called_at" | "flag_called" | "since_start_hours" | "daily_calculation_ends_at" | "events_billing_limit_reached" | "events_billing_limit_ends_at" | "feature_flags_billing_limit_reached" | "feature_flags_billing_limit_ends_at" | "metric_name" | "metric_role" | "ratio_side" | "sample_count" | "planned_sample_count" | "data_hours" | "variant" | "difference_percentage" | "detectable_difference_percentage" | "significant" | "significant_since_at" | "forced_condition_count" | "matched_count" | "variant_matched_count" | "forced_count" | "forced_percentage" | "traffic_since_at" | "history_since_at" | "change_count" | "changed_at" | "before_exposure" | "changed_setting" | "before" | "after" | "before_filters" | "after_filters" | "flag_service_call_percentage" | "cohort_count" | "dynamic_cohort_count" | "event" | "event_received" | "invalid_metric_count" | "unchecked_metric_count" | "flag_split" | "baseline_variant" | "other_running_experiment_count" | "assigned_outside_count" | "other_draft_experiment_count" | "filters_test_accounts" | "left_out_row_count" | "unknown_variant_row_count" | "empty_id_row_count";
         ExperimentHoldout: {
             /** Format: date-time */
             readonly created_at: string;
@@ -2188,9 +2245,11 @@ export interface components {
             /** @default null */
             uuid?: string | null;
             /** @default null */
+            value_format?: components["schemas"]["ExperimentMetricValueFormat"] | null;
+            /** @default null */
             version?: number | null;
         };
-        ExperimentMetric: components["schemas"]["ExperimentMeanMetric"] | components["schemas"]["ExperimentFunnelMetric"] | components["schemas"]["ExperimentRatioMetric"] | components["schemas"]["ExperimentRetentionMetric"];
+        ExperimentMetric: components["schemas"]["ExperimentMeanMetric"] | components["schemas"]["ExperimentFunnelMetric"] | components["schemas"]["ExperimentRatioMetric"] | components["schemas"]["ExperimentRetentionMetric"] | components["schemas"]["ExperimentQuantileMetric"];
         /** @enum {string} */
         ExperimentMetricGoal: "increase" | "decrease";
         /** @enum {string} */
@@ -2204,7 +2263,12 @@ export interface components {
             upper_bound_percentile?: number | null;
         };
         /** @enum {string} */
-        ExperimentMetricType: "funnel" | "mean" | "ratio" | "retention";
+        ExperimentMetricType: "funnel" | "mean" | "ratio" | "retention" | "quantile";
+        ExperimentMetricValueFormat: {
+            type: components["schemas"]["ExperimentMetricValueFormatType"];
+        };
+        /** @enum {string} */
+        ExperimentMetricValueFormatType: "currency" | "duration" | "duration_ms" | "percentage" | "percentage_scaled";
         ExperimentParameters: {
             /** @default null */
             minimum_detectable_effect?: number | null;
@@ -2212,6 +2276,46 @@ export interface components {
             variant_notes?: {
                 [key: string]: string;
             } | null;
+        };
+        ExperimentQuantileMetric: {
+            /** @default null */
+            breakdownFilter?: components["schemas"]["BreakdownFilter"] | null;
+            /** @default null */
+            conversion_window?: number | null;
+            /** @default null */
+            conversion_window_unit?: components["schemas"]["FunnelConversionWindowTimeUnit"] | null;
+            /** @default null */
+            fingerprint?: string | null;
+            /** @default null */
+            goal?: components["schemas"]["ExperimentMetricGoal"] | null;
+            /** @default null */
+            isSharedMetric?: boolean | null;
+            /**
+             * @default ExperimentMetric
+             * @constant
+             */
+            kind?: "ExperimentMetric";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            metric_type: "quantile";
+            /** @default null */
+            name?: string | null;
+            quantile: number;
+            /** @default null */
+            response?: {
+                [key: string]: unknown;
+            } | null;
+            /** @default null */
+            sharedMetricId?: number | null;
+            source: components["schemas"]["EventsNode"] | components["schemas"]["ActionsNode"];
+            /** @default null */
+            uuid?: string | null;
+            /** @default null */
+            value_format?: components["schemas"]["ExperimentMetricValueFormat"] | null;
+            /** @default null */
+            version?: number | null;
         };
         ExperimentRatioMetric: {
             /** @default null */
@@ -2252,6 +2356,8 @@ export interface components {
             sharedMetricId?: number | null;
             /** @default null */
             uuid?: string | null;
+            /** @default null */
+            value_format?: components["schemas"]["ExperimentMetricValueFormat"] | null;
             /** @default null */
             version?: number | null;
         };
@@ -2298,6 +2404,8 @@ export interface components {
             start_handling: components["schemas"]["StartHandling"];
             /** @default null */
             uuid?: string | null;
+            /** @default null */
+            value_format?: components["schemas"]["ExperimentMetricValueFormat"] | null;
             /** @default null */
             version?: number | null;
         };
@@ -2423,6 +2531,7 @@ export interface components {
         FeatureFlagActionConflict: components["schemas"]["FlagActionError"] | components["schemas"]["FlagApprovalConflict"];
         FeatureFlagConditionGroupSchema: {
             aggregation_group_type_index?: number | null;
+            description?: string | null;
             properties?: components["schemas"]["FeatureFlagFilterPropertySchema"][];
             rollout_percentage?: number | null;
             variant?: string | null;
@@ -2813,6 +2922,8 @@ export interface components {
             /** @default null */
             negatedPersonFiltersNotIn?: boolean | null;
             /** @default null */
+            optimizeCrossJoins?: boolean | null;
+            /** @default null */
             optimizeJoinedFilters?: boolean | null;
             /** @default null */
             optimizeProjections?: boolean | null;
@@ -2832,6 +2943,8 @@ export interface components {
             pushDownPredicates?: boolean | null;
             /** @default null */
             s3TableUseInvalidColumns?: boolean | null;
+            /** @default null */
+            sessionFilterGlobalJoin?: boolean | null;
             /** @default null */
             sessionIdPushdown?: boolean | null;
             /** @default null */
@@ -3086,6 +3199,8 @@ export interface components {
                 [key: string]: string | unknown;
             };
             /** @default null */
+            use_in_recommendations?: boolean | null;
+            /** @default null */
             version?: number | null;
         };
         MarketingAnalyticsCampaignFieldPreferences: {
@@ -3144,6 +3259,8 @@ export interface components {
                 [key: string]: string | unknown;
             };
             /** @default null */
+            use_in_recommendations?: boolean | null;
+            /** @default null */
             version?: number | null;
         };
         MarketingAnalyticsSourceMapping: {
@@ -3193,6 +3310,8 @@ export interface components {
             };
             table_name: string;
             timestamp_field: string;
+            /** @default null */
+            use_in_recommendations?: boolean | null;
             /** @default null */
             version?: number | null;
         };
@@ -3278,7 +3397,7 @@ export interface components {
             /** @default null */
             dateRange?: components["schemas"]["WidgetDateRange"] | null;
             /** @default null */
-            groupBy?: string | null;
+            groupBy?: string | string[] | null;
             /** @default null */
             interval?: ("minute" | "minute_5" | "minute_15" | "hour" | "day") | null;
             /** @default 25 */
@@ -3340,11 +3459,16 @@ export interface components {
             default_role_id?: string | null;
             enforce_2fa?: boolean | null;
             enforce_verified_domains?: boolean | null;
+            readonly external_project_links: components["schemas"]["OrganizationExternalProjectLink"][];
             readonly has_signed_baa: boolean;
             /** Format: uuid */
             readonly id: string;
+            ip_restrictions?: string[];
+            ip_restrictions_enabled?: boolean;
+            readonly ip_restrictions_warning: string | null;
             readonly is_active: boolean | null;
             is_ai_data_processing_approved?: boolean | null;
+            readonly is_ai_data_processing_locked: boolean | null;
             readonly is_ai_training_cta_shown: boolean | null;
             readonly is_ai_training_locked: boolean | null;
             is_ai_training_opted_in?: boolean | null;
@@ -3376,6 +3500,13 @@ export interface components {
             /** Format: date-time */
             readonly updated_at: string;
             readonly uses_most_specific_access_resolution: boolean | null;
+        };
+        OrganizationExternalProjectLink: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly name: string;
+            /** Format: uri */
+            readonly url: string;
         };
         OrganizationMember: {
             readonly has_social_auth: boolean;
@@ -3590,6 +3721,7 @@ export interface components {
             readonly pending_version?: number | null;
             query?: unknown;
             readonly realtime?: components["schemas"]["CohortRealtimeReadiness"] | null;
+            realtime_enabled?: boolean;
             readonly search_match_type?: components["schemas"]["SearchMatchTypeEnum"] | components["schemas"]["NullEnum"];
             readonly version?: number | null;
         };
@@ -3614,6 +3746,8 @@ export interface components {
             exposure_criteria?: components["schemas"]["ExperimentApiExposureCriteria"] | null;
             feature_flag?: components["schemas"]["ExperimentFeatureFlagInput"];
             feature_flag_key?: string;
+            /** Format: uuid */
+            feature_flag_rule_id?: string | null;
             filters?: unknown;
             /** Format: uuid */
             readonly flag_cleanup_task_id?: string | null;
@@ -3897,6 +4031,7 @@ export interface components {
              * @enum {string}
              */
             type: "Postgres";
+            use_new_events_schema?: boolean;
         };
         ProjectBackwardCompat: {
             access_control?: boolean;
@@ -3909,6 +4044,7 @@ export interface components {
             autocapture_opt_out?: boolean | null;
             autocapture_web_vitals_allowed_metrics?: unknown;
             autocapture_web_vitals_opt_in?: boolean | null;
+            readonly available_error_tracking_ai_features: components["schemas"]["ErrorTrackingAIFeatureEnum"][];
             readonly available_setup_task_ids: components["schemas"]["AvailableSetupTaskIdsEnum"][];
             base_currency?: components["schemas"]["BaseCurrencyEnum"];
             business_model?: components["schemas"]["BusinessModelEnum"] | components["schemas"]["BlankEnum"] | components["schemas"]["NullEnum"];
@@ -3937,6 +4073,7 @@ export interface components {
             feature_flag_confirmation_enabled?: boolean | null;
             feature_flag_confirmation_message?: string | null;
             feature_flag_policy_config?: components["schemas"]["TeamFeatureFlagPolicyConfig"];
+            readonly flag_calls_only_in_flag_evaluations: boolean;
             readonly flag_evaluations_mode: components["schemas"]["FlagEvaluationsModeEnum"];
             flags_persistence_default?: boolean | null;
             readonly group_types: {
@@ -3984,12 +4121,11 @@ export interface components {
                 updated_at?: string;
             }[];
             readonly project_id: number;
+            readonly realtime_cohorts: components["schemas"]["TeamRealtimeCohorts"];
             receive_org_level_activity_logs?: boolean | null;
             recording_domains?: (string | null)[] | null;
             require_evaluation_contexts?: boolean | null;
             revenue_analytics_config?: components["schemas"]["TeamRevenueAnalyticsConfig"];
-            readonly secret_api_token: string | null;
-            readonly secret_api_token_backup: string | null;
             session_recording_event_trigger_config?: (string | null)[] | null;
             session_recording_linked_flag?: unknown;
             session_recording_masking_config?: unknown;
@@ -4050,6 +4186,8 @@ export interface components {
         PropertyMathType: "avg" | "sum" | "min" | "max" | "median" | "p75" | "p90" | "p95" | "p99";
         /** @enum {string} */
         PropertyOperator: "exact" | "is_not" | "icontains" | "not_icontains" | "starts_with" | "not_starts_with" | "ends_with" | "not_ends_with" | "regex" | "not_regex" | "gt" | "gte" | "lt" | "lte" | "is_set" | "is_not_set" | "is_date_exact" | "is_date_before" | "is_date_after" | "between" | "not_between" | "min" | "max" | "in" | "not_in" | "is_cleaned_path_exact" | "is_cleaned_path_not_exact" | "flag_evaluates_to" | "semver_eq" | "semver_neq" | "semver_gt" | "semver_gte" | "semver_lt" | "semver_lte" | "semver_tilde" | "semver_caret" | "semver_wildcard" | "icontains_multi" | "not_icontains_multi";
+        /** @enum {string} */
+        RealtimeCohortsAccessEnum: "off" | "serving";
         RecordingPropertyFilter: {
             key: components["schemas"]["DurationType"] | string;
             /** @default null */
@@ -4064,14 +4202,8 @@ export interface components {
             value?: (string | number | boolean)[] | string | number | boolean | null;
         };
         RedshiftCopyInputs: {
-            authorization: number | string | {
-                aws_access_key_id: string;
-                aws_secret_access_key: string;
-            };
-            bucket_credentials: number | {
-                aws_access_key_id: string;
-                aws_secret_access_key: string;
-            };
+            authorization: number | string;
+            bucket_credentials: number;
             region_name: string;
             s3_bucket: string;
             s3_key_prefix: string;
@@ -4095,6 +4227,7 @@ export interface components {
              * @enum {string}
              */
             type: "Redshift";
+            use_new_events_schema?: boolean;
         };
         /** @enum {string} */
         RedshiftExportModeEnum: "INSERT" | "COPY";
@@ -4135,6 +4268,7 @@ export interface components {
              * @enum {string}
              */
             type: "S3Compatible";
+            use_new_events_schema?: boolean;
             /** @default false */
             use_virtual_style_addressing?: boolean;
         };
@@ -4198,6 +4332,7 @@ export interface components {
              * @enum {string}
              */
             type: "Snowflake";
+            use_new_events_schema?: boolean;
             warehouse: string;
         };
         SourceMap: {
@@ -4244,6 +4379,8 @@ export interface components {
         /** @enum {string} */
         StartHandling: "first_seen" | "last_seen";
         /** @enum {string} */
+        StatsMethodEnum: "bayesian" | "frequentist";
+        /** @enum {string} */
         StepOrderValue: "strict" | "unordered" | "ordered";
         /** @enum {string} */
         StringMatchOperatorEnum: "exact" | "is_not" | "icontains" | "not_icontains" | "starts_with" | "not_starts_with" | "ends_with" | "not_ends_with" | "regex" | "not_regex";
@@ -4268,6 +4405,7 @@ export interface components {
             activity_event?: unknown;
             default_pinned_properties?: components["schemas"]["TeamCustomerAnalyticsPinnedAccountProperty"][];
             payment_event?: unknown;
+            role_default_pinned_properties?: components["schemas"]["TeamCustomerAnalyticsRoleDefaultPinnedProperties"][];
             signup_event?: unknown;
             signup_pageview_event?: unknown;
             subscription_event?: unknown;
@@ -4276,7 +4414,14 @@ export interface components {
             id: string;
             kind: components["schemas"]["AccountPropertyPinKindEnum"];
         };
+        TeamCustomerAnalyticsRoleDefaultPinnedProperties: {
+            pinned_properties: components["schemas"]["TeamCustomerAnalyticsPinnedAccountProperty"][];
+            /** Format: uuid */
+            role_id: string;
+        };
         TeamFeatureFlagPolicyConfig: {
+            allowed_hosts?: string[];
+            allowed_ips?: string[];
             blocked_hosts?: string[];
             blocked_ips?: string[];
             require_tags?: boolean;
@@ -4291,6 +4436,11 @@ export interface components {
             filter_test_accounts?: boolean;
             sources_map?: components["schemas"]["MarketingAnalyticsSourceMapping"];
         };
+        TeamRealtimeCohorts: {
+            access: components["schemas"]["RealtimeCohortsAccessEnum"];
+            cohorts_used: number | null;
+            max_cohorts: number | null;
+        };
         TeamRevenueAnalyticsConfig: {
             base_currency?: components["schemas"]["BaseCurrencyEnum"];
             events?: unknown;
@@ -4302,6 +4452,7 @@ export interface components {
             email_tracking_consent_mode?: components["schemas"]["EmailTrackingConsentModeEnum"];
             email_utm_params?: components["schemas"]["EmailUtmParams"];
             email_utm_tags_enabled?: boolean;
+            email_workflow_run_link_tag_enabled?: boolean;
             marketing_frequency_cap_hold_hours?: number | null;
             marketing_frequency_cap_max_messages?: number | null;
             marketing_frequency_cap_window_days?: number | null;
@@ -4444,7 +4595,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["BillingTimeSeriesResponse"];
+                    "application/json": components["schemas"]["BillingSpendTimeSeriesResponse"];
                 };
             };
         };
@@ -5073,6 +5224,7 @@ export interface operations {
                 filters_override?: string;
                 format?: "json" | "txt";
                 include_dashboards?: boolean;
+                omit_tile_results?: boolean;
                 variables_override?: string;
             };
             header?: never;
@@ -5135,6 +5287,7 @@ export interface operations {
                 event?: string;
                 excluded_tags?: string;
                 feature_flag_id?: number;
+                feature_flag_ids?: string;
                 limit?: number;
                 offset?: number;
                 order?: string;
@@ -5282,6 +5435,7 @@ export interface operations {
                 excluded_properties?: string;
                 excluded_tags?: string;
                 has_evaluation_contexts?: "false" | "true";
+                ids?: string;
                 key?: string;
                 limit?: number;
                 offset?: number;
