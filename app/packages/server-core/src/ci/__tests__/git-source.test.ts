@@ -290,6 +290,29 @@ describe("what is lent to a repository by name", () => {
     expect(scopeRefusal("Production", forge, scope)).toBeNull();
   });
 
+  it("lends a person's own repository only what names it, never what every repository gets", () => {
+    // A person's namespace connected to the organization (`git/workspace.ts`).
+    const personal = { ...lending, repoFullName: "mara/dotfiles", gitRepositoryId: "repo-2" };
+    const mine = { ...personal, personal: true };
+    const everywhere = { repos: null, branchPattern: null };
+    expect(scopeRefusal("Production", mine, everywhere)).toBe(
+      "Production is lent to the organization's own repositories; a person's repository is lent it by name (git.infrawrench.com/mara/dotfiles)",
+    );
+    expect(source.grantCoversRepo(null, mine)).toBe(false);
+    expect(source.grantCoversRepo(undefined, mine)).toBe(false);
+    // Named, it is lent like any other, within the branch pattern.
+    const named = { repos: ["git.infrawrench.com/mara/dotfiles"], branchPattern: "main" };
+    expect(scopeRefusal("Production", mine, named)).toBeNull();
+    expect(scopeRefusal("Production", { ...mine, headRef: "wip" }, named)).toMatch(
+      /not lent to CI for mara\/dotfiles on wip/,
+    );
+    // Another list does not reach it, and the same repository of an
+    // organization's namespace is still covered by "every repository".
+    expect(source.grantCoversRepo(["git.infrawrench.com/acme/web"], mine)).toBe(false);
+    expect(scopeRefusal("Production", personal, everywhere)).toBeNull();
+    expect(source.grantCoversRepo(null, { ...personal, personal: false })).toBe(true);
+  });
+
   it("accepts the qualified name in a repository list, and nothing else with a host", () => {
     expect(cleanRepos(["acme/web", "git.infrawrench.com/acme/web"])).toEqual([
       "acme/web",

@@ -95,6 +95,7 @@ import {
   sourceOwnerKey,
   tokenRefusal,
 } from "./source.js";
+import { gitCiHome } from "../git/workspace.js";
 
 export type CiRunRow = typeof ciRuns.$inferSelect;
 
@@ -480,6 +481,9 @@ export function withPlatforms(
  * of `pluginCodeAvailable()` and an early return do not do. That keeps both
  * modules, and everything behind them, out of the forge's Worker.
  */
+/** Why a run of a forge repository that no longer runs in its organization is not sent. */
+export const GIT_HOME_MOVED = "This repository no longer runs CI in this organization.";
+
 function lendingCode() {
   return globalThis.__INFRAWRENCH_EDGE_PLUGINS__
     ? Promise.resolve(null)
@@ -508,6 +512,27 @@ export async function dispatchRun(id: string): Promise<void> {
       summary: "CI needs a paid Infrawrench plan.",
     });
     return;
+  }
+
+  // A repository of the forge runs where its namespace does now. A person's
+  // own repository runs in the organization they connected it to, for as
+  // long as they are a member: once they leave, disconnect or connect
+  // another, nothing of theirs is sent as this organization's again, whatever
+  // queued it (a push, a schedule, a retry, a run started by hand).
+  let personal = false;
+  if (isGitSource(row)) {
+    const home = await gitCiHome(row.gitRepositoryId);
+    if (!home || home.organizationId !== row.organizationId) {
+      await finish(row, "error", GIT_HOME_MOVED);
+      await upsertCheck(row, {
+        status: "completed",
+        conclusion: "neutral",
+        title: "Not run",
+        summary: GIT_HOME_MOVED,
+      });
+      return;
+    }
+    personal = home.personal;
   }
 
   // A run whose jobs are lent something is sent where plugin code runs; on
@@ -603,11 +628,13 @@ export async function dispatchRun(id: string): Promise<void> {
       return;
     }
     const [{ auditLends, buildLent, fitLent }, { lendEnvFiles }] = lending;
-    const built = await buildLent(linkedAccounts ? { ...row, linkedAccounts } : row, access);
+    // `personal`: a person's own repository is lent only what names it.
+    const lendingRun = { ...row, personal, ...(linkedAccounts ? { linkedAccounts } : {}) };
+    const built = await buildLent(lendingRun, access);
     if (built) {
       // `env-file:`: the file read at the run's commit, each reference
       // checked against the grants like the rest.
-      const files = await lendEnvFiles(row, access);
+      const files = await lendEnvFiles(lendingRun, access);
       if (files) {
         built.lent["env-files"] = files.entries;
         built.records.push(...files.records);

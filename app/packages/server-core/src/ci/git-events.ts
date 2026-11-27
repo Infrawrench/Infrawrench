@@ -34,6 +34,7 @@ import {
 import { announceAwaitingApproval, dispatchRun, recordEventRun } from "./runs.js";
 import { noteRepository } from "./schedules.js";
 import { GIT_SOURCE_INSTALLATION_ID, gitOwnerKey } from "./source.js";
+import { gitCiHome } from "../git/workspace.js";
 
 /** One ref a push moved, as the repository's Durable Object reports it. */
 export interface GitPushInput {
@@ -181,8 +182,19 @@ export function gitDedupeKey(ev: CiGitEvent): string {
 /**
  * Records the run a forge event asks for. Returns it, or `null` when the
  * event starts nothing: not a branch or a pull request with new code, a
- * person's own namespace, an organization without a paid plan, a repository
- * with CI switched off, or a redelivery.
+ * person's own namespace that is connected to no organization, an
+ * organization without a paid plan, a repository with CI switched off, or a
+ * redelivery.
+ *
+ * **Which organization** is decided here and nowhere else. A repository of
+ * an organization's namespace runs as that organization. A person's own
+ * (the event names no organization) runs as the one its owner connected the
+ * namespace to, read from the database while they are still a member
+ * (`git/workspace.ts`), never taken from the event: everything after this
+ * line (the plan, the switch, the run's billing, its place in the CI tab)
+ * is that organization's, exactly as for a repository of its own. Its
+ * secrets and variables are still its namespace's (`gitOwnerKey`), never the
+ * organization's, and it is lent only what names it (`grantCoversRepo`).
  *
  * An organization that cannot run CI is skipped quietly. On GitHub someone
  * chose the account, so a run that cannot start says why on the commit;
@@ -195,7 +207,8 @@ export async function acceptGitEvent(
   const ev = parseGitEvent(input);
   if (!ev) return null;
   const { repository } = ev;
-  const organizationId = repository.organizationId;
+  const organizationId =
+    repository.organizationId ?? (await gitCiHome(repository.id))?.organizationId ?? null;
   if (!organizationId) return null;
   if (!(await planAccess(organizationId)).paid) return null;
   const noted = await noteGitRepository({ ...repository, organizationId });

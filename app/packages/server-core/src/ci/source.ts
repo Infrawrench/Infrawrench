@@ -26,6 +26,7 @@
  * `installationId` is {@link GIT_SOURCE_INSTALLATION_ID}.
  */
 import {
+  ciRepoAllowed,
   formatGitBranchKey,
   gitBranchPagePath,
   signGitJobToken,
@@ -160,6 +161,21 @@ export function gitRunPageKey(row: {
  */
 export function grantRepoName(row: CiSourceRef & { repoFullName: string }): string {
   return isGitSource(row) ? `${gitHost()}/${row.repoFullName}` : row.repoFullName;
+}
+
+/**
+ * Whether a list of repositories something is lent to covers a run's
+ * repository. `null` is every repository of the organization's, which a
+ * person's own repository connected to it (`git/workspace.ts`, `personal`)
+ * is not: its owner alone decides what its branches hold, so it is lent
+ * only what names it. Every check of such a list goes through here.
+ */
+export function grantCoversRepo(
+  repos: readonly string[] | null | undefined,
+  run: CiSourceRef & { repoFullName: string; personal?: boolean | undefined },
+): boolean {
+  if (run.personal === true && (repos === null || repos === undefined)) return false;
+  return ciRepoAllowed(repos, grantRepoName(run));
 }
 
 /** Whether `name` is a repository of the forge as a list of repositories spells it. */

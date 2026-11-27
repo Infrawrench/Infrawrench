@@ -11,6 +11,8 @@ const state = {
   dispatched: [] as string[],
   announced: [] as string[],
   seen: new Set<string>(),
+  /** The organization a person's namespace is connected to, by repository id. */
+  homes: new Map<string, string>(),
 };
 
 vi.mock("../../db/client.js", () => ({ db: {} }));
@@ -25,6 +27,14 @@ vi.mock("../git-repositories.js", async (orig) => ({
     defaultBranch: "main",
     ciEnabled: state.ciEnabled,
   }),
+}));
+vi.mock("../../git/workspace.js", () => ({
+  // As the database answers it: a person's repository and the organization
+  // its namespace is connected to, while they are still a member.
+  gitCiHome: async (gitRepositoryId: string) => {
+    const organizationId = state.homes.get(gitRepositoryId);
+    return organizationId ? { organizationId, personal: true } : null;
+  },
 }));
 vi.mock("../schedules.js", () => ({
   noteRepository: async (input: Record<string, unknown>) => {
@@ -250,10 +260,45 @@ describe("acceptGitEvent", () => {
     });
   });
 
-  it("runs nothing for a person's own namespace", async () => {
+  it("runs nothing for a person's own namespace that is connected to no organization", async () => {
     const own = push({ repository: { ...repository, organizationId: null } });
     expect(await acceptGitEvent(own)).toBeNull();
     expect(state.recorded).toHaveLength(0);
+  });
+
+  it("runs a person's own repository as the organization its namespace is connected to", async () => {
+    const own = { ...repository, id: "repo-own", namespace: "Mara", organizationId: null };
+    state.homes.set(own.id, "org-connected");
+    try {
+      expect(await acceptGitEvent(push({ repository: own }))).toMatchObject({ status: "queued" });
+      expect(state.recorded).toHaveLength(1);
+      expect(state.recorded[0]).toMatchObject({
+        // The plan, the bill and the CI tab are the organization's.
+        organizationId: "org-connected",
+        gitRepositoryId: "repo-own",
+        // Its secrets, variables and caches are the person's namespace's.
+        ownerKey: "git.infrawrench.com-mara",
+      });
+      expect(state.noted[0]).toMatchObject({ organizationId: "org-connected" });
+
+      // The organization's plan decides, as for its own repositories.
+      state.paid = false;
+      expect(await acceptGitEvent(push({ repository: own, after: "c".repeat(40) }))).toBeNull();
+      expect(state.recorded).toHaveLength(1);
+    } finally {
+      state.homes.clear();
+    }
+  });
+
+  it("never asks where a repository of an organization's namespace runs", async () => {
+    // What the event says is the namespace's owner, and that is the answer.
+    state.homes.set(repository.id, "org-someone-else");
+    try {
+      await acceptGitEvent(push());
+      expect(state.recorded[0]).toMatchObject({ organizationId: repository.organizationId });
+    } finally {
+      state.homes.clear();
+    }
   });
 
   it("runs nothing, quietly, for an organization without a paid plan", async () => {

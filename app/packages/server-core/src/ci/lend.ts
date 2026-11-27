@@ -40,10 +40,9 @@ import {
   CI_SECRET_VALUE_OUTPUT as SECRET_VALUE_OUTPUT,
   type CiEvent,
   ciBranchMatches,
-  ciRepoAllowed,
 } from "@infrawrench/client-core";
 
-import { grantRepoName } from "./source.js";
+import { grantCoversRepo, grantRepoName } from "./source.js";
 import { db } from "../db/client.js";
 import {
   accounts,
@@ -101,6 +100,11 @@ export interface LendingRun {
   repoFullName: string;
   /** Set for a repository on git.infrawrench.com (`source.ts`, `grantRepoName`). */
   gitRepositoryId?: string | null | undefined;
+  /**
+   * A person's own repository, connected to the organization
+   * (`git/workspace.ts`): lent only what names it (`grantCoversRepo`).
+   */
+  personal?: boolean | undefined;
   event: CiEvent;
   /**
    * The pushed branch, or the pull request's head branch. A scheduled run's
@@ -195,11 +199,10 @@ export function scopeRefusal(
   run: LendingRun,
   scope: { repos: string[] | null; branchPattern: string | null },
 ): string | null {
-  if (
-    !ciRepoAllowed(scope.repos, grantRepoName(run)) ||
-    !ciBranchMatches(scope.branchPattern, run.headRef)
-  ) {
-    return `${what} is not lent to CI for ${run.repoFullName} on ${run.headRef}`;
+  if (!grantCoversRepo(scope.repos, run) || !ciBranchMatches(scope.branchPattern, run.headRef)) {
+    return run.personal === true && scope.repos === null
+      ? `${what} is lent to the organization's own repositories; a person's repository is lent it by name (${grantRepoName(run)})`
+      : `${what} is not lent to CI for ${run.repoFullName} on ${run.headRef}`;
   }
   return null;
 }

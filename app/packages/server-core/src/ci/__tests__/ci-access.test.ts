@@ -272,6 +272,22 @@ describe("matching a cloud job to a connection", () => {
     ]);
   });
 
+  it("runs a person's own repository only on a connection whose list names it", () => {
+    const mine = {
+      repoFullName: "mara/dotfiles",
+      headRef: "main",
+      gitRepositoryId: "repo-2",
+      personal: true,
+    };
+    // `jobRepos: null` is every repository of the organization's, which this is not.
+    expect(matchConnections(mine, spec, [row])).toEqual({
+      refuse: "No `aws` connection runs cloud jobs for mara/dotfiles on main.",
+    });
+    expect(
+      matchConnections(mine, spec, [{ ...row, jobRepos: ["git.infrawrench.com/mara/dotfiles"] }]),
+    ).toMatchObject([{ accountId: "a1" }]);
+  });
+
   it("matches a resource granted as its peer, by the grant's CI name", () => {
     const peer = {
       ...row,

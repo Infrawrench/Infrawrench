@@ -27,8 +27,9 @@ export interface GitRepositoryRef {
   defaultBranch: string;
   /**
    * The Infrawrench organization that owns the namespace, or `null` for a
-   * person's own namespace, which runs no CI: a run is billed to an
-   * organization and lent that organization's things.
+   * person's own namespace, which runs CI in the organization its owner
+   * connected it to (`git/workspace.ts`) and in none until they do: a run is
+   * billed to an organization.
    */
   organizationId: string | null;
 }

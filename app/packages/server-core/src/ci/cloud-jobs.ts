@@ -41,7 +41,7 @@ import {
   type CiHandle,
   type CiToolDeclaration,
 } from "@infrawrench/plugin-base";
-import { ciBranchMatches, ciRepoAllowed } from "@infrawrench/client-core";
+import { ciBranchMatches } from "@infrawrench/client-core";
 
 import { appBaseUrl } from "../app-url.js";
 import { db } from "../db/client.js";
@@ -57,7 +57,8 @@ import {
 import { buildAad, decrypt, encrypt } from "../encryption.js";
 import { getInstallationToken } from "../github/app.js";
 import { gitArchiveLink } from "./git-forge.js";
-import { grantRepoName, isGitSource } from "./source.js";
+import { grantCoversRepo, isGitSource } from "./source.js";
+import { gitCiHome } from "../git/workspace.js";
 import { getOrgAccountClient } from "../org-accounts.js";
 import { bootstrapScript, jobScript, parseFinishBody } from "./bootstrap.js";
 import { ciPeerClient, type PeerUse } from "./peers.js";
@@ -208,7 +209,11 @@ interface Candidate {
 
 /** Why no opted-in connection can run a job, or the connections that can. */
 export function matchConnections(
-  run: Pick<RunRow, "repoFullName" | "headRef"> & Partial<Pick<RunRow, "gitRepositoryId">>,
+  run: Pick<RunRow, "repoFullName" | "headRef"> &
+    Partial<Pick<RunRow, "gitRepositoryId">> & {
+      /** A person's own repository (`git/workspace.ts`): only a list that names it covers it. */
+      personal?: boolean | undefined;
+    },
   spec: Pick<CloudJobSpec, "cloud" | "timeout_secs">,
   rows: Array<{
     accountId: string;
@@ -258,9 +263,7 @@ export function matchConnections(
     };
   }
   const scoped = enabled.filter(
-    (r) =>
-      ciRepoAllowed(r.jobRepos, grantRepoName(run)) &&
-      ciBranchMatches(r.jobBranchPattern, run.headRef),
+    (r) => grantCoversRepo(r.jobRepos, run) && ciBranchMatches(r.jobBranchPattern, run.headRef),
   );
   if (scoped.length === 0) {
     return { refuse: `No \`${provider}\` connection${named} runs cloud jobs ${where}.` };
@@ -355,6 +358,21 @@ export async function startCloudJob(run: RunRow, spec: CloudJobSpec): Promise<vo
     await refuseJob(run.proxyRunId, spec.job, "Cloud jobs only run for trusted runs.");
     return;
   }
+  // A person's own repository runs on a connection only when its list names
+  // the repository; one that no longer runs in this organization, on none.
+  let personal = false;
+  if (isGitSource(run)) {
+    const home = await gitCiHome(run.gitRepositoryId);
+    if (!home || home.organizationId !== run.organizationId) {
+      await refuseJob(
+        run.proxyRunId,
+        spec.job,
+        "This repository no longer runs CI in this organization.",
+      );
+      return;
+    }
+    personal = home.personal;
+  }
   const rows = await db
     .select({
       accountId: accounts.id,
@@ -405,7 +423,7 @@ export async function startCloudJob(run: RunRow, spec: CloudJobSpec): Promise<vo
       ),
     )
     .orderBy(ciResourceGrants.ciName);
-  const match = matchConnections(run, spec, [
+  const match = matchConnections({ ...run, personal }, spec, [
     ...rows,
     ...peers.map(({ regions, preflight, ...p }) => ({
       ...p,
