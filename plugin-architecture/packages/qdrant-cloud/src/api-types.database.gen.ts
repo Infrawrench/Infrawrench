@@ -242,19 +242,27 @@ export interface components {
         GeoIndexType: "geo";
         HardwareUsage: {
             /** Format: uint */
-            cpu: number;
+            cpu?: number | null;
             /** Format: uint */
-            payload_index_io_read: number;
+            payload_index_io_read?: number | null;
             /** Format: uint */
-            payload_index_io_write: number;
+            payload_index_io_write?: number | null;
             /** Format: uint */
-            payload_io_read: number;
+            payload_io_read?: number | null;
             /** Format: uint */
-            payload_io_write: number;
+            payload_io_write?: number | null;
             /** Format: uint */
-            vector_io_read: number;
+            remote_io_cached_read?: number | null;
             /** Format: uint */
-            vector_io_write: number;
+            remote_io_non_cached_read?: number | null;
+            /** Format: uint */
+            updated_bytes?: number | null;
+            /** Format: uint */
+            updated_indexed_bytes?: number | null;
+            /** Format: uint */
+            vector_io_read?: number | null;
+            /** Format: uint */
+            vector_io_write?: number | null;
         };
         HnswConfig: {
             /** Format: uint */
@@ -504,6 +512,7 @@ export interface components {
             multivector_config?: components["schemas"]["StrictModeMultivectorConfig"] | unknown;
             /** Format: uint */
             read_rate_limit?: number | null;
+            require_tenant_filter?: boolean | null;
             search_allow_exact?: boolean | null;
             /** Format: uint */
             search_max_batchsize?: number | null;
@@ -545,6 +554,7 @@ export interface components {
             multivector_config?: components["schemas"]["StrictModeMultivectorConfigOutput"] | unknown;
             /** Format: uint */
             read_rate_limit?: number | null;
+            require_tenant_filter?: boolean | null;
             search_allow_exact?: boolean | null;
             /** Format: uint */
             search_max_batchsize?: number | null;

@@ -59,6 +59,7 @@ export interface components {
             available?: boolean;
             capabilities?: components["schemas"]["v1CloudProviderRegionCapabilities"];
             countryIsoCode?: string;
+            dedicated?: boolean;
             freeTier?: boolean;
             geographicalSubRegion?: string;
             id: string;
