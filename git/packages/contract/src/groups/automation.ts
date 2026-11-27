@@ -25,8 +25,9 @@ import {
 } from "../schemas/ci";
 import { CombinedStatus, CommitStatus, CommitStatusCreate } from "../schemas/git";
 import {
+  TerraformConfigurationChange,
   TerraformManagedResource,
-  TerraformRoot,
+  TerraformScan,
   TerraformAccount,
   TerraformRun,
   TerraformRunCreate,
@@ -171,16 +172,31 @@ export class TerraformGroup extends HttpApiGroup.make("terraform")
       .annotate(RequiredAccess, "read")
       .annotate(OpenApi.Summary, "A repository's Terraform workspaces")
       .annotate(SuccessDescription, "Workspaces, by name"),
-    HttpApiEndpoint.get("listRoots", "/terraform/roots", {
+    HttpApiEndpoint.get("scan", "/terraform/scan", {
       params: RepoParams,
       query: { ref: RefQuery },
-      success: Schema.Struct({ roots: Schema.Array(TerraformRoot) }),
+      success: TerraformScan,
+      error: UnprocessableEntity,
     })
-      .annotate(RequiredAccess, "admin")
-      .annotate(AllowedWhenArchived, true)
-      .annotate(OpenApi.Summary, "Directories that look like Terraform roots")
-      .annotate(OpenApi.Description, "For the picker a new workspace's directory comes from.")
+      .annotate(RequiredAccess, "read")
+      .annotate(OpenApi.Summary, "The Terraform roots of a ref, read from its files")
+      .annotate(
+        OpenApi.Description,
+        "Every directory that is a Terraform root at the ref (the default branch when none is named): what its configuration declares and an estimate of its monthly cost from list prices. Read from the files alone, nothing is run, and cached by the commit's tree. The estimate is `pending` until the app has priced it. 422 for an empty repository.",
+      )
       .annotate(SuccessDescription, "Roots"),
+    HttpApiEndpoint.get("configurationChange", "/terraform/configuration-change", {
+      params: RepoParams,
+      query: { page: BranchKey },
+      success: TerraformConfigurationChange,
+    })
+      .annotate(RequiredAccess, "read")
+      .annotate(OpenApi.Summary, "A branch page's monthly cost change from configuration")
+      .annotate(
+        OpenApi.Description,
+        "The roots a branch page's changes touch, each estimated at the merge base and at the head from configuration. A root whose workspace has a plan of the page's head is left out: the plan's cost is the answer there.",
+      )
+      .annotate(SuccessDescription, "The change, per root"),
     HttpApiEndpoint.get("listAccounts", "/terraform/accounts", {
       params: RepoParams,
       success: Schema.Struct({ accounts: Schema.Array(TerraformAccount) }),
