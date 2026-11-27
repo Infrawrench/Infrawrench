@@ -19,6 +19,7 @@ import {
   UsernameAvailability,
   UsernameCheckout,
   UsernameCheckoutStart,
+  WorkspaceCheckoutStart,
 } from "../schemas/people";
 
 const UsernameBody = Schema.Struct({
@@ -131,6 +132,34 @@ export class SessionGroup extends HttpApiGroup.make("session")
         "Connects the person's own namespace to an organisation they belong to: its repositories then run CI and review agents there, on that organisation's plan and bill, with their own secrets and variables. Null disconnects it. From a signed-in browser only. 403 `not_a_member` for an organisation that is not theirs, 403 `username_required` before they have a username.",
       )
       .annotate(SuccessDescription, "The connection"),
+    HttpApiEndpoint.post("startWorkspaceCheckout", "/workspace/checkout", {
+      payload: Schema.Struct({
+        name: Schema.String.annotate({
+          description: "The organisation's name, 100 characters at most.",
+        }),
+        from: Schema.Literals(["onboarding", "settings"]).annotate({
+          description:
+            "The page that asks, and where the browser comes back to: the username page, or Settings > Organisations.",
+        }),
+        username: Schema.optional(Schema.String).annotate({
+          description:
+            "From `onboarding`: the username the person has chosen and not yet claimed, so the page still has it when they come back.",
+        }),
+        returnTo: Schema.optional(Schema.String).annotate({
+          description:
+            "From `onboarding`: a path on this site to go on to once the username is claimed.",
+        }),
+      }),
+      success: WorkspaceCheckoutStart,
+      error: [BadRequest, Conflict, Forbidden],
+    })
+      .annotate(RequiresUser, true)
+      .annotate(OpenApi.Summary, "Set up a workspace")
+      .annotate(
+        OpenApi.Description,
+        "For a person who belongs to no organisation: answers where to send the browser to pay for an Infrawrench organisation on the Pro plan, one seat, which they will own. Nothing is created until the payment is complete; the organisation is then theirs, and their own namespace runs CI and review agents in it. From a signed-in browser only. 400 `workspace_name_invalid` for a name that is empty or too long, 409 `already_in_organisation` for someone who belongs to one.",
+      )
+      .annotate(SuccessDescription, "Where to pay"),
   )
   .prefix("/api/session")
   .middleware(Authentication)

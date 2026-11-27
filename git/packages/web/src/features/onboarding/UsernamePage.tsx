@@ -1,8 +1,10 @@
 /**
  * First sign-in: pick the username that becomes the person's namespace, and
  * the organisation their own repositories run CI and review agents in.
+ * Someone who belongs to none is offered a workspace to run them in
+ * (`workspace-offer.tsx`), or goes on without.
  */
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   NAME_MAX_LENGTH,
@@ -30,6 +32,16 @@ import {
 import { sitePath } from "../../lib/safe-url";
 import { signInHref, useSession } from "../../lib/session";
 import { UsernameCheckoutNotice, priceLabel } from "./username-checkout";
+import {
+  WORKSPACE_CONTINUE,
+  WORKSPACE_LINE,
+  WorkspaceCheckoutNotice,
+  WorkspaceNameField,
+  defaultWorkspaceName,
+  keptWorkspaceName,
+  useWorkspaceCheckout,
+  workspaceNameError,
+} from "./workspace-offer";
 
 /** Only a path on this site: `returnTo` comes from the URL. */
 const safeReturn = (returnTo: string | undefined): string => sitePath(returnTo) ?? paths.home();
@@ -37,20 +49,33 @@ const safeReturn = (returnTo: string | undefined): string => sitePath(returnTo) 
 export function UsernamePage({
   returnTo,
   returned,
+  workspace,
+  chosen,
 }: {
   returnTo?: string | undefined;
-  /** Set when the browser came back from the payment page: how (`?checkout=`). */
+  /** Set when the browser came back from paying for a username: how (`?checkout=`). */
   returned?: string | undefined;
+  /** Set when the browser came back from paying for a workspace: how (`?workspace=`). */
+  workspace?: string | undefined;
+  /** The username they had chosen before they left to pay for a workspace (`?username=`). */
+  chosen?: string | undefined;
 }) {
   const session = useSession();
   const go = useGo();
-  const suggested = session.data?.onboarding?.suggestedUsername ?? "";
+  const suggested = chosen ?? session.data?.onboarding?.suggestedUsername ?? "";
   const [username, setUsername] = useState<string | null>(null);
   const value = username ?? suggested;
   const organizations = session.data?.organizations ?? [];
   // Asked only of someone with an organisation to name; null until they say.
   const [chosenRunsIn, setRunsIn] = useState<string | null>(null);
-  const runsIn = chosenRunsIn ?? preselectedRunsIn(organizations);
+  // Back from paying for a workspace, it is the one they have: that is what it is for.
+  const theirWorkspace =
+    workspace === "return" && organizations.length === 1 ? organizations[0]!.id : null;
+  const runsIn = chosenRunsIn ?? preselectedRunsIn(organizations) ?? theirWorkspace;
+
+  // Offered to someone in no organisation; the name as they left it, if they are back.
+  const [typedWorkspaceName, setWorkspaceName] = useState<string | null>(() => keptWorkspaceName());
+  const workspaceName = typedWorkspaceName ?? defaultWorkspaceName(session.data?.user?.displayName);
 
   const problem = namespaceSlugProblem(value);
   const settled = useDebounced(value, 300);
@@ -89,10 +114,39 @@ export function UsernamePage({
     onSuccess: ({ checkoutUrl }) => go(checkoutUrl),
   });
 
+  // A workspace is paid for too, on the same kind of page; the browser comes
+  // back here with the username they chose, and the organisation is theirs.
+  const workspaceCheckout = useWorkspaceCheckout({
+    from: "onboarding",
+    username: problem === null ? value : "",
+    returnTo,
+  });
+
+  // Back with a workspace and the username they had chosen: nothing is left
+  // to ask, so the page finishes by itself. A username that is paid for, or
+  // one they have changed since, waits for them.
+  const finishes =
+    workspace === "return" &&
+    chosen !== undefined &&
+    (username === null || username === chosen) &&
+    session.data?.user != null &&
+    session.data.user.username === null &&
+    theirWorkspace !== null &&
+    runsIn === theirWorkspace &&
+    problem === null &&
+    usernamePriceCents(value) === null;
+  const finished = useRef(false);
+  const { mutate: claimNow } = claim;
+  useEffect(() => {
+    if (!finishes || finished.current) return;
+    finished.current = true;
+    claimNow();
+  }, [finishes, claimNow]);
+
   // Once the name is claimed, refreshing the session also asks again whether
   // the name is free, and the answer (taken, by this person) would flash
   // before the page moves on.
-  if (session.data === undefined || claim.isSuccess)
+  if (session.data === undefined || claim.isSuccess || (finishes && !claim.isError))
     return <Loading shape="page" width="narrow" count={2} />;
   if (session.data.user === null) {
     return (
@@ -129,7 +183,8 @@ export function UsernamePage({
           ? checked.message
           : null;
   const available = problem === null && checked?.available === true;
-  const unanswered = organizations.length > 0 && runsIn === null;
+  const offered = organizations.length === 0;
+  const unanswered = !offered && runsIn === null;
   // The server's price once it has answered; the rule itself until then.
   const price =
     value === "" || problem !== null
@@ -140,19 +195,35 @@ export function UsernamePage({
   const reset = () => {
     if (claim.error) claim.reset();
     if (checkout.error) checkout.reset();
+    if (workspaceCheckout.error) workspaceCheckout.reset();
+  };
+  const usernameRefused = value === "" || problem !== null || checked?.available === false;
+  const busy =
+    claim.isPending ||
+    checkout.isPending ||
+    checkout.isSuccess ||
+    workspaceCheckout.isPending ||
+    workspaceCheckout.isSuccess;
+
+  /** With the username alone, in the organisation chosen or in none. */
+  const goOn = () => {
+    if (usernameRefused || unanswered) return;
+    if (price === null) claim.mutate();
+    else checkout.mutate();
   };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (problem !== null || checked?.available === false || unanswered) return;
-    if (price === null) claim.mutate();
-    else checkout.mutate();
+    if (!offered) return goOn();
+    if (usernameRefused || workspaceName.trim() === "" || workspaceNameError(workspaceName)) return;
+    workspaceCheckout.mutate(workspaceName);
   };
 
   return (
     <Page width="narrow">
       <PageHeader title="Choose a username" />
       {returned === undefined ? null : <UsernameCheckoutNotice state={returned} />}
+      {workspace === undefined ? null : <WorkspaceCheckoutNotice state={workspace} />}
       <form onSubmit={submit} noValidate className="space-y-4">
         <Field
           label="Username"
@@ -187,7 +258,23 @@ export function UsernamePage({
             />
           )}
         </Field>
-        {organizations.length > 0 ? (
+        {offered ? (
+          <section aria-labelledby="workspace-offer" className="space-y-2">
+            <div>
+              <h2 id="workspace-offer" className="text-xs font-medium text-on-surface">
+                Set up a workspace
+              </h2>
+              <p className="text-xs text-on-surface-muted">{WORKSPACE_LINE}</p>
+            </div>
+            <WorkspaceNameField
+              value={workspaceName}
+              onChange={(next) => {
+                setWorkspaceName(next);
+                reset();
+              }}
+            />
+          </section>
+        ) : (
           <Field
             label="Run CI and review agents in"
             hint={runsInHint(organizations, runsIn) ?? undefined}
@@ -214,16 +301,43 @@ export function UsernamePage({
               </Select>
             )}
           </Field>
-        ) : null}
-        <InlineError error={claim.error ?? checkout.error} />
-        <Button
-          type="submit"
-          variant="primary"
-          busy={claim.isPending || checkout.isPending || checkout.isSuccess}
-          disabled={value === "" || problem !== null || checked?.available === false || unanswered}
-        >
-          {price === null ? "Continue" : `Continue to payment (${priceLabel(price)})`}
-        </Button>
+        )}
+        <InlineError error={claim.error ?? checkout.error ?? workspaceCheckout.error} />
+        {offered ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="submit"
+              variant="primary"
+              busy={workspaceCheckout.isPending || workspaceCheckout.isSuccess}
+              disabled={
+                busy ||
+                usernameRefused ||
+                workspaceName.trim() === "" ||
+                workspaceNameError(workspaceName) !== null
+              }
+            >
+              {WORKSPACE_CONTINUE}
+            </Button>
+            {/* Without a workspace: the username alone, running nowhere. */}
+            <Button
+              type="button"
+              busy={claim.isPending || checkout.isPending || checkout.isSuccess}
+              disabled={busy || usernameRefused}
+              onClick={goOn}
+            >
+              Not now
+            </Button>
+          </div>
+        ) : (
+          <Button
+            type="submit"
+            variant="primary"
+            busy={busy}
+            disabled={usernameRefused || unanswered}
+          >
+            {price === null ? "Continue" : `Continue to payment (${priceLabel(price)})`}
+          </Button>
+        )}
       </form>
     </Page>
   );

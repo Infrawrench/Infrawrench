@@ -6,7 +6,9 @@ import {
   SHORT_USERNAME_PRICE_CENTS,
   USERNAME_CHECKOUT_PARAM,
   USERNAME_HOLD_MINUTES,
+  WORKSPACE_CHECKOUT_PARAM,
   usernamePriceCents,
+  workspaceNameProblem,
   type UsernameCheckout,
 } from "@infrawrench/git-contract";
 import { badRequest, conflict, defineMockHandlers, mockError } from "../define";
@@ -18,6 +20,7 @@ import {
   session,
   setMyWorkspace,
   setScenario,
+  setUpMyWorkspace,
 } from "../db";
 
 const taken = (username: string): boolean =>
@@ -118,6 +121,27 @@ export default defineMockHandlers({
     usernameCheckout: () => {
       requireUser();
       return { hold: null, purchase: lastPurchase };
+    },
+    // No payment page here either: the organisation is theirs at once, as if
+    // they had paid, and the browser "comes back" to the page that asked.
+    startWorkspaceCheckout: ({ payload }) => {
+      requireUser();
+      const name = payload.name.trim();
+      const problem = workspaceNameProblem(name);
+      if (problem !== null) throw badRequest(problem, "workspace_name_invalid");
+      if (session().organizations.length > 0) {
+        throw conflict("You already belong to an organisation", "already_in_organisation");
+      }
+      setUpMyWorkspace(name);
+      const query = new URLSearchParams();
+      if (payload.from === "onboarding") {
+        if (payload.username !== undefined) query.set("username", payload.username);
+        if (payload.returnTo !== undefined) query.set("returnTo", payload.returnTo);
+      }
+      query.set(WORKSPACE_CHECKOUT_PARAM, "return");
+      const page =
+        payload.from === "onboarding" ? "/onboarding/username" : "/settings/organisations";
+      return { checkoutUrl: `${page}?${query.toString()}` };
     },
     setWorkspace: ({ payload }) => {
       requireUser();

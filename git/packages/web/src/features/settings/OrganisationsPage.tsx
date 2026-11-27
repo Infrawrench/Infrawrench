@@ -3,6 +3,8 @@
  * each has here. An administrator (`git:admin`) of one without a name claims
  * it on this page; the app's Settings > Git does the same and also renames.
  * Under an organisation with a name, the reader's commit emails there.
+ * Someone in no organisation is offered a workspace
+ * (`onboarding/workspace-offer.tsx`).
  */
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -24,10 +26,20 @@ import { Icon } from "../../components/icons";
 import { Panel } from "../../components/Panel";
 import { Avatar } from "../../components/people";
 import { SettingsSection } from "../../components/SideNav";
-import { EmptyState, InlineError, Loading } from "../../components/states";
+import { InlineError, Loading } from "../../components/states";
 import { useDebounced } from "../../lib/name-availability";
 import { paths } from "../../lib/paths";
 import { useSession } from "../../lib/session";
+import {
+  WORKSPACE_CONTINUE,
+  WORKSPACE_LINE,
+  WorkspaceCheckoutNotice,
+  WorkspaceNameField,
+  defaultWorkspaceName,
+  keptWorkspaceName,
+  useWorkspaceCheckout,
+  workspaceNameError,
+} from "../onboarding/workspace-offer";
 import { CommitEmails, useCommitEmails } from "./CommitEmails";
 
 const SITE_HOST = SITE_ORIGIN.replace(/^https?:\/\//, "");
@@ -216,7 +228,55 @@ function OrganisationRow({
   );
 }
 
-export function OrganisationsPage() {
+/** For someone in no organisation: name one and pay for it, without leaving for the app. */
+function WorkspaceOffer({ displayName }: { displayName: string | null }) {
+  const [typed, setTyped] = useState<string | null>(() => keptWorkspaceName());
+  const name = typed ?? defaultWorkspaceName(displayName);
+  const checkout = useWorkspaceCheckout({ from: "settings" });
+  const unusable = name.trim() === "" || workspaceNameError(name) !== null;
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!unusable) checkout.mutate(name);
+  };
+  return (
+    <form onSubmit={submit} noValidate className="space-y-2.5 px-3 py-3">
+      <p className="text-xs text-on-surface-muted">You are not in an organisation</p>
+      <div>
+        <h3 className="text-xs font-medium text-on-surface">Set up a workspace</h3>
+        <p className="text-xs text-on-surface-muted">{WORKSPACE_LINE}</p>
+      </div>
+      <WorkspaceNameField
+        value={name}
+        onChange={(next) => {
+          setTyped(next);
+          if (checkout.error) checkout.reset();
+        }}
+      >
+        {(input) => (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="w-full max-w-xs">{input}</div>
+            <Button
+              type="submit"
+              variant="primary"
+              busy={checkout.isPending || checkout.isSuccess}
+              disabled={unusable}
+            >
+              {WORKSPACE_CONTINUE}
+            </Button>
+          </div>
+        )}
+      </WorkspaceNameField>
+      <InlineError error={checkout.error} />
+    </form>
+  );
+}
+
+export function OrganisationsPage({
+  returned,
+}: {
+  /** Set when the browser came back from paying for a workspace: how (`?workspace=`). */
+  returned?: string | undefined;
+} = {}) {
   const session = useSession();
   const signedIn = session.data !== undefined && session.data.user !== null;
   const commitEmails = useCommitEmails(signedIn);
@@ -225,23 +285,10 @@ export function OrganisationsPage() {
   const organizations = session.data.organizations;
   return (
     <SettingsSection title="Organisations">
+      {returned === undefined ? null : <WorkspaceCheckoutNotice state={returned} />}
       <Panel>
         {organizations.length === 0 ? (
-          <EmptyState
-            action={
-              <a
-                href={session.data.appUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-on-surface-secondary hover:underline"
-              >
-                Open Infrawrench
-                <Icon name="externalLink" size={11} />
-              </a>
-            }
-          >
-            You are not in an organisation
-          </EmptyState>
+          <WorkspaceOffer displayName={session.data.user.displayName} />
         ) : (
           <ul aria-label="Organisations" className="divide-y divide-border">
             {organizations.map((organization) => (
