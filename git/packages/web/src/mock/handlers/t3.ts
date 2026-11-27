@@ -1,7 +1,14 @@
 import { T3_CONNECT_REFUSAL, t3ConnectOrigin } from "@infrawrench/git-contract";
 import { badRequest, conflict, defineMockHandlers, notFound, ok, unprocessable } from "../define";
 import { requireUser } from "../db";
-import { newT3Id, signInT3, t3Environments, t3Threads } from "../t3-data";
+import {
+  newT3Id,
+  signInT3,
+  t3Environments,
+  t3ProjectDefaults,
+  t3Providers,
+  t3Threads,
+} from "../t3-data";
 
 const LOCALHOST =
   "git.infrawrench.com cannot reach an environment on localhost. Link T3 Connect in T3 Code and use the public https address it gives.";
@@ -101,6 +108,17 @@ export default defineMockHandlers({
         threads: (t3Threads[environment.id] ?? []).filter((thread) =>
           thread.title.toLowerCase().includes(wanted),
         ),
+      };
+    },
+    listModels: ({ params, query }) => {
+      const environment = find(params.environmentId);
+      if (environment.status !== "connected") {
+        throw unprocessable("Sign in to this environment first");
+      }
+      const repository = `${query?.owner ?? ""}/${query?.repo ?? ""}`;
+      return {
+        providers: t3Providers,
+        default: t3ProjectDefaults[environment.id]?.[repository] ?? null,
       };
     },
   },

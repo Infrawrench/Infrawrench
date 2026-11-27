@@ -1,8 +1,10 @@
 /**
  * Starting work: the agent that will write the branch, then what the forge
- * needs to start it. For T3 Code that is the ask, the branch to start from
- * and the new branch's name: the forge makes the branch and its page, starts
- * the thread and goes to the page. Another agent starts work itself, with
+ * needs to start it. For T3 Code that is the model a new thread runs, the
+ * ask, the branch to start from and the new branch's name: the forge makes
+ * the branch and its page, starts the thread and goes to the page. The model
+ * is always asked for (`T3Model.tsx`): the project's default to begin with,
+ * and a choice the Start button waits for when the project has none. Another agent starts work itself, with
  * the MCP server's `start_work`, so that choice shows how to install the
  * server and nothing to submit.
  *
@@ -29,6 +31,7 @@ import { signInHref, useSession } from "../../lib/session";
 import { McpSetup } from "./Agent";
 import { branchNameFor } from "./branch";
 import { isUnavailable, optional } from "./optional";
+import { useT3ModelFields } from "./T3Model";
 
 type Choice = "t3" | "mcp";
 
@@ -71,6 +74,14 @@ export function StartWorkPage() {
     ),
   ] as Array<[string, string]>;
 
+  // A thread that already runs has its model: only a new one is given one.
+  const model = useT3ModelFields({
+    environmentId: environment?.id ?? null,
+    repo,
+    enabled:
+      choice === "t3" && environment !== null && threads.data !== undefined && thread === null,
+  });
+
   // Until the person names the branch, it follows the ask's first line.
   const name = named ? branch : branchNameFor(ask);
 
@@ -85,6 +96,7 @@ export function StartWorkPage() {
           ...(thread === null ? {} : { threadId: thread.id }),
           ...(project === undefined ? {} : { projectId: project }),
         },
+        ...(thread === null && model.choice !== undefined ? { t3Model: model.choice } : {}),
       };
     }
     return undefined;
@@ -140,7 +152,7 @@ export function StartWorkPage() {
     );
   }
 
-  const ready = choice === "t3" && environment !== null && ask.trim() !== "";
+  const ready = choice === "t3" && environment !== null && ask.trim() !== "" && model.ready;
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (ready) start.mutate();
@@ -243,6 +255,7 @@ export function StartWorkPage() {
                     )}
                   </Field>
                 ) : null}
+                {model.fields}
               </div>
             )}
             <MarkdownEditor
