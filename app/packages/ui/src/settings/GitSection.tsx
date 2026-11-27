@@ -76,6 +76,8 @@ function useNameProblemText(): (problem: GitNameProblem) => string {
         return gt("Names cannot end in a dot or contain two dots in a row");
       case "reserved":
         return gt("That name is reserved");
+      case "bot":
+        return gt("That name belongs to a bot account");
     }
   };
 }
