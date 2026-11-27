@@ -492,7 +492,7 @@ export interface components {
                 [key: string]: unknown;
             };
             metric_name: string;
-            metric_value?: number | null;
+            metric_value?: number | string | null;
             time_bucket?: string | null;
         };
         ApiEndpoint: string;
@@ -586,10 +586,6 @@ export interface components {
             /** @default null */
             temperature?: number | null;
             timestamp_granularities?: components["schemas"]["TimestampGranularity"][];
-            $defs: {
-                /** @enum {string} */
-                TimestampGranularity: "segment" | "word";
-            };
         };
         BaseModelCard: {
             /** @default [] */
@@ -1167,7 +1163,7 @@ export interface components {
             detail: components["schemas"]["ObservabilityErrorDetail"];
         };
         /** @enum {string} */
-        ObservabilityErrorCode: "UNKNOWN_ERROR" | "VALIDATION_ERROR" | "AUTH_FORBIDDEN" | "AUTH_FORBIDDEN_NOT_WORKSPACE_ADMIN" | "AUTH_FORBIDDEN_WORKSPACE_NOT_FOUND" | "AUTH_FORBIDDEN_ROLE_NOT_FOUND" | "AUTH_UNAUTHORIZED" | "FEATURE_NOT_SUPPORTED" | "FIELDS_BAD_REQUEST" | "SEARCH_BAD_REQUEST" | "DATABASE_ERROR" | "DATABASE_TIMEOUT" | "DATABASE_UNAVAILABLE" | "DATABASE_QUERY_ERROR" | "SEARCH_FILTER_TO_SQL_CONVERSION_ERROR" | "JUDGE_CONVERSATION_FORMAT_ERROR" | "JUDGE_MISTRAL_API_ERROR" | "JUDGE_MISTRAL_API_TIMEOUT" | "JUDGE_NAME_ALREADY_EXISTS" | "JUDGE_NOT_FOUND" | "JUDGE_DID_NOT_CHANGE" | "DATASET_NOT_FOUND" | "DATASET_TASK_NOT_FOUND" | "DATASET_RECORD_NOT_FOUND" | "DATASET_RECORD_FORMAT_ERROR" | "AGENT_NOT_FOUND" | "AGENT_MISTRAL_API_ERROR" | "EVALUATION_NOT_FOUND" | "EVALUATION_CURRENTLY_RUNNING" | "EVALUATION_RECORD_NOT_FOUND" | "EVALUATION_RUN_NOT_FOUND" | "EVALUATION_RUN_TRANSITION_IS_INVALID" | "EVALUATION_RUN_TRANSITION_IS_RUNNING_ALREADY" | "EVALUATION_RUN_TRANSITION_ERROR" | "EVALUATION_RUN_OUTPUT_RECORD_CONFLICT" | "TEMPLATE_ERROR" | "TEMPLATE_SYNTAX_ERROR" | "PROJECT_NOT_FOUND" | "PROJECT_NAME_ALREADY_EXISTS" | "PIPELINE_CONFIG_NOT_FOUND" | "PIPELINE_CONFIG_ALREADY_EXISTS" | "PIPELINE_NOT_FOUND" | "PIPELINE_ALREADY_EXISTS" | "SCORER_NOT_FOUND" | "SCORER_ALREADY_EXISTS" | "SCORER_CONFIG_KIND_MISMATCH" | "EVALUATION_NAME_ALREADY_EXISTS" | "OPTIMIZATION_NOT_FOUND" | "OPTIMIZATION_TRIAL_KEY_ALREADY_EXISTS" | "OPTIMIZATION_TRIAL_OBSERVATION_ALREADY_EXISTS" | "TRACES_FILTER_QUERY_PARSE_ERROR" | "TRACE_NOT_FOUND" | "SPAN_NOT_FOUND";
+        ObservabilityErrorCode: "UNKNOWN_ERROR" | "VALIDATION_ERROR" | "AUTH_FORBIDDEN" | "AUTH_FORBIDDEN_NOT_WORKSPACE_ADMIN" | "AUTH_FORBIDDEN_WORKSPACE_NOT_FOUND" | "AUTH_FORBIDDEN_ROLE_NOT_FOUND" | "AUTH_UNAUTHORIZED" | "FEATURE_NOT_SUPPORTED" | "FIELDS_BAD_REQUEST" | "SEARCH_BAD_REQUEST" | "DATABASE_ERROR" | "DATABASE_TIMEOUT" | "DATABASE_UNAVAILABLE" | "DATABASE_QUERY_ERROR" | "SEARCH_FILTER_TO_SQL_CONVERSION_ERROR" | "JUDGE_CONVERSATION_FORMAT_ERROR" | "JUDGE_MISTRAL_API_ERROR" | "JUDGE_MISTRAL_API_TIMEOUT" | "JUDGE_NAME_ALREADY_EXISTS" | "JUDGE_NOT_FOUND" | "JUDGE_DID_NOT_CHANGE" | "JUDGE_WRITES_FROZEN" | "DATASET_NOT_FOUND" | "DATASET_TASK_NOT_FOUND" | "DATASET_RECORD_NOT_FOUND" | "DATASET_RECORD_ID_CONFLICT" | "DATASET_RECORD_FORMAT_ERROR" | "AGENT_NOT_FOUND" | "AGENT_MISTRAL_API_ERROR" | "EVALUATION_NOT_FOUND" | "EVALUATION_CURRENTLY_RUNNING" | "EVALUATION_RECORD_NOT_FOUND" | "EVALUATION_RUN_NOT_FOUND" | "EVALUATION_RUN_TRANSITION_IS_INVALID" | "EVALUATION_RUN_TRANSITION_IS_RUNNING_ALREADY" | "EVALUATION_RUN_TRANSITION_ERROR" | "EVALUATION_RUN_OUTPUT_RECORD_CONFLICT" | "EVALUATION_RUN_INPUT_RECORD_CONFLICT" | "TEMPLATE_ERROR" | "TEMPLATE_SYNTAX_ERROR" | "PROJECT_NOT_FOUND" | "PROJECT_NAME_ALREADY_EXISTS" | "PIPELINE_CONFIG_NOT_FOUND" | "PIPELINE_CONFIG_ALREADY_EXISTS" | "PIPELINE_NOT_FOUND" | "PIPELINE_ALREADY_EXISTS" | "SCORER_NOT_FOUND" | "SCORER_ALREADY_EXISTS" | "SCORER_CONFIG_KIND_MISMATCH" | "EVALUATION_NAME_ALREADY_EXISTS" | "OPTIMIZATION_NOT_FOUND" | "OPTIMIZATION_TRIAL_KEY_ALREADY_EXISTS" | "OPTIMIZATION_TRIAL_OBSERVATION_ALREADY_EXISTS" | "TRACES_FILTER_QUERY_PARSE_ERROR" | "TRACE_NOT_FOUND" | "SPAN_NOT_FOUND" | "OCSF_NOT_ENABLED";
         ObservabilityErrorDetail: {
             error_code: components["schemas"]["ObservabilityErrorCode"] | null;
             message: string;
@@ -1203,6 +1199,12 @@ export interface components {
             event_type: components["schemas"]["LagoEventType"] | null;
             price: number | string;
             service_tier: components["schemas"]["ServiceTier"];
+        };
+        PromptTokensDetails: {
+            /** @default 0 */
+            audio_tokens?: number;
+            /** @default 0 */
+            cached_tokens?: number;
         };
         RawAudio: {
             data: string;
@@ -1339,6 +1341,7 @@ export interface components {
             prompt_audio_seconds?: number | null;
             /** @default 0 */
             prompt_tokens: number;
+            prompt_tokens_details?: components["schemas"]["PromptTokensDetails"] | null;
             service_tier?: string | null;
             /** @default 0 */
             total_tokens: number;
