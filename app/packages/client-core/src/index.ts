@@ -58,6 +58,8 @@ export * from "./git-names";
 export * from "./git-branch-key";
 export * from "./ci-access";
 export * from "./ci-live";
+// The note commands a CI job prints for its commit's branch page.
+export * from "./ci-notes";
 // The job token CI reads a git.infrawrench.com repository with: signed by
 // the app, checked by the forge's Worker.
 export * from "./git-job-token";
