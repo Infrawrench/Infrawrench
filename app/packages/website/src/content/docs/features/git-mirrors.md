@@ -64,6 +64,10 @@ Pushes are mirrored in order. When two pushes land close together, the target en
 
 Tags are pushed at most three at a time, because GitHub does not start workflows for tags that arrive more than three in one push.
 
+## Infrawrench CI and a GitHub mirror
+
+When the repository here runs [Infrawrench CI](./ci.md) and its mirror target is a GitHub repository your organization also runs CI for, the GitHub copy starts no runs: CI has already run on the same commit here, so its pushes, pull requests and schedules are left alone. GitHub's own workflows still run there as usual. Switch CI off for the repository here, or remove the mirror, and the GitHub repository runs CI again from its next push.
+
 ## The last result
 
 Each mirror shows its state and what its last run did.

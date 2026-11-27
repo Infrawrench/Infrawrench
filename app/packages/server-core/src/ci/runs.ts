@@ -85,6 +85,7 @@ import { pluginCodeAvailable } from "../runtime/plugin-code.js";
 import type { CiConcurrencyEntry, CiJobAccess } from "../db/schema.js";
 import { noteRepository, runningCi, stillRunsCi } from "./schedules.js";
 import { landRunNotes } from "./git-notes.js";
+import { isMirrorOfForgeCi } from "./git-repositories.js";
 import { lendGithubTokens } from "./github-token.js";
 import { noticeTokenValid, withNotify } from "./notify.js";
 import {
@@ -198,6 +199,8 @@ export async function acceptCiEvent(
 ): Promise<{ id: string; status: CiRunStatus } | null> {
   const organizationId = await ciOrganization(ev.installationId);
   if (!organizationId) return null;
+  // A mirror of a forge repository whose CI is on: CI runs there.
+  if (await isMirrorOfForgeCi(organizationId, ev.repoFullName)) return null;
   const isPull = ev.kind === "pull_request";
   // Where its `on.schedule` pipelines are fired from: a push to the default
   // branch is the only way they change, so it re-reads them.

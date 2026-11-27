@@ -11,10 +11,10 @@
  * The forge's repository settings own the switch's UI: its Worker imports
  * this module (`git/packages/worker/NOTES-ci.md`).
  */
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "../db/client.js";
-import { ciGitRepositories } from "../db/schema.js";
+import { ciGitRepositories, gitPushMirrors } from "../db/schema.js";
 import { gitOwnerKey } from "./source.js";
 
 /** A repository of the forge, as its Worker names it to CI. */
@@ -180,4 +180,46 @@ export async function gitOwnerKeysOf(
     .where(eq(ciGitRepositories.organizationId, organizationId))
     .orderBy(asc(ciGitRepositories.namespace));
   return rows.map((r) => ({ namespace: r.namespace, ownerKey: gitOwnerKey(r.namespace) }));
+}
+
+/**
+ * The addresses a push mirror to `owner/name` on GitHub may be written
+ * with, lowercased: with and without `.git` and a trailing slash.
+ */
+export function githubMirrorAddresses(repoFullName: string): string[] {
+  const base = `https://github.com/${repoFullName.toLowerCase()}`;
+  return [base, `${base}/`, `${base}.git`, `${base}.git/`];
+}
+
+/**
+ * Whether a GitHub repository is kept by a push mirror of one of the
+ * organization's forge repositories that runs CI. Its pushes then come from
+ * the forge, where CI already ran on the same commit, so the GitHub copy
+ * starts nothing: no run per push or pull request and no schedules. Switching
+ * the forge repository's CI off (or removing the mirror) lets GitHub run it
+ * again with the next event.
+ */
+export async function isMirrorOfForgeCi(
+  organizationId: string,
+  repoFullName: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: gitPushMirrors.id })
+    .from(gitPushMirrors)
+    .innerJoin(
+      ciGitRepositories,
+      and(
+        eq(ciGitRepositories.gitRepositoryId, gitPushMirrors.repositoryId),
+        eq(ciGitRepositories.organizationId, organizationId),
+        eq(ciGitRepositories.ciEnabled, true),
+      ),
+    )
+    .where(
+      and(
+        eq(gitPushMirrors.enabled, true),
+        inArray(sql`lower(${gitPushMirrors.url})`, githubMirrorAddresses(repoFullName)),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
 }
