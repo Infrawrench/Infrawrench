@@ -476,9 +476,12 @@ export interface components {
         };
         AlertHistory: {
             checkId: string;
-            name: string;
             /** @enum {string} */
-            state: "open" | "closed";
+            kind: "notification" | "run";
+            name: string;
+            run?: components["schemas"]["MonitorRun"];
+            /** @enum {string} */
+            state: "open" | "closed" | "error";
             /** Format: date-time */
             timestamp: string;
         };
@@ -920,6 +923,8 @@ export interface components {
         Monitor: {
             alertOnNoData?: boolean;
             aplQuery?: string;
+            /** Format: int64 */
+            backfillDays?: number;
             columnName?: string;
             /** Format: int64 */
             compareDays?: number;
@@ -930,6 +935,8 @@ export interface components {
             includeChart?: boolean;
             /** Format: int64 */
             intervalMinutes?: number;
+            /** Format: int64 */
+            lookbackDays?: number;
             mplQuery?: string;
             name: string;
             notifierIds?: string[];
@@ -945,6 +952,7 @@ export interface components {
             /** Format: double */
             threshold?: number;
             tolerance?: number;
+            trackedValue?: string;
             /** Format: int64 */
             triggerAfterNPositiveResults?: number;
             /** Format: int64 */
@@ -966,6 +974,17 @@ export interface components {
             notifiers: boolean;
             status: boolean;
             type: boolean;
+        };
+        MonitorRun: {
+            error?: string;
+            groupValues?: string;
+            /** Format: double */
+            matchingValue: number;
+            /** Format: date-time */
+            queryEndTime?: string | null;
+            /** Format: date-time */
+            queryStartTime?: string | null;
+            runId: string;
         };
         MonitorUpsertRequest: components["schemas"]["Monitor"] & {
             labelIds?: components["schemas"]["LabelID"][];
@@ -1555,6 +1574,7 @@ export interface operations {
                 datasets?: string[];
                 end?: string;
                 start?: string;
+                types?: string[];
             };
             header?: never;
             path?: never;
@@ -2230,6 +2250,7 @@ export interface operations {
         parameters: {
             query: {
                 endTime: string;
+                kind?: ("notification" | "run")[];
                 startTime: string;
             };
             header?: never;
