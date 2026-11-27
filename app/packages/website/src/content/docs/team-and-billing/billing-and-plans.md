@@ -134,6 +134,8 @@ Going over a limit never deletes or hides anything, including after you cancel: 
 
 A personal namespace on git.infrawrench.com is separate from any organization's plan: it includes 5 private repositories and 1 GiB of private storage.
 
+Someone who signs up on git.infrawrench.com without belonging to an organization can [set up a workspace](../features/git-getting-started.md#set-up-a-workspace) there: a new organization on the Pro plan with one seat, paid for on the same Stripe checkout as an upgrade in the app. It is billed and managed like any other organization from then on, on this page.
+
 A personal [username](../features/git-getting-started.md#sign-in-and-choose-a-username) of 6 characters or fewer costs $50, paid once by card by the person who claims it. It is not part of any organization's plan and appears on no organization's invoice. Longer usernames are free, and so is every organization's name. If the name is taken before the payment goes through, the payment is refunded automatically.
 
 **Self-hosting:** storage is only billed when `INFRAWRENCH_STRIPE_GIT_STORAGE_METER_EVENT` and `STRIPE_GIT_STORAGE_PRICE_ID` are set. The limits apply either way. Short usernames are charged at the one-time Stripe price whose lookup key is `git_short_username` (or the one `STRIPE_GIT_SHORT_USERNAME_PRICE_ID` names); without such a price, or without the forge and the app sharing `GIT_JOB_TOKEN_KEY`, short usernames cannot be claimed.
