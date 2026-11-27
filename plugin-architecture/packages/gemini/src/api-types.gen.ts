@@ -208,6 +208,12 @@ export interface components {
             groundingPassage?: components["schemas"]["GroundingPassageId"];
             semanticRetrieverChunk?: components["schemas"]["SemanticRetrieverChunk"];
         };
+        AudioMetadata: {
+            /** Format: google-duration */
+            endOffset?: string;
+            /** Format: google-duration */
+            startOffset?: string;
+        };
         AudioResponseFormat: {
             /** Format: int32 */
             bitRate?: number;
@@ -369,6 +375,13 @@ export interface components {
             /** Format: date-time */
             readonly updateTime?: string;
         };
+        DocumentMetadata: {
+            contentLayers?: ("CONTENT_LAYER_UNSPECIFIED" | "PAGE_IMAGE" | "PAGE_TEXT")[];
+            /** Format: int32 */
+            endPage?: number;
+            /** Format: int32 */
+            startPage?: number;
+        };
         DynamicRetrievalConfig: {
             /** Format: float */
             dynamicThreshold?: number;
@@ -478,10 +491,15 @@ export interface components {
             mimeType?: string;
         };
         FunctionResponsePart: {
+            audioMetadata?: components["schemas"]["AudioMetadata"];
+            documentMetadata?: components["schemas"]["DocumentMetadata"];
             fileData?: components["schemas"]["FunctionResponseFileData"];
             inlineData?: components["schemas"]["FunctionResponseBlob"];
             /** @enum {string} */
             mediaProcessing?: "MEDIA_PROCESSING_UNSPECIFIED" | "STATIC" | "AGENTIC";
+            mediaResolution?: components["schemas"]["V1mainMediaResolution"];
+            spreadsheetMetadata?: components["schemas"]["SpreadsheetMetadata"];
+            videoMetadata?: components["schemas"]["VideoMetadata"];
         };
         GenerateContentBatch: {
             readonly batchStats?: components["schemas"]["BatchStats"];
@@ -809,8 +827,10 @@ export interface components {
             speakerVoiceConfigs: components["schemas"]["SpeakerVoiceConfig"][];
         };
         Part: {
+            audioMetadata?: components["schemas"]["AudioMetadata"];
             audioTranscription?: components["schemas"]["AudioTranscription"];
             codeExecutionResult?: components["schemas"]["CodeExecutionResult"];
+            documentMetadata?: components["schemas"]["DocumentMetadata"];
             executableCode?: components["schemas"]["ExecutableCode"];
             fileData?: components["schemas"]["FileData"];
             functionCall?: components["schemas"]["FunctionCall"];
@@ -828,6 +848,7 @@ export interface components {
                 [key: string]: unknown;
             };
             speechMetadata?: components["schemas"]["SpeechMetadata"];
+            spreadsheetMetadata?: components["schemas"]["SpreadsheetMetadata"];
             text?: string;
             thought?: boolean;
             /** Format: byte */
@@ -942,11 +963,19 @@ export interface components {
         SpeechConfig: {
             languageCode?: string;
             multiSpeakerVoiceConfig?: components["schemas"]["MultiSpeakerVoiceConfig"];
+            /** @enum {string} */
+            textNormalization?: "TEXT_NORMALIZATION_UNSPECIFIED" | "AUTO" | "ENABLED" | "DISABLED";
             voiceConfig?: components["schemas"]["VoiceConfig"];
         };
         SpeechMetadata: {
             speaker?: string;
             style?: string;
+        };
+        SpreadsheetMetadata: {
+            contentLayers?: ("CONTENT_LAYER_UNSPECIFIED" | "DATA" | "FORMULAS" | "VISUAL")[];
+            /** Format: int32 */
+            sheetIndex?: number;
+            visibleCells?: string;
         };
         Status: {
             /** Format: int32 */
@@ -980,7 +1009,7 @@ export interface components {
             /** Format: int32 */
             thinkingBudget?: number;
             /** @enum {string} */
-            thinkingLevel?: "THINKING_LEVEL_UNSPECIFIED" | "MINIMAL" | "LOW" | "MEDIUM" | "HIGH";
+            thinkingLevel?: "THINKING_LEVEL_UNSPECIFIED" | "MINIMAL" | "LOW" | "MEDIUM" | "HIGH" | "XHIGH";
         };
         Tool: {
             codeExecution?: components["schemas"]["CodeExecution"];
@@ -1112,6 +1141,7 @@ export interface components {
             videoDuration?: string;
         };
         VideoMetadata: {
+            contentLayers?: ("CONTENT_LAYER_UNSPECIFIED" | "FRAMES" | "AUDIO" | "TRANSCRIPT")[];
             /** Format: google-duration */
             endOffset?: string;
             /** Format: double */
