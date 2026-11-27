@@ -22,8 +22,14 @@
  * monthly cap counts, but the Worker holds no Stripe key, so the meter event
  * is sent from this pass instead: the same chat meter, the same identifier
  * (the usage row's id) `recordWorkflowAiUsage` would have used.
+ *
+ * The pass also keeps two things in step that the forge's Worker cannot,
+ * having no Stripe key and no clock: the metered storage price on the
+ * subscription of an organisation that claimed its namespace on the forge
+ * ({@link ensureGitStoragePrices}), and the connections of people who have
+ * left the organisation their own namespace ran in (`workspace.ts`).
  */
-import { and, asc, eq, isNotNull, isNull, like, lt, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, like, lt, ne, sql } from "drizzle-orm";
 import { GIT_FORGE_LIMITS } from "@infrawrench/client-core";
 
 import { customerOf, sendMeterEvent } from "../ci/billing.js";
@@ -32,9 +38,11 @@ import {
   gitNamespaces,
   gitRepositories,
   gitStorageSamples,
+  subscriptions,
   workflowAiUsage,
 } from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
+import { sweepGitWorkspaces } from "./workspace.js";
 
 const GIB = 1024 ** 3;
 /** Stripe accepts meter events up to 35 days old; stay inside it. */
@@ -276,13 +284,130 @@ export async function reportGitReviewUsage(limit: number, now: Date = new Date()
   return settled;
 }
 
+function storagePrice(): string | null {
+  return process.env["STRIPE_GIT_STORAGE_PRICE_ID"] || null;
+}
+
+async function stripeForm(
+  path: string,
+  init: { method: "GET" } | { method: "POST"; body: URLSearchParams; idempotencyKey: string },
+): Promise<unknown> {
+  const secretKey = process.env["STRIPE_SECRET_KEY"];
+  if (!secretKey) throw new Error("STRIPE_SECRET_KEY is not set");
+  const res = await fetch(`https://api.stripe.com${path}`, {
+    method: init.method,
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      ...(init.method === "POST"
+        ? {
+            "content-type": "application/x-www-form-urlencoded",
+            "Idempotency-Key": init.idempotencyKey,
+          }
+        : {}),
+    },
+    ...(init.method === "POST" ? { body: init.body } : {}),
+  });
+  if (!res.ok) throw new Error(`Stripe answered ${res.status} for ${init.method} ${path}`);
+  return res.json();
+}
+
+/** Whether a subscription has an item at `price`, from `GET /v1/subscription_items`. Pure. */
+export function subscriptionHasPrice(listing: unknown, price: string): boolean {
+  const data = (listing as { data?: unknown } | null)?.data;
+  if (!Array.isArray(data)) throw new Error("Stripe's list of subscription items has no data");
+  return data.some((item) => (item as { price?: { id?: unknown } } | null)?.price?.id === price);
+}
+
+/** A subscription that could not be checked is left alone this long, per process. */
+const PRICE_RETRY_MS = 60 * 60_000;
+const priceRetryAfter = new Map<string, number>();
+
+/** For tests: forget which subscriptions failed. */
+export function resetGitStoragePriceRetries(): void {
+  priceRetryAfter.clear();
+}
+
+/**
+ * Adds the metered storage price (`STRIPE_GIT_STORAGE_PRICE_ID`) to the
+ * subscription of every organisation that has a namespace and a
+ * subscription without it, so storage above what the plan includes has an
+ * item to be billed to. Checkout attaches the price to a new subscription
+ * and the app's claim adds it at once (web's `ensureGitStoragePrice`); this
+ * is for the rest: a namespace claimed on the forge, whose Worker has no
+ * Stripe key, and a claim in the app whose background call failed.
+ *
+ * Each namespace is looked at once: `storage_price_ensured_at` is set when
+ * its subscription is seen to carry the price, added just now or already
+ * there, and an organisation without a subscription yet is asked again
+ * when it has one. Safe to run twice at once: the second instance finds the
+ * item, or sends the same idempotency key. Returns how many were settled.
+ */
+export async function ensureGitStoragePrices(limit = 20, now: Date = new Date()): Promise<number> {
+  const price = storagePrice();
+  if (!price || !process.env["STRIPE_SECRET_KEY"]) return 0;
+  const rows = await db
+    .select({
+      namespaceId: gitNamespaces.id,
+      organizationId: gitNamespaces.organizationId,
+      subscriptionId: subscriptions.stripeSubscriptionId,
+    })
+    .from(gitNamespaces)
+    .innerJoin(subscriptions, eq(subscriptions.organizationId, gitNamespaces.organizationId))
+    .where(
+      and(
+        eq(gitNamespaces.kind, "org"),
+        isNull(gitNamespaces.storagePriceEnsuredAt),
+        isNotNull(subscriptions.stripeSubscriptionId),
+        ne(subscriptions.status, "canceled"),
+      ),
+    )
+    .orderBy(asc(gitNamespaces.createdAt))
+    .limit(limit);
+  let settled = 0;
+  for (const row of rows) {
+    const subscription = row.subscriptionId;
+    if (!subscription) continue;
+    if ((priceRetryAfter.get(subscription) ?? 0) > now.getTime()) continue;
+    try {
+      const items = await stripeForm(
+        `/v1/subscription_items?subscription=${encodeURIComponent(subscription)}&limit=100`,
+        { method: "GET" },
+      );
+      if (!subscriptionHasPrice(items, price)) {
+        await stripeForm("/v1/subscription_items", {
+          method: "POST",
+          body: new URLSearchParams({ subscription, price }),
+          idempotencyKey: `git-storage-price-${subscription}-${price}`,
+        });
+        console.log(`[git] added the storage price to ${row.organizationId}'s subscription`);
+      }
+      await db
+        .update(gitNamespaces)
+        .set({ storagePriceEnsuredAt: now })
+        .where(eq(gitNamespaces.id, row.namespaceId));
+      priceRetryAfter.delete(subscription);
+      settled++;
+    } catch (err) {
+      priceRetryAfter.set(subscription, now.getTime() + PRICE_RETRY_MS);
+      console.warn(
+        `[git] could not put the storage price on ${row.organizationId}'s subscription; will retry:`,
+        err,
+      );
+    }
+  }
+  return settled;
+}
+
 /**
  * The poller's pass: sample the hour, send what is owed, prune what is old,
- * and send what the review agents used.
+ * send what the review agents used, put the storage price on subscriptions
+ * that lack it, and clear the connections of people who have left.
  */
 export async function runGitStoragePass(): Promise<void> {
   await sampleGitStorage();
   await reportGitStorage(200);
   await pruneGitStorageSamples();
   await reportGitReviewUsage(200);
+  await ensureGitStoragePrices();
+  await sweepGitWorkspaces();
 }

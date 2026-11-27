@@ -5,7 +5,7 @@ import { GIT_FORGE_LIMITS, type GitForgePlan, type GitForgeUsage } from "@infraw
 vi.mock("../../db/client.js", () => ({ db: {} }));
 
 const { privateRepositoryRefusal, pushRefusal } = await import("../quota");
-const { billableGitBytes } = await import("../billing");
+const { billableGitBytes, subscriptionHasPrice } = await import("../billing");
 
 const GIB = 1024 ** 3;
 
@@ -81,5 +81,26 @@ describe("billableGitBytes", () => {
 
   it("never meters a free organisation: its allowance is a limit, not a rate", () => {
     expect(billableGitBytes(3 * GIB, false)).toBe(0);
+  });
+});
+
+describe("subscriptionHasPrice", () => {
+  const listing = {
+    object: "list",
+    data: [
+      { id: "si_seat", price: { id: "price_seat" } },
+      { id: "si_storage", price: { id: "price_storage" } },
+    ],
+  };
+
+  it("finds the storage price among a subscription's items", () => {
+    expect(subscriptionHasPrice(listing, "price_storage")).toBe(true);
+    expect(subscriptionHasPrice(listing, "price_other")).toBe(false);
+    expect(subscriptionHasPrice({ data: [] }, "price_storage")).toBe(false);
+  });
+
+  it("refuses an answer that is not a list, rather than adding a second item", () => {
+    expect(() => subscriptionHasPrice({ error: { message: "no" } }, "price_storage")).toThrow();
+    expect(() => subscriptionHasPrice(null, "price_storage")).toThrow();
   });
 });

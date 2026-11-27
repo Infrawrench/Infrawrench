@@ -287,7 +287,9 @@ app_env = {
   # Unset, the hours are still sampled for Settings > Git but nothing is
   # billed, and turning it on later never bills the past. Checkout attaches
   # the price to new subscriptions; claiming a namespace in Settings > Git
-  # adds it to a subscription that lacks it.
+  # adds it to a subscription that lacks it, and the poller's git-storage
+  # pass adds it wherever it is still missing (a namespace claimed on
+  # git.infrawrench.com itself).
   INFRAWRENCH_STRIPE_GIT_STORAGE_METER_EVENT = "git_storage_gib_hours"
   STRIPE_GIT_STORAGE_PRICE_ID                = "price_..."
 
