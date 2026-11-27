@@ -478,6 +478,8 @@ export interface components {
                 /** Format: date-time */
                 expiresAt?: string | null;
                 grandfathered?: boolean;
+                /** @enum {string} */
+                restriction?: "none" | "limited";
                 sandboxes?: "*" | string[];
             };
             usage: components["schemas"]["ApiKeyRequestUsage"];
@@ -548,6 +550,7 @@ export interface components {
             /** @default true */
             monitoring?: boolean;
             name?: string;
+            network?: components["schemas"]["NetworkPolicyRequest"];
             /** @default false */
             noEnv?: boolean;
             org?: string;
@@ -634,6 +637,14 @@ export interface components {
             success: boolean;
             versionId?: string;
             versionNumber?: number;
+        };
+        EnvironmentNetworkPolicy: {
+            allow?: string[];
+            /** @enum {string} */
+            inbound?: "open" | "boat-only";
+            inboundAllow?: string[];
+            /** @enum {string} */
+            mode?: "open" | "deny" | "allow";
         };
         ErrorEnvelope: {
             code: string;
@@ -847,6 +858,15 @@ export interface components {
                 zeroDataRetentionEnabledAt?: string | null;
             };
         };
+        NetworkPolicyRequest: {
+            allow?: string[];
+            /** @enum {string} */
+            inbound?: "open" | "boat-only";
+            inboundAllow?: string[];
+            inboundAllowAdd?: string[];
+            /** @enum {string} */
+            mode?: "open" | "deny" | "allow" | "environment";
+        };
         Org: {
             active: boolean;
             id: string;
@@ -879,6 +899,8 @@ export interface components {
             /** @enum {string} */
             provider: "codex" | "claude-code" | "claude" | "pi" | "opencode" | "prime-agent" | "prime" | "kimi" | "kimi-code" | "mistral";
             reasoningEffort?: string | null;
+            /** @enum {string|null} */
+            speed?: "standard" | "fast" | "ultrafast" | null;
         };
         PromptResponse: components["schemas"]["SuccessBase"] & {
             conversationId?: string | null;
@@ -889,6 +911,8 @@ export interface components {
             promptRun: components["schemas"]["PromptRun"];
             provider: string;
             reasoningEffort?: string | null;
+            /** @enum {string} */
+            speed?: "standard" | "fast" | "ultrafast";
             /** @enum {string} */
             status: "queued";
             /** @constant */
@@ -905,6 +929,8 @@ export interface components {
             promptId: string;
             reasoningEffort?: string | null;
             sandboxId: string;
+            /** @enum {string|null} */
+            speed?: "standard" | "fast" | "ultrafast" | null;
             /** @enum {string} */
             status: "sending" | "queued" | "running" | "finished" | "failed" | "interrupted";
         };
@@ -1007,6 +1033,7 @@ export interface components {
             memoryGB?: number;
             monitoring?: boolean;
             name: string;
+            network?: components["schemas"]["SandboxNetwork"];
             setupError?: string | null;
             /** @enum {string|null} */
             setupStatus?: "pending" | "running" | "done" | "failed" | null;
@@ -1061,6 +1088,7 @@ export interface components {
             latestVersionId: string | null;
             latestVersionNumber?: number;
             name: string;
+            network?: components["schemas"]["EnvironmentNetworkPolicy"] | null;
             passAgentsCredentials: boolean;
             passGithub: boolean;
             passSandboxCredentials: boolean;
@@ -1107,6 +1135,23 @@ export interface components {
             sandboxes: components["schemas"]["Sandbox"][];
             /** @constant */
             type?: "sandbox.list";
+        };
+        SandboxNetwork: {
+            allow: string[];
+            apiBound?: boolean | null;
+            /** @enum {string} */
+            inbound?: "open" | "boat-only";
+            inboundAllow?: string[];
+            /** @enum {string} */
+            mode: "open" | "deny" | "allow";
+            /** @enum {string} */
+            pendingReason?: "host" | "transfer";
+            /** @enum {string} */
+            source?: "environment" | "sandbox" | "default";
+            /** @enum {string} */
+            status: "enforced" | "pending" | "none";
+            /** Format: date-time */
+            updatedAt: string | null;
         };
         SandboxUsageResponse: components["schemas"]["SuccessBase"] & {
             billingMultiplier: number;
@@ -1191,6 +1236,10 @@ export interface components {
             key: string;
         };
         SshKeyResponse: components["schemas"]["SuccessBase"] & {
+            caller?: {
+                address?: string | null;
+                listed?: boolean;
+            };
             hostKey?: string;
             machineIp?: string | null;
             sshEndpoint?: string | null;
@@ -1229,6 +1278,7 @@ export interface components {
             envContents?: string;
             isDefault?: boolean;
             name?: string;
+            network?: components["schemas"]["EnvironmentNetworkPolicy"] | null;
             passAgentsCredentials?: boolean;
             passGithub?: boolean;
             passSandboxCredentials?: boolean;
@@ -1245,6 +1295,9 @@ export interface components {
             secretFiles?: components["schemas"]["SecretFile"][];
         };
         UpdateSandboxRequest: {
+            labels?: {
+                [key: string]: string;
+            } | null;
             name?: string;
             subdomain?: string;
             ttlSeconds?: number | null;
@@ -1254,6 +1307,12 @@ export interface components {
         };
         UpgradeSandboxEnvironmentResponse: {
             failed: number;
+            failures?: {
+                /** @enum {string} */
+                error?: "network_policy_unsupported" | "network_policy_agent_outdated" | "network_policy_pending" | "upgrade_failed";
+                message?: string;
+                sandboxId?: string | null;
+            }[];
             latestVersionId?: string;
             success: boolean;
             upgraded: number;
@@ -1388,6 +1447,8 @@ export interface components {
         ConfirmDelete: string;
         Cursor: string | null;
         IdempotencyKey: string;
+        IncludeCaller: "caller"[];
+        IncludeInboundAllow: "inboundAllow"[];
         Limit: number;
         OrgHeader: string;
         OrgId: string;
@@ -1447,6 +1508,7 @@ export interface operations {
     environments: {
         parameters: {
             query?: {
+                include?: components["parameters"]["IncludeInboundAllow"];
                 org?: components["parameters"]["OrgId"];
             };
             header?: never;
@@ -1493,6 +1555,7 @@ export interface operations {
     updateEnvironment: {
         parameters: {
             query?: {
+                include?: components["parameters"]["IncludeInboundAllow"];
                 org?: components["parameters"]["OrgId"];
             };
             header?: never;
@@ -1867,6 +1930,7 @@ export interface operations {
                         [key: string]: string;
                     };
                     monitoring?: boolean;
+                    network?: components["schemas"]["NetworkPolicyRequest"];
                     noEnv?: boolean;
                     /** @default 3600 */
                     ttlSeconds?: number | null;
@@ -2015,7 +2079,9 @@ export interface operations {
     };
     sshKey: {
         parameters: {
-            query?: never;
+            query?: {
+                include?: components["parameters"]["IncludeCaller"];
+            };
             header?: never;
             path: {
                 sandboxId: components["parameters"]["SandboxId"];
