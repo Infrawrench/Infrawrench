@@ -8,6 +8,10 @@
  */
 import { eq, sql } from "drizzle-orm";
 import { gitNamespaces, gitUsers } from "@infrawrench/server-core/db/schema";
+import {
+  gitUsernameHeld,
+  insertGitUserNamespace,
+} from "@infrawrench/server-core/git/short-usernames";
 import { db, isUniqueViolation, newId } from "./client";
 
 export type NamespaceRow = typeof gitNamespaces.$inferSelect;
@@ -68,13 +72,20 @@ export const getNamespaceForOrganization = async (
   return row ?? null;
 };
 
-export const isSlugTaken = async (slug: string): Promise<boolean> => {
+/**
+ * Whether a slug cannot be claimed: someone has it, or someone other than
+ * `exceptUserId` is paying for it (a short username's hold).
+ */
+export const isSlugTaken = async (
+  slug: string,
+  exceptUserId: string | null = null,
+): Promise<boolean> => {
   const [row] = await db
     .select({ id: gitNamespaces.id })
     .from(gitNamespaces)
     .where(eq(gitNamespaces.slugLower, slug.toLowerCase()))
     .limit(1);
-  return row !== undefined;
+  return row !== undefined || (await gitUsernameHeld(slug, exceptUserId));
 };
 
 export type ClaimResult =
@@ -99,35 +110,11 @@ export const claimUserNamespace = async (
   slug: string,
   profile: { readonly displayName?: string | null } = {},
 ): Promise<ClaimResult> => {
-  try {
-    const namespace = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(gitNamespaces)
-        .values({
-          id: newId(),
-          slug,
-          slugLower: slug.toLowerCase(),
-          kind: "user",
-          userId,
-          displayName: profile.displayName ?? null,
-          claimedByUserId: userId,
-        })
-        .returning();
-      const now = new Date();
-      await tx
-        .insert(gitUsers)
-        .values({ userId, onboardedAt: now })
-        .onConflictDoUpdate({
-          target: gitUsers.userId,
-          set: { onboardedAt: now, suggestedSlug: null, updatedAt: now },
-        });
-      return row!;
-    });
-    return { ok: true, namespace };
-  } catch (error) {
-    if (!isUniqueViolation(error)) throw error;
-    return claimConflict({ userId });
-  }
+  // The same rows a paid-for short username gets (server-core `git/short-usernames.ts`).
+  const namespace = await db.transaction((tx) =>
+    insertGitUserNamespace(tx, { userId, slug, displayName: profile.displayName ?? null }),
+  );
+  return namespace ? { ok: true, namespace } : claimConflict({ userId });
 };
 
 /** Someone with `git:admin` claims their organisation's namespace. */
@@ -137,6 +124,9 @@ export const claimOrganizationNamespace = async (
   claimedByUserId: string,
   profile: { readonly displayName?: string | null } = {},
 ): Promise<ClaimResult> => {
+  // A name someone is paying for is taken. Checked, not indexed: a claim that
+  // slips past is settled by the payment, which finds the name gone and refunds.
+  if (await gitUsernameHeld(slug)) return { ok: false, reason: "slug_taken" };
   try {
     const [row] = await db
       .insert(gitNamespaces)
@@ -159,13 +149,20 @@ export const claimOrganizationNamespace = async (
 
 /**
  * Change a namespace's slug. Repositories are keyed by id, so nothing moves;
- * old URLs stop resolving. Null when the new slug is taken.
+ * old URLs stop resolving. Null when the new slug is taken, or someone else
+ * is paying for it.
  */
 export const renameNamespace = async (
   namespaceId: string,
   slug: string,
 ): Promise<NamespaceRow | null> => {
   const now = new Date();
+  const [owner] = await db
+    .select({ userId: gitNamespaces.userId })
+    .from(gitNamespaces)
+    .where(eq(gitNamespaces.id, namespaceId))
+    .limit(1);
+  if (await gitUsernameHeld(slug, owner?.userId ?? null)) return null;
   try {
     const [row] = await db
       .update(gitNamespaces)

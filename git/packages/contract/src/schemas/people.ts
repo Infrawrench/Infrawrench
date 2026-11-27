@@ -190,5 +190,38 @@ export const UsernameAvailability = Schema.Struct({
   message: Schema.NullOr(Schema.String).annotate({
     description: "Why not, as a sentence. Null when available.",
   }),
+  priceCents: Schema.NullOr(Schema.Finite).annotate({
+    description:
+      "What the caller pays to take it, once, in US cents: a username of 6 characters or fewer. Null when it is free, or not available.",
+  }),
 }).annotate({ identifier: "UsernameAvailability" });
 export type UsernameAvailability = typeof UsernameAvailability.Type;
+
+export const UsernameCheckoutStart = Schema.Struct({
+  username: Schema.String,
+  checkoutUrl: Schema.String.annotate({
+    description: "Where to send the browser to pay. Good for a few minutes.",
+  }),
+  expiresAt: Schema.String.annotate({
+    description: "Until when the username is kept for the caller.",
+  }),
+}).annotate({ identifier: "UsernameCheckoutStart" });
+export type UsernameCheckoutStart = typeof UsernameCheckoutStart.Type;
+
+export const UsernameCheckout = Schema.Struct({
+  hold: Schema.NullOr(
+    Schema.Struct({ username: Schema.String, expiresAt: Schema.String }),
+  ).annotate({ description: "The username kept for the caller while they pay, if any." }),
+  purchase: Schema.NullOr(
+    Schema.Struct({
+      username: Schema.String,
+      status: Schema.Literals(["claimed", "refund_due", "refunded"]).annotate({
+        description:
+          "`claimed`: the username is theirs. `refund_due` and `refunded`: it was taken before the payment settled, and the payment is being or has been refunded.",
+      }),
+      amountCents: Schema.NullOr(Schema.Finite),
+      at: Schema.String,
+    }),
+  ).annotate({ description: "The caller's most recent payment for a username, if any." }),
+}).annotate({ identifier: "UsernameCheckout" });
+export type UsernameCheckout = typeof UsernameCheckout.Type;

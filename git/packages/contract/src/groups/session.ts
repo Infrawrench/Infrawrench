@@ -11,8 +11,15 @@ import { Schema } from "effect";
 import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
 import { RequiresUser, SuccessDescription } from "../http/annotations";
 import { Authentication } from "../http/auth";
-import { BadRequest, Conflict, Forbidden, TooManyRequests } from "../http/errors";
-import { NamespaceRef, PersonalWorkspace, Session, UsernameAvailability } from "../schemas/people";
+import { BadRequest, Conflict, Forbidden, PaymentRequired, TooManyRequests } from "../http/errors";
+import {
+  NamespaceRef,
+  PersonalWorkspace,
+  Session,
+  UsernameAvailability,
+  UsernameCheckout,
+  UsernameCheckoutStart,
+} from "../schemas/people";
 
 const UsernameBody = Schema.Struct({
   username: Schema.String.annotate({
@@ -57,27 +64,57 @@ export class SessionGroup extends HttpApiGroup.make("session")
         }),
       }),
       success: Schema.Struct({ namespace: NamespaceRef }),
-      error: [BadRequest, Conflict, Forbidden],
+      error: [BadRequest, Conflict, Forbidden, PaymentRequired],
     })
       .annotate(RequiresUser, true)
       .annotate(OpenApi.Summary, "Claim a username")
       .annotate(
         OpenApi.Description,
-        "Creates the person's namespace. 409 `username_taken` when someone has it, 409 `namespace_already_claimed` when the person already has one (use `renameUsername`). 403 `not_a_member` when `workspaceOrganizationId` is not an organisation of theirs (nothing is claimed).",
+        "Creates the person's namespace. 409 `username_taken` when someone has it, 409 `namespace_already_claimed` when the person already has one (use `renameUsername`). 403 `not_a_member` when `workspaceOrganizationId` is not an organisation of theirs (nothing is claimed). 402 `username_payment_required` for a username of 6 characters or fewer, which is paid for once (`startUsernameCheckout`).",
       )
       .annotate(SuccessDescription, "The namespace"),
     HttpApiEndpoint.put("renameUsername", "/username", {
       payload: UsernameBody,
       success: Schema.Struct({ namespace: NamespaceRef }),
-      error: [BadRequest, Conflict, TooManyRequests],
+      error: [BadRequest, Conflict, PaymentRequired, TooManyRequests],
     })
       .annotate(RequiresUser, true)
       .annotate(OpenApi.Summary, "Change username")
       .annotate(
         OpenApi.Description,
-        "Repositories keep their ids, so nothing moves; old URLs stop resolving.",
+        "Repositories keep their ids, so nothing moves; old URLs stop resolving. 402 `username_payment_required` for a change to a username of 6 characters or fewer (`startUsernameCheckout`); keeping one, or changing its case, is free.",
       )
       .annotate(SuccessDescription, "The namespace"),
+    HttpApiEndpoint.post("startUsernameCheckout", "/username/checkout", {
+      payload: Schema.Struct({
+        ...UsernameBody.fields,
+        workspaceOrganizationId: Schema.optional(Schema.NullOr(Schema.String)).annotate({
+          description: "As `claimUsername` takes it: connected once the username is paid for.",
+        }),
+        returnTo: Schema.optional(Schema.String).annotate({
+          description: "A path on this site to go on to once the username is claimed.",
+        }),
+      }),
+      success: UsernameCheckoutStart,
+      error: [BadRequest, Conflict, Forbidden, TooManyRequests],
+    })
+      .annotate(RequiresUser, true)
+      .annotate(OpenApi.Summary, "Pay for a short username")
+      .annotate(
+        OpenApi.Description,
+        "For a username of 6 characters or fewer. Keeps it for the caller for 30 minutes and answers where to send the browser to pay; the username is theirs when the payment settles, as a first username or as a change to the one they have. From a signed-in browser only. 400 for a username that is free, 409 `username_taken` when someone has it or is paying for it.",
+      )
+      .annotate(SuccessDescription, "Where to pay"),
+    HttpApiEndpoint.get("usernameCheckout", "/username/checkout", {
+      success: UsernameCheckout,
+    })
+      .annotate(RequiresUser, true)
+      .annotate(OpenApi.Summary, "The caller's username payment")
+      .annotate(
+        OpenApi.Description,
+        "What the page shows someone who comes back from paying: the username still kept for them, and what came of their last payment.",
+      )
+      .annotate(SuccessDescription, "The hold and the last payment"),
     HttpApiEndpoint.put("setWorkspace", "/workspace", {
       payload: Schema.Struct({
         organizationId: Schema.NullOr(Schema.String).annotate({

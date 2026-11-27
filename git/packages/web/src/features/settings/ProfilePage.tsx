@@ -14,6 +14,8 @@ import { useDebounced } from "../../lib/name-availability";
 import { paths } from "../../lib/paths";
 import { RUNS_IN_NONE, runsInHint, runsInOrganizationId } from "../../lib/runs-in";
 import { type SessionData, useSession } from "../../lib/session";
+import { UsernameCheckoutNotice, priceLabel } from "../onboarding/username-checkout";
+import { useGo } from "../../components/AppLink";
 
 function UsernameForm({ current }: { current: string }) {
   const [username, setUsername] = useState(current);
@@ -32,10 +34,20 @@ function UsernameForm({ current }: { current: string }) {
       void invalidate("repositoryLists");
     },
   });
+  const go = useGo();
+  // A change to a short username is paid for: the browser goes to the payment
+  // page and comes back here with the new name.
+  const checkout = useMutation({
+    mutationFn: () => api.session.startUsernameCheckout({ payload: { username: username.trim() } }),
+    onSuccess: ({ checkoutUrl }) => go(checkoutUrl),
+  });
   const checked = changed && username.trim() === settled ? availability.data : undefined;
+  const price = checked?.available === true ? checked.priceCents : null;
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (checked?.available === true) rename.mutate();
+    if (checked?.available !== true) return;
+    if (price === null) rename.mutate();
+    else checkout.mutate();
   };
   return (
     <form onSubmit={submit} className="space-y-2">
@@ -55,21 +67,30 @@ function UsernameForm({ current }: { current: string }) {
               onChange={(event) => setUsername(event.target.value)}
               className="max-w-xs"
             />
-            <Button type="submit" busy={rename.isPending} disabled={checked?.available !== true}>
-              Change username
+            <Button
+              type="submit"
+              busy={rename.isPending || checkout.isPending || checkout.isSuccess}
+              disabled={checked?.available !== true}
+            >
+              {price === null ? "Change username" : `Continue to payment (${priceLabel(price)})`}
             </Button>
-            <span role="status" className="text-xs text-success">
+            <span role="status" className="text-xs">
               {checked?.available === true ? (
-                <span className="inline-flex items-center gap-1">
-                  <Icon name="check" size={12} />
-                  Available
+                <span className="inline-flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1 text-success">
+                    <Icon name="check" size={12} />
+                    Available
+                  </span>
+                  {price === null ? null : (
+                    <span className="text-on-surface-faint">{priceLabel(price)}, paid once</span>
+                  )}
                 </span>
               ) : null}
             </span>
           </div>
         )}
       </Field>
-      <InlineError error={rename.error} />
+      <InlineError error={rename.error ?? checkout.error} />
     </form>
   );
 }
@@ -206,7 +227,7 @@ function RunsInRow({ session }: { session: SessionData }) {
   );
 }
 
-export function ProfilePage() {
+export function ProfilePage({ returned }: { returned?: string | undefined } = {}) {
   const session = useSession();
   const user = session.data?.user ?? null;
   const username = user?.username ?? null;
@@ -238,6 +259,7 @@ export function ProfilePage() {
             <Avatar name={user.displayName ?? username} src={user.avatarUrl} size={72} />
           </div>
           <div className="min-w-0 flex-1 space-y-4">
+            {returned === undefined ? null : <UsernameCheckoutNotice state={returned} />}
             <UsernameForm key={username} current={username} />
             <QueryView query={namespace}>
               {(data) => <ProfileForm key={data.slug} namespace={data} />}

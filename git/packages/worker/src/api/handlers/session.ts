@@ -13,7 +13,9 @@ import {
   NAME_MAX_LENGTH,
   type Namespace,
   PaymentRequired,
+  SHORT_USERNAME_PAYMENT_REQUIRED,
   TooManyRequests,
+  USERNAME_CHECKOUT_PATH,
   badRequest,
   conflict,
   forbidden,
@@ -21,13 +23,21 @@ import {
   namespaceSlugProblem,
   notFound,
   suggestSlug,
+  usernamePriceCents,
 } from "@infrawrench/git-contract";
+import { signGitUsernameCheckoutToken } from "@infrawrench/client-core";
 import { gitNamespaces, gitUsers, users } from "@infrawrench/server-core/db/schema";
 import { planAccess } from "@infrawrench/server-core/entitlements";
 import {
   gitOrganizationClaimRefusal,
   gitPrivateRepositoryRefusal,
 } from "@infrawrench/server-core/git/quota";
+import {
+  holdGitUsername,
+  latestGitUsernamePurchase,
+  liveGitUsernameHold,
+  releaseGitUsernameHold,
+} from "@infrawrench/server-core/git/short-usernames";
 import {
   clearStaleGitWorkspace,
   gitWorkspaceOf,
@@ -69,13 +79,17 @@ const checkSlug = (slug: string, invalid: ErrorCode, reserved: ErrorCode): void 
   );
 };
 
-/** A free, valid username to offer, from the person's name or email. */
+/** A free, valid username to offer, from the person's name or email: never one that is paid for. */
 const suggestUsername = async (sources: ReadonlyArray<string | null>): Promise<string | null> => {
   for (const source of sources) {
     const base = source ? suggestSlug(source) : "";
     if (base === "" || namespaceSlugProblem(base) !== null) continue;
     for (const candidate of [base, `${base}-1`, `${base}-2`, `${base}-3`]) {
-      if (namespaceSlugProblem(candidate) === null && !(await isSlugTaken(candidate))) {
+      if (
+        namespaceSlugProblem(candidate) === null &&
+        usernamePriceCents(candidate) === null &&
+        !(await isSlugTaken(candidate))
+      ) {
         return candidate;
       }
     }
@@ -105,6 +119,28 @@ const checkRenameInterval = (namespace: NamespaceRow): void => {
 };
 
 const NOT_A_MEMBER = "You are not a member of that organisation";
+
+/** A short username is paid for first (`startUsernameCheckout`). */
+const paymentRequired = () =>
+  new PaymentRequired({
+    error: SHORT_USERNAME_PAYMENT_REQUIRED,
+    code: "username_payment_required",
+  });
+
+/**
+ * A path on this site, or null: where the person goes on to once they have
+ * their username. The page checks it again before it follows it.
+ */
+const sitePathOrNull = (value: string | undefined): string | null =>
+  value !== undefined &&
+  value.length <= 500 &&
+  value.startsWith("/") &&
+  !value.startsWith("//") &&
+  !value.includes("\\") &&
+  // eslint-disable-next-line no-control-regex
+  !/[\u0000-\u001f\u007f-\u009f]/.test(value)
+    ? value
+    : null;
 
 /**
  * The organisation a person's own repositories run in, as the session says
@@ -308,7 +344,7 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
     )
     .handle(
       "usernameAvailability",
-      op(async (_cx, { query }) => {
+      op(async (cx, { query }) => {
         const username = query.username;
         const problem = namespaceSlugProblem(username);
         if (problem !== null) {
@@ -317,16 +353,27 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
             available: false,
             reason: problem === "reserved" ? ("reserved" as const) : ("invalid" as const),
             message: nameProblemMessage(problem, NAME_MAX_LENGTH),
+            priceCents: null,
           };
         }
-        return (await isSlugTaken(username))
-          ? {
-              username,
-              available: false,
-              reason: "taken" as const,
-              message: "That username is taken",
-            }
-          : { username, available: true, reason: null, message: null };
+        // A name someone else is paying for is taken; the caller's own hold is not.
+        if (await isSlugTaken(username, cx.userId)) {
+          return {
+            username,
+            available: false,
+            reason: "taken" as const,
+            message: "That username is taken",
+            priceCents: null,
+          };
+        }
+        const current = cx.userId ? await getNamespaceForUser(cx.userId) : null;
+        return {
+          username,
+          available: true,
+          reason: null,
+          message: null,
+          priceCents: usernamePriceCents(username, current?.slug),
+        };
       }),
     )
     .handle(
@@ -335,6 +382,7 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
         requireSession(cx);
         const userId = cx.userId!;
         checkSlug(payload.username, "username_invalid", "username_reserved");
+        if (usernamePriceCents(payload.username) !== null) throw paymentRequired();
         // Asked before anything is claimed: a refusal leaves the person where they were.
         const workspace = payload.workspaceOrganizationId ?? null;
         if (workspace !== null && !(await isMember(userId, workspace))) {
@@ -349,6 +397,8 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
             ? conflict("You already have a username", "namespace_already_claimed")
             : conflict("That username is taken", "username_taken");
         }
+        // A short name they were about to pay for is no longer kept for them.
+        cx.background(releaseGitUsernameHold(userId));
         if (workspace !== null) await connectWorkspace(cx, userId, workspace);
         return { namespace: refOf(claimed.namespace) };
       }),
@@ -363,9 +413,71 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
         if (current.slug === payload.username) return { namespace: refOf(current) };
         // A change of case only is not a new name and does not count.
         if (current.slugLower !== payload.username.toLowerCase()) checkRenameInterval(current);
+        // Nor is it paid for: the price is null for the name they hold.
+        if (usernamePriceCents(payload.username, current.slug) !== null) throw paymentRequired();
         const renamed = await renameNamespace(current.id, payload.username);
         if (!renamed) throw conflict("That username is taken", "username_taken");
         return { namespace: refOf(renamed) };
+      }),
+    )
+    .handle(
+      "startUsernameCheckout",
+      op(async (cx, { payload }) => {
+        requireSession(cx);
+        const userId = cx.userId!;
+        checkSlug(payload.username, "username_invalid", "username_reserved");
+        const current = await getNamespaceForUser(userId);
+        if (usernamePriceCents(payload.username, current?.slug) === null) {
+          throw badRequest("That username is free: it is claimed without paying");
+        }
+        if (current) checkRenameInterval(current);
+        // Only a first username chooses where it runs; a change keeps what is set.
+        const workspace = current ? null : (payload.workspaceOrganizationId ?? null);
+        if (workspace !== null && !(await isMember(userId, workspace))) {
+          throw forbidden(NOT_A_MEMBER, "not_a_member");
+        }
+        const returnTo = sitePathOrNull(payload.returnTo);
+        const held = await holdGitUsername({
+          userId,
+          slug: payload.username,
+          workspaceOrganizationId: workspace,
+          returnPath: current
+            ? "/settings"
+            : `/onboarding/username${returnTo === null ? "" : `?returnTo=${encodeURIComponent(returnTo)}`}`,
+        });
+        if (!held.ok) throw conflict("That username is taken", "username_taken");
+        // The forge has no Stripe key: the app opens the payment page, for the
+        // hold this token names (client-core `git-username-checkout-token.ts`).
+        const token = await signGitUsernameCheckoutToken(cx.env.GIT_JOB_TOKEN_KEY, {
+          holdId: held.hold.id,
+          userId,
+        });
+        return {
+          username: held.hold.slug,
+          checkoutUrl: `${appOrigin(cx.env)}${USERNAME_CHECKOUT_PATH}?token=${encodeURIComponent(token)}`,
+          expiresAt: iso(held.hold.expiresAt),
+        };
+      }),
+    )
+    .handle(
+      "usernameCheckout",
+      op(async (cx) => {
+        const userId = cx.userId!;
+        const [hold, purchase] = await Promise.all([
+          liveGitUsernameHold(userId),
+          latestGitUsernamePurchase(userId),
+        ]);
+        return {
+          hold: hold ? { username: hold.slug, expiresAt: iso(hold.expiresAt) } : null,
+          purchase: purchase
+            ? {
+                username: purchase.slug,
+                status: purchase.status,
+                amountCents: purchase.amountPaidCents,
+                at: iso(purchase.createdAt),
+              }
+            : null,
+        };
       }),
     )
     .handle(
