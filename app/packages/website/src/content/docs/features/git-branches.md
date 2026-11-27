@@ -26,6 +26,35 @@ Fixes #12
 
 `close`, `fix` and `resolve` work, with their `-s` and `-d` forms. The issue's timeline links to the commit. A squash merge puts the branch's description in its commit message, so `Closes #12` in a branch's description closes the issue when the branch is squashed.
 
+### Import issues from GitHub
+
+An administrator of a repository can bring in the issues of a GitHub repository under **Settings > Import**. Enter the GitHub repository as `owner/name`, paste a token and click **Start**. The import runs in the background, and the page shows what it is reading and how much it has written. **Cancel** stops it and keeps what it has written so far.
+
+<insert [A repository's Settings > Import page: the GitHub repository field filled with "acme/widgets", the masked Token field with its hint, the Start button, and below it one import marked Running with "Reading comments" and its counts of issues, comments, labels and milestones, with a Cancel button] here>
+
+**The token** only has to read. Create a fine-grained personal access token on GitHub with access to that one repository and the repository permissions **Issues: Read-only** and **Metadata: Read-only**. It is kept encrypted while the import runs, removed when the import ends (finished, failed or cancelled), and never shown again.
+
+**What is imported**:
+
+- Every issue, open and closed, with its title, its description as written, its labels, its milestone, whether it is locked, and when it was opened, last updated and closed. An issue closed as not planned or as a duplicate is closed as not planned here.
+- Every comment on those issues, with when it was written.
+- The repository's labels and milestones. A label this repository already has by that name is left as it is. A milestone is matched by its title and takes the state, due date and description it has on GitHub.
+
+**Pull requests are not imported**, and neither are their comments. Merged ones are already in the history you pushed. Reactions and the events between comments (who labelled or closed an issue, and when) are not imported either.
+
+**Numbers.** An issue keeps its GitHub number when nothing here has that number yet, so `#12` in an old description or commit message still points at the same issue. Issues and branch pages share one sequence of numbers, so if a number is already taken, the imported issue gets a new one, placed after the highest number the GitHub repository uses, and its page says **#12 on GitHub**. The numbers that were pull requests on GitHub stay unused: new issues and branch pages are numbered after everything that was imported.
+
+**Authors.** An issue or a comment is shown as written by an account on git.infrawrench.com when either of these is true:
+
+- The email address on the author's public GitHub profile is the address of an account here, or a [commit email](./git-getting-started.md#who-a-commit-is-by) that someone has verified for this repository's organization or, in a person's own repositories, for themselves.
+- The author's GitHub username is the username of someone who already has access to the repository: its owner, a member of the organization that owns it, or a collaborator.
+
+Assignees are matched the same way, and one with no account here is left off. Everything else is shown as **name on GitHub**, linked to the original, and every imported issue links to its page on GitHub. Nobody is notified by an import, and `@mentions` in imported text notify nobody.
+
+**Run it again** whenever you like, with a new token each time. A second import of the same GitHub repository adds nothing twice: it reads what changed on GitHub since the last finished import began, updates those issues and comments to match GitHub, and adds the new ones. An issue keeps the number it was given the first time. Only one import runs in a repository at a time.
+
+If GitHub's rate limit is reached, the import waits until the limit resets and carries on from the page it stopped at. If GitHub refuses the token or the repository cannot be found, the import fails and says so, and nothing it wrote is removed.
+
 ## Branches
 
 Every branch of a repository other than its default branch has a page, where it is read, reviewed and merged. The first push of a branch opens its page as a draft against the default branch, titled after the commit when there is one, or after the branch's name. Edit its title and description and click **Ready for review** when it is. A page you close is not opened again by the next push.

@@ -262,6 +262,8 @@ Administrators of a repository get a **Settings** tab:
 | **General**                | Name, description, topics, default branch, whether issues are on, merge methods, visibility, archive, transfer, delete. |
 | **Collaborators**          | People added to this repository alone, each with a role: **Read**, **Triage**, **Write** or **Admin**.                  |
 | **Branches**               | [Protected branches](./git-branches.md#protected-branches).                                                             |
+| **Mirrors**                | [Push mirrors](./git-mirrors.md): other Git hosts kept equal to this repository.                                        |
+| **Import**                 | [Import issues from GitHub](./git-branches.md#import-issues-from-github).                                               |
 | **Labels**, **Milestones** | What issues and branch pages can be filed under.                                                                        |
 | **CI**                     | Whether [Infrawrench CI](./ci.md) runs for this repository, and its pipelines.                                          |
 
