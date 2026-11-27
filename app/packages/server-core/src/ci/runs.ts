@@ -80,6 +80,7 @@ import type { CiEvent } from "./events.js";
 import { ownerKey, repoKey } from "./events.js";
 import { DownloadLinkError, downloadLink, toDownload } from "./downloads.js";
 import { CiProxyError, proxyFetch, proxyJson, runUsage, type ProxyRun } from "./proxy.js";
+import { requireCiPlan } from "./plan.js";
 import { pluginCodeAvailable } from "../runtime/plugin-code.js";
 import type { CiConcurrencyEntry, CiJobAccess } from "../db/schema.js";
 import { noteRepository, runningCi, stillRunsCi } from "./schedules.js";
@@ -1245,6 +1246,7 @@ export async function approveRun(
   id: string,
   userId: string,
 ): Promise<void> {
+  await requireCiPlan(organizationId);
   const [row] = await db
     .update(ciRuns)
     .set({
@@ -1399,6 +1401,7 @@ export async function retryRun(
   userId: string,
   opts: { noTaskCache: boolean },
 ): Promise<CiRun> {
+  await requireCiPlan(organizationId);
   const original = await loadOwned(organizationId, id);
   const refusal = retryRefusal(original);
   if (refusal) throw new CiInputError(refusal, 409);
@@ -1527,6 +1530,7 @@ export async function startManualRun(
   actor: string | null,
   request: CiStartRun,
 ): Promise<CiRun> {
+  await requireCiPlan(organizationId);
   const [found] = await runningCi(db.select({ schedule: ciSchedules }).from(ciSchedules).$dynamic())
     .where(
       and(

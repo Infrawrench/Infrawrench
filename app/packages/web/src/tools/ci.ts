@@ -54,6 +54,7 @@ import { listCiRepositories } from "@infrawrench/server-core/ci/schedules";
 import { listCiValues } from "@infrawrench/server-core/ci/values";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 import { logAudit } from "../services/audit";
+import { PlanRequiredError } from "../services/entitlements";
 import { err, ok, type ToolAuthContext, type ToolDefinition, type ToolResult } from "./types";
 
 const DEFAULT_RUN_LIMIT = 25;
@@ -73,7 +74,7 @@ const runIdSchema = Schema.String.annotate({ description: "The run's `id`, from 
 
 /** A refusal the CI modules mean for the caller (not found, conflict, bad input) as a tool error. */
 function ciError(e: unknown): ToolResult {
-  if (e instanceof CiInputError) return err(e.message);
+  if (e instanceof CiInputError || e instanceof PlanRequiredError) return err(e.message);
   throw e;
 }
 

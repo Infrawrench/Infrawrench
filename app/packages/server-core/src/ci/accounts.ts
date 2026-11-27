@@ -10,6 +10,7 @@ import { ciAccounts, githubInstallations } from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
 import { isGithubAppConfigured } from "../github/app.js";
 import { ciProxyConfigured } from "./proxy.js";
+import { requireCiPlan } from "./plan.js";
 import { CiInputError } from "./runs.js";
 
 export async function ciAccountsOf(organizationId: string): Promise<CiAccount[]> {
@@ -54,13 +55,18 @@ export async function ciStatus(organizationId: string): Promise<CiStatus> {
   };
 }
 
-/** Turns CI on or off for one of the organization's GitHub accounts. */
+/**
+ * Turns CI on or off for one of the organization's GitHub accounts. Turning
+ * it on takes a paid plan (`PlanRequiredError`); turning it off never does,
+ * so an organization whose plan ended can still stop.
+ */
 export async function setCiAccount(
   organizationId: string,
   installationId: number,
   enabled: boolean,
   userId: string,
 ): Promise<CiAccount> {
+  if (enabled) await requireCiPlan(organizationId);
   const [installation] = await db
     .select({
       installationId: githubInstallations.installationId,

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.135.0",
+    "version": "1.136.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -134383,6 +134383,16 @@
               }
             }
           },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {
@@ -134394,6 +134404,7 @@
             }
           }
         },
+        "description": "Turning CI on takes a paid plan (402 otherwise). Turning it off never does.\n\n_Requires permission: `ci:write`._",
         "summary": "Run CI, or stop running it, for a connected GitHub account",
         "requestBody": {
           "content": {
@@ -134415,8 +134426,7 @@
           "required": true
         },
         "x-required-permission": "ci:write",
-        "operationId": "putOrgOrgIdCiAccountsInstallationId",
-        "description": "_Requires permission: `ci:write`._"
+        "operationId": "putOrgOrgIdCiAccountsInstallationId"
       }
     },
     "/api/org/{orgId}/ci/runs": {
@@ -134536,6 +134546,16 @@
               }
             }
           },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {
@@ -134558,7 +134578,7 @@
           }
         },
         "description": "Queues a run of one pipeline with `on.manual`, at the head of a branch of the repository itself, with the inputs given. The pipeline must be listed by `GET /ci/manual`, and the inputs are checked against its declaration there; the runner checks them again against the branch's own file. The run is trusted like a push to that branch: it gets the repository's secrets and only what is lent to that branch.\n\n_Requires permission: `ci:approve`._",
-        "summary": "Start a pipeline by hand",
+        "summary": "Start a pipeline by hand (paid plan required)",
         "requestBody": {
           "content": {
             "application/json": {
@@ -134764,6 +134784,16 @@
               }
             }
           },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {
@@ -134786,7 +134816,7 @@
           }
         },
         "description": "Runs CI for this one commit of a pull request from a fork, without the organization's or repository's secrets. A later commit needs approving again.\n\n_Requires permission: `ci:approve`._",
-        "summary": "Approve a fork's pull request commit",
+        "summary": "Approve a fork's pull request commit (paid plan required)",
         "x-required-permission": "ci:approve",
         "operationId": "postOrgOrgIdCiRunsRunIdApprove"
       }
@@ -134952,6 +134982,16 @@
               }
             }
           },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {
@@ -134974,7 +135014,7 @@
           }
         },
         "description": "Queues a new run of the same repository, commit, branch and event, linked to this one. A run waiting for approval is approved instead, and a fork's pull request still runs without secrets.\n\n_Requires permission: `ci:approve`._",
-        "summary": "Run a finished CI run again",
+        "summary": "Run a finished CI run again (paid plan required)",
         "requestBody": {
           "content": {
             "application/json": {
@@ -135405,6 +135445,16 @@
               }
             }
           },
+          "402": {
+            "description": "Payment required: the organization's plan does not include this",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not found",
             "content": {
@@ -135426,7 +135476,7 @@
             }
           }
         },
-        "summary": "Set a CI secret or variable",
+        "summary": "Set a CI secret or variable (paid plan required)",
         "requestBody": {
           "content": {
             "application/json": {

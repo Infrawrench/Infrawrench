@@ -74,9 +74,16 @@ vi.mock("@infrawrench/server-core/ci/access", () => ({
   setSshKeyLending: (...a: unknown[]) => mockSetSshKeyLending(...a),
   revokeSshKeyLending: vi.fn(),
 }));
+const mockSetValue = vi.fn();
+vi.mock("@infrawrench/server-core/ci/values", () => ({
+  listCiValues: vi.fn(),
+  setCiValue: (...a: unknown[]) => mockSetValue(...a),
+  deleteCiValue: vi.fn(),
+}));
 const mockLogAudit = vi.fn();
 vi.mock("@/services/audit", () => ({ logAudit: (...a: unknown[]) => mockLogAudit(...a) }));
 
+const { PlanRequiredError } = await import("@/services/entitlements");
 const { ciDomain } = await import("@/http/domains/ci/index");
 const basePath = "/api/org/org-1/ci";
 const app = (permissions?: string[]) =>
@@ -587,5 +594,39 @@ describe("CI routes", () => {
     const res = await app().request("/usage?month=2026-10");
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ month: "2026-10", runs: 3 });
+  });
+
+  it("answers 402 with the plan's sentence when a free organization starts CI or sets it up", async () => {
+    const sentence = "Infrawrench CI is part of Pro. Upgrade under Settings → Billing.";
+    const refuse = () => Promise.reject(new PlanRequiredError(sentence));
+    mockSetAccount.mockImplementation(refuse);
+    mockStartManual.mockImplementation(refuse);
+    mockRetry.mockImplementation(refuse);
+    mockApprove.mockImplementation(refuse);
+    mockSetValue.mockImplementation(refuse);
+
+    const json = (body: unknown) => ({ body: JSON.stringify(body) });
+    const asked = [
+      app().request("/accounts/7", { method: "PUT", ...json({ enabled: true }) }),
+      app().request("/runs", {
+        method: "POST",
+        ...json({ installationId: 7, repoFullName: "acme/web", pipelineFile: "deploy.yml" }),
+      }),
+      app().request(`/runs/${RUN}/retry`, { method: "POST", ...json({}) }),
+      app().request(`/runs/${RUN}/approve`, { method: "POST" }),
+      app().request("/values/secrets/NPM_TOKEN?installationId=7", {
+        method: "PUT",
+        ...json({ value: "x" }),
+      }),
+    ];
+    for (const res of await Promise.all(asked)) {
+      expect(res.status).toBe(402);
+      expect(await res.json()).toEqual({ error: sentence });
+    }
+    // Nothing was dispatched, added to the subscription or audited as done.
+    await settle();
+    expect(mockDispatch).not.toHaveBeenCalled();
+    expect(mockEnsureCiPrices).not.toHaveBeenCalled();
+    expect(mockLogAudit).not.toHaveBeenCalled();
   });
 });
