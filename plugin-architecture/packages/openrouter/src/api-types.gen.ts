@@ -227,12 +227,38 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AABenchmarkEntry: {
-            /** Format: double */
+            /**
+             * Format: double
+             * @deprecated
+             */
             agentic_index: number | null;
-            /** Format: double */
+            /**
+             * Format: double
+             * @deprecated
+             */
             coding_index: number | null;
             /** Format: double */
+            cyber_index: number | null;
+            /** Format: double */
+            decision_index: number | null;
+            /** Format: double */
+            economics_index: number | null;
+            /** Format: double */
+            engineering_index: number | null;
+            /** Format: double */
+            finance_and_accounting_index: number | null;
+            /** Format: double */
+            healthcare_and_medical_index: number | null;
+            /** Format: double */
             intelligence_index: number | null;
+            /** Format: double */
+            legal_index: number | null;
+            /** Format: double */
+            multilingual_index: number | null;
+            /** Format: double */
+            openness_index: number | null;
+            /** Format: double */
+            strategy_and_ops_index: number | null;
         };
         ActivityItem: {
             /** Format: double */
@@ -300,6 +326,7 @@ export interface components {
             /** Format: uuid */
             id: string;
             is_byok_only: boolean;
+            is_exclusive: boolean;
             is_fallback: boolean;
             is_required: boolean;
             label: string;
@@ -310,7 +337,7 @@ export interface components {
             workspace_id: string | null;
         };
         /** @enum {string} */
-        BYOKProviderSlug: BYOKProviderSlug_3bfdfa8e;
+        BYOKProviderSlug: BYOKProviderSlug_1254e9ed;
         ClassifierFiltersFilter: components["schemas"]["ClassifierScalarFilter"] | components["schemas"]["ClassifierSetFilter"];
         ClassifierScalarFilter: {
             field: string;
@@ -364,6 +391,9 @@ export interface components {
             label?: string | null;
             pattern: string;
         };
+        ContentFilterReadEntry: components["schemas"]["ContentFilterEntry"] & {
+            is_enforced: boolean;
+        };
         CreateBYOKKeyRequest: {
             allowed_api_key_hashes?: string[] | null;
             allowed_models?: string[] | null;
@@ -373,6 +403,7 @@ export interface components {
             declared_zdr?: boolean | null;
             disabled?: boolean;
             is_byok_only?: boolean;
+            is_exclusive?: boolean;
             is_fallback?: boolean;
             is_required?: boolean;
             key: string;
@@ -385,7 +416,9 @@ export interface components {
             data: components["schemas"]["BYOKKey"] & unknown;
         };
         CreateGuardrailRequest: {
+            allow_provisional_providers?: boolean | null;
             allow_safety_retention_google?: boolean | null;
+            allow_safety_retention_openai?: boolean | null;
             allow_safety_retention_other?: boolean | null;
             allowed_data_regions?: string[] | null;
             allowed_models?: string[] | null;
@@ -543,13 +576,15 @@ export interface components {
             data: components["schemas"]["Workspace"] & unknown;
         };
         Guardrail: {
+            allow_provisional_providers?: boolean | null;
             allow_safety_retention_google?: boolean | null;
+            allow_safety_retention_openai?: boolean | null;
             allow_safety_retention_other?: boolean | null;
             allowed_data_regions?: components["schemas"]["GuardrailDataRegion"][] | null;
             allowed_models?: string[] | null;
             allowed_providers?: string[] | null;
             content_filter_builtins?: components["schemas"]["ContentFilterBuiltinEntry"][] | null;
-            content_filters?: components["schemas"]["ContentFilterEntry"][] | null;
+            content_filters?: components["schemas"]["ContentFilterReadEntry"][] | null;
             created_at: string;
             description?: string | null;
             enable_free_model_publication?: boolean | null;
@@ -729,7 +764,7 @@ export interface components {
         /** @enum {string} */
         OutputModality: "text" | "image" | "embeddings" | "audio" | "video" | "rerank" | "decisions" | "speech" | "transcription";
         /** @enum {string} */
-        Parameter: "temperature" | "top_p" | "top_k" | "min_p" | "top_a" | "frequency_penalty" | "presence_penalty" | "repetition_penalty" | "max_tokens" | "max_completion_tokens" | "logit_bias" | "logprobs" | "top_logprobs" | "prediction" | "seed" | "response_format" | "structured_outputs" | "stop" | "tools" | "tool_choice" | "parallel_tool_calls" | "include_reasoning" | "reasoning" | "reasoning_effort" | "web_search_options" | "verbosity";
+        Parameter: "temperature" | "top_p" | "top_k" | "min_p" | "top_a" | "frequency_penalty" | "presence_penalty" | "repetition_penalty" | "max_tokens" | "max_completion_tokens" | "logit_bias" | "logprobs" | "top_logprobs" | "prediction" | "seed" | "response_format" | "structured_outputs" | "strict_tool_schemas" | "stop" | "tools" | "tool_choice" | "parallel_tool_calls" | "include_reasoning" | "reasoning" | "reasoning_effort" | "web_search_options" | "verbosity";
         PayloadTooLargeResponse: {
             error: components["schemas"]["PayloadTooLargeResponseErrorData"];
             openrouter_metadata?: {
@@ -804,7 +839,7 @@ export interface components {
         /** @enum {string} */
         PromptInjectionScanScope: "user_only" | "all_messages";
         /** @enum {string} */
-        ProviderName: "Modal" | "AkashML" | "AI21" | "AionLabs" | "Alibaba" | "Ambient" | "Ant Digital" | "Baidu" | "Amazon Bedrock" | "Amazon Nova" | "Anthropic" | "Arcee AI" | "AssemblyAI" | "AtlasCloud" | "Avian" | "Azure" | "BaseTen" | "BytePlus" | "Black Forest Labs" | "Cerebras" | "Chutes" | "Cirrascale" | "Claude Platform on AWS" | "Clarifai" | "Cloudflare" | "Cohere" | "CoreWeave" | "Cosine" | "Crucible" | "Crusoe" | "Darkbloom" | "Databricks" | "Decart" | "Deepgram" | "DeepInfra" | "DeepSeek" | "DekaLLM" | "DigitalOcean" | "ElevenLabs" | "Featherless" | "Fireworks" | "Fish Audio" | "Friendli" | "GMICloud" | "Google" | "Google AI Studio" | "Groq" | "HeyGen" | "Inception" | "Inceptron" | "InferenceNet" | "Ionstream" | "Infermatic" | "Io Net" | "Inferact vLLM" | "Inflection" | "KT" | "Liquid" | "Makora" | "Mara" | "Mancer 2" | "Meta" | "Minimax" | "ModelRun" | "Mistral" | "Modular" | "Moonshot AI" | "Morph" | "VoyageAI by MongoDB" | "TypeSafe" | "Near AI" | "Nebius" | "Nex AGI" | "NextBit" | "Novita" | "Nvidia" | "Ollama" | "OpenAI" | "OpenInference" | "Parallel" | "Parasail" | "ParetoAlpha" | "Particle AI" | "Pearl Research" | "Poolside" | "PrimaLabs" | "PrimeIntellect" | "Perceptron" | "Perplexity" | "Phala" | "Recraft" | "Recursive" | "Reka" | "Relace" | "Respan" | "River" | "Sail Research" | "Sakana AI" | "SambaNova" | "ScaleDown" | "Seed" | "SiliconFlow" | "Sourceful" | "StepFun" | "Stealth" | "StreamLake" | "Switchpoint" | "Tencent" | "Tenstorrent" | "Thinking Machines" | "Together" | "Unbiased" | "Upstage" | "Venice" | "Wafer" | "WandB" | "Quiver" | "Krea" | "Runway" | "Xiaomi" | "xAI" | "Z.AI" | "FakeProvider";
+        ProviderName: "Modal" | "AkashML" | "AI21" | "AionLabs" | "Alibaba" | "Ambient" | "Ant Digital" | "Baidu" | "Amazon Bedrock" | "Amazon Nova" | "Anthropic" | "Arcee AI" | "AssemblyAI" | "AtlasCloud" | "Avian" | "Azure" | "BaseTen" | "BytePlus" | "Black Forest Labs" | "Cerebras" | "Chutes" | "Cirrascale" | "Claude Platform on AWS" | "Clarifai" | "Cloudflare" | "Cohere" | "CoreWeave" | "Cosine" | "Crucible" | "Crusoe" | "Darkbloom" | "Databricks" | "Decart" | "Deepgram" | "DeepInfra" | "DeepSeek" | "DekaLLM" | "DigitalOcean" | "Doubleword" | "ElevenLabs" | "Featherless" | "Fireworks" | "Fish Audio" | "Friendli" | "GMICloud" | "Google" | "Google AI Studio" | "Groq" | "HeyGen" | "Inception" | "Inceptron" | "InferenceNet" | "Ionstream" | "Infermatic" | "Io Net" | "Inferact vLLM" | "Inflection" | "KT" | "Liquid" | "Makora" | "Mara" | "Mancer 2" | "Meta" | "Minimax" | "ModelRun" | "Mistral" | "Modular" | "Moonshot AI" | "Morph" | "VoyageAI by MongoDB" | "TypeSafe" | "Near AI" | "Nebius" | "Nex AGI" | "NextBit" | "Novita" | "Nvidia" | "Ollama" | "OpenAI" | "OpenInference" | "Parallel" | "Parasail" | "ParetoAlpha" | "Pareto Inference" | "Particle AI" | "Pearl Research" | "Poolside" | "PrimaLabs" | "PrimeIntellect" | "Perceptron" | "Perplexity" | "Phala" | "Recraft" | "Recursive" | "Reka" | "Relace" | "Respan" | "River" | "Sail Research" | "Sakana AI" | "SambaNova" | "ScaleDown" | "Seed" | "SiliconFlow" | "Sourceful" | "Speechify" | "StepFun" | "Stealth" | "StreamLake" | "Switchpoint" | "Tencent" | "Tenstorrent" | "Thinking Machines" | "Together" | "Unbiased" | "Upstage" | "Venice" | "Wafer" | "WandB" | "Quiver" | "Krea" | "Runway" | "Xiaomi" | "xAI" | "Z.AI" | "FakeProvider";
         ProviderOptions: {
             "01ai"?: {
                 [key: string]: unknown;
@@ -936,6 +971,9 @@ export interface components {
                 [key: string]: unknown;
             };
             digitalocean?: {
+                [key: string]: unknown;
+            };
+            doubleword?: {
                 [key: string]: unknown;
             };
             elevenlabs?: {
@@ -1118,6 +1156,9 @@ export interface components {
             "pareto-alpha"?: {
                 [key: string]: unknown;
             };
+            "pareto-inference"?: {
+                [key: string]: unknown;
+            };
             "particle-ai"?: {
                 [key: string]: unknown;
             };
@@ -1203,6 +1244,9 @@ export interface components {
                 [key: string]: unknown;
             };
             sourceful?: {
+                [key: string]: unknown;
+            };
+            speechify?: {
                 [key: string]: unknown;
             };
             stealth?: {
@@ -1417,12 +1461,14 @@ export interface components {
             input_references?: components["schemas"]["SpeechInputReference"][];
             instructions?: string;
             model: string;
+            /** @enum {string} */
+            output_delivery?: "stream" | "url";
             provider?: provider_7faeb1ba;
             /**
              * @default pcm
              * @enum {string}
              */
-            response_format?: "mp3" | "pcm";
+            response_format?: "mp3" | "pcm" | "wav";
             session_id?: string;
             /** Format: double */
             speed?: number;
@@ -1457,6 +1503,7 @@ export interface components {
             keyterms?: string[];
             language?: string;
             model: string;
+            prompt?: string;
             provider?: provider_7faeb1ba;
             /** @enum {string} */
             response_format?: "json" | "verbose_json";
@@ -1605,6 +1652,7 @@ export interface components {
             declared_zdr?: boolean | null;
             disabled?: boolean;
             is_byok_only?: boolean;
+            is_exclusive?: boolean;
             is_fallback?: boolean;
             is_required?: boolean;
             key?: string;
@@ -1614,7 +1662,9 @@ export interface components {
             data: components["schemas"]["BYOKKey"] & unknown;
         };
         UpdateGuardrailRequest: {
+            allow_provisional_providers?: boolean | null;
             allow_safety_retention_google?: boolean | null;
+            allow_safety_retention_openai?: boolean | null;
             allow_safety_retention_other?: boolean | null;
             allowed_data_regions?: string[] | null;
             allowed_models?: string[] | null;
@@ -1681,20 +1731,20 @@ export interface components {
             created_by: string | null;
             /** Format: uuid */
             default_guardrail_id: string;
-            default_image_model: string | null;
-            default_provider_sort: string | null;
-            default_text_model: string | null;
+            default_image_model?: string | null;
+            default_provider_sort?: string | null;
+            default_text_model?: string | null;
             description: string | null;
             disabled_server_tools?: string[] | null;
             /** Format: uuid */
             id: string;
             include_byok_in_budgets?: boolean;
-            io_logging_api_key_ids: number[] | null;
+            io_logging_api_key_ids?: number[] | null;
             /** Format: double */
-            io_logging_sampling_rate: number;
-            is_data_discount_logging_enabled: boolean;
-            is_observability_broadcast_enabled: boolean;
-            is_observability_io_logging_enabled: boolean;
+            io_logging_sampling_rate?: number;
+            is_data_discount_logging_enabled?: boolean;
+            is_observability_broadcast_enabled?: boolean;
+            is_observability_io_logging_enabled?: boolean;
             name: string;
             slug: string;
             updated_at: string | null;
@@ -1857,6 +1907,7 @@ export interface operations {
                     "keyterms[]"?: string[];
                     language?: string;
                     model: string;
+                    prompt?: string;
                     provider?: string;
                     /** @enum {string} */
                     response_format?: "json" | "verbose_json";
@@ -1886,7 +1937,7 @@ export interface operations {
             query?: {
                 limit?: number;
                 offset?: number | null;
-                provider?: BYOKProviderSlug_3bfdfa8e;
+                provider?: BYOKProviderSlug_1254e9ed;
                 workspace_id?: string;
             };
             header?: {
@@ -2120,6 +2171,7 @@ export interface operations {
     list: {
         parameters: {
             query?: {
+                creator_user_id?: string;
                 include_disabled?: boolean;
                 include_expired?: boolean;
                 offset?: number | null;
@@ -2234,18 +2286,42 @@ export interface operations {
                 input_modalities?: string;
                 limit?: number;
                 max_age_days?: number | null;
+                /** @deprecated */
                 max_agentic_index?: number | null;
+                /** @deprecated */
                 max_coding_index?: number | null;
+                max_cyber_index?: number | null;
+                max_decision_index?: number | null;
+                max_economics_index?: number | null;
+                max_engineering_index?: number | null;
+                max_finance_and_accounting_index?: number | null;
+                max_healthcare_and_medical_index?: number | null;
                 max_intelligence_index?: number | null;
+                max_legal_index?: number | null;
+                max_multilingual_index?: number | null;
+                max_openness_index?: number | null;
                 max_output_price?: number | null;
                 max_price?: number | null;
+                max_strategy_and_ops_index?: number | null;
                 max_tool_success_rate?: number | null;
                 min_age_days?: number | null;
+                /** @deprecated */
                 min_agentic_index?: number | null;
+                /** @deprecated */
                 min_coding_index?: number | null;
+                min_cyber_index?: number | null;
+                min_decision_index?: number | null;
+                min_economics_index?: number | null;
+                min_engineering_index?: number | null;
+                min_finance_and_accounting_index?: number | null;
+                min_healthcare_and_medical_index?: number | null;
                 min_intelligence_index?: number | null;
+                min_legal_index?: number | null;
+                min_multilingual_index?: number | null;
+                min_openness_index?: number | null;
                 min_output_price?: number | null;
                 min_price?: number | null;
+                min_strategy_and_ops_index?: number | null;
                 min_tool_success_rate?: number | null;
                 model_authors?: string;
                 offset?: number | null;
@@ -2253,7 +2329,7 @@ export interface operations {
                 providers?: string;
                 q?: string;
                 region?: "eu" | "us";
-                sort?: "most-popular" | "newest" | "top-weekly" | "pricing-low-to-high" | "pricing-high-to-low" | "context-high-to-low" | "throughput-high-to-low" | "latency-low-to-high" | "intelligence-high-to-low" | "coding-high-to-low" | "agentic-high-to-low" | "design-arena-elo-high-to-low";
+                sort?: "most-popular" | "newest" | "top-weekly" | "pricing-low-to-high" | "pricing-high-to-low" | "context-high-to-low" | "throughput-high-to-low" | "latency-low-to-high" | "intelligence-high-to-low" | "coding-high-to-low" | "agentic-high-to-low" | "finance-and-accounting-high-to-low" | "strategy-and-ops-high-to-low" | "legal-high-to-low" | "healthcare-and-medical-high-to-low" | "engineering-high-to-low" | "economics-high-to-low" | "cyber-high-to-low" | "openness-high-to-low" | "multilingual-high-to-low" | "decision-high-to-low" | "design-arena-elo-high-to-low";
                 supported_parameters?: string;
                 zdr?: "true";
             };
@@ -2505,7 +2581,7 @@ export interface operations {
         };
     };
 }
-type BYOKProviderSlug_3bfdfa8e = "ai21" | "aion-labs" | "akashml" | "alibaba" | "amazon-bedrock" | "amazon-bedrock/claude-on-aws" | "amazon-nova" | "ambient" | "antdigital" | "anthropic" | "anthropic/2" | "arcee-ai" | "assemblyai" | "atlas-cloud" | "avian" | "azure" | "baidu" | "baseten" | "black-forest-labs" | "byteplus" | "cerebras" | "chutes" | "cirrascale" | "clarifai" | "claude-on-aws" | "cloudflare" | "cohere" | "coreweave" | "cosine" | "crusoe" | "darkbloom" | "databricks" | "decart" | "deepgram" | "deepinfra" | "deepseek" | "dekallm" | "digitalocean" | "elevenlabs" | "featherless" | "fireworks" | "fish-audio" | "friendli" | "gmicloud" | "google-ai-studio" | "google-vertex" | "groq" | "heygen" | "inception" | "inceptron" | "inferact-vllm" | "inference-net" | "infermatic" | "inflection" | "io-net" | "ionstream" | "krea" | "kt" | "liquid" | "makora" | "mancer" | "mara" | "meta" | "minimax" | "mistral" | "modal" | "modelrun" | "modular" | "moonshotai" | "morph" | "near-ai" | "nebius" | "nex-agi" | "nextbit" | "novita" | "nvidia" | "ollama" | "open-inference" | "openai" | "parallel" | "parasail" | "pareto-alpha" | "particle-ai" | "pearl-research" | "perceptron" | "perplexity" | "phala" | "poolside" | "primalabs" | "primeintellect" | "quiver" | "recraft" | "recursive" | "reka" | "relace" | "respan" | "river" | "runway" | "sail-research" | "sakana" | "sakana-ai" | "sambanova" | "scaledown" | "seed" | "siliconflow" | "sourceful" | "stepfun" | "streamlake" | "switchpoint" | "tencent" | "tenstorrent" | "thinkingmachines" | "together" | "typesafe" | "unbiased" | "upstage" | "venice" | "voyageai" | "wafer" | "wandb" | "wandb-legacy" | "xai" | "xiaomi" | "z-ai";
+type BYOKProviderSlug_1254e9ed = "ai21" | "aion-labs" | "akashml" | "alibaba" | "amazon-bedrock" | "amazon-bedrock/claude-on-aws" | "amazon-nova" | "ambient" | "antdigital" | "anthropic" | "anthropic/2" | "arcee-ai" | "assemblyai" | "atlas-cloud" | "avian" | "azure" | "baidu" | "baseten" | "black-forest-labs" | "byteplus" | "cerebras" | "chutes" | "cirrascale" | "clarifai" | "claude-on-aws" | "cloudflare" | "cohere" | "coreweave" | "cosine" | "crusoe" | "darkbloom" | "databricks" | "decart" | "deepgram" | "deepinfra" | "deepseek" | "dekallm" | "digitalocean" | "doubleword" | "elevenlabs" | "featherless" | "fireworks" | "fish-audio" | "friendli" | "gmicloud" | "google-ai-studio" | "google-vertex" | "groq" | "heygen" | "inception" | "inceptron" | "inferact-vllm" | "inference-net" | "infermatic" | "inflection" | "io-net" | "ionstream" | "krea" | "kt" | "liquid" | "makora" | "mancer" | "mara" | "meta" | "minimax" | "mistral" | "modal" | "modelrun" | "modular" | "moonshotai" | "morph" | "near-ai" | "nebius" | "nex-agi" | "nextbit" | "novita" | "nvidia" | "ollama" | "open-inference" | "openai" | "parallel" | "parasail" | "pareto-alpha" | "pareto-inference" | "particle-ai" | "pearl-research" | "perceptron" | "perplexity" | "phala" | "poolside" | "primalabs" | "primeintellect" | "quiver" | "recraft" | "recursive" | "reka" | "relace" | "respan" | "river" | "runway" | "sail-research" | "sakana" | "sakana-ai" | "sambanova" | "scaledown" | "seed" | "siliconflow" | "sourceful" | "speechify" | "stepfun" | "streamlake" | "switchpoint" | "tencent" | "tenstorrent" | "thinkingmachines" | "together" | "typesafe" | "unbiased" | "upstage" | "venice" | "voyageai" | "wafer" | "wandb" | "wandb-legacy" | "xai" | "xiaomi" | "z-ai";
 type disabled_server_tools_4df4dc51 = ("openrouter:advisor" | "openrouter:apply_patch" | "openrouter:bash" | "openrouter:datetime" | "openrouter:fusion" | "openrouter:image_generation" | "openrouter:mcp" | "openrouter:experimental__search_models" | "openrouter:shell" | "openrouter:subagent" | "openrouter:tool_search" | "openrouter:web_fetch" | "openrouter:web_search")[] | null;
 type parameters_3c194877 = {
     query?: never;
