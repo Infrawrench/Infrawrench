@@ -407,6 +407,11 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
       expect(message).toContain(
         "claude mcp add --transport http infrawrench-git https://git.example.test/mcp",
       );
+      // The thread asks for its own token for this branch's page: none is sent to it.
+      expect(message).toContain(
+        `/branches/${encodeURIComponent(started.body.page.key)}/agent/token`,
+      );
+      expect(JSON.stringify(t3.calls)).not.toMatch(/iw[a-z]_[A-Za-z0-9_-]{8,}/);
       // Nothing of the forge's own goes to the environment: no session, no token.
       for (const request of t3.requests) {
         expect(request.headers["cookie"]).toBeUndefined();
@@ -554,6 +559,12 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
       expect(thread.messages.at(-1)).toContain("Use the shared limiter.");
       expect(thread.messages.at(-1)).toContain(`Its id is ${sent.body.id}.`);
       expect(thread.messages.at(-1)).toContain("work/add-rate-limits-to-the-api");
+      // How to mark it, and how to get a token again; never a token.
+      expect(thread.messages.at(-1)).toContain("mark_instruction_answered");
+      expect(thread.messages.at(-1)).toContain(
+        `/branches/${encodeURIComponent(started.body.page.key)}/agent/token`,
+      );
+      expect(JSON.stringify(t3.calls)).not.toMatch(/iw[a-z]_[A-Za-z0-9_-]{8,}/);
 
       // The laptop is asleep: the instruction waits, and the request still answers.
       t3.down = true;

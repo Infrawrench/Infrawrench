@@ -27,7 +27,7 @@ import {
   registerClient,
   revokeToken,
 } from "../oauth";
-import { remoteKey, workPrompt } from "../work";
+import { instructionMessage, remoteKey, workPrompt } from "../work";
 
 const SITE = ["git.example.test"];
 const REDIRECT = "https://git.example.test/auth/t3/callback";
@@ -552,7 +552,125 @@ describe("what a T3 Code thread is told", () => {
       "claude mcp add --transport http infrawrench-git https://git.example.test/mcp",
     );
     expect(prompt).toContain("Git credentials this machine already has");
-    expect(prompt).not.toMatch(/iw[gjk]_|Bearer|token=/);
     expect(prompt).not.toContain(String.fromCharCode(0x2014));
+  });
+
+  const target = {
+    repository: { owner: "acme", name: "infra" },
+    key: "work/add-rate-limits",
+    branch: "work/add-rate-limits",
+  };
+  /** Any credential of the forge's, by its shape. The commands name a header and a file, never a value. */
+  const CREDENTIAL = /iw[a-z]_[A-Za-z0-9_-]{8,}|eyJ[A-Za-z0-9_-]{10,}/;
+
+  it("teaches a thread to get its own token and record every marker", () => {
+    const prompt = workPrompt(
+      {
+        ...target,
+        pullRequestId: "pr-1",
+        title: "Add rate limits",
+        ask: "Do it.",
+        baseRef: "main",
+      },
+      "https://git.example.test",
+    );
+    // The token is asked for with the machine's Git credential, for this branch's page, and kept in a file.
+    expect(prompt).toContain("protocol=https\\nhost=git.example.test\\n\\n");
+    expect(prompt).toContain("GIT_TERMINAL_PROMPT=0 git credential fill");
+    expect(prompt).toContain(
+      "curl -fsS -K - -X POST https://git.example.test/api/repos/acme/infra/branches/work%2Fadd-rate-limits/agent/token",
+    );
+    expect(prompt).toContain('> "$(git rev-parse --git-dir)/infrawrench-git-token"');
+    expect(prompt).toContain(
+      'claude mcp add --transport http infrawrench-git https://git.example.test/mcp --header "Authorization: Bearer $(cat "$(git rev-parse --git-dir)/infrawrench-git-token")"',
+    );
+    expect(prompt).toContain("never print it");
+    expect(prompt).toContain("cannot clone or push");
+    expect(prompt).not.toMatch(CREDENTIAL);
+
+    // Every marker, by the name the tool takes.
+    for (const kind of ["ask", "step", "decision", "evidence", "doubt", "note"]) {
+      expect(prompt, kind).toContain(`\`${kind}\``);
+    }
+    for (const word of [
+      "what you ruled out",
+      "`anchors` (`path`, `start_line`, `end_line`)",
+      "`evidence.command`, `evidence.exit_code`",
+      "`needs_code: true` only when",
+      "`list_instructions`",
+      "`mark_instruction_delivered`",
+      "`mark_instruction_answered`",
+      "`report_finding`",
+      "`must_fix`",
+      "`should_fix`",
+      "::must-fix file=src/db.ts,line=42",
+      "`::should-fix`, `::note`, `::doubt`, `::decision`, `::step` and `::evidence`",
+      "https://infrawrench.com/skills/infrawrench-git.md",
+    ]) {
+      expect(prompt, word).toContain(word);
+    }
+
+    // One call, whole: what follows `-d` is the JSON-RPC request a shell would send.
+    const body = /-d '(\{.*\})'\n/.exec(prompt)?.[1];
+    const call = JSON.parse(body ?? "null");
+    expect(call).toMatchObject({
+      jsonrpc: "2.0",
+      method: "tools/call",
+      params: {
+        name: "record_trace",
+        arguments: { repository: "acme/infra", branch: "work/add-rate-limits" },
+      },
+    });
+    expect(call.params.arguments.entries.map((entry: { kind: string }) => entry.kind)).toEqual([
+      "decision",
+      "evidence",
+    ]);
+    expect(call.params.arguments.entries[0].anchors[0]).toEqual({
+      path: "src/client.ts",
+      start_line: 40,
+      end_line: 58,
+    });
+    expect(call.params.arguments.entries[1].evidence).toMatchObject({ exit_code: 0 });
+  });
+
+  it("keeps a name with a quote in it inside the shell's quotes", () => {
+    const prompt = workPrompt(
+      {
+        ...target,
+        branch: "work/it's",
+        pullRequestId: "pr-1",
+        title: "T",
+        ask: "A",
+        baseRef: "main",
+      },
+      "https://git.example.test",
+    );
+    expect(prompt).toContain(`"branch":"work/it'\\''s"`);
+  });
+
+  it("tells a thread an instruction with what to mark, how to record it and how to get a token again", () => {
+    const message = instructionMessage(
+      target,
+      { id: "ins_1", body: "Use the shared limiter." },
+      "https://git.example.test",
+    );
+    expect(message).toContain("Its id is ins_1.");
+    expect(message).toContain("Use the shared limiter.");
+    expect(message).toContain("https://git.example.test/acme/infra/branches/work/add-rate-limits");
+    expect(message).toContain("`instruction_id` `ins_1`");
+    expect(message.indexOf("mark_instruction_delivered")).toBeLessThan(
+      message.indexOf("mark_instruction_answered"),
+    );
+    expect(message).toContain("git push origin work/add-rate-limits");
+    for (const kind of ["step", "decision", "evidence", "doubt"]) {
+      expect(message, kind).toContain(`\`${kind}\``);
+    }
+    expect(message).toContain("what you ruled out");
+    // Renewal is the same exchange: the commands, again.
+    expect(message).toContain("answer 401");
+    expect(message).toContain("/branches/work%2Fadd-rate-limits/agent/token");
+    expect(message).toContain("https://infrawrench.com/skills/infrawrench-git.md");
+    expect(message).not.toMatch(CREDENTIAL);
+    expect(message).not.toContain(String.fromCharCode(0x2014));
   });
 });

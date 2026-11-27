@@ -19,9 +19,15 @@
  * person runs. T3 Code 0.1 has no event subscriptions, so nothing is pushed
  * back to the forge: a thread's state is asked for when a page wants it.
  *
- * Nothing of the forge's is sent but what is written here: the ask, names
- * and addresses. The thread pushes with the Git credentials on its own
- * machine. No token of the forge's ever goes to an environment.
+ * Nothing of the forge's is sent but what is written here: the ask, names,
+ * addresses and commands. The thread pushes with the Git credentials on its
+ * own machine. No token of the forge's ever goes to an environment: T3 Code
+ * 0.1 gives an outside client no way to hand a thread a secret (no
+ * environment variables on `t3_thread_launch`, and `request_secret` is the
+ * thread's to call and its person's to answer), so a token sent would sit in
+ * the thread's messages. The thread asks for its own instead
+ * ({@link markerSetup}): a token for its one branch's markers, in exchange
+ * for the Git credential its machine already has (`api/agent-token.ts`).
  */
 import type { T3Thread } from "@infrawrench/git-contract";
 import { branchPagePath, httpCloneUrl } from "@infrawrench/git-contract";
@@ -256,6 +262,118 @@ export interface WorkToStart {
 /** The longest ask sent whole. T3 Code takes 120,000 characters of first message. */
 const MAX_ASK = 100_000;
 
+/** Where the skill that says the rest is. */
+const SKILL_URL = "https://infrawrench.com/skills/infrawrench-git.md";
+
+/** Where a thread keeps its token: its worktree's Git directory, which no commit and no push carries. */
+const TOKEN_FILE = '"$(git rev-parse --git-dir)/infrawrench-git-token"';
+
+export interface MarkerTarget {
+  readonly repository: WorkRepository;
+  /** The page's key (`db/branch-pages.ts`). */
+  readonly key: string;
+  readonly branch: string;
+}
+
+/**
+ * The commands that give a thread the forge's tools for its branch: a token
+ * for the branch's markers, asked for with the Git credential the machine
+ * pushes with and kept in a file the agent never prints, then the MCP
+ * server with that token as its header. Nothing here is a secret.
+ */
+export const markerSetup = (target: MarkerTarget, siteOrigin: string): string => {
+  const { owner, name } = target.repository;
+  const site = new URL(siteOrigin);
+  const exchange = `${siteOrigin}/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+    name,
+  )}/branches/${encodeURIComponent(target.key)}/agent/token`;
+  return [
+    "```sh",
+    "umask 077",
+    `printf 'protocol=${site.protocol.replace(":", "")}\\nhost=${site.host}\\n\\n' | GIT_TERMINAL_PROMPT=0 git credential fill \\`,
+    `  | sed -n 's/^password=\\(.*\\)$/header = "Authorization: Bearer \\1"/p' \\`,
+    `  | curl -fsS -K - -X POST ${exchange} \\`,
+    `  | sed -n 's/.*"token":"\\([^"]*\\)".*/\\1/p' > ${TOKEN_FILE}`,
+    `claude mcp remove infrawrench-git 2>/dev/null`,
+    `claude mcp add --transport http infrawrench-git ${siteOrigin}/mcp --header "Authorization: Bearer $(cat ${TOKEN_FILE})"`,
+    "```",
+  ].join("\n");
+};
+
+/** One call of a tool over HTTP, for a session that does not have the server's tools loaded. */
+const exampleCall = (target: MarkerTarget, siteOrigin: string): string => {
+  const { owner, name } = target.repository;
+  const call = {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "tools/call",
+    params: {
+      name: "record_trace",
+      arguments: {
+        repository: `${owner}/${name}`,
+        branch: target.branch,
+        agent_name: "Claude Code",
+        entries: [
+          {
+            kind: "decision",
+            body: "Kept the retry in the client: the server cannot tell a timeout from a refusal. Ruled out a queue, which this path does not need.",
+            anchors: [{ path: "src/client.ts", start_line: 40, end_line: 58 }],
+            needs_code: true,
+          },
+          {
+            kind: "evidence",
+            body: "The client tests pass.",
+            evidence: { command: "pnpm test client", exit_code: 0, output: "12 passed" },
+          },
+        ],
+      },
+    },
+  };
+  return [
+    "```sh",
+    `curl -fsS ${siteOrigin}/mcp -H "Authorization: Bearer $(cat ${TOKEN_FILE})" \\`,
+    `  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \\`,
+    // Inside single quotes for the shell: a quote in a name closes them, is escaped, and opens them again.
+    `  -d '${JSON.stringify(call).replaceAll("'", "'\\''")}'`,
+    "```",
+  ].join("\n");
+};
+
+/**
+ * How a thread reports to the reviewers: the tools' setup, what to record
+ * and when, instructions, findings and a CI job's notes. Sent with the ask,
+ * and what an instruction's message points back to.
+ */
+export const reportingGuide = (target: MarkerTarget, siteOrigin: string): string => {
+  const { owner, name } = target.repository;
+  const host = new URL(siteOrigin).host;
+  return [
+    `Reviewers read how the work was made beside each version. Record it with the forge's MCP server, \`infrawrench-git\` (${siteOrigin}/mcp). If its tools already answer (\`whoami\`), use them. If not, run this once in the worktree:`,
+    markerSetup(target, siteOrigin),
+    [
+      `The first command asks the forge for a token with the Git credential this machine has for ${host}. The token is for this branch's trace, instructions and findings and nothing else (it cannot clone or push), lasts six hours, and stays in that file: never print it, and never put it in a message, a commit or a trace. When a call answers 401, run the commands again. If the first command writes an empty file, this machine has no HTTPS credential for ${host}: say so and carry on with the work.`,
+      `The tools load when your session next starts. Until then, and in any agent that is not Claude Code, call them over HTTP, one request each. \`tools/list\` in place of \`tools/call\` describes every tool. This is \`record_trace\`:`,
+    ].join("\n\n"),
+    exampleCall(target, siteOrigin),
+    [
+      `What to record, with \`repository\` \`${owner}/${name}\` and \`branch\` \`${target.branch}\`:`,
+      "",
+      `1. \`ask\`, once, before you start: what you were asked, as you understood it.`,
+      `2. \`step\`, after each piece of work: what you changed and why, with \`anchors\` (\`path\`, \`start_line\`, \`end_line\`) to the code.`,
+      `3. \`decision\`, whenever you choose: what you chose, the reason, and what you ruled out.`,
+      `4. \`evidence\`, for every test, build or check you run, failures too: \`evidence.command\`, \`evidence.exit_code\` and the lines of \`evidence.output\` that show the result.`,
+      `5. \`doubt\`, for what you are unsure of, skipped or could not verify. Reviewers read these first. \`note\` for anything else they should know.`,
+      `6. Set \`needs_code: true\` only when the entry cannot be understood without seeing the anchored lines. Most decisions and doubts stand on their own.`,
+      `7. Record before \`git push\`: entries are attached to the version the next push makes.`,
+      `8. Reviewers' instructions arrive here as messages, and \`list_instructions\` lists them. Call \`mark_instruction_delivered\` when you take one on, do it, record it, and call \`mark_instruction_answered\` before the push that answers it. If you decide not to do it, record a \`decision\` saying why, then mark it answered.`,
+      `9. If you are asked to review rather than write, report with \`report_finding\` under a \`reviewer\` name of your own: \`must_fix\` only for what must not merge, \`should_fix\`, or \`note\`, each with \`path\`, lines and evidence, and \`complete: true\` when the list is everything you found.`,
+      `10. A CI job you write reports by printing a line, with no token: \`::must-fix file=src/db.ts,line=42,title=Unbounded query::This read has no LIMIT.\` The commands are \`::must-fix\`, \`::should-fix\`, \`::note\`, \`::doubt\`, \`::decision\`, \`::step\` and \`::evidence\`.`,
+      "",
+      `The rest is in the skill: ${SKILL_URL}`,
+    ].join("\n"),
+  ].join("\n\n");
+};
+
 /** The first message of a thread started from an ask. */
 export const workPrompt = (work: WorkToStart, siteOrigin: string): string => {
   const { owner, name } = work.repository;
@@ -278,15 +396,7 @@ export const workPrompt = (work: WorkToStart, siteOrigin: string): string => {
       `- Pushing uses the Git credentials this machine already has for ${host}: none were sent with this message. If a push is refused for lack of them, stop and say so.`,
     ].join("\n"),
     "## Reporting to the reviewers",
-    [
-      `Add the forge's MCP server to your tools, once, and use it:`,
-      "",
-      `    claude mcp add --transport http infrawrench-git ${siteOrigin}/mcp`,
-      "",
-      `(or the same server in whichever agent you are). With it:`,
-      `- Record a trace as you go: the ask as you understood it, the steps you took, what you decided and why, evidence (commands and what they printed), and what you are unsure of. It is shown beside the version your next push makes.`,
-      `- Reviewers send instructions. They arrive in this thread as messages, and \`list_instructions\` lists them. Mark an instruction answered before you push the change that answers it, so the version says so.`,
-    ].join("\n"),
+    reportingGuide(work, siteOrigin),
   ].join("\n\n");
 };
 
@@ -360,6 +470,35 @@ const environmentOfLink = async (link: {
   return row;
 };
 
+/**
+ * What a thread is told when a reviewer sends an instruction. It carries the
+ * tools' setup again: the thread may be one a person named, which never got
+ * the first message, and a token asked for hours ago has run out.
+ */
+export const instructionMessage = (
+  target: MarkerTarget,
+  instruction: { readonly id: string; readonly body: string },
+  siteOrigin: string,
+): string => {
+  const { owner, name } = target.repository;
+  const page = `${siteOrigin}${pagePath({ owner, repo: name }, target.key)}`;
+  const id = instruction.id;
+  return [
+    `A reviewer sent an instruction for the branch \`${target.branch}\` (${page}). Its id is ${id}.`,
+    instruction.body,
+    [
+      `With the \`infrawrench-git\` tools (\`repository\` \`${owner}/${name}\`, \`branch\` \`${target.branch}\`, \`instruction_id\` \`${id}\`):`,
+      "",
+      `1. \`mark_instruction_delivered\` now, so the reviewer sees you have it.`,
+      `2. Do the work. Record it with \`record_trace\`: a \`step\` for what you changed, a \`decision\` with its reason and what you ruled out, \`evidence\` for each check you ran (command, exit code, the output that shows the result), a \`doubt\` for what you could not verify.`,
+      `3. \`mark_instruction_answered\`, then \`git push origin ${target.branch}\`. If you decide not to do what was asked, record a \`decision\` saying why, then mark it answered.`,
+    ].join("\n"),
+    `If the tools are missing or answer 401 (the token lasts six hours), run this in the worktree, then go on. It asks the forge for a token for this branch's trace, instructions and findings with the Git credential this machine has; never print the token or the file.`,
+    markerSetup(target, siteOrigin),
+    `How to call a tool over HTTP when the tools are not loaded, and everything else: ${SKILL_URL}`,
+  ].join("\n\n");
+};
+
 /** Tell a T3 Code thread an instruction (`review/instructions.ts` `InstructionSender`). */
 export const sendInstructionToThread: InstructionSender = async (env, target, instruction) => {
   const threadId = target.link.externalRefs[T3_REFS.thread];
@@ -367,15 +506,16 @@ export const sendInstructionToThread: InstructionSender = async (env, target, in
   const deps = t3Deps(env);
   const row = await environmentOfLink(target.link);
   const { owner, repository } = target.repo;
-  const page = `${deps.siteOrigin}${pagePath(
-    { owner: owner.slug, repo: repository.name },
-    await pageKey(target.pull.pull),
-  )}`;
-  const message = [
-    `A reviewer sent an instruction for the branch \`${target.pull.pull.headRef}\` (${page}). Its id is ${instruction.id}.`,
-    instruction.body,
-    `Mark instruction ${instruction.id} answered with the infrawrench-git MCP server before you push the change that answers it, then push to \`${target.pull.pull.headRef}\`.`,
-  ].join("\n\n");
+  const key = await pageKey(target.pull.pull);
+  const message = instructionMessage(
+    {
+      repository: { owner: owner.slug, name: repository.name },
+      key,
+      branch: target.pull.pull.headRef,
+    },
+    instruction,
+    deps.siteOrigin,
+  );
   await withEnvironment(deps, row, (client) =>
     client.callTool("t3_thread_send", {
       threadId,
