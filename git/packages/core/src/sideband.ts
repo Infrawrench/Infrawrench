@@ -17,6 +17,8 @@ export const SIDE_BAND_MAX_LENGTH = 1000;
 /** Whole-packet limit under `side-band-64k`. */
 export const SIDE_BAND_64K_MAX_LENGTH = PKT_MAX_LENGTH;
 
+const HEX_DIGITS = "0123456789abcdef";
+
 /**
  * Frames `data` for a channel, split over as many packets as the limit
  * needs. `maxLength` is the whole packet: 5 bytes of it are length and channel.
@@ -38,6 +40,51 @@ export function encodeSideBand(
     payload[0] = channel;
     payload.set(bytes.subarray(at, at + take), 1);
     out.push(encodePktLine(payload));
+  }
+  return out;
+}
+
+/**
+ * Frames the first `take` bytes of `pieces` for a channel as one buffer of
+ * packets, each full but the last. The bytes are copied once, from where
+ * they are to where they go out: a pack is sent through here, all of it.
+ */
+export function encodeSideBandRun(
+  channel: SideBandChannel,
+  pieces: readonly Uint8Array[],
+  take: number,
+  maxLength: number = SIDE_BAND_64K_MAX_LENGTH,
+): Uint8Array {
+  const room = maxLength - 5;
+  if (room < 1 || maxLength > PKT_MAX_LENGTH) {
+    throw new GitError("bad-pkt-line", "side-band packet limit is out of range");
+  }
+  const out = new Uint8Array(take + 5 * Math.ceil(take / room));
+  let at = 0;
+  let piece = 0;
+  let within = 0;
+  for (let left = take; left > 0;) {
+    const payload = Math.min(room, left);
+    const length = payload + 5;
+    out[at++] = HEX_DIGITS.charCodeAt(length >>> 12);
+    out[at++] = HEX_DIGITS.charCodeAt((length >>> 8) & 15);
+    out[at++] = HEX_DIGITS.charCodeAt((length >>> 4) & 15);
+    out[at++] = HEX_DIGITS.charCodeAt(length & 15);
+    out[at++] = channel;
+    for (let need = payload; need > 0;) {
+      const from = pieces[piece];
+      if (from === undefined) throw new GitError("bad-pkt-line", "side-band run is cut short");
+      const copy = Math.min(need, from.length - within);
+      out.set(from.subarray(within, within + copy), at);
+      at += copy;
+      within += copy;
+      need -= copy;
+      if (within === from.length) {
+        piece++;
+        within = 0;
+      }
+    }
+    left -= payload;
   }
   return out;
 }

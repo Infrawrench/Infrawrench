@@ -17,6 +17,7 @@ import {
   encodePktLine,
   encodePktLines,
   encodeSideBand,
+  encodeSideBandRun,
   indexPack,
   memoryRangeReader,
   muxSideBand,
@@ -153,6 +154,24 @@ describe("side-band", () => {
     }
     expect(encodeSideBand(1, new Uint8Array(0))).toEqual([]);
     expect(() => encodeSideBand(1, data, 5)).toThrow(GitError);
+  });
+
+  it("frames a run of pieces as the same packets, in one buffer", () => {
+    const data = randomBytes(200_000, prng(11));
+    for (const limit of [SIDE_BAND_MAX_LENGTH, PKT_MAX_LENGTH]) {
+      const expected = concatBytes(encodeSideBand(1, data, limit));
+      for (const size of [1, 7, 994, 995, 996, 65_515, 70_000, data.length]) {
+        const pieces = [...chunked(data, size)];
+        expect(Buffer.compare(encodeSideBandRun(1, pieces, data.length, limit), expected)).toBe(0);
+      }
+      // Only what was asked for: the rest of the last piece is the caller's to send later.
+      const room = limit - 5;
+      const part = encodeSideBandRun(1, [data.subarray(0, 10), data.subarray(10)], room * 2, limit);
+      expect(Buffer.compare(part, expected.subarray(0, limit * 2))).toBe(0);
+    }
+    expect(encodeSideBandRun(1, [], 0)).toHaveLength(0);
+    expect(() => encodeSideBandRun(1, [data.subarray(0, 10)], 11)).toThrow(GitError);
+    expect(() => encodeSideBandRun(1, [data], 10, 5)).toThrow(GitError);
   });
 
   it("surfaces a channel 3 message as an error and rejects unknown channels", async () => {

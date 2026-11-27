@@ -36,6 +36,7 @@ import { BASIC_CHALLENGE } from "../../auth/credentials";
 import { ANONYMOUS, type Principal, principalActor } from "../../auth/principal";
 import type { Env } from "../../env";
 import type { Admit } from "../../http/admission";
+import { bigReads } from "../../repo/do/big-reads";
 import { repoClient } from "../../repo/do/client";
 import type { GitDirectory, RequestLike, ResolvedRepository } from "../directory";
 import { parseRepositoryPath } from "../directory";
@@ -207,6 +208,9 @@ function requestBody(
   return { body: service === "git-upload-pack" ? capped(body, MAX_NEGOTIATION_BYTES) : body };
 }
 
+/** A push's pack goes on to the repository's object in pieces of at least this. */
+const UPLOAD_PIECE_BYTES = 256 * 1024;
+
 /**
  * `stream`, passed through this Worker's own code rather than handed to the
  * runtime as it is.
@@ -217,18 +221,21 @@ function requestBody(
  * the 30 seconds Cloudflare allows after a request ends, then is cancelled. A
  * push the object takes longer than that to read was cut off halfway
  * ("client disconnected" in the object, "internal error" in git). Carried
- * through a transform of our own, both the upload and the answer keep the
+ * through a stream of our own, both the upload and the answer keep the
  * request open until the answer is complete. Local `wrangler dev` does not
  * apply the 30 seconds, so only production showed it.
+ *
+ * It is read in large pieces (`bigReads`): read the ordinary way, a pack
+ * crossed this Worker 4 096 bytes at a turn of the event loop, which in
+ * production was about 1.4 MiB/s (#1447). `atLeast` is for the upload of a
+ * push, which nothing waits on piece by piece; an answer leaves as it
+ * arrives, because it carries keep-alive packets.
  */
-export function carried(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
-  return stream.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        controller.enqueue(chunk);
-      },
-    }),
-  );
+export function carried(
+  stream: ReadableStream<Uint8Array>,
+  atLeast = 0,
+): ReadableStream<Uint8Array> {
+  return bigReads(stream, { atLeast });
 }
 
 /**
@@ -354,7 +361,7 @@ export async function gitHttp(
       // The rules are only needed once refs are about to move.
       policy: push && !advertise ? await repository.pushPolicy() : null,
     },
-    input.body === null ? null : carried(input.body),
+    input.body === null ? null : carried(input.body, push ? UPLOAD_PIECE_BYTES : 0),
     request.signal,
   );
   if (!response.ok) return text(502, "The repository could not be reached.\n");

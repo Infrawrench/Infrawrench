@@ -5,8 +5,16 @@ import type { CiConcurrencyEntry } from "../../db/ci-schema";
 // `concurrency.ts` imports the database client at load; the decision is pure.
 vi.mock("../../db/client.js", () => ({ db: {} }));
 
-const { activeGroups, decideAdmission, entriesFrom, groupScope, nothingToRun, runPlatforms } =
-  await import("../concurrency");
+const {
+  PIPELINE_READ_TIMEOUT_MS,
+  activeGroups,
+  decideAdmission,
+  entriesFrom,
+  groupScope,
+  nothingToRun,
+  resolveConcurrency,
+  runPlatforms,
+} = await import("../concurrency");
 type AdmissionRun = Parameters<typeof decideAdmission>[0];
 
 const entry = (
@@ -233,5 +241,62 @@ describe("platforms", () => {
     ).toEqual(["linux", "windows"]);
     expect(runPlatforms([{ ...base, file: "c.yml", pipeline: "C" }])).toEqual([]);
     expect(runPlatforms([])).toEqual([]);
+  });
+});
+
+describe("resolveConcurrency", () => {
+  const configured = async <T>(work: () => Promise<T>): Promise<T> => {
+    vi.stubEnv("CI_PROXY_URL", "https://proxy.example");
+    vi.stubEnv("CI_PROXY_KEY", "key");
+    try {
+      return await work();
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+  };
+
+  it("gives the runners longer to read the pipelines than any other call gets", async () => {
+    // The one call a runner answers by fetching a commit: a first fetch of a
+    // large repository outlasted the 20 seconds every other call has (#1447).
+    expect(PIPELINE_READ_TIMEOUT_MS).toBeGreaterThan(20_000);
+    // The dispatcher's claim on the run is two minutes, and the dispatch follows this read.
+    expect(PIPELINE_READ_TIMEOUT_MS + 20_000).toBeLessThan(2 * 60_000);
+    await configured(async () => {
+      const limit = vi.spyOn(AbortSignal, "timeout");
+      const fetched = vi.fn(async (_url: string, _init: RequestInit) =>
+        Response.json({ pipelines: [] }),
+      );
+      vi.stubGlobal("fetch", fetched);
+      await resolveConcurrency({ repo: "https://git.example/a/b.git" });
+      expect(limit).toHaveBeenCalledWith(PIPELINE_READ_TIMEOUT_MS);
+      expect(fetched.mock.calls[0]![1].signal).toBe(limit.mock.results[0]!.value);
+      limit.mockRestore();
+
+      // A read that outlasts even that is a retry, never a run with no pipelines.
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          throw new DOMException("The operation was aborted due to timeout", "TimeoutError");
+        }),
+      );
+      expect(await resolveConcurrency({ repo: "https://git.example/a/b.git" })).toEqual({
+        retry: expect.stringContaining("did not answer"),
+      });
+    });
+  });
+
+  it("reads the pipelines a runner lists", async () => {
+    await configured(async () => {
+      const fetched = vi.fn(async (_url: string, _init: RequestInit) =>
+        Response.json({ pipelines: [{ file: "test.yml", name: "Test" }] }),
+      );
+      vi.stubGlobal("fetch", fetched);
+      const resolved = await resolveConcurrency({ repo: "https://git.example/a/b.git" });
+      expect(fetched.mock.calls[0]![0]).toBe("https://proxy.example/v1/concurrency");
+      expect("entries" in resolved && resolved.entries.map((entry) => entry.file)).toEqual([
+        "test.yml",
+      ]);
+    });
   });
 });

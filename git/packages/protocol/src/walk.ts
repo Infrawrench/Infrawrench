@@ -5,6 +5,7 @@
  */
 import {
   GitError,
+  type GitObject,
   type ObjectId,
   type ObjectReader,
   decodeLatin1,
@@ -466,6 +467,42 @@ export async function wantsCovered(
   return true;
 }
 
+/** How many of a shallow client's commits are looked at for what it already has. */
+const MAX_SHALLOW_EDGES = 32;
+
+/**
+ * The edges of a fetch into a shallow clone: `edges`, and the newest of the
+ * commits the client said it has.
+ *
+ * An edge is normally a commit the client has that is a parent of one being
+ * sent, and its trees and blobs are left out of the pack. A shallow fetch
+ * stops at its boundary, so the walk never looks at the parents of what it
+ * sends and finds no edge at all: a client that has yesterday's commit and
+ * asks for today's at depth 1 was sent every file again, where it needed
+ * the handful that changed. Git answers this the same way (`rev-list
+ * --objects-edge-aggressive`, which upload-pack passes for a shallow
+ * client): every commit the client names counts, parent or not. A client
+ * has the whole tree of any commit it has, shallow or not, so this only
+ * ever leaves out objects it holds.
+ */
+export async function shallowEdges(
+  graph: CommitGraph,
+  edges: readonly ObjectId[],
+  haves: readonly ObjectId[],
+): Promise<ObjectId[]> {
+  const seen = new Set(edges);
+  const dated: Array<{ readonly oid: ObjectId; readonly time: number }> = [];
+  for (const oid of haves) {
+    if (seen.has(oid)) continue;
+    seen.add(oid);
+    const node = await graph.get(oid);
+    if (node) dated.push({ oid, time: node.time });
+  }
+  // Newest first: the nearest thing to what is being sent shares the most with it.
+  dated.sort((a, b) => b.time - a.time);
+  return [...edges, ...dated.slice(0, MAX_SHALLOW_EDGES).map((each) => each.oid)];
+}
+
 export interface ObjectSelection {
   /** Everything to send, commits first. */
   readonly objects: OidSet;
@@ -473,20 +510,39 @@ export interface ObjectSelection {
   readonly have: OidSet;
 }
 
+/**
+ * Trees read at once while a tree is walked. Storage answers each read with
+ * a round trip to an object store, so a walk that waits for one tree before
+ * asking for the next takes as many round trips as there are trees: a
+ * monorepo has thousands under one commit. The order trees are visited in
+ * changes nothing about what is selected.
+ */
+const TREES_AT_ONCE = 32;
+
+/** Takes the next batch off the stack and reads it: null where an object is missing. */
+async function readBatch(
+  reader: ObjectReader,
+  stack: ObjectId[],
+): Promise<Array<{ readonly oid: ObjectId; readonly object: GitObject | null }>> {
+  const batch = stack.splice(Math.max(0, stack.length - TREES_AT_ONCE));
+  const objects = await Promise.all(batch.map((oid) => reader.read(oid)));
+  return batch.map((oid, index) => ({ oid, object: objects[index]! }));
+}
+
 /** Marks a tree and everything under it. */
 async function markTree(reader: ObjectReader, root: ObjectId, into: OidSet): Promise<void> {
   if (!into.add(root)) return;
   const stack = [root];
   while (stack.length > 0) {
-    const oid = stack.pop()!;
-    const object = await reader.read(oid);
-    // An edge commit's tree may be past the repository's own shallow point.
-    if (!object || object.type !== "tree") continue;
-    const subtrees: number[] = [];
-    forEachTreeEntry(object.data, (isTree, source, at) => {
-      if (into.addBytes(source, at) && isTree) subtrees.push(into.size - 1);
-    });
-    for (const index of subtrees) stack.push(into.list.hexAt(index));
+    for (const { object } of await readBatch(reader, stack)) {
+      // An edge commit's tree may be past the repository's own shallow point.
+      if (!object || object.type !== "tree") continue;
+      const subtrees: number[] = [];
+      forEachTreeEntry(object.data, (isTree, source, at) => {
+        if (into.addBytes(source, at) && isTree) subtrees.push(into.size - 1);
+      });
+      for (const index of subtrees) stack.push(into.list.hexAt(index));
+    }
   }
 }
 
@@ -500,16 +556,16 @@ async function addTree(
   if (have.has(root) || !objects.add(root)) return;
   const stack = [root];
   while (stack.length > 0) {
-    const oid = stack.pop()!;
-    const object = await reader.read(oid);
-    if (!object) throw new GitError("missing-object", `tree ${oid} is missing`);
-    if (object.type !== "tree") throw new GitError("bad-object", `${oid} is not a tree`);
-    const subtrees: number[] = [];
-    forEachTreeEntry(object.data, (isTree, source, at) => {
-      if (have.hasBytes(source, at)) return;
-      if (objects.addBytes(source, at) && isTree) subtrees.push(objects.size - 1);
-    });
-    for (const index of subtrees) stack.push(objects.list.hexAt(index));
+    for (const { oid, object } of await readBatch(reader, stack)) {
+      if (!object) throw new GitError("missing-object", `tree ${oid} is missing`);
+      if (object.type !== "tree") throw new GitError("bad-object", `${oid} is not a tree`);
+      const subtrees: number[] = [];
+      forEachTreeEntry(object.data, (isTree, source, at) => {
+        if (have.hasBytes(source, at)) return;
+        if (objects.addBytes(source, at) && isTree) subtrees.push(objects.size - 1);
+      });
+      for (const index of subtrees) stack.push(objects.list.hexAt(index));
+    }
   }
 }
 

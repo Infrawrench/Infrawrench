@@ -21,52 +21,103 @@ export interface CachedRangeReaderOptions {
   readonly blockSize?: number;
   /** Blocks kept. Default 8, so 4 MiB at the default block size. */
   readonly maxBlocks?: number;
+  /**
+   * Blocks fetched beyond one that is missed right after the block before
+   * it was used: reads marching through a file ask for the next blocks
+   * while the first is still on its way. Default 0.
+   */
+  readonly readAhead?: number;
 }
 
 /**
- * Wraps a range reader so that many small reads close together become few
- * large ones. Resolving deltas reads one entry at a time, and an object
- * store charges a round trip for each.
+ * Blocks of one or more files, kept as they are fetched, so that many small
+ * reads close together become few large ones. Resolving deltas reads one
+ * entry at a time, and an object store charges a round trip for each. One
+ * cache can serve several files (every pack of a repository), which share
+ * its room.
  */
+export class RangeBlockCache {
+  readonly blockSize: number;
+  private readonly maxBlocks: number;
+  private readonly readAhead: number;
+  // A block is kept as the promise of its bytes, so reads that overlap in
+  // time and miss on the same block wait for one fetch, not one each.
+  private readonly blocks = new Map<string, Promise<Uint8Array>>();
+
+  constructor(options: CachedRangeReaderOptions = {}) {
+    this.blockSize = options.blockSize ?? 512 * 1024;
+    this.maxBlocks = options.maxBlocks ?? 8;
+    this.readAhead = options.readAhead ?? 0;
+  }
+
+  private fetch(file: string, index: number, read: ReadRange): Promise<Uint8Array> {
+    const key = `${file}:${index}`;
+    const fetched = read(index * this.blockSize, this.blockSize);
+    this.blocks.set(key, fetched);
+    // A failed fetch is not an answer: the next read of the block asks again.
+    fetched.catch(() => {
+      if (this.blocks.get(key) === fetched) this.blocks.delete(key);
+    });
+    if (this.blocks.size > this.maxBlocks) this.blocks.delete(this.blocks.keys().next().value!);
+    return fetched;
+  }
+
+  private block(file: string, index: number, read: ReadRange, size: number): Promise<Uint8Array> {
+    const key = `${file}:${index}`;
+    const hit = this.blocks.get(key);
+    if (hit) {
+      this.blocks.delete(key);
+      this.blocks.set(key, hit);
+      return hit;
+    }
+    if (this.readAhead > 0 && index > 0 && this.blocks.has(`${file}:${index - 1}`)) {
+      for (let ahead = 1; ahead <= this.readAhead; ahead++) {
+        const next = index + ahead;
+        if (next * this.blockSize >= size) break;
+        if (!this.blocks.has(`${file}:${next}`)) this.fetch(file, next, read);
+      }
+    }
+    // Fetched last, so it is the newest: the blocks read ahead leave before it does.
+    return this.fetch(file, index, read);
+  }
+
+  /**
+   * A reader of one file through this cache. `file` tells its blocks from
+   * another file's; `size` is where the file ends, which read-ahead stops at.
+   */
+  reader(file: string, read: ReadRange, size = Number.POSITIVE_INFINITY): ReadRange {
+    const { blockSize } = this;
+    return async (offset, length) => {
+      // A read that would fill the cache by itself is better served directly.
+      if (length >= blockSize * 2) return read(offset, length);
+      const out = new Uint8Array(length);
+      let filled = 0;
+      while (filled < length) {
+        const at = offset + filled;
+        const index = Math.floor(at / blockSize);
+        const bytes = await this.block(file, index, read, size);
+        const start = at - index * blockSize;
+        if (start >= bytes.length) break;
+        const take = Math.min(bytes.length - start, length - filled);
+        out.set(bytes.subarray(start, start + take), filled);
+        filled += take;
+        if (bytes.length < blockSize) break;
+      }
+      return filled === length ? out : out.subarray(0, filled);
+    };
+  }
+
+  clear(): void {
+    this.blocks.clear();
+  }
+}
+
+/** A range reader through a block cache of its own. */
 export function cachedRangeReader(
   read: ReadRange,
   options: CachedRangeReaderOptions = {},
 ): ReadRange {
-  const blockSize = options.blockSize ?? 512 * 1024;
-  const maxBlocks = options.maxBlocks ?? 8;
-  const blocks = new Map<number, Uint8Array>();
-
-  const block = async (index: number): Promise<Uint8Array> => {
-    const hit = blocks.get(index);
-    if (hit) {
-      blocks.delete(index);
-      blocks.set(index, hit);
-      return hit;
-    }
-    const bytes = await read(index * blockSize, blockSize);
-    blocks.set(index, bytes);
-    if (blocks.size > maxBlocks) blocks.delete(blocks.keys().next().value!);
-    return bytes;
-  };
-
-  return async (offset, length) => {
-    // A read that would fill the cache by itself is better served directly.
-    if (length >= blockSize * 2) return read(offset, length);
-    const out = new Uint8Array(length);
-    let filled = 0;
-    while (filled < length) {
-      const at = offset + filled;
-      const index = Math.floor(at / blockSize);
-      const bytes = await block(index);
-      const start = at - index * blockSize;
-      if (start >= bytes.length) break;
-      const take = Math.min(bytes.length - start, length - filled);
-      out.set(bytes.subarray(start, start + take), filled);
-      filled += take;
-      if (bytes.length < blockSize) break;
-    }
-    return filled === length ? out : out.subarray(0, filled);
-  };
+  return new RangeBlockCache(options).reader("", read);
 }
 
 /** A range reader over bytes already in memory, for small packs and tests. */

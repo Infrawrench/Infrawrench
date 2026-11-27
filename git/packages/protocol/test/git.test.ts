@@ -181,6 +181,37 @@ describeGit.each(transports)("clone and fetch over $name", ({ url, version }) =>
     expect(sent).toBe(4);
   });
 
+  it("sends a shallow clone only what changed when it fetches the next commit", async () => {
+    // What a CI runner does: one commit at depth 1, then the next one by id into the same cache.
+    const { server, source } = current;
+    const clone = join(tempDir("ci"), "clone");
+    await git([...v, "clone", "-q", "--depth", "1", url(server), clone]);
+    const next = await commitFile(source, "dir/file-0.txt", "changed\n".repeat(60), "after clone");
+    const after = await commitFile(source, "dir/file-1.txt", "again\n".repeat(60), "and again");
+    await git(["push", "-q", "origin", "main"], { cwd: source });
+    server.requests.length = 0;
+
+    await git([...v, "fetch", "-q", "--depth", "1", "origin", next], { cwd: clone });
+    await git(["fsck", "--strict"], { cwd: clone });
+    expect(await gitOut(["rev-parse", "FETCH_HEAD^{tree}"], { cwd: clone })).toBe(
+      await gitOut(["rev-parse", `${next}^{tree}`], { cwd: source }),
+    );
+    let sent = server.requests.reduce((sum, request) => sum + request.stats.objectsSent, 0);
+    // One commit, two trees (root and dir) and one blob: not every file of the commit again.
+    expect(sent).toBe(4);
+
+    // And once more, from a clone whose shallow commits are now two. A runner keeps a ref on
+    // each commit it fetched, which is what makes the client name it as one it has.
+    await git(["update-ref", "refs/ci/c/1", "FETCH_HEAD"], { cwd: clone });
+    server.requests.length = 0;
+    await git([...v, "fetch", "-q", "--depth", "1", "origin", after], { cwd: clone });
+    await git(["fsck", "--strict"], { cwd: clone });
+    await git(["checkout", "-q", "FETCH_HEAD"], { cwd: clone });
+    expect(await gitOut(["status", "--porcelain"], { cwd: clone })).toBe("");
+    sent = server.requests.reduce((sum, request) => sum + request.stats.objectsSent, 0);
+    expect(sent).toBe(4);
+  });
+
   it("fetches a commit by id that is no longer a tip", async () => {
     const { server, commits } = current;
     const repo = await initRepo("by-id");

@@ -41,6 +41,7 @@ import type { Env } from "../../env";
 import { describeError } from "../../http/log";
 import type { MirrorPlan, MirrorPlanOptions } from "../../mirror/plan";
 import { tarArchive } from "./archive";
+import { bigReads } from "./big-reads";
 import { ARCHIVE_URL, type ArchiveCall, CALL_HEADER, type GitCall, SERVE_URL } from "./call";
 import { type ReaderReply, ReaderState, callReader, localRepoReader } from "../queries";
 import { REPO_LOCATION } from "./client";
@@ -367,15 +368,28 @@ export class RepoDO extends DurableObject<Env> {
     const call = JSON.parse(header) as GitCall;
     const repository = this.at(call.repoId);
     const stats: ServeStats = newServeStats();
+    const readsBefore = repository.bucketReads();
     const output = serve({
       backend: repository.backend(),
       request: call.request,
-      input: request.body ?? [],
+      // In pieces a push's indexer can take in one go, not the runtime's 4 096 bytes a read.
+      input: request.body ? bigReads(request.body, { bytes: INPUT_PIECE_BYTES }) : [],
       hooks: repository.hooks(call.actor, call.policy),
       stats,
       onError: (error) => {
         console.error(
           `git ${call.request.service} on ${call.repoId} failed: ${describeError(error)}`,
+        );
+      },
+      onEnd: () => {
+        // One line a fetch that sent a pack: where its time went, which nothing outside
+        // production can say (#1447). The repository's id and numbers, nothing of the request.
+        if (stats.packSource === null) return;
+        const reads = repository.bucketReads();
+        console.log(
+          `git fetch on ${call.repoId}: ${stats.objectsSent} objects, ${stats.packBytesSent} bytes ` +
+            `(${stats.packSource}), chosen in ${stats.selectMillis} ms, sent in ${stats.packMillis} ms, ` +
+            `${reads.gets - readsBefore.gets} bucket reads of ${reads.bytes - readsBefore.bytes} bytes`,
         );
       },
     });
@@ -388,6 +402,9 @@ export class RepoDO extends DurableObject<Env> {
     await this.repository.maintain();
   }
 }
+
+/** The largest piece of a client's bytes the protocol is handed at once. */
+const INPUT_PIECE_BYTES = 256 * 1024;
 
 function streamOf(source: AsyncGenerator<Uint8Array, void, void>): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
