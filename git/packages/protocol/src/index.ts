@@ -12,4 +12,5 @@ export {
 } from "./common";
 export * from "./serve";
 export * from "./http";
+export * from "./send-pack";
 export * from "./memory-backend";
