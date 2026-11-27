@@ -676,7 +676,9 @@ export interface components {
                 retentionOptOutAt?: number;
             };
             description: string | null;
-            disableHardAutoBlocks?: number | (false | true);
+            /** @enum {string} */
+            directorySyncSource: "none" | "organization" | "team";
+            directorySyncType?: string;
             /** @enum {boolean} */
             disableRepositoryDispatchEvents?: false | true;
             /** @enum {string|null} */
@@ -703,7 +705,7 @@ export interface components {
             }[];
             /** @enum {boolean} */
             limited: false;
-            membership?: membership_e333c188;
+            membership?: membership_fa3c5d30;
             name: string | null;
             nsnbConfig?: {
                 /** @enum {string} */
@@ -805,11 +807,14 @@ export interface components {
         TeamLimited: {
             avatar: string | null;
             createdAt: number;
+            /** @enum {string} */
+            directorySyncSource: "none" | "organization" | "team";
+            directorySyncType?: string;
             id: string;
             /** @enum {boolean} */
             limited: true;
             limitedBy: ("invalidated" | "mfa" | "scope")[];
-            membership?: membership_e333c188;
+            membership?: membership_fa3c5d30;
             name: string | null;
             orgRootTeamId?: string;
             parentId?: string;
@@ -1267,7 +1272,7 @@ export interface operations {
                     "application/json": {
                         alertRuleIds?: string[];
                         createdAt: number;
-                        events: (Shared_515b9daf)[];
+                        events: (Shared_f270a023)[];
                         id: string;
                         ownerId: string;
                         projectIds?: string[];
@@ -1280,7 +1285,7 @@ export interface operations {
                         }[] | null;
                         updatedAt: number;
                         url: string;
-                    }[] | Shared_2566d367[];
+                    }[] | Shared_95210d70[];
                 };
             };
         };
@@ -1314,7 +1319,7 @@ export interface operations {
                     "application/json": {
                         alertRuleIds?: string[];
                         createdAt: number;
-                        events: (Shared_515b9daf)[];
+                        events: (Shared_f270a023)[];
                         id: string;
                         ownerId: string;
                         projectIds?: string[];
@@ -1345,7 +1350,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Shared_2566d367;
+                    "application/json": Shared_95210d70;
                 };
             };
         };
@@ -1457,6 +1462,9 @@ export interface operations {
                 content: {
                     "application/json": {
                         pagination: components["schemas"]["Pagination"];
+                        teams: components["schemas"]["Team"][];
+                    } | {
+                        pagination: components["schemas"]["Pagination"];
                         teams: (components["schemas"]["Team"] | components["schemas"]["TeamLimited"])[];
                     };
                 };
@@ -1491,7 +1499,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": ((Shared_923613af) | null)[] | null;
+                    "application/json": (Shared_923613af)[];
                     "application/stream+json": Shared_923613af;
                 };
             };
@@ -1861,6 +1869,7 @@ export interface operations {
     getProject: {
         parameters: {
             query?: {
+                rollbackInfo?: boolean;
                 slug?: string;
                 teamId?: string;
             };
@@ -1922,7 +1931,7 @@ export interface operations {
                             /** @enum {boolean} */
                             userDisabled: false | true;
                         };
-                        defaultResourceConfig: defaultResourceConfig_62347f5d;
+                        defaultResourceConfig: defaultResourceConfig_c03975d4;
                         deploymentExpiration: {
                             deploymentsToKeep?: number;
                             expirationDays?: number;
@@ -2048,7 +2057,7 @@ export interface operations {
                         link?: link_8624976f;
                         /** @enum {boolean} */
                         live?: false | true;
-                        microfrontends?: microfrontends_e8673ad1;
+                        microfrontends?: microfrontends_43d06a92;
                         name: string;
                         /** @enum {string} */
                         nodeVersion: "10.x" | "12.x" | "14.x" | "16.x" | "18.x" | "20.x" | "22.x" | "24.x" | "26.x" | "8.10.x";
@@ -2076,7 +2085,7 @@ export interface operations {
                         } | null;
                         /** @enum {boolean} */
                         paused?: false | true;
-                        permissions?: permissions_50258348;
+                        permissions?: permissions_6f446378;
                         /** @enum {boolean} */
                         productionDeploymentsFastLane?: false | true;
                         /** @enum {boolean} */
@@ -2088,9 +2097,9 @@ export interface operations {
                                 inheritDeploymentProtection?: false | true;
                             };
                         };
-                        resourceConfig: defaultResourceConfig_62347f5d;
+                        resourceConfig: defaultResourceConfig_c03975d4;
                         rollbackDescription?: rollbackDescription_17f7a27c;
-                        rollingRelease?: rollingRelease_71343110;
+                        rollingRelease?: rollingRelease_600dceb0;
                         rootDirectory?: string | null;
                         sandbox?: sandbox_ed1fffd7;
                         security?: security_5569cd29;
@@ -2124,7 +2133,7 @@ export interface operations {
                         };
                         targets?: targets_8182a666;
                         /** @enum {string} */
-                        tier?: "priority";
+                        tier?: "critical" | "priority";
                         tracing?: {
                             domains?: string;
                             ignorePaths?: string[];
@@ -2487,7 +2496,7 @@ export interface operations {
                             /** @enum {boolean} */
                             userDisabled: false | true;
                         };
-                        defaultResourceConfig: defaultResourceConfig_62347f5d;
+                        defaultResourceConfig: defaultResourceConfig_c03975d4;
                         deploymentExpiration: {
                             deploymentsToKeep?: number;
                             expirationDays?: number;
@@ -2607,7 +2616,7 @@ export interface operations {
                         link?: link_8624976f;
                         /** @enum {boolean} */
                         live?: false | true;
-                        microfrontends?: microfrontends_e8673ad1;
+                        microfrontends?: microfrontends_43d06a92;
                         name: string;
                         /** @enum {string} */
                         nodeVersion: "10.x" | "12.x" | "14.x" | "16.x" | "18.x" | "20.x" | "22.x" | "24.x" | "26.x" | "8.10.x";
@@ -2635,7 +2644,7 @@ export interface operations {
                         } | null;
                         /** @enum {boolean} */
                         paused?: false | true;
-                        permissions?: permissions_50258348;
+                        permissions?: permissions_6f446378;
                         /** @enum {boolean} */
                         productionDeploymentsFastLane?: false | true;
                         /** @enum {boolean} */
@@ -2647,9 +2656,9 @@ export interface operations {
                                 inheritDeploymentProtection?: false | true;
                             };
                         };
-                        resourceConfig: defaultResourceConfig_62347f5d;
+                        resourceConfig: defaultResourceConfig_c03975d4;
                         rollbackDescription?: rollbackDescription_17f7a27c;
-                        rollingRelease?: rollingRelease_71343110;
+                        rollingRelease?: rollingRelease_600dceb0;
                         rootDirectory?: string | null;
                         sandbox?: sandbox_ed1fffd7;
                         security?: security_5569cd29;
@@ -2683,7 +2692,7 @@ export interface operations {
                         };
                         targets?: targets_8182a666;
                         /** @enum {string} */
-                        tier?: "priority";
+                        tier?: "critical" | "priority";
                         tracing?: {
                             domains?: string;
                             ignorePaths?: string[];
@@ -2890,18 +2899,18 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": (Shared_cf85683a[] | {
+                    "application/json": (Shared_60423e5a[] | {
                         pagination: {
                             count: number;
                             next: string | null;
                         } | components["schemas"]["Pagination"];
-                        projects: Shared_cf85683a[];
+                        projects: Shared_60423e5a[];
                     } | {
                         pagination: {
                             count: number;
                             next: string | null;
                         } | components["schemas"]["Pagination"];
-                        projects: Shared_b7d1860f[];
+                        projects: Shared_59cb0d3e[];
                     }) | null;
                 };
             };
@@ -3220,7 +3229,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Shared_b7d1860f;
+                    "application/json": Shared_59cb0d3e;
                 };
             };
         };
@@ -3244,7 +3253,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Shared_8391b602;
+                    "application/json": Shared_eadbe2b5;
                 };
             };
         };
@@ -3386,7 +3395,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Shared_d6653233 | Shared_8391b602;
+                    "application/json": Shared_d6653233 | Shared_eadbe2b5;
                 };
             };
         };
@@ -3440,7 +3449,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Shared_d6653233 | Shared_8391b602 | {
+                    "application/json": Shared_d6653233 | Shared_eadbe2b5 | {
                         alias?: string[];
                         /** @enum {boolean} */
                         aliasAssigned: false | true;
@@ -3607,7 +3616,7 @@ type attribution_bf8d6821 = {
         username: string;
     };
 };
-type builder_1f7335d0 = {
+type builder_0a4277da = {
     config?: {
         buildCommand?: string;
         buildpack?: string;
@@ -3623,6 +3632,7 @@ type builder_1f7335d0 = {
                 /** @enum {string} */
                 type?: "service";
             }[];
+            buildTarget?: string;
             command?: string[];
             entrypoint: string;
             instances?: {
@@ -3664,7 +3674,7 @@ type builder_1f7335d0 = {
         devCommand?: string;
         excludeFiles?: string | string[];
         framework?: string | null;
-        functions?: Shared_2d4fe1e0;
+        functions?: Shared_3bb379c3;
         /** @enum {boolean} */
         helpers?: false | true;
         import?: {
@@ -3705,13 +3715,10 @@ type builder_1f7335d0 = {
             };
         };
         rust?: string;
-        scheduleFunction?: {
-            entrypoints: {
-                entrypoint: string;
-                scheduleNames: string[];
-                sourceFile: string;
-            }[];
-            outputPath: string;
+        /** @enum {boolean} */
+        schedulesEntrypoint?: false | true;
+        schedulesModule?: {
+            module: string;
         };
         serviceName?: string;
         /** @enum {boolean} */
@@ -3871,7 +3878,7 @@ type crons_373c3ef2 = {
 type customEnvironment_91169565 = Shared_e33085bc | {
     id: string;
 };
-type defaultResourceConfig_62347f5d = {
+type defaultResourceConfig_c03975d4 = {
     buildMachineElasticLastUpdated?: number;
     /** @enum {string} */
     buildMachineElasticReason?: "basic-floor" | "build-timeout-failure" | "enospc-failure" | "enterprise-floor" | "high-peak-disk" | "high-peak-memory" | "long-build-duration" | "oom-failure" | "short-build-duration" | "sustained-high-cpu";
@@ -3884,7 +3891,7 @@ type defaultResourceConfig_62347f5d = {
     /** @enum {string} */
     buildMachineSelection?: "elastic" | "fixed";
     /** @enum {string} */
-    buildMachineType?: "14cpu-28gb" | "basic" | "enhanced" | "standard" | "turbo";
+    buildMachineType?: "basic" | "elastic" | "enhanced" | "standard" | "turbo";
     buildQueue?: {
         /** @enum {string} */
         configuration?: "SKIP_NAMESPACE_QUEUE" | "WAIT_FOR_NAMESPACE_QUEUE";
@@ -4339,7 +4346,7 @@ type managedRules_36472d72 = {
         active: false | true;
     };
 } | null;
-type membership_e333c188 = {
+type membership_fa3c5d30 = {
     accessRequestedAt?: number;
     /** @enum {boolean} */
     confirmed: true;
@@ -4362,6 +4369,7 @@ type membership_e333c188 = {
         repoId?: string;
         repoPath?: string;
         ssoConnectedAt?: number;
+        ssoIdFingerprint?: string;
         ssoUserId?: string;
     };
     organizationId?: string;
@@ -4372,7 +4380,7 @@ type membership_e333c188 = {
     teamRoles?: ("BILLING" | "CONTRIBUTOR" | "DEVELOPER" | "MEMBER" | "OWNER" | "SECURITY" | "VIEWER" | "VIEWER_FOR_PLUS")[];
     uid?: string;
 };
-type microfrontends_e8673ad1 = {
+type microfrontends_43d06a92 = {
     defaultRoute?: string;
     /** @enum {boolean} */
     enabled: true;
@@ -4384,6 +4392,8 @@ type microfrontends_e8673ad1 = {
     updatedAt: number;
 } | {
     defaultRoute?: string;
+    /** @enum {boolean} */
+    doNotInheritDefaultAppManagedRules?: false | true;
     /** @enum {boolean} */
     doNotRouteWithMicrofrontendsRouting?: false | true;
     /** @enum {boolean} */
@@ -4404,7 +4414,7 @@ type microfrontends_e8673ad1 = {
     groupIds: unknown[];
     updatedAt: number;
 };
-type permissions_50258348 = {
+type permissions_6f446378 = {
     accessGroup?: components["schemas"]["ACLAction"][];
     agent?: components["schemas"]["ACLAction"][];
     aiGatewayApiKey?: components["schemas"]["ACLAction"][];
@@ -4413,6 +4423,7 @@ type permissions_50258348 = {
     aiGatewayApiKeySpendAttribution?: components["schemas"]["ACLAction"][];
     aiGatewayApiKeyZdrExemption?: components["schemas"]["ACLAction"][];
     aiGatewayBudget?: components["schemas"]["ACLAction"][];
+    aiGatewayBudgetOwnedBySelf?: components["schemas"]["ACLAction"][];
     aiGatewayByokCredentials?: components["schemas"]["ACLAction"][];
     aiGatewayCredits?: components["schemas"]["ACLAction"][];
     aiGatewayGuardrails?: components["schemas"]["ACLAction"][];
@@ -4485,6 +4496,7 @@ type permissions_50258348 = {
     deploymentProtectionException?: components["schemas"]["ACLAction"][];
     deploymentRollback?: components["schemas"]["ACLAction"][];
     deploymentV0?: components["schemas"]["ACLAction"][];
+    desktopDevice?: components["schemas"]["ACLAction"][];
     domain?: components["schemas"]["ACLAction"][];
     domainAcceptDelegation?: components["schemas"]["ACLAction"][];
     domainAuthCodes?: components["schemas"]["ACLAction"][];
@@ -4581,13 +4593,17 @@ type permissions_50258348 = {
     openTelemetryEndpoint?: components["schemas"]["ACLAction"][];
     optionsAllowlist?: components["schemas"]["ACLAction"][];
     organization?: components["schemas"]["ACLAction"][];
+    organizationAdmin?: components["schemas"]["ACLAction"][];
     organizationDomain?: components["schemas"]["ACLAction"][];
+    organizationMember?: components["schemas"]["ACLAction"][];
     organizationTeam?: components["schemas"]["ACLAction"][];
     ownEvent?: components["schemas"]["ACLAction"][];
     pageIntegrity?: components["schemas"]["ACLAction"][];
     passwordProtection?: components["schemas"]["ACLAction"][];
     passwordProtectionInvoiceItem?: components["schemas"]["ACLAction"][];
     paymentMethod?: components["schemas"]["ACLAction"][];
+    perimeter?: components["schemas"]["ACLAction"][];
+    perimeterLink?: components["schemas"]["ACLAction"][];
     permissions?: components["schemas"]["ACLAction"][];
     postgres?: components["schemas"]["ACLAction"][];
     postgresStoreTokenSet?: components["schemas"]["ACLAction"][];
@@ -4615,6 +4631,8 @@ type permissions_50258348 = {
     projectEnvVarsUnownedByIntegration?: components["schemas"]["ACLAction"][];
     projectEvent?: components["schemas"]["ACLAction"][];
     projectFlags?: components["schemas"]["ACLAction"][];
+    projectFlagsOverride?: components["schemas"]["ACLAction"][];
+    projectFlagsOverrideProduction?: components["schemas"]["ACLAction"][];
     projectFlagsProduction?: components["schemas"]["ACLAction"][];
     projectFlagsSdkKey?: components["schemas"]["ACLAction"][];
     projectFromV0?: components["schemas"]["ACLAction"][];
@@ -4730,27 +4748,9 @@ type rollbackDescription_17f7a27c = {
     userId?: string;
     username?: string;
 };
-type rollingRelease_71343110 = {
+type rollingRelease_600dceb0 = {
     /** @enum {boolean} */
     canaryResponseHeader?: false | true;
-    gate?: {
-        /** @enum {string} */
-        action: "pause" | "rollback";
-        checks: {
-            excludePaths?: string[];
-            excludeStatusCodes?: number[];
-            ingestWatermarkSeconds?: number;
-            significanceLevel?: number;
-            /** @enum {string} */
-            type: "error-rate-5xx";
-        }[];
-        /** @enum {boolean} */
-        dryRun: false | true;
-        /** @enum {boolean} */
-        enabled: false | true;
-        failureThreshold?: number;
-        windowSize?: number;
-    };
     stages?: {
         duration?: number;
         /** @enum {boolean} */
@@ -4868,58 +4868,6 @@ type Shared_1736ca46 = {
     value: string;
 };
 type Shared_238c46ea = "AiGatewayBudgetManager" | "AiGatewayCredits" | "AiGatewaySettings" | "AiGatewayTranscriptsManager" | "AiGatewayTranscriptsViewer" | "AiGatewayUser" | "ConnectorManager" | "CreateProject" | "EnvVariableManager" | "EnvironmentManager" | "FullProductionDeployment" | "IntegrationManager" | "OrgAdmin" | "OrgViewer" | "UsageViewer" | "V0Builder" | "V0Chatter" | "V0Viewer" | "WorkflowDecryptor";
-type Shared_2566d367 = {
-    alertRuleIds?: string[];
-    createdAt: number;
-    events: (Shared_515b9daf)[];
-    id: string;
-    ownerId: string;
-    projectIds?: string[];
-    updatedAt: number;
-    url: string;
-};
-type Shared_2d4fe1e0 = {
-    [key: string]: {
-        affinity?: {
-            /** @enum {string} */
-            mode: "strict";
-        };
-        /** @enum {string} */
-        architecture?: "arm64" | "x86_64";
-        excludeFiles?: string;
-        experimentalTriggers?: ({
-            consumer: string;
-            initialDelaySeconds?: number;
-            maxConcurrency?: number;
-            maxDeliveries?: number;
-            retryAfterSeconds?: number;
-            topic: string;
-            /** @enum {string} */
-            type: "queue/v1beta";
-        } | {
-            initialDelaySeconds?: number;
-            maxConcurrency?: number;
-            maxDeliveries?: number;
-            retryAfterSeconds?: number;
-            topic: string;
-            /** @enum {string} */
-            type: "queue/v2beta";
-        } | {
-            /** @enum {string} */
-            type: "schedule/v1beta";
-        })[];
-        functionFailoverRegions?: string[];
-        includeFiles?: string;
-        installCommand?: string;
-        maxConcurrency?: number;
-        maxDuration?: number | "max";
-        memory?: number;
-        regions?: string[];
-        runtime?: string;
-        /** @enum {boolean} */
-        supportsCancellation?: false | true;
-    };
-};
 type Shared_3148a437 = {
     comment?: string;
     configurationId?: string | null;
@@ -4965,6 +4913,49 @@ type Shared_354894ef = {
     type: "system" | "encrypted" | "plain" | "sensitive";
     value: string;
 } | unknown | unknown;
+type Shared_3bb379c3 = {
+    [key: string]: {
+        affinity?: {
+            /** @enum {string} */
+            mode: "strict";
+        };
+        /** @enum {string} */
+        architecture?: "arm64" | "x86_64";
+        excludeFiles?: string;
+        experimentalTriggers?: ({
+            consumer: string;
+            initialDelaySeconds?: number;
+            maxConcurrency?: number;
+            maxDeliveries?: number;
+            retryAfterSeconds?: number;
+            topic: string;
+            /** @enum {string} */
+            type: "queue/v1beta";
+        } | {
+            initialDelaySeconds?: number;
+            maxConcurrency?: number;
+            maxDeliveries?: number;
+            retryAfterSeconds?: number;
+            topic: string;
+            /** @enum {string} */
+            type: "queue/v2beta";
+        } | {
+            /** @enum {string} */
+            type: "schedule/v1beta";
+        })[];
+        functionFailoverRegions?: string[];
+        includeFiles?: string;
+        installCommand?: string;
+        maxConcurrency?: number;
+        maxDuration?: number | "max";
+        memory?: number;
+        perimeter?: string;
+        regions?: string[];
+        runtime?: string;
+        /** @enum {boolean} */
+        supportsCancellation?: false | true;
+    };
+};
 type Shared_3f9673f7 = {
     /** @enum {string} */
     type: "host";
@@ -5029,7 +5020,6 @@ type Shared_511c8f53 = {
     /** @enum {boolean} */
     verified: false | true;
 };
-type Shared_515b9daf = "ai-gateway.auto-reload.limit-reached" | "ai-gateway.balance-depleted" | "ai-gateway.budget.updated" | "alerts.triggered" | "botid.anomaly" | "budget.reached" | "comment.created" | "comment.deleted" | "comment.mentioned" | "comment.reaction-added" | "comment.reaction-removed" | "comment.resolved" | "comment.unresolved" | "comment.updated" | "deployment" | "deployment-canceled" | "deployment-check-rerequested" | "deployment-checks-completed" | "deployment-error" | "deployment-prepared" | "deployment-ready" | "deployment.blocked" | "deployment.build-requested" | "deployment.canceled" | "deployment.check-rerequested" | "deployment.checkrun.cancel" | "deployment.checkrun.start" | "deployment.checks.failed" | "deployment.checks.succeeded" | "deployment.cleanup" | "deployment.created" | "deployment.error" | "deployment.integration.action.cancel" | "deployment.integration.action.cleanup" | "deployment.integration.action.start" | "deployment.promoted" | "deployment.ready" | "deployment.rollback" | "deployment.succeeded" | "domain-created" | "domain.auto-renew.changed" | "domain.certificate.add" | "domain.certificate.add.failed" | "domain.certificate.deleted" | "domain.certificate.renew" | "domain.certificate.renew.failed" | "domain.created" | "domain.dns.records.changed" | "domain.renewal" | "domain.renewal.failed" | "domain.transfer-in.completed" | "domain.transfer-in.failed" | "domain.transfer-in.started" | "edge-config.created" | "edge-config.deleted" | "edge-config.items.updated" | "firewall.attack" | "firewall.custom-rule-anomaly" | "firewall.system-rule-anomaly" | "flag.created" | "flag.deleted" | "flag.segment.created" | "flag.segment.deleted" | "flag.segment.updated" | "flag.updated" | "function.archival-required" | "function.removal-required" | "integration-configuration-permission-updated" | "integration-configuration-removed" | "integration-configuration-scope-change-confirmed" | "integration-configuration.permission-upgraded" | "integration-configuration.removed" | "integration-configuration.scope-change-confirmed" | "integration-configuration.transferred" | "integration-resource.project-connected" | "integration-resource.project-disconnected" | "marketplace.invoice.created" | "marketplace.invoice.notpaid" | "marketplace.invoice.overdue" | "marketplace.invoice.paid" | "marketplace.invoice.refunded" | "marketplace.member.changed" | "message.created" | "message.deleted" | "message.mentioned" | "message.reaction-added" | "message.reaction-removed" | "message.updated" | "observability.anomaly" | "observability.anomaly-error" | "observability.error-anomaly" | "observability.usage-anomaly" | "project-created" | "project-removed" | "project.created" | "project.domain.created" | "project.domain.deleted" | "project.domain.moved" | "project.domain.unverified" | "project.domain.updated" | "project.domain.verified" | "project.env-variable.created" | "project.env-variable.deleted" | "project.env-variable.updated" | "project.removed" | "project.renamed" | "project.rolling-release.aborted" | "project.rolling-release.approved" | "project.rolling-release.completed" | "project.rolling-release.started" | "test-webhook" | "thread.resolved" | "thread.unresolved";
 type Shared_5477f9e2 = {
     apexName: string;
     createdAt?: number;
@@ -5049,6 +5039,263 @@ type Shared_5477f9e2 = {
     }[];
     /** @enum {boolean} */
     verified: false | true;
+};
+type Shared_59cb0d3e = {
+    accountId: string;
+    alias: Shared_782ad0eb[];
+    analytics?: {
+        canceledAt?: number | null;
+        disabledAt: number;
+        enabledAt: number;
+        id: string;
+        paidAt?: number;
+        sampleRatePercent?: number | null;
+        spendLimitInDollars?: number | null;
+    };
+    /** @enum {boolean} */
+    appliedCve55182Migration?: false | true;
+    /** @enum {boolean} */
+    autoAssignCustomDomains?: false | true;
+    autoAssignCustomDomainsUpdatedBy?: string;
+    /** @enum {boolean} */
+    autoExposeSystemEnvs?: false | true;
+    avatar?: string | null;
+    avatarDarkMode?: string | null;
+    blobs?: {
+        /** @enum {boolean} */
+        isDefaultApp?: false | true;
+    };
+    buildCommand?: string | null;
+    commandForIgnoringBuildStep?: string | null;
+    concurrencyBucketName?: string;
+    /** @enum {boolean} */
+    connectBuildsEnabled?: false | true;
+    connectConfigurationId?: string | null;
+    connectConfigurations?: connectConfigurations_a591f053;
+    createdAt?: number;
+    creator?: creator_5594744c;
+    crons?: crons_373c3ef2;
+    customEnvironments?: Shared_e33085bc[];
+    /** @enum {boolean} */
+    customerSupportCodeVisibility?: false | true;
+    dataCache?: {
+        storageSizeBytes?: number | null;
+        /** @enum {boolean} */
+        unlimited?: false | true;
+        /** @enum {boolean} */
+        userDisabled: false | true;
+    };
+    defaultResourceConfig: defaultResourceConfig_c03975d4;
+    deploymentExpiration: {
+        deploymentsToKeep?: number;
+        expirationDays?: number;
+        expirationDaysCanceled?: number;
+        expirationDaysErrored?: number;
+        expirationDaysProduction?: number;
+    };
+    deploymentPolicy?: deploymentPolicy_f346c2d3;
+    devCommand?: string | null;
+    /** @enum {boolean} */
+    directoryListing: false | true;
+    dismissedToasts?: {
+        /** @enum {string} */
+        action: "accept" | "cancel" | "delete";
+        dismissedAt: number;
+        key: string;
+        value: (string | number | {
+            currentValue: string | number | (false | true);
+            previousValue: string | number | (false | true);
+        } | (false | true)) | null;
+    }[];
+    /** @enum {boolean} */
+    enableAffectedProjectsDeployments?: false | true;
+    /** @enum {boolean} */
+    enableExternalRewriteCaching?: false | true;
+    /** @enum {boolean|null} */
+    enablePreviewFeedback?: false | true | null;
+    /** @enum {boolean|null} */
+    enableProductionFeedback?: false | true | null;
+    env?: Shared_10a8184a[];
+    expiration?: {
+        expiresAt: number;
+    } | {
+        lockedAt: number;
+        lockedBy: string;
+    };
+    features?: {
+        /** @enum {boolean} */
+        webAnalytics?: false | true;
+    };
+    /** @enum {string|null} */
+    framework?: framework_e0d84aa3;
+    gitComments?: {
+        /** @enum {boolean} */
+        onCommit: false | true;
+        /** @enum {boolean} */
+        onPullRequest: false | true;
+    };
+    /** @enum {boolean} */
+    gitForkProtection?: false | true;
+    /** @enum {boolean} */
+    gitLFS?: false | true;
+    gitProviderOptions?: gitProviderOptions_7227ffb9;
+    /** @enum {boolean} */
+    hasActiveBranches?: false | true;
+    /** @enum {boolean} */
+    hasDeployments?: false | true;
+    id: string;
+    installCommand?: string | null;
+    internalRoutes?: (Shared_62ee3300)[];
+    ipBuckets?: {
+        bucket: string;
+        /** @enum {boolean} */
+        default?: false | true;
+        supportUntil?: number;
+    }[];
+    jobs?: {
+        "flag-definitions-present"?: {
+            targets: string[];
+        };
+        "health-check"?: {
+            targets: string[];
+        };
+        lint?: {
+            targets: string[];
+        };
+        "mfe-config-present"?: {
+            targets: string[];
+        };
+        typecheck?: {
+            targets: string[];
+        };
+    };
+    lastAliasRequest?: lastAliasRequest_d8e7b049;
+    lastRollbackTarget?: Record<string, never> | null;
+    latestDeployments?: Shared_63ac3c2f[];
+    link?: link_8624976f;
+    /** @enum {boolean} */
+    live?: false | true;
+    microfrontends?: microfrontends_43d06a92;
+    name: string;
+    /** @enum {string} */
+    nodeVersion: "10.x" | "12.x" | "14.x" | "16.x" | "18.x" | "20.x" | "22.x" | "24.x" | "26.x" | "8.10.x";
+    oidcTokenConfig?: {
+        /** @enum {boolean} */
+        enabled?: false | true;
+        /** @enum {string} */
+        issuerMode?: "global" | "team";
+    };
+    optionsAllowlist?: {
+        paths: {
+            value: string;
+        }[];
+    } | null;
+    outputDirectory?: string | null;
+    passiveConnectConfigurationId?: string | null;
+    passport?: {
+        connectorId: string;
+        /** @enum {string} */
+        deploymentType: "all" | "all_except_custom_domains" | "preview" | "prod_deployment_urls_and_all_previews";
+    } | null;
+    passwordProtection?: {
+        /** @enum {string} */
+        deploymentType: "all" | "all_except_custom_domains" | "preview" | "prod_deployment_urls_and_all_previews";
+    } | null;
+    /** @enum {boolean} */
+    paused?: false | true;
+    permissions?: permissions_6f446378;
+    /** @enum {boolean} */
+    productionDeploymentsFastLane?: false | true;
+    /** @enum {boolean} */
+    protectedSourcemaps?: false | true;
+    protectionBypass?: protectionBypass_f4fcfdb9;
+    protectionConfig?: {
+        sandboxUrls?: {
+            /** @enum {boolean} */
+            inheritDeploymentProtection?: false | true;
+        };
+    };
+    resourceConfig: defaultResourceConfig_c03975d4;
+    rollbackDescription?: rollbackDescription_17f7a27c;
+    rollingRelease?: rollingRelease_600dceb0;
+    rootDirectory?: string | null;
+    sandbox?: sandbox_ed1fffd7;
+    security?: security_5569cd29;
+    /** @enum {boolean} */
+    serverlessFunctionZeroConfigFailover?: false | true;
+    services?: Shared_32b2c5d7[];
+    skewProtectionAllowedDomains?: string[];
+    skewProtectionBoundaryAt?: number;
+    skewProtectionMaxAge?: number;
+    /** @enum {boolean} */
+    skipGitConnectDuringLink?: false | true;
+    /** @enum {boolean} */
+    sourceFilesOutsideRootDirectory?: false | true;
+    speedInsights?: {
+        canceledAt?: number;
+        dataReceivedAt?: number;
+        disabledAt?: number;
+        enabledAt?: number;
+        /** @enum {boolean} */
+        hasData?: false | true;
+        id: string;
+        paidAt?: number;
+    };
+    ssoProtection?: ssoProtection_e8b71c9f;
+    staticIps?: {
+        /** @enum {boolean} */
+        builds: false | true;
+        /** @enum {boolean} */
+        enabled: false | true;
+        regions: string[];
+    };
+    targets?: targets_8182a666;
+    /** @enum {string} */
+    tier?: "critical" | "priority";
+    tracing?: {
+        domains?: string;
+        ignorePaths?: string[];
+        samplingRules?: {
+            /** @enum {string} */
+            destination?: "external" | "internal";
+            /** @enum {string} */
+            env?: "preview" | "production";
+            rate: number;
+            requestPath?: string;
+        }[];
+    };
+    transferCompletedAt?: number;
+    transferredFromAccountId?: string;
+    transferStartedAt?: number;
+    transferToAccountId?: string;
+    trustedIps?: trustedIps_0d564803;
+    trustedSources?: trustedSources_ec936b87;
+    updatedAt?: number;
+    usageStatus?: {
+        bypassThrottleUntil?: number;
+        exceededAllowanceUntil?: number;
+        /** @enum {string} */
+        kind: "flat";
+        /** @enum {boolean} */
+        teamThrottled?: false | true;
+        /** @enum {boolean} */
+        throttled?: false | true;
+    };
+    /** @enum {boolean} */
+    v0?: false | true;
+    /** @enum {boolean} */
+    v0Created?: false | true;
+    vercelFlags?: {
+        enabledAt?: number;
+    };
+    webAnalytics?: {
+        canceledAt?: number;
+        disabledAt?: number;
+        enabledAt?: number;
+        /** @enum {boolean} */
+        hasData?: true;
+        id: string;
+    };
 };
 type Shared_5eeb1942 = {
     /** @enum {boolean} */
@@ -5125,6 +5372,206 @@ type Shared_5eeb1942 = {
         /** @enum {string} */
         type: "request.path";
     })[];
+};
+type Shared_60423e5a = {
+    accountId: string;
+    alias: Shared_782ad0eb[];
+    analytics?: {
+        canceledAt?: number | null;
+        disabledAt: number;
+        enabledAt: number;
+        id: string;
+        paidAt?: number;
+        sampleRatePercent?: number | null;
+        spendLimitInDollars?: number | null;
+    };
+    /** @enum {boolean} */
+    appliedCve55182Migration?: false | true;
+    /** @enum {boolean} */
+    autoAssignCustomDomains?: false | true;
+    autoAssignCustomDomainsUpdatedBy?: string;
+    /** @enum {boolean} */
+    autoExposeSystemEnvs?: false | true;
+    buildCommand?: string | null;
+    commandForIgnoringBuildStep?: string | null;
+    createdAt?: number;
+    creator?: creator_5594744c;
+    /** @enum {boolean} */
+    customerSupportCodeVisibility?: false | true;
+    deploymentExpiration: {
+        deploymentsToKeep?: number;
+        expirationDays?: number;
+        expirationDaysCanceled?: number;
+        expirationDaysErrored?: number;
+        expirationDaysProduction?: number;
+    };
+    devCommand?: string | null;
+    /** @enum {boolean} */
+    directoryListing: false | true;
+    env?: Shared_10a8184a[];
+    expiration?: {
+        expiresAt: number;
+    } | {
+        lockedAt: number;
+        lockedBy: string;
+    };
+    /** @enum {string|null} */
+    framework?: framework_e0d84aa3;
+    gitComments?: {
+        /** @enum {boolean} */
+        onCommit: false | true;
+        /** @enum {boolean} */
+        onPullRequest: false | true;
+    };
+    /** @enum {boolean} */
+    gitForkProtection?: false | true;
+    gitProviderOptions?: gitProviderOptions_7227ffb9;
+    /** @enum {boolean} */
+    hasActiveBranches?: false | true;
+    id: string;
+    installCommand?: string | null;
+    internalRoutes?: (Shared_62ee3300)[];
+    ipBuckets?: {
+        bucket: string;
+        /** @enum {boolean} */
+        default?: false | true;
+        supportUntil?: number;
+    }[];
+    latestDeployments?: Shared_63ac3c2f[];
+    link?: link_8624976f;
+    /** @enum {boolean} */
+    live?: false | true;
+    name: string;
+    /** @enum {string} */
+    nodeVersion: "10.x" | "12.x" | "14.x" | "16.x" | "18.x" | "20.x" | "22.x" | "24.x" | "26.x" | "8.10.x";
+    oidcTokenConfig?: {
+        /** @enum {boolean} */
+        enabled?: false | true;
+        /** @enum {string} */
+        issuerMode?: "global" | "team";
+    };
+    outputDirectory?: string | null;
+    passport?: {
+        connectorId: string;
+        /** @enum {string} */
+        deploymentType: "all" | "all_except_custom_domains" | "preview" | "prod_deployment_urls_and_all_previews";
+    } | null;
+    passwordProtection?: Record<string, never> | null;
+    /** @enum {boolean} */
+    paused?: false | true;
+    resourceConfig: defaultResourceConfig_c03975d4;
+    rollingRelease?: rollingRelease_600dceb0;
+    rootDirectory?: string | null;
+    security?: {
+        attackModeActiveUntil?: number | null;
+        /** @enum {boolean} */
+        attackModeEnabled?: false | true;
+        attackModeUpdatedAt?: number;
+        /** @enum {boolean} */
+        botIdEnabled?: false | true;
+        firewallBypassIps?: string[];
+        firewallConfigVersion?: number;
+        /** @enum {boolean} */
+        firewallEnabled?: false | true;
+        firewallRoutes?: {
+            dest?: string;
+            /** @enum {string} */
+            handle?: "finalize" | "init";
+            has?: Shared_8feade29[];
+            missing?: Shared_8feade29[];
+            mitigate?: {
+                /** @enum {string} */
+                action: "bypass" | "challenge" | "deny" | "log" | "rate_limit" | "redirect";
+                erl?: {
+                    /** @enum {string} */
+                    algo: "fixed_window" | "token_bucket";
+                    keys: string[];
+                    limit: number;
+                    window: number;
+                };
+                log_headers?: string[] | "*";
+                rule_id: string;
+                ttl?: number;
+            };
+            response_has?: Shared_c5efe08e[];
+            response_missing?: Shared_c5efe08e[];
+            src?: string | {
+                eq?: string;
+                gt?: number;
+                gte?: number;
+                inc?: string[];
+                list?: string;
+                lt?: number;
+                lte?: number;
+                neq?: string;
+                ninc?: string[];
+                pre?: string;
+                re?: string;
+                suf?: string;
+            };
+            status?: number;
+            /** @enum {string} */
+            tierRequirement?: "priority";
+            transforms?: {
+                args: string;
+                /** @enum {string} */
+                op: "append";
+                target: {
+                    key: string;
+                };
+                /** @enum {string} */
+                type: "request.headers";
+            }[];
+        }[];
+        /** @enum {boolean} */
+        firewallSeawallEnabled?: false | true;
+        firewallUpdatedAt?: number;
+        /** @enum {boolean} */
+        ja3Enabled?: false | true;
+        /** @enum {boolean} */
+        ja4Enabled?: false | true;
+        log_headers?: string[] | "*";
+        managedRules?: managedRules_36472d72;
+        /** @enum {boolean} */
+        pageIntegrityEnabled?: false | true;
+        requestLogsKey?: string[];
+        rulesets?: rulesets_3e356308;
+    };
+    serverlessFunctionRegion: string;
+    /** @enum {boolean} */
+    serverlessFunctionZeroConfigFailover?: false | true;
+    /** @enum {boolean} */
+    skipGitConnectDuringLink?: false | true;
+    /** @enum {boolean} */
+    sourceFilesOutsideRootDirectory?: false | true;
+    speedInsights?: {
+        canceledAt?: number;
+        dataReceivedAt?: number;
+        disabledAt?: number;
+        enabledAt?: number;
+        /** @enum {boolean} */
+        hasData?: false | true;
+        id: string;
+        paidAt?: number;
+    };
+    ssoProtection?: ssoProtection_e8b71c9f;
+    targets?: targets_8182a666;
+    /** @enum {string} */
+    tier?: "critical" | "priority";
+    transferCompletedAt?: number;
+    transferredFromAccountId?: string;
+    transferStartedAt?: number;
+    transferToAccountId?: string;
+    trustedSources?: trustedSources_ec936b87;
+    updatedAt?: number;
+    webAnalytics?: {
+        canceledAt?: number;
+        disabledAt?: number;
+        enabledAt?: number;
+        /** @enum {boolean} */
+        hasData?: true;
+        id: string;
+    };
 };
 type Shared_62ee3300 = {
     expiry?: number;
@@ -5250,7 +5697,211 @@ type Shared_782ad0eb = {
     /** @enum {string} */
     target: "PREVIEW" | "PRODUCTION" | "STAGING";
 };
-type Shared_8391b602 = {
+type Shared_8a2c4b9b = {
+    /** @enum {boolean} */
+    enabled: false | true;
+    environments: ({
+        /** @enum {string} */
+        target: "preview" | "production";
+        /** @enum {string} */
+        type: "system";
+    } | {
+        environmentId: string;
+        /** @enum {string} */
+        type: "custom";
+    })[];
+    sources: ("cli" | "deploy-hook" | "git" | "integration" | "rest-api" | "v0")[];
+};
+type Shared_8feade29 = {
+    key?: string;
+    /** @enum {string} */
+    type: "cookie" | "domain_environment" | "environment" | "header" | "headers" | "host" | "initial_request_path" | "ip_address" | "method" | "path" | "protocol" | "query" | "region" | "scheme" | "trusted_source";
+    value?: string | {
+        eq?: string;
+        gt?: number;
+        gte?: number;
+        inc?: string[];
+        list?: string;
+        lt?: number;
+        lte?: number;
+        neq?: string;
+        ninc?: string[];
+        pre?: string;
+        re?: string;
+        suf?: string;
+    };
+};
+type Shared_923613af = Shared_a9941309 | Shared_f1c121d1 | (Shared_a9941309 | Shared_f1c121d1 | {
+    alias: string[];
+    aliasError: {
+        code: string;
+        message: string;
+    } | null;
+    aliasWarning: {
+        action?: string;
+        code: string;
+        link?: string;
+        message: string;
+    } | null;
+    date: number;
+    deploymentId: string;
+    /** @enum {string} */
+    type: "alias-assigned";
+});
+type Shared_95210d70 = {
+    alertRuleIds?: string[];
+    createdAt: number;
+    events: (Shared_f270a023)[];
+    id: string;
+    ownerId: string;
+    projectIds?: string[];
+    updatedAt: number;
+    url: string;
+};
+type Shared_a9941309 = {
+    created: number;
+    payload: {
+        created?: number;
+        date: number;
+        deploymentId: string;
+        id: string;
+        info?: {
+            entrypoint?: string;
+            name: string;
+            path?: string;
+            readyState?: string;
+            serviceName?: string;
+            step?: string;
+            type: string;
+        };
+        proxy?: {
+            cacheId?: string;
+            clientIp?: string;
+            host: string;
+            lambdaRegion?: string;
+            method: string;
+            path?: string;
+            pathType?: string;
+            pathTypeVariant?: string;
+            referer?: string;
+            region?: string;
+            responseByteSize?: number;
+            scheme?: string;
+            statusCode?: number;
+            timestamp: number;
+            userAgent?: string[];
+            /** @enum {string} */
+            vercelCache?: "BYPASS" | "HIT" | "MISS" | "PRERENDER" | "REVALIDATED" | "STALE";
+            vercelId?: string;
+            /** @enum {string} */
+            wafAction?: "bypass" | "challenge" | "deny" | "log" | "rate_limit";
+            wafRuleId?: string;
+        };
+        requestId?: string;
+        serial: string;
+        statusCode?: number;
+        text?: string;
+    };
+    /** @enum {string} */
+    type: "command" | "delimiter" | "deployment-state" | "edge-function-invocation" | "exit" | "fatal" | "metric" | "middleware" | "middleware-invocation" | "report" | "stderr" | "stdout";
+};
+type Shared_c5efe08e = {
+    key?: string;
+    /** @enum {string} */
+    type: "response_header" | "response_status";
+    value?: string | {
+        eq?: string;
+        gt?: number;
+        gte?: number;
+        inc?: string[];
+        list?: string;
+        lt?: number;
+        lte?: number;
+        neq?: string;
+        ninc?: string[];
+        pre?: string;
+        re?: string;
+        suf?: string;
+    };
+};
+type Shared_d6653233 = {
+    alias?: string[];
+    /** @enum {boolean} */
+    aliasAssigned: false | true;
+    aliasError?: {
+        code: string;
+        message: string;
+    } | null;
+    aliasWarning?: {
+        action?: string;
+        code: string;
+        link?: string;
+        message: string;
+    } | null;
+    duration: {
+        endTime?: number;
+        endTimeCapped?: number;
+        startTime?: number;
+        timeForBilling?: number;
+        timeToContainerExit?: number;
+        timeToContainerExitCapped?: number;
+        timeToReady?: number;
+    };
+    errorCode?: string;
+    errorMessage?: string | null;
+    id: string;
+    /** @enum {string} */
+    readyState: "BLOCKED" | "BUILDING" | "CANCELED" | "ERROR" | "INITIALIZING" | "QUEUED" | "READY";
+    /** @enum {string|null} */
+    target?: "production" | "staging" | null;
+};
+type Shared_dfaf8d81 = {
+    comment?: string;
+    configurationId?: string | null;
+    contentHint?: contentHint_dc589353;
+    createdAt?: number;
+    createdBy?: string | null;
+    customEnvironmentIds?: string[];
+    /** @enum {boolean} */
+    decrypted?: false | true;
+    edgeConfigId?: string | null;
+    edgeConfigTokenId?: string | null;
+    gitBranch?: string;
+    id?: string;
+    internalContentHint?: {
+        encryptedValue: string;
+        /** @enum {string} */
+        type: "flags-secret";
+    } | null;
+    key: string;
+    legacyValue?: string;
+    sunsetSecretId?: string;
+    target?: ("development" | "development" | "preview" | "preview" | "production")[] | ("production" | "preview" | "development");
+    /** @enum {string} */
+    type: "encrypted" | "plain" | "secret" | "sensitive" | "system";
+    updatedAt?: number;
+    updatedBy?: string | null;
+    value: string;
+    /** @enum {string} */
+    visibility?: "config" | "secret";
+} | null;
+type Shared_e33085bc = {
+    branchMatcher?: {
+        pattern: string;
+        /** @enum {string} */
+        type: "endsWith" | "equals" | "startsWith";
+    };
+    createdAt: number;
+    currentDeploymentAliases?: string[];
+    description?: string;
+    domains?: Shared_5477f9e2[];
+    id: string;
+    slug: string;
+    /** @enum {string} */
+    type: "development" | "preview" | "production";
+    updatedAt: number;
+};
+type Shared_eadbe2b5 = {
     alias?: string[];
     /** @enum {boolean} */
     aliasAssigned: false | true;
@@ -5384,7 +6035,7 @@ type Shared_8391b602 = {
             };
         };
     } | Record<string, never>[];
-    functions?: Shared_2d4fe1e0 | null;
+    functions?: Shared_3bb379c3 | null;
     gitRepo?: ({
         defaultBranch: string;
         name: string;
@@ -5677,7 +6328,7 @@ type Shared_8391b602 = {
     };
     services?: ({
         buildCommand?: string;
-        builder: builder_1f7335d0;
+        builder: builder_0a4277da;
         entrypoint?: string;
         env?: {
             [key: string]: {
@@ -5720,14 +6371,14 @@ type Shared_8391b602 = {
             type?: "service";
         }[];
         buildCommand?: string;
-        builder: builder_1f7335d0;
+        builder: builder_0a4277da;
         /** @enum {boolean} */
         cleanUrls?: false | true;
         command?: string[];
         devCommand?: string;
         entrypoint?: string;
         framework?: string;
-        functions?: Shared_2d4fe1e0;
+        functions?: Shared_3bb379c3;
         headers?: {
             has?: (Shared_3f9673f7)[];
             headers: {
@@ -5815,657 +6466,6 @@ type Shared_8391b602 = {
     /** @enum {number} */
     version: 2;
 };
-type Shared_8a2c4b9b = {
-    /** @enum {boolean} */
-    enabled: false | true;
-    environments: ({
-        /** @enum {string} */
-        target: "preview" | "production";
-        /** @enum {string} */
-        type: "system";
-    } | {
-        environmentId: string;
-        /** @enum {string} */
-        type: "custom";
-    })[];
-    sources: ("cli" | "deploy-hook" | "git" | "integration" | "rest-api" | "v0")[];
-};
-type Shared_8feade29 = {
-    key?: string;
-    /** @enum {string} */
-    type: "cookie" | "domain_environment" | "environment" | "header" | "headers" | "host" | "initial_request_path" | "ip_address" | "method" | "path" | "protocol" | "query" | "region" | "scheme" | "trusted_source";
-    value?: string | {
-        eq?: string;
-        gt?: number;
-        gte?: number;
-        inc?: string[];
-        list?: string;
-        lt?: number;
-        lte?: number;
-        neq?: string;
-        ninc?: string[];
-        pre?: string;
-        re?: string;
-        suf?: string;
-    };
-};
-type Shared_923613af = Shared_a9941309 | Shared_f1c121d1 | (Shared_a9941309 | Shared_f1c121d1 | {
-    alias: string[];
-    aliasError: {
-        code: string;
-        message: string;
-    } | null;
-    aliasWarning: {
-        action?: string;
-        code: string;
-        link?: string;
-        message: string;
-    } | null;
-    date: number;
-    deploymentId: string;
-    /** @enum {string} */
-    type: "alias-assigned";
-});
-type Shared_a9941309 = {
-    created: number;
-    payload: {
-        created?: number;
-        date: number;
-        deploymentId: string;
-        id: string;
-        info?: {
-            entrypoint?: string;
-            name: string;
-            path?: string;
-            readyState?: string;
-            serviceName?: string;
-            step?: string;
-            type: string;
-        };
-        proxy?: {
-            cacheId?: string;
-            clientIp?: string;
-            host: string;
-            lambdaRegion?: string;
-            method: string;
-            path?: string;
-            pathType?: string;
-            pathTypeVariant?: string;
-            referer?: string;
-            region?: string;
-            responseByteSize?: number;
-            scheme?: string;
-            statusCode?: number;
-            timestamp: number;
-            userAgent?: string[];
-            /** @enum {string} */
-            vercelCache?: "BYPASS" | "HIT" | "MISS" | "PRERENDER" | "REVALIDATED" | "STALE";
-            vercelId?: string;
-            /** @enum {string} */
-            wafAction?: "bypass" | "challenge" | "deny" | "log" | "rate_limit";
-            wafRuleId?: string;
-        };
-        requestId?: string;
-        serial: string;
-        statusCode?: number;
-        text?: string;
-    };
-    /** @enum {string} */
-    type: "command" | "delimiter" | "deployment-state" | "edge-function-invocation" | "exit" | "fatal" | "metric" | "middleware" | "middleware-invocation" | "report" | "stderr" | "stdout";
-};
-type Shared_b7d1860f = {
-    accountId: string;
-    alias: Shared_782ad0eb[];
-    analytics?: {
-        canceledAt?: number | null;
-        disabledAt: number;
-        enabledAt: number;
-        id: string;
-        paidAt?: number;
-        sampleRatePercent?: number | null;
-        spendLimitInDollars?: number | null;
-    };
-    /** @enum {boolean} */
-    appliedCve55182Migration?: false | true;
-    /** @enum {boolean} */
-    autoAssignCustomDomains?: false | true;
-    autoAssignCustomDomainsUpdatedBy?: string;
-    /** @enum {boolean} */
-    autoExposeSystemEnvs?: false | true;
-    avatar?: string | null;
-    avatarDarkMode?: string | null;
-    blobs?: {
-        /** @enum {boolean} */
-        isDefaultApp?: false | true;
-    };
-    buildCommand?: string | null;
-    commandForIgnoringBuildStep?: string | null;
-    concurrencyBucketName?: string;
-    /** @enum {boolean} */
-    connectBuildsEnabled?: false | true;
-    connectConfigurationId?: string | null;
-    connectConfigurations?: connectConfigurations_a591f053;
-    createdAt?: number;
-    creator?: creator_5594744c;
-    crons?: crons_373c3ef2;
-    customEnvironments?: Shared_e33085bc[];
-    /** @enum {boolean} */
-    customerSupportCodeVisibility?: false | true;
-    dataCache?: {
-        storageSizeBytes?: number | null;
-        /** @enum {boolean} */
-        unlimited?: false | true;
-        /** @enum {boolean} */
-        userDisabled: false | true;
-    };
-    defaultResourceConfig: defaultResourceConfig_62347f5d;
-    deploymentExpiration: {
-        deploymentsToKeep?: number;
-        expirationDays?: number;
-        expirationDaysCanceled?: number;
-        expirationDaysErrored?: number;
-        expirationDaysProduction?: number;
-    };
-    deploymentPolicy?: deploymentPolicy_f346c2d3;
-    devCommand?: string | null;
-    /** @enum {boolean} */
-    directoryListing: false | true;
-    dismissedToasts?: {
-        /** @enum {string} */
-        action: "accept" | "cancel" | "delete";
-        dismissedAt: number;
-        key: string;
-        value: (string | number | {
-            currentValue: string | number | (false | true);
-            previousValue: string | number | (false | true);
-        } | (false | true)) | null;
-    }[];
-    /** @enum {boolean} */
-    enableAffectedProjectsDeployments?: false | true;
-    /** @enum {boolean} */
-    enableExternalRewriteCaching?: false | true;
-    /** @enum {boolean|null} */
-    enablePreviewFeedback?: false | true | null;
-    /** @enum {boolean|null} */
-    enableProductionFeedback?: false | true | null;
-    env?: Shared_10a8184a[];
-    expiration?: {
-        expiresAt: number;
-    } | {
-        lockedAt: number;
-        lockedBy: string;
-    };
-    features?: {
-        /** @enum {boolean} */
-        webAnalytics?: false | true;
-    };
-    /** @enum {string|null} */
-    framework?: framework_e0d84aa3;
-    gitComments?: {
-        /** @enum {boolean} */
-        onCommit: false | true;
-        /** @enum {boolean} */
-        onPullRequest: false | true;
-    };
-    /** @enum {boolean} */
-    gitForkProtection?: false | true;
-    /** @enum {boolean} */
-    gitLFS?: false | true;
-    gitProviderOptions?: gitProviderOptions_7227ffb9;
-    /** @enum {boolean} */
-    hasActiveBranches?: false | true;
-    /** @enum {boolean} */
-    hasDeployments?: false | true;
-    id: string;
-    installCommand?: string | null;
-    internalRoutes?: (Shared_62ee3300)[];
-    ipBuckets?: {
-        bucket: string;
-        /** @enum {boolean} */
-        default?: false | true;
-        supportUntil?: number;
-    }[];
-    jobs?: {
-        "flag-definitions-present"?: {
-            targets: string[];
-        };
-        "health-check"?: {
-            targets: string[];
-        };
-        lint?: {
-            targets: string[];
-        };
-        "mfe-config-present"?: {
-            targets: string[];
-        };
-        typecheck?: {
-            targets: string[];
-        };
-    };
-    lastAliasRequest?: lastAliasRequest_d8e7b049;
-    lastRollbackTarget?: Record<string, never> | null;
-    latestDeployments?: Shared_63ac3c2f[];
-    link?: link_8624976f;
-    /** @enum {boolean} */
-    live?: false | true;
-    microfrontends?: microfrontends_e8673ad1;
-    name: string;
-    /** @enum {string} */
-    nodeVersion: "10.x" | "12.x" | "14.x" | "16.x" | "18.x" | "20.x" | "22.x" | "24.x" | "26.x" | "8.10.x";
-    oidcTokenConfig?: {
-        /** @enum {boolean} */
-        enabled?: false | true;
-        /** @enum {string} */
-        issuerMode?: "global" | "team";
-    };
-    optionsAllowlist?: {
-        paths: {
-            value: string;
-        }[];
-    } | null;
-    outputDirectory?: string | null;
-    passiveConnectConfigurationId?: string | null;
-    passport?: {
-        connectorId: string;
-        /** @enum {string} */
-        deploymentType: "all" | "all_except_custom_domains" | "preview" | "prod_deployment_urls_and_all_previews";
-    } | null;
-    passwordProtection?: {
-        /** @enum {string} */
-        deploymentType: "all" | "all_except_custom_domains" | "preview" | "prod_deployment_urls_and_all_previews";
-    } | null;
-    /** @enum {boolean} */
-    paused?: false | true;
-    permissions?: permissions_50258348;
-    /** @enum {boolean} */
-    productionDeploymentsFastLane?: false | true;
-    /** @enum {boolean} */
-    protectedSourcemaps?: false | true;
-    protectionBypass?: protectionBypass_f4fcfdb9;
-    protectionConfig?: {
-        sandboxUrls?: {
-            /** @enum {boolean} */
-            inheritDeploymentProtection?: false | true;
-        };
-    };
-    resourceConfig: defaultResourceConfig_62347f5d;
-    rollbackDescription?: rollbackDescription_17f7a27c;
-    rollingRelease?: rollingRelease_71343110;
-    rootDirectory?: string | null;
-    sandbox?: sandbox_ed1fffd7;
-    security?: security_5569cd29;
-    /** @enum {boolean} */
-    serverlessFunctionZeroConfigFailover?: false | true;
-    services?: Shared_32b2c5d7[];
-    skewProtectionAllowedDomains?: string[];
-    skewProtectionBoundaryAt?: number;
-    skewProtectionMaxAge?: number;
-    /** @enum {boolean} */
-    skipGitConnectDuringLink?: false | true;
-    /** @enum {boolean} */
-    sourceFilesOutsideRootDirectory?: false | true;
-    speedInsights?: {
-        canceledAt?: number;
-        dataReceivedAt?: number;
-        disabledAt?: number;
-        enabledAt?: number;
-        /** @enum {boolean} */
-        hasData?: false | true;
-        id: string;
-        paidAt?: number;
-    };
-    ssoProtection?: ssoProtection_e8b71c9f;
-    staticIps?: {
-        /** @enum {boolean} */
-        builds: false | true;
-        /** @enum {boolean} */
-        enabled: false | true;
-        regions: string[];
-    };
-    targets?: targets_8182a666;
-    /** @enum {string} */
-    tier?: "priority";
-    tracing?: {
-        domains?: string;
-        ignorePaths?: string[];
-        samplingRules?: {
-            /** @enum {string} */
-            destination?: "external" | "internal";
-            /** @enum {string} */
-            env?: "preview" | "production";
-            rate: number;
-            requestPath?: string;
-        }[];
-    };
-    transferCompletedAt?: number;
-    transferredFromAccountId?: string;
-    transferStartedAt?: number;
-    transferToAccountId?: string;
-    trustedIps?: trustedIps_0d564803;
-    trustedSources?: trustedSources_ec936b87;
-    updatedAt?: number;
-    usageStatus?: {
-        bypassThrottleUntil?: number;
-        exceededAllowanceUntil?: number;
-        /** @enum {string} */
-        kind: "flat";
-        /** @enum {boolean} */
-        teamThrottled?: false | true;
-        /** @enum {boolean} */
-        throttled?: false | true;
-    };
-    /** @enum {boolean} */
-    v0?: false | true;
-    /** @enum {boolean} */
-    v0Created?: false | true;
-    vercelFlags?: {
-        enabledAt?: number;
-    };
-    webAnalytics?: {
-        canceledAt?: number;
-        disabledAt?: number;
-        enabledAt?: number;
-        /** @enum {boolean} */
-        hasData?: true;
-        id: string;
-    };
-};
-type Shared_c5efe08e = {
-    key?: string;
-    /** @enum {string} */
-    type: "response_header" | "response_status";
-    value?: string | {
-        eq?: string;
-        gt?: number;
-        gte?: number;
-        inc?: string[];
-        list?: string;
-        lt?: number;
-        lte?: number;
-        neq?: string;
-        ninc?: string[];
-        pre?: string;
-        re?: string;
-        suf?: string;
-    };
-};
-type Shared_cf85683a = {
-    accountId: string;
-    alias: Shared_782ad0eb[];
-    analytics?: {
-        canceledAt?: number | null;
-        disabledAt: number;
-        enabledAt: number;
-        id: string;
-        paidAt?: number;
-        sampleRatePercent?: number | null;
-        spendLimitInDollars?: number | null;
-    };
-    /** @enum {boolean} */
-    appliedCve55182Migration?: false | true;
-    /** @enum {boolean} */
-    autoAssignCustomDomains?: false | true;
-    autoAssignCustomDomainsUpdatedBy?: string;
-    /** @enum {boolean} */
-    autoExposeSystemEnvs?: false | true;
-    buildCommand?: string | null;
-    commandForIgnoringBuildStep?: string | null;
-    createdAt?: number;
-    creator?: creator_5594744c;
-    /** @enum {boolean} */
-    customerSupportCodeVisibility?: false | true;
-    deploymentExpiration: {
-        deploymentsToKeep?: number;
-        expirationDays?: number;
-        expirationDaysCanceled?: number;
-        expirationDaysErrored?: number;
-        expirationDaysProduction?: number;
-    };
-    devCommand?: string | null;
-    /** @enum {boolean} */
-    directoryListing: false | true;
-    env?: Shared_10a8184a[];
-    expiration?: {
-        expiresAt: number;
-    } | {
-        lockedAt: number;
-        lockedBy: string;
-    };
-    /** @enum {string|null} */
-    framework?: framework_e0d84aa3;
-    gitComments?: {
-        /** @enum {boolean} */
-        onCommit: false | true;
-        /** @enum {boolean} */
-        onPullRequest: false | true;
-    };
-    /** @enum {boolean} */
-    gitForkProtection?: false | true;
-    gitProviderOptions?: gitProviderOptions_7227ffb9;
-    /** @enum {boolean} */
-    hasActiveBranches?: false | true;
-    id: string;
-    installCommand?: string | null;
-    internalRoutes?: (Shared_62ee3300)[];
-    ipBuckets?: {
-        bucket: string;
-        /** @enum {boolean} */
-        default?: false | true;
-        supportUntil?: number;
-    }[];
-    latestDeployments?: Shared_63ac3c2f[];
-    link?: link_8624976f;
-    /** @enum {boolean} */
-    live?: false | true;
-    name: string;
-    /** @enum {string} */
-    nodeVersion: "10.x" | "12.x" | "14.x" | "16.x" | "18.x" | "20.x" | "22.x" | "24.x" | "26.x" | "8.10.x";
-    oidcTokenConfig?: {
-        /** @enum {boolean} */
-        enabled?: false | true;
-        /** @enum {string} */
-        issuerMode?: "global" | "team";
-    };
-    outputDirectory?: string | null;
-    passport?: {
-        connectorId: string;
-        /** @enum {string} */
-        deploymentType: "all" | "all_except_custom_domains" | "preview" | "prod_deployment_urls_and_all_previews";
-    } | null;
-    passwordProtection?: Record<string, never> | null;
-    /** @enum {boolean} */
-    paused?: false | true;
-    resourceConfig: defaultResourceConfig_62347f5d;
-    rollingRelease?: rollingRelease_71343110;
-    rootDirectory?: string | null;
-    security?: {
-        attackModeActiveUntil?: number | null;
-        /** @enum {boolean} */
-        attackModeEnabled?: false | true;
-        attackModeUpdatedAt?: number;
-        /** @enum {boolean} */
-        botIdEnabled?: false | true;
-        firewallBypassIps?: string[];
-        firewallConfigVersion?: number;
-        /** @enum {boolean} */
-        firewallEnabled?: false | true;
-        firewallRoutes?: {
-            dest?: string;
-            /** @enum {string} */
-            handle?: "finalize" | "init";
-            has?: Shared_8feade29[];
-            missing?: Shared_8feade29[];
-            mitigate?: {
-                /** @enum {string} */
-                action: "bypass" | "challenge" | "deny" | "log" | "rate_limit" | "redirect";
-                erl?: {
-                    /** @enum {string} */
-                    algo: "fixed_window" | "token_bucket";
-                    keys: string[];
-                    limit: number;
-                    window: number;
-                };
-                log_headers?: string[] | "*";
-                rule_id: string;
-                ttl?: number;
-            };
-            response_has?: Shared_c5efe08e[];
-            response_missing?: Shared_c5efe08e[];
-            src?: string | {
-                eq?: string;
-                gt?: number;
-                gte?: number;
-                inc?: string[];
-                list?: string;
-                lt?: number;
-                lte?: number;
-                neq?: string;
-                ninc?: string[];
-                pre?: string;
-                re?: string;
-                suf?: string;
-            };
-            status?: number;
-            /** @enum {string} */
-            tierRequirement?: "priority";
-            transforms?: {
-                args: string;
-                /** @enum {string} */
-                op: "append";
-                target: {
-                    key: string;
-                };
-                /** @enum {string} */
-                type: "request.headers";
-            }[];
-        }[];
-        /** @enum {boolean} */
-        firewallSeawallEnabled?: false | true;
-        firewallUpdatedAt?: number;
-        /** @enum {boolean} */
-        ja3Enabled?: false | true;
-        /** @enum {boolean} */
-        ja4Enabled?: false | true;
-        log_headers?: string[] | "*";
-        managedRules?: managedRules_36472d72;
-        /** @enum {boolean} */
-        pageIntegrityEnabled?: false | true;
-        requestLogsKey?: string[];
-        rulesets?: rulesets_3e356308;
-    };
-    serverlessFunctionRegion: string;
-    /** @enum {boolean} */
-    serverlessFunctionZeroConfigFailover?: false | true;
-    /** @enum {boolean} */
-    skipGitConnectDuringLink?: false | true;
-    /** @enum {boolean} */
-    sourceFilesOutsideRootDirectory?: false | true;
-    speedInsights?: {
-        canceledAt?: number;
-        dataReceivedAt?: number;
-        disabledAt?: number;
-        enabledAt?: number;
-        /** @enum {boolean} */
-        hasData?: false | true;
-        id: string;
-        paidAt?: number;
-    };
-    ssoProtection?: ssoProtection_e8b71c9f;
-    targets?: targets_8182a666;
-    /** @enum {string} */
-    tier?: "priority";
-    transferCompletedAt?: number;
-    transferredFromAccountId?: string;
-    transferStartedAt?: number;
-    transferToAccountId?: string;
-    trustedSources?: trustedSources_ec936b87;
-    updatedAt?: number;
-    webAnalytics?: {
-        canceledAt?: number;
-        disabledAt?: number;
-        enabledAt?: number;
-        /** @enum {boolean} */
-        hasData?: true;
-        id: string;
-    };
-};
-type Shared_d6653233 = {
-    alias?: string[];
-    /** @enum {boolean} */
-    aliasAssigned: false | true;
-    aliasError?: {
-        code: string;
-        message: string;
-    } | null;
-    aliasWarning?: {
-        action?: string;
-        code: string;
-        link?: string;
-        message: string;
-    } | null;
-    duration: {
-        endTime?: number;
-        endTimeCapped?: number;
-        startTime?: number;
-        timeForBilling?: number;
-        timeToContainerExit?: number;
-        timeToContainerExitCapped?: number;
-        timeToReady?: number;
-    };
-    errorCode?: string;
-    errorMessage?: string | null;
-    id: string;
-    /** @enum {string} */
-    readyState: "BLOCKED" | "BUILDING" | "CANCELED" | "ERROR" | "INITIALIZING" | "QUEUED" | "READY";
-    /** @enum {string|null} */
-    target?: "production" | "staging" | null;
-};
-type Shared_dfaf8d81 = {
-    comment?: string;
-    configurationId?: string | null;
-    contentHint?: contentHint_dc589353;
-    createdAt?: number;
-    createdBy?: string | null;
-    customEnvironmentIds?: string[];
-    /** @enum {boolean} */
-    decrypted?: false | true;
-    edgeConfigId?: string | null;
-    edgeConfigTokenId?: string | null;
-    gitBranch?: string;
-    id?: string;
-    internalContentHint?: {
-        encryptedValue: string;
-        /** @enum {string} */
-        type: "flags-secret";
-    } | null;
-    key: string;
-    legacyValue?: string;
-    sunsetSecretId?: string;
-    target?: ("development" | "development" | "preview" | "preview" | "production")[] | ("production" | "preview" | "development");
-    /** @enum {string} */
-    type: "encrypted" | "plain" | "secret" | "sensitive" | "system";
-    updatedAt?: number;
-    updatedBy?: string | null;
-    value: string;
-    /** @enum {string} */
-    visibility?: "config" | "secret";
-} | null;
-type Shared_e33085bc = {
-    branchMatcher?: {
-        pattern: string;
-        /** @enum {string} */
-        type: "endsWith" | "equals" | "startsWith";
-    };
-    createdAt: number;
-    currentDeploymentAliases?: string[];
-    description?: string;
-    domains?: Shared_5477f9e2[];
-    id: string;
-    slug: string;
-    /** @enum {string} */
-    type: "development" | "preview" | "production";
-    updatedAt: number;
-};
 type Shared_f02444a4 = {
     /** @enum {boolean} */
     enabled: false | true;
@@ -6512,6 +6512,7 @@ type Shared_f1c121d1 = {
     /** @enum {string} */
     type: "command" | "delimiter" | "deployment-state" | "edge-function-invocation" | "exit" | "fatal" | "metric" | "middleware" | "middleware-invocation" | "report" | "stderr" | "stdout";
 };
+type Shared_f270a023 = "ai-gateway.auto-reload.limit-reached" | "ai-gateway.balance-depleted" | "ai-gateway.budget.updated" | "alerts.triggered" | "botid.anomaly" | "budget.reached" | "comment.created" | "comment.deleted" | "comment.mentioned" | "comment.reaction-added" | "comment.reaction-removed" | "comment.resolved" | "comment.unresolved" | "comment.updated" | "deployment" | "deployment-canceled" | "deployment-check-rerequested" | "deployment-checks-completed" | "deployment-error" | "deployment-prepared" | "deployment-ready" | "deployment.blocked" | "deployment.build-requested" | "deployment.canceled" | "deployment.check-rerequested" | "deployment.checkrun.cancel" | "deployment.checkrun.start" | "deployment.checks.failed" | "deployment.checks.succeeded" | "deployment.cleanup" | "deployment.created" | "deployment.error" | "deployment.integration.action.cancel" | "deployment.integration.action.cleanup" | "deployment.integration.action.start" | "deployment.promoted" | "deployment.ready" | "deployment.rollback" | "deployment.succeeded" | "domain-created" | "domain.auto-renew.changed" | "domain.certificate.add" | "domain.certificate.add.failed" | "domain.certificate.deleted" | "domain.certificate.renew" | "domain.certificate.renew.failed" | "domain.created" | "domain.dns.records.changed" | "domain.renewal" | "domain.renewal.failed" | "domain.transfer-in.completed" | "domain.transfer-in.failed" | "domain.transfer-in.started" | "edge-config.created" | "edge-config.deleted" | "edge-config.items.updated" | "firewall.attack" | "firewall.custom-rule-anomaly" | "firewall.system-rule-anomaly" | "flag.created" | "flag.deleted" | "flag.segment.created" | "flag.segment.deleted" | "flag.segment.updated" | "flag.updated" | "function.archival-required" | "function.removal-required" | "integration-configuration-permission-updated" | "integration-configuration-removed" | "integration-configuration-scope-change-confirmed" | "integration-configuration.permission-upgraded" | "integration-configuration.removed" | "integration-configuration.scope-change-confirmed" | "integration-configuration.transferred" | "integration-resource.project-connected" | "integration-resource.project-disconnected" | "marketplace.invoice.created" | "marketplace.invoice.notpaid" | "marketplace.invoice.overdue" | "marketplace.invoice.paid" | "marketplace.invoice.refunded" | "marketplace.member.changed" | "message.created" | "message.deleted" | "message.mentioned" | "message.reaction-added" | "message.reaction-removed" | "message.updated" | "observability.anomaly" | "observability.anomaly-error" | "observability.error-anomaly" | "observability.usage-anomaly" | "page-integrity.connect-src.detected" | "page-integrity.header.changed" | "page-integrity.runtime-warning.detected" | "page-integrity.script.changed" | "page-integrity.script.detected" | "project-created" | "project-removed" | "project.created" | "project.domain.created" | "project.domain.deleted" | "project.domain.moved" | "project.domain.unverified" | "project.domain.updated" | "project.domain.verified" | "project.env-variable.created" | "project.env-variable.deleted" | "project.env-variable.updated" | "project.removed" | "project.renamed" | "project.rolling-release.aborted" | "project.rolling-release.approved" | "project.rolling-release.completed" | "project.rolling-release.started" | "sandbox.session.expiring" | "sandbox.session.started" | "sandbox.session.stopped" | "test-webhook" | "thread.resolved" | "thread.unresolved";
 type ssoProtection_e8b71c9f = {
     /** @enum {string|null} */
     april2026SecurityIncidentMigrationAppliedFrom?: "all" | "all_except_custom_domains" | "preview" | "prod_deployment_urls_and_all_previews" | null;
