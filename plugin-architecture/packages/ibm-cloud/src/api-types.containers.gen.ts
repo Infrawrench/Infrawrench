@@ -215,18 +215,16 @@ export interface components {
             locationZones?: string[];
             masterKubeVersion?: string;
             masterURL?: string;
+            monitoringURL?: string;
             multiAzCapable?: boolean;
             name: string;
-            networkPlugin?: string;
             oauthServerURL?: string;
             offering?: string;
-            outboundTrafficProtection?: string;
             podSubnet?: string;
             provider?: string;
             region?: string;
             resourceGroup?: string;
             resourceGroupName?: string;
-            secureByDefault?: string;
             secureRequested?: boolean;
             serviceEndpoints?: components["schemas"]["CommonClusterServiceEndpoint"];
             serviceSubnet?: string;
@@ -237,8 +235,8 @@ export interface components {
             trustedProfileID?: string;
             type?: string;
             versionEOS?: string;
-            virtualPrivateEndpointURL?: string;
-            vpcs?: string[];
+            vlans?: components["schemas"]["VlanConfigField"][];
+            worker_vlans?: components["schemas"]["VLANS"];
             /** Format: int64 */
             workerCount?: number;
             workerZones?: string[];
@@ -338,11 +336,42 @@ export interface components {
             size?: number;
             workerpool?: string;
         };
+        SubnetConfigField: {
+            cidr?: string;
+            id?: string;
+            ips?: string[];
+            is_byoip?: boolean;
+            is_public?: boolean;
+        };
         UpdateMaster: {
             cluster?: string;
             force?: boolean;
             version?: string;
         };
+        VLAN: {
+            id?: string;
+            properties?: components["schemas"]["VLANProperties"];
+            type?: string;
+        };
+        VlanConfigField: {
+            id?: string;
+            region?: string;
+            subnets?: components["schemas"]["SubnetConfigField"][];
+            zone?: string;
+        };
+        VLANProperties: {
+            local_disk_storage_capability?: string;
+            location?: string;
+            name?: string;
+            note?: string;
+            primary_router?: string;
+            san_storage_capability?: string;
+            /** Format: int64 */
+            subnet_count?: number;
+            vlan_number?: string;
+            vlan_type?: string;
+        };
+        VLANS: components["schemas"]["VLAN"][];
         WorkerVolumeEncryption: {
             kmsAccountID?: string;
             kmsInstanceID?: string;
