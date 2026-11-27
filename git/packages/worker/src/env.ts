@@ -66,6 +66,17 @@ export interface GitReviewMessage {
   readonly runId: string;
 }
 
+/**
+ * What waits on `infrawrench-git-jobs`: work that talks to another host and
+ * can take minutes, one message an invocation (`jobs/consumer.ts`). A push
+ * mirror's run (`mirror/job.ts`) and a step of an issue import
+ * (`import/job.ts`). A message names a row and nothing else: the row says
+ * what there is to do, so a message delivered twice does the work once.
+ */
+export type GitJobMessage =
+  | { readonly type: "mirror"; readonly mirrorId: string }
+  | { readonly type: "issue-import"; readonly importId: string };
+
 /** A Rate Limiting binding, as much of it as is used. */
 export interface RateLimit {
   limit(options: { key: string }): Promise<{ success: boolean }>;
@@ -87,6 +98,12 @@ export interface Env {
    * (`review/queue.ts`). Absent under tests: a run then stays queued.
    */
   readonly REVIEWS?: Queue<GitReviewMessage>;
+  /**
+   * Producer for `infrawrench-git-jobs` (`jobs/consumer.ts`): push mirrors and
+   * issue imports. Absent under tests and until the queue is made: the work
+   * then waits for the sweep (`jobs/sweep.ts`), which runs what is due itself.
+   */
+  readonly JOBS?: Queue<GitJobMessage>;
   /**
    * The built UI (`../web/dist`), served for everything the Worker does not
    * route itself. Absent under tests and before the UI is built.

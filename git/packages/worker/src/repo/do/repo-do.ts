@@ -39,6 +39,7 @@ import {
 import { zipArchive } from "@infrawrench/git-ops";
 import type { Env } from "../../env";
 import { describeError } from "../../http/log";
+import type { MirrorPlan, MirrorPlanOptions } from "../../mirror/plan";
 import { tarArchive } from "./archive";
 import { ARCHIVE_URL, type ArchiveCall, CALL_HEADER, type GitCall, SERVE_URL } from "./call";
 import { type ReaderReply, ReaderState, callReader, localRepoReader } from "../queries";
@@ -285,6 +286,23 @@ export class RepoDO extends DurableObject<Env> {
     haves: readonly ObjectId[],
   ): Promise<ReadableStream<Uint8Array> | null> {
     return this.at(repoId).exportPack(wants, haves);
+  }
+
+  // RPC: push mirrors (`mirror/`)
+
+  /** What a push mirror's run has to do against a target with these refs. */
+  async mirrorPlan(repoId: string, options: MirrorPlanOptions): Promise<MirrorPlan> {
+    return this.at(repoId).mirrorPlan(options);
+  }
+
+  /** The pack of one push of a mirror. Null when a want is no longer reachable here. */
+  async mirrorPack(
+    repoId: string,
+    wants: readonly ObjectId[],
+    haves: readonly ObjectId[],
+    options: { readonly ofsDelta: boolean },
+  ): Promise<ReadableStream<Uint8Array> | null> {
+    return this.at(repoId).mirrorPack(wants, haves, options);
   }
 
   // RPC: the JSON API's reader

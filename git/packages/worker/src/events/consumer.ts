@@ -44,6 +44,8 @@ import { queueReviewForVersion } from "./reviews";
 import { queueMergeApplies, queuePullRequestPlans, scanAhead } from "./terraform";
 import { branchDeleted, carryThreads, openBranchPage, recordVersions } from "./versions";
 import { describeError } from "../http/log";
+import { enqueueJob } from "../jobs/consumer";
+import { markMirrorsPending } from "../mirror/store";
 
 const BRANCH = "refs/heads/";
 const ZERO = /^0+$/;
@@ -390,6 +392,25 @@ const measureLanguages = async (
   });
 };
 
+/**
+ * A push moved refs: the repository's push mirrors are owed a run
+ * (`mirror/store.ts`), and each is sent to the jobs queue. First, and apart
+ * from everything else a push sets off, so a mirror does not wait on CI or
+ * a review. Raising the number twice for a message delivered twice costs a
+ * run that finds nothing to do.
+ */
+const mirrorPush = async (repositoryId: string, env: Env): Promise<void> => {
+  const ids = await markMirrorsPending(repositoryId);
+  for (const mirrorId of ids) {
+    try {
+      await enqueueJob(env, { type: "mirror", mirrorId });
+    } catch (error) {
+      // The sweep sends it within two minutes.
+      console.error(`[git] mirror ${mirrorId} could not be queued: ${describeError(error)}`);
+    }
+  }
+};
+
 export const handleGitEvent = (
   event: GitEvent,
   env: Env,
@@ -397,7 +418,7 @@ export const handleGitEvent = (
 ): Promise<void> => {
   switch (event.type) {
     case "push":
-      return handlePush(event, env, readers);
+      return mirrorPush(event.repoId, env).then(() => handlePush(event, env, readers));
     case "languages":
       return measureLanguages(event.repoId, env, readers);
   }
