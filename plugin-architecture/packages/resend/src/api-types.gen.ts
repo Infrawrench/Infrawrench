@@ -750,7 +750,8 @@ export interface components {
             id?: string;
             started_at?: string | null;
             /** @enum {string} */
-            status?: "running" | "completed" | "failed" | "cancelled";
+            status?: "running" | "completed" | "failed" | "cancelled" | "quota_exceeded" | "skipped";
+            status_reason?: string;
         };
         AutomationStep: {
             config: Record<string, never>;
@@ -2480,7 +2481,10 @@ export interface operations {
             query?: {
                 after?: string;
                 before?: string;
+                end_date?: string;
                 limit?: number;
+                start_date?: string;
+                to?: string[];
             };
             header?: never;
             path?: never;
