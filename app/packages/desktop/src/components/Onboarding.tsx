@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useGT } from "gt-react";
+import { msg, useGT, useMessages } from "gt-react";
 import { Modal, useDataString } from "@infrawrench/ui";
 import { getCloudAuthStatus, getCloudOrgs, startCloudAuth, type CloudOrg } from "../lib/cloud-api";
 import { CLOUD_URL } from "../../env";
@@ -41,27 +41,51 @@ interface OnboardingProps {
 
 const PERKS: { title: string; description: string; icon: React.ReactNode }[] = [
   {
-    title: "Take it everywhere",
-    description: "Your accounts, dashboards, and workspaces sync to the web app and your phone.",
+    title: msg("Take it everywhere"),
+    description: msg(
+      "Your accounts, dashboards, and workspaces sync to the web app and your phone.",
+    ),
     icon: <PerkIcon d="M12 3v10m0 0l-4-4m4 4l4-4M4 17h16v3H4z" />,
   },
   {
-    title: "Bring your team",
-    description:
+    title: msg("Bring your team"),
+    description: msg(
       "Create an organization, invite teammates, and share dashboards, resources, and SSH keys with role-based access.",
+    ),
     icon: (
       <PerkIcon d="M9 11a3 3 0 100-6 3 3 0 000 6zm-5 8a5 5 0 0110 0M17 9a2.5 2.5 0 100-5m3 15a4.5 4.5 0 00-4-4.4" />
     ),
   },
   {
-    title: "Automate in the cloud",
-    description: "Workflows and agents run server-side and keep going after your laptop sleeps.",
+    title: msg("Automate in the cloud"),
+    description: msg(
+      "Workflows and agents run server-side and keep going after your laptop sleeps.",
+    ),
     icon: <PerkIcon d="M7 17a4 4 0 01-.6-7.95A5.5 5.5 0 0117.2 8.6 3.75 3.75 0 0116.75 17H7z" />,
   },
   {
-    title: "Budgets and alerts",
-    description: "Track spend across every provider and get notified before costs surprise you.",
+    title: msg("Budgets and alerts"),
+    description: msg(
+      "Track spend across every provider and get notified before costs surprise you.",
+    ),
     icon: <PerkIcon d="M4 19V5m0 14h16M8 15v-4m4 4V8m4 7v-6" />,
+  },
+  // Git and CI are the cloud's: local mode has neither.
+  {
+    title: msg("Host your code"),
+    description: msg(
+      "git.infrawrench.com gives every branch a page, with review agents that read each push.",
+    ),
+    icon: (
+      <PerkIcon d="M6 3v12M18 9a9 9 0 01-9 9M18 9a3 3 0 100-6 3 3 0 000 6zM6 21a3 3 0 100-6 3 3 0 000 6z" />
+    ),
+  },
+  {
+    title: msg("Run CI on every push"),
+    description: msg(
+      "Infrawrench CI runs your pipelines for repositories on git.infrawrench.com and GitHub. Part of Pro.",
+    ),
+    icon: <PerkIcon d="M9 12l2 2 4-4M12 21a9 9 0 100-18 9 9 0 000 18z" />,
   },
 ];
 
@@ -96,6 +120,7 @@ export function Onboarding({
 }: OnboardingProps) {
   const gt = useGT();
   const gtData = useDataString();
+  const m = useMessages();
   const [step, setStep] = useState<Step>(startWithSignIn ? "signing-in" : "welcome");
   const [orgs, setOrgs] = useState<CloudOrg[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -208,10 +233,10 @@ export function Onboarding({
                     <div className="mt-0.5 flex-shrink-0">{perk.icon}</div>
                     <div>
                       <div className="text-sm font-medium text-on-surface-secondary">
-                        {gtData(perk.title)}
+                        {m(perk.title)}
                       </div>
                       <div className="text-xs text-on-surface-muted mt-0.5">
-                        {gtData(perk.description)}
+                        {m(perk.description)}
                       </div>
                     </div>
                   </li>

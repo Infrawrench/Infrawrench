@@ -24084,5 +24084,13 @@
   "04dbb16d9b692feb": "オープンなブランチ",
   "6dba06121f9a9447": "git.infrawrench.com の組織には有料プランが必要です。",
   "45fa271ea0e1ac8e": "ベータ",
-  "5a31cc0d7c9d21df": "その名前はボットアカウントのものです"
+  "5a31cc0d7c9d21df": "その名前はボットアカウントのものです",
+  "134428ee7e702b42": "Infrawrench CIはProに含まれます",
+  "70cea643b845d422": "この組織の請求を管理しているメンバーがアップグレードできます。",
+  "6445175d80466b43": "git.infrawrench.com: 公開リポジトリに加え、非公開リポジトリ{count}件(最大{size} GiB)",
+  "2c681723ad0dfa8d": "レビューエージェント(同じAI利用枠から)",
+  "1aa62082c8dc0d57": "Infrawrench CI(従量課金)",
+  "d6f7b298954a9ce7": "git.infrawrench.com: 組織の名前、非公開リポジトリ無制限、{size} GiBを含む",
+  "facb5f1820ff3c7b": "git.infrawrench.com: 組織の名前、非公開リポジトリ{count}件、{size} GiBを含む",
+  "d9c187d5910c16d4": "レビューエージェント(AI利用分と合わせて請求)"
 }

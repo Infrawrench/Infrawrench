@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import { msg, useGT, useMessages } from "gt-react";
 import { readRevnuMeasurement } from "@infrawrench/analytics";
-import { AppPicker } from "@infrawrench/ui";
+import { AppPicker, startProCheckout, usePlanFeatureLines } from "@infrawrench/ui";
 import { SWITCHABLE_PRODUCTS, type ProductId } from "@infrawrench/client-core";
 import { apiPost, apiPut } from "@/lib/api";
 
@@ -31,6 +31,7 @@ function OnboardingPage() {
   const navigate = useNavigate();
   const gt = useGT();
   const m = useMessages();
+  const planLines = usePlanFeatureLines();
   const [step, setStep] = useState<OnboardingStep>("create");
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -96,12 +97,14 @@ function OnboardingPage() {
     setUpgrading(true);
     setError(null);
     try {
-      const measurement = readRevnuMeasurement();
-      const { url } = await apiPost<{ url: string }>(
-        `/api/org/${orgId}/billing/checkout`,
-        measurement ? { measurement } : undefined,
-      );
-      window.location.href = url;
+      await startProCheckout({
+        orgId,
+        post: apiPost,
+        openExternal: (url) => {
+          window.location.href = url;
+        },
+        readCheckoutMeasurement: readRevnuMeasurement,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Failed to start checkout"));
       setUpgrading(false);
@@ -158,6 +161,14 @@ function OnboardingPage() {
                 {FREE_FEATURES.map((feature) => (
                   <li key={feature}>{m(feature)}</li>
                 ))}
+                {planLines.free.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+                {planLines.freeWithout.map((line) => (
+                  <li key={line} className="text-on-surface-faint">
+                    {line}
+                  </li>
+                ))}
               </ul>
               <button
                 type="button"
@@ -186,6 +197,9 @@ function OnboardingPage() {
               <ul className="space-y-2 text-sm text-on-surface-tertiary mb-6 flex-1">
                 {PRO_FEATURES.map((feature) => (
                   <li key={feature}>{m(feature)}</li>
+                ))}
+                {planLines.pro.map((line) => (
+                  <li key={line}>{line}</li>
                 ))}
               </ul>
               <button

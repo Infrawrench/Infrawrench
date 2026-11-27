@@ -1,6 +1,8 @@
 import { useMemo } from "react";
-import { CiPanel } from "@infrawrench/ui/ci";
+import { readRevnuMeasurement } from "@infrawrench/analytics";
+import { CiPanel, startProCheckout } from "@infrawrench/ui/ci";
 import { usePermissions } from "@/auth/permissions-context";
+import { apiPost } from "@/lib/api";
 import { createWebCiClient } from "@/lib/ci-client";
 
 /** Web host for the shared CI screen, rendered as the "ci" workspace tab. */
@@ -27,6 +29,20 @@ export function WebCiPanel({
         canManageAccess={has("ci-access:write")}
         canApprove={has("ci:approve")}
         onOpenUrl={(url) => window.open(url, "_blank", "noopener,noreferrer")}
+        // The same checkout Settings > Billing starts, for who may start it.
+        onUpgrade={
+          has("billing:write")
+            ? () =>
+                startProCheckout({
+                  orgId,
+                  post: apiPost,
+                  openExternal: (url) => {
+                    window.location.href = url;
+                  },
+                  readCheckoutMeasurement: readRevnuMeasurement,
+                })
+            : undefined
+        }
       />
     </div>
   );

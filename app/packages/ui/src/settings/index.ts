@@ -62,3 +62,5 @@ export { BillingSection } from "./BillingSection.js";
 export { AuditLogSection } from "./AuditLogSection.js";
 export { SettingsSectionBody } from "./SettingsSectionBody.js";
 export { EventSubscriptionsSection } from "./event-subscriptions/EventSubscriptionsSection.js";
+export { usePlanFeatureLines, type PlanFeatureLines } from "./plan-features.js";
+export { startProCheckout, type ProCheckoutHost } from "./checkout.js";

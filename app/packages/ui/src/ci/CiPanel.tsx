@@ -57,6 +57,12 @@ export interface CiPanelProps {
    * which the CI proxy answers as an attachment, so the page stays.
    */
   onDownloadUrl?: ((url: string) => void) | undefined;
+  /**
+   * Start the upgrade to Pro (Stripe Checkout, through the host's billing
+   * transport), for a member with `billing:write`. Without it the plan gate
+   * says who can upgrade instead of offering a button.
+   */
+  onUpgrade?: (() => Promise<void>) | undefined;
 }
 
 type Gt = ReturnType<typeof useGT>;
@@ -168,6 +174,52 @@ function Notice({
     >
       {children}
     </div>
+  );
+}
+
+/**
+ * What a free organization sees instead of CI's setup: CI is part of Pro,
+ * and the way there. One line and a button; what CI does is in the docs.
+ */
+function CiPlanGate({ onUpgrade }: { onUpgrade?: (() => Promise<void>) | undefined }) {
+  const gt = useGT();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const failed = gt("Failed to start checkout");
+  return (
+    <section
+      aria-labelledby="ci-plan-gate"
+      className="flex flex-col items-center gap-3 rounded border border-border bg-surface-raised px-4 py-10 text-center"
+    >
+      <h3 id="ci-plan-gate" className="text-sm font-semibold text-on-surface">
+        {gt("Infrawrench CI is part of Pro")}
+      </h3>
+      {onUpgrade ? (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            setError(null);
+            onUpgrade()
+              .catch((e: unknown) => setError(e instanceof Error ? e.message : failed))
+              .finally(() => setBusy(false));
+          }}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-50"
+        >
+          {busy ? gt("Redirecting...") : gt("Upgrade to Pro")}
+        </button>
+      ) : (
+        <p className="text-xs text-on-surface-muted">
+          {gt("Someone who manages billing for this organization can upgrade.")}
+        </p>
+      )}
+      {error ? (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      ) : null}
+    </section>
   );
 }
 
@@ -828,6 +880,7 @@ export function CiPanel({
   canApprove,
   onOpenUrl,
   onDownloadUrl,
+  onUpgrade,
 }: CiPanelProps) {
   const gt = useGT();
   // A string, not `gt`, in the effect's deps: `gt` is not referentially
@@ -875,6 +928,105 @@ export function CiPanel({
     { fallbackMs: anyActive ? 5_000 : 15_000, enabled: !selectedRunId && loaded },
   );
 
+  // What the plan allows: on the free plan nothing is approved or retried.
+  const mayRun = canApprove && status?.planIncludesCi === true;
+  const runsSection = (
+    <section className="space-y-2" aria-labelledby="ci-runs">
+      <div className="flex items-center justify-between gap-2">
+        <h3 id="ci-runs" className="text-sm font-semibold text-on-surface">
+          {gt("Runs")}
+        </h3>
+        <label className="flex items-center gap-2 text-xs text-on-surface-muted">
+          {gt("Show")}
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as CiRunStatus | "")}
+            className="rounded border border-border bg-surface px-1.5 py-0.5 text-xs text-on-surface"
+          >
+            <option value="">{gt("All runs")}</option>
+            {CI_RUN_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {ciRunStatusLabel(s, gt)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {runs === null ? null : runs.length === 0 ? (
+        <p className="text-xs text-on-surface-muted">
+          {gt("No runs yet. Push to a repository of an account that runs CI.")}
+        </p>
+      ) : (
+        <table className="w-full text-xs">
+          <caption className="sr-only">{gt("CI runs")}</caption>
+          <thead>
+            <tr className="text-left text-on-surface-faint">
+              <th scope="col" className="py-1">
+                {gt("Repository")}
+              </th>
+              <th scope="col">{gt("Status")}</th>
+              <th scope="col">{gt("Source")}</th>
+              <th scope="col">{gt("Commit")}</th>
+              <th scope="col">{gt("Duration")}</th>
+              <th scope="col">
+                <span className="sr-only">{gt("Actions")}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {runs.map((run) => (
+              <tr
+                key={run.id}
+                onClick={(event) => {
+                  // The row opens the run from anywhere; links and the approval
+                  // buttons inside it keep their own click, and dragging to
+                  // select text does not count as a click.
+                  if ((event.target as Element).closest("a, button, input, select")) {
+                    return;
+                  }
+                  if (window.getSelection()?.toString()) return;
+                  onSelectRun(run.id);
+                }}
+                className="cursor-pointer border-t border-border align-top hover:bg-surface-sunken"
+              >
+                <td className="py-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onSelectRun(run.id)}
+                    className="text-left text-on-surface hover:underline"
+                  >
+                    {run.repoFullName}
+                  </button>
+                </td>
+                <td className="py-1.5">
+                  <StatusBadge status={run.status} />
+                </td>
+                <td className="py-1.5 text-on-surface-muted">
+                  <RunSource run={run} />
+                </td>
+                <td className="py-1.5 font-mono text-on-surface-muted">{run.sha.slice(0, 7)}</td>
+                <td className="py-1.5 text-on-surface-muted">{formatDuration(runDuration(run))}</td>
+                <td className="py-1.5">
+                  {run.status === "awaiting_approval" && mayRun ? (
+                    <ApprovalButtons run={run} client={client} onDecided={refresh} />
+                  ) : (run.status === "failed" ||
+                      run.status === "error" ||
+                      run.status === "cancelled") &&
+                    mayRun &&
+                    !run.retriedAsRunId ? (
+                    <RetryButtons run={run} client={client} compact onRetried={refresh} />
+                  ) : CI_CANCELLABLE_STATUSES.includes(run.status) && canApprove ? (
+                    <CancelButton run={run} client={client} onCancelled={refresh} />
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+
   return (
     <div className="space-y-6">
       <div>
@@ -905,17 +1057,11 @@ export function CiPanel({
               {gt("The CI runner pool is not configured on this server, so no run will start.")}
             </Notice>
           ) : null}
-          {!status.planIncludesCi ? (
-            <Notice tone="warning">
-              {gt("CI needs a paid plan. Runs are recorded but not started until you upgrade.")}
-            </Notice>
-          ) : null}
-
           {selectedRunId ? (
             <RunDetailView
               runId={selectedRunId}
               client={client}
-              canApprove={canApprove}
+              canApprove={mayRun}
               onOpenUrl={onOpenUrl}
               onOpenRun={onSelectRun}
               onDownloadUrl={onDownloadUrl}
@@ -924,6 +1070,12 @@ export function CiPanel({
                 refresh();
               }}
             />
+          ) : !status.planIncludesCi ? (
+            <>
+              <CiPlanGate onUpgrade={onUpgrade} />
+              {/* What ran before the plan ended stays readable. */}
+              {(runs !== null && runs.length > 0) || filter !== "" ? runsSection : null}
+            </>
           ) : (
             <>
               <AccountsCard
@@ -948,104 +1100,7 @@ export function CiPanel({
               <CiSchedulesCard client={client} />
               <CiCachesCard client={client} canWrite={canWrite} />
 
-              <section className="space-y-2" aria-labelledby="ci-runs">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 id="ci-runs" className="text-sm font-semibold text-on-surface">
-                    {gt("Runs")}
-                  </h3>
-                  <label className="flex items-center gap-2 text-xs text-on-surface-muted">
-                    {gt("Show")}
-                    <select
-                      value={filter}
-                      onChange={(e) => setFilter(e.target.value as CiRunStatus | "")}
-                      className="rounded border border-border bg-surface px-1.5 py-0.5 text-xs text-on-surface"
-                    >
-                      <option value="">{gt("All runs")}</option>
-                      {CI_RUN_STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {ciRunStatusLabel(s, gt)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                {runs === null ? null : runs.length === 0 ? (
-                  <p className="text-xs text-on-surface-muted">
-                    {gt("No runs yet. Push to a repository of an account that runs CI.")}
-                  </p>
-                ) : (
-                  <table className="w-full text-xs">
-                    <caption className="sr-only">{gt("CI runs")}</caption>
-                    <thead>
-                      <tr className="text-left text-on-surface-faint">
-                        <th scope="col" className="py-1">
-                          {gt("Repository")}
-                        </th>
-                        <th scope="col">{gt("Status")}</th>
-                        <th scope="col">{gt("Source")}</th>
-                        <th scope="col">{gt("Commit")}</th>
-                        <th scope="col">{gt("Duration")}</th>
-                        <th scope="col">
-                          <span className="sr-only">{gt("Actions")}</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {runs.map((run) => (
-                        <tr
-                          key={run.id}
-                          onClick={(event) => {
-                            // The row opens the run from anywhere; links and the approval
-                            // buttons inside it keep their own click, and dragging to
-                            // select text does not count as a click.
-                            if ((event.target as Element).closest("a, button, input, select")) {
-                              return;
-                            }
-                            if (window.getSelection()?.toString()) return;
-                            onSelectRun(run.id);
-                          }}
-                          className="cursor-pointer border-t border-border align-top hover:bg-surface-sunken"
-                        >
-                          <td className="py-1.5">
-                            <button
-                              type="button"
-                              onClick={() => onSelectRun(run.id)}
-                              className="text-left text-on-surface hover:underline"
-                            >
-                              {run.repoFullName}
-                            </button>
-                          </td>
-                          <td className="py-1.5">
-                            <StatusBadge status={run.status} />
-                          </td>
-                          <td className="py-1.5 text-on-surface-muted">
-                            <RunSource run={run} />
-                          </td>
-                          <td className="py-1.5 font-mono text-on-surface-muted">
-                            {run.sha.slice(0, 7)}
-                          </td>
-                          <td className="py-1.5 text-on-surface-muted">
-                            {formatDuration(runDuration(run))}
-                          </td>
-                          <td className="py-1.5">
-                            {run.status === "awaiting_approval" && canApprove ? (
-                              <ApprovalButtons run={run} client={client} onDecided={refresh} />
-                            ) : (run.status === "failed" ||
-                                run.status === "error" ||
-                                run.status === "cancelled") &&
-                              canApprove &&
-                              !run.retriedAsRunId ? (
-                              <RetryButtons run={run} client={client} compact onRetried={refresh} />
-                            ) : CI_CANCELLABLE_STATUSES.includes(run.status) && canApprove ? (
-                              <CancelButton run={run} client={client} onCancelled={refresh} />
-                            ) : null}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </section>
+              {runsSection}
             </>
           )}
         </>
