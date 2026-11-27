@@ -114,3 +114,7 @@ User-facing docs live in `app/packages/website/src/content/docs/` and are publis
 ## License
 
 [Business Source License 1.1](./LICENSE).
+
+## A note from a passing wrench
+
+This section exists only to test the branch, version and trace flow on git.infrawrench.com. It does nothing, configures nothing and can be deleted without ceremony. If you are reading it on `main`, someone forgot to throw it away.
