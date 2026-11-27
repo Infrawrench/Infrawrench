@@ -649,6 +649,7 @@ export interface components {
                 triggers?: boolean;
             };
             environment: {
+                id?: string;
                 name?: string;
                 slug?: string;
             };
@@ -662,8 +663,6 @@ export interface components {
         };
         BaseTrigger: {
             alert_type?: string;
-            /** @default false */
-            auto_investigate?: boolean;
             baseline_details?: {
                 /** @enum {integer} */
                 offset_minutes: 60 | 1440 | 10080 | 40320;
@@ -800,8 +799,6 @@ export interface components {
             alert_type: string;
         } & (components["schemas"]["ExhaustionTimeBurnAlertListResponse"] | components["schemas"]["BudgetRateBurnAlertListResponse"]);
         BurnAlertSharedParams: {
-            /** @default false */
-            auto_investigate?: boolean;
             /** Format: date-time */
             readonly created_at?: string;
             description?: string;
@@ -858,6 +855,7 @@ export interface components {
             description?: string;
             /** @default 0 */
             expand_json_depth?: number;
+            readonly hcid?: string;
             readonly last_written_at?: null | string;
             name: string;
             readonly regular_columns_count?: null | number;
@@ -1140,8 +1138,6 @@ export interface components {
             }[];
             /** @default 1676399428 */
             start_time?: number;
-            /** @default false */
-            time_basis_end?: boolean;
             /** @default 7200 */
             time_range?: number;
             /** @default false */

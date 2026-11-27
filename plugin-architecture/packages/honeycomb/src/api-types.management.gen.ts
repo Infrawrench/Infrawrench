@@ -96,7 +96,7 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        ApiKeyAttributes: components["schemas"]["IngestKeyAttributes"] | components["schemas"]["ConfigurationKeyAttributes"];
+        ApiKeyAttributes: components["schemas"]["IngestKeyAttributes"] | components["schemas"]["ConfigurationKeyAttributes"] | components["schemas"]["ManagementKeyAttributes"];
         ApiKeyCreateRequest: {
             data: {
                 attributes: {
@@ -144,7 +144,7 @@ export interface components {
             relationships?: {
                 creator?: components["schemas"]["CreatorRelationship"];
                 editor?: components["schemas"]["EditorRelationship"];
-                environment: components["schemas"]["EnvironmentRelationship"];
+                environment?: components["schemas"]["EnvironmentRelationship"];
             };
             /** @enum {string} */
             readonly type?: "api-keys";
@@ -153,7 +153,7 @@ export interface components {
             data: components["schemas"]["ApiKeyObject"];
         };
         ApiKeyUpdateRequest: {
-            data: components["schemas"]["IngestKeyRequest"] | components["schemas"]["ConfigurationKeyRequest"];
+            data: components["schemas"]["IngestKeyRequest"] | components["schemas"]["ConfigurationKeyRequest"] | components["schemas"]["ManagementKeyRequest"];
         };
         AuthV2Response: {
             data: {
@@ -172,7 +172,9 @@ export interface components {
                     };
                 };
                 readonly id: string;
-                readonly relationships?: components["schemas"]["TeamRelationship"];
+                readonly relationships?: {
+                    environment?: components["schemas"]["EnvironmentRelationship"];
+                } & components["schemas"]["TeamRelationship"];
                 /** @enum {string} */
                 readonly type: "api-keys";
             };
@@ -274,6 +276,7 @@ export interface components {
                 color: components["schemas"]["EnvironmentColor"] | "classic";
                 description: string;
                 name: string;
+                restricted: boolean;
                 settings: {
                     delete_protected: boolean;
                 };
@@ -364,6 +367,35 @@ export interface components {
                 readonly title?: string;
             }[];
         };
+        ManagementKeyAttributes: {
+            description?: string;
+            /** @default false */
+            disabled?: boolean;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            key_type: "management";
+            name: string;
+            scopes: string[];
+            readonly timestamps?: {
+                /** Format: date-time */
+                readonly created?: string;
+                /** Format: date-time */
+                readonly updated?: string;
+            };
+        };
+        ManagementKeyRequest: {
+            attributes: {
+                description?: string;
+                disabled?: boolean;
+                name?: string;
+                scopes?: string[];
+            };
+            id: string;
+            /** @enum {string} */
+            type: "api-keys";
+        };
         PaginationLinks: {
             readonly next: string | null;
         };
@@ -381,6 +413,7 @@ export interface components {
                 attributes: {
                     color?: components["schemas"]["EnvironmentColor"];
                     description?: string;
+                    restricted?: boolean;
                     settings?: {
                         delete_protected?: boolean;
                     };
@@ -526,7 +559,7 @@ export interface operations {
     listApiKeys: {
         parameters: {
             query?: {
-                "filter[type]"?: "configuration" | "ingest";
+                "filter[type]"?: "configuration" | "ingest" | "management";
                 "page[after]"?: components["parameters"]["PaginationCursor"];
                 "page[size]"?: components["parameters"]["PaginationSize"];
             };
