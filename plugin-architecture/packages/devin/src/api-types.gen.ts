@@ -682,12 +682,12 @@ export interface components {
         };
         "AutomationSessionSettings-Input": {
             devin_mode?: string | null;
-            fallback_devin_mode?: ("normal" | "fast" | "lite" | "ultra" | "fusion") | null;
+            fallback_devin_mode?: ("normal" | "fast" | "lite" | "ultra" | "fusion" | "fast-ultra") | null;
             net_policy?: components["schemas"]["AutomationNetPolicy"] | null;
         };
         "AutomationSessionSettings-Output": {
             devin_mode?: string | null;
-            fallback_devin_mode?: ("normal" | "fast" | "lite" | "ultra" | "fusion") | null;
+            fallback_devin_mode?: ("normal" | "fast" | "lite" | "ultra" | "fusion" | "fast-ultra") | null;
             net_policy?: components["schemas"]["AutomationNetPolicy"] | null;
         };
         AutomationSessionSlackConfig: {
@@ -758,13 +758,15 @@ export interface components {
         "AutomationTriggerRequest-Input": {
             conditions?: components["schemas"]["AutomationConditions-Input"] | null;
             /** @enum {string} */
-            event_type: "github:issue_comment" | "github:issues" | "github:pull_request" | "github:pull_request_review" | "github:pull_request_review_comment" | "github:check_run" | "github:workflow_run" | "github:push" | "gitlab:merge_request" | "gitlab:note" | "gitlab:issue" | "gitlab:issue_note" | "gitlab:push" | "gitlab:pipeline" | "azure_devops:pull_request" | "azure_devops:pull_request_comment" | "azure_devops:push" | "azure_devops:build" | "bitbucket_data_center:pull_request" | "bitbucket_data_center:pull_request_comment" | "bitbucket_data_center:push" | "schedule:recurring" | "slack:message" | "slack:reaction_added" | "slack:usergroup_mentioned" | "slack:app_mentioned" | "teams:message" | "teams:reaction_added" | "linear:create" | "linear:label_added" | "linear:assigned" | "linear:status_changed" | "linear:priority_changed" | "linear:moved" | "jira:issue_created" | "jira:issue_updated" | "jira:label_added" | "jira:status_changed" | "jira:assigned" | "jira:commented" | "pylon:issue_created" | "pylon:issue_tag_added" | "pylon:issue_status_changed" | "incident_io:incident_created" | "incident_io:status_changed" | "incident_io:severity_changed" | "incident_io:follow_up_created" | "pagerduty:incident_triggered" | "pagerduty:incident_acknowledged" | "pagerduty:incident_resolved" | "pagerduty:incident_updated" | "webhook:incoming" | "snapshot_build:completed" | "board:ticket_updated";
+            event_type: "github:issue_comment" | "github:issues" | "github:pull_request" | "github:pull_request_review" | "github:pull_request_review_comment" | "github:check_run" | "github:workflow_run" | "github:push" | "gitlab:merge_request" | "gitlab:note" | "gitlab:issue" | "gitlab:issue_note" | "gitlab:push" | "gitlab:pipeline" | "azure_devops:pull_request" | "azure_devops:pull_request_comment" | "azure_devops:push" | "azure_devops:build" | "bitbucket_data_center:pull_request" | "bitbucket_data_center:pull_request_comment" | "bitbucket_data_center:push" | "schedule:recurring" | "slack:message" | "slack:reaction_added" | "slack:usergroup_mentioned" | "slack:app_mentioned" | "teams:message" | "teams:reaction_added" | "linear:create" | "linear:label_added" | "linear:assigned" | "linear:status_changed" | "linear:priority_changed" | "linear:moved" | "jira:issue_created" | "jira:issue_updated" | "jira:label_added" | "jira:status_changed" | "jira:assigned" | "jira:commented" | "pylon:issue_created" | "pylon:issue_tag_added" | "pylon:issue_status_changed" | "incident_io:incident_created" | "incident_io:status_changed" | "incident_io:severity_changed" | "incident_io:follow_up_created" | "incident_io:alert_created" | "incident_io:alert_resolved" | "pagerduty:incident_triggered" | "pagerduty:incident_acknowledged" | "pagerduty:incident_resolved" | "pagerduty:incident_updated" | "webhook:incoming" | "webhook:managed" | "snapshot_build:completed" | "board:ticket_updated" | "security_threat:published" | "gmail:message_received";
+            managed_webhook_id?: string | null;
             /** @default [] */
             replies?: components["schemas"]["AutomationReply"][];
         };
         AutomationTriggerResponse: {
             conditions?: components["schemas"]["AutomationConditions-Output"] | null;
             event_type: string;
+            managed_webhook_id?: string | null;
             /** @default [] */
             replies?: components["schemas"]["AutomationReply"][];
             trigger_id: string;
@@ -960,6 +962,8 @@ export interface components {
             type?: string;
         };
         Role: {
+            /** @default false */
+            is_default?: boolean;
             role_id: string;
             role_name: string;
             /** @enum {string} */
@@ -1051,7 +1055,7 @@ export interface components {
             category?: ("bug_fixing" | "ci_cd_and_devops" | "code_quality_and_security" | "code_review" | "code_review_and_analysis" | "data_and_automation" | "documentation_and_content" | "feature_development" | "migrations_and_upgrades" | "other" | "production_investigation" | "refactoring_and_optimization" | "research_and_exploration" | "security" | "unit_test_generation") | null;
             child_session_ids?: string[] | null;
             created_at: number;
-            devin_mode?: ("normal" | "fast" | "fusion" | "lite" | "ultra" | "swe-2-medium" | "swe-2-high" | "swe-2-max") | null;
+            devin_mode?: ("normal" | "fast" | "fusion" | "lite" | "ultra" | "fast-ultra" | "swe-2-medium" | "swe-2-high" | "swe-2-max") | null;
             /** @default false */
             is_archived?: boolean;
             on_demand_usage?: number | null;
@@ -1063,6 +1067,7 @@ export interface components {
             security_profile?: components["schemas"]["SessionSecurityProfileResponse"] | null;
             service_user_id?: string | null;
             session_id: string;
+            skills?: components["schemas"]["SessionSkill"][] | null;
             /** @enum {string} */
             status: "new" | "claimed" | "running" | "exit" | "error" | "suspended" | "resuming";
             status_detail?: ("working" | "waiting_for_user" | "waiting_for_approval" | "finished" | "inactivity" | "user_request" | "usage_limit_exceeded" | "out_of_credits" | "out_of_quota" | "no_quota_allocation" | "payment_declined" | "org_usage_limit_exceeded" | "user_usage_limit_exceeded" | "total_session_limit_exceeded" | "contract_expired" | "error") | null;
@@ -1080,6 +1085,11 @@ export interface components {
             profile_id?: string | null;
             /** @enum {string} */
             selection: "inherit" | "none" | "profile";
+        };
+        SessionSkill: {
+            repo_origin: string;
+            skill_name: string;
+            skill_rel_path: string;
         };
         SessionTagsResponse: {
             tags: string[];
