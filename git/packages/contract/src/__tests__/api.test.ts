@@ -2,6 +2,7 @@ import { Context, Schema } from "effect";
 import { HttpApi, OpenApi } from "effect/http-api";
 import { describe, expect, it } from "vitest";
 import {
+  AgentLinkSet,
   AllowedWhenArchived,
   Authentication,
   Diff,
@@ -13,6 +14,7 @@ import {
   RequiredOrgPermission,
   RequiresUser,
   Session,
+  T3Models,
   TimelineItem,
   accessAtLeast,
   archivePath,
@@ -188,6 +190,7 @@ describe("GitApi", () => {
       "agents.startWork",
       "agents.set",
       "t3.beginOAuth",
+      "t3.listModels",
       "reviewSettings.update",
     ]) {
       expect(ids.has(id), id).toBe(true);
@@ -316,6 +319,73 @@ describe("schemas", () => {
     });
     expect(entry.type).toBe("renamed");
     expect(() => decode({ type: "renamed", id: "1" })).toThrow();
+  });
+});
+
+describe("the model a T3 Code thread runs", () => {
+  it("lists an environment's models for a signed-in person, like its threads", () => {
+    const find = (name: string) => endpoints.find((e) => e.group === "t3" && e.name === name)!;
+    const models = find("listModels");
+    expect(models).toMatchObject({
+      method: "GET",
+      path: "/api/t3/environments/:environmentId/models",
+    });
+    expect(Context.get(models.annotations, RequiresUser)).toBe(true);
+    expect(models.middleware).toEqual(find("listThreads").middleware);
+  });
+
+  it("takes a chosen model with the agent, and refuses one that names nothing", () => {
+    const decode = Schema.decodeUnknownSync(AgentLinkSet);
+    const agent = { kind: "t3", displayName: "T3 Code", t3EnvironmentId: "env-1" };
+    // Nothing chosen is still an agent: the forge finds a model itself.
+    expect(decode(agent).t3Model).toBeUndefined();
+    expect(
+      decode({
+        ...agent,
+        t3Model: {
+          providerId: "claudeAgent",
+          model: "claude-opus-5-5",
+          reasoning: { optionId: "effort", level: "high" },
+        },
+      }).t3Model,
+    ).toEqual({
+      providerId: "claudeAgent",
+      model: "claude-opus-5-5",
+      reasoning: { optionId: "effort", level: "high" },
+    });
+    expect(decode({ ...agent, t3Model: { providerId: "codex", model: "m" } }).t3Model).toEqual({
+      providerId: "codex",
+      model: "m",
+    });
+    expect(() => decode({ ...agent, t3Model: { providerId: "", model: "m" } })).toThrow();
+    expect(() => decode({ ...agent, t3Model: { providerId: "codex" } })).toThrow();
+    expect(() =>
+      decode({ ...agent, t3Model: { providerId: "codex", model: "m".repeat(201) } }),
+    ).toThrow();
+  });
+
+  it("answers models with their reasoning levels, or none", () => {
+    const models = Schema.decodeSync(T3Models)({
+      providers: [
+        {
+          id: "claudeAgent",
+          name: "Claude",
+          models: [
+            {
+              id: "claude-opus-5-5",
+              label: "Claude Opus 5.5",
+              reasoning: { optionId: "effort", levels: ["low", "high"], default: "high" },
+            },
+            { id: "claude-haiku-5-5", label: "Claude Haiku 5.5", reasoning: null },
+          ],
+        },
+      ],
+      default: null,
+    });
+    expect(models.providers[0]?.models.map((each) => each.reasoning?.levels ?? null)).toEqual([
+      ["low", "high"],
+      null,
+    ]);
   });
 });
 

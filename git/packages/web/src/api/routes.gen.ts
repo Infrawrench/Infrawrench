@@ -159,6 +159,7 @@ export const API_ROUTES = {
     remove: ["DELETE", "/api/t3/environments/:environmentId"],
     beginOAuth: ["POST", "/api/t3/environments/:environmentId/oauth/begin"],
     listThreads: ["GET", "/api/t3/environments/:environmentId/threads"],
+    listModels: ["GET", "/api/t3/environments/:environmentId/models"],
   },
   labels: {
     list: ["GET", "/api/repos/:owner/:repo/labels"],
