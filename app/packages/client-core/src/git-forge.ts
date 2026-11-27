@@ -200,6 +200,48 @@ export function gitUsernamePriceCents(username: string, current?: string | null)
   return GIT_SHORT_USERNAME_PRICE_CENTS;
 }
 
+/**
+ * A workspace set up from the forge: an Infrawrench organisation on the Pro
+ * plan, for a person who belongs to none, so their repositories have
+ * somewhere to run CI and review agents. The forge asks for its name and
+ * sends the browser to this route of the app with a checkout token
+ * (`git-workspace-checkout-token.ts`) as `?token=`; the app opens the same
+ * Pro Checkout its billing page opens and creates the organisation when the
+ * payment settles. `/return` under it is where Stripe sends the browser back.
+ */
+export const GIT_WORKSPACE_CHECKOUT_PATH = "/api/git-workspace-checkout";
+/**
+ * What the app adds to the forge page it sends the browser back to:
+ * `?workspace=return` once the workspace is paid for, `cancelled` when the
+ * person left the payment page, `expired` and `unavailable` when there was no
+ * payment page to show, `failed` when a payment went through and the
+ * organisation could not be created. The page reads the organisation from
+ * its session, never from the URL.
+ */
+export const GIT_WORKSPACE_CHECKOUT_PARAM = "workspace";
+/** One Pro seat as the forge words the offer. The Stripe price is the amount charged. */
+export const GIT_WORKSPACE_PRICE_LABEL = "$20 a month";
+/** How long an organisation's name may be when it is given on the forge. */
+export const GIT_WORKSPACE_NAME_MAX_LENGTH = 100;
+
+/**
+ * Why `name` cannot be an organisation's name, or null when it can. The
+ * forge shows it under the field, and the checkout token refuses a name that
+ * has one.
+ */
+export function gitWorkspaceNameProblem(name: string): string | null {
+  if (name.trim() === "") return "Give the organisation a name";
+  if (name !== name.trim()) return "The name cannot start or end with a space";
+  if (name.length > GIT_WORKSPACE_NAME_MAX_LENGTH) {
+    return `The name can be ${GIT_WORKSPACE_NAME_MAX_LENGTH} characters at most`;
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(name)) {
+    return "The name cannot contain control characters";
+  }
+  return null;
+}
+
 /** `GET /git`: the namespace (or null), the plan's limits and the usage. */
 export async function fetchGitForgeOverview(
   api: CloudFetch,
