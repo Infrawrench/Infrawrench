@@ -15,6 +15,7 @@
  * | `/:owner/:repo/archive/:ref.tar.gz` / `.zip` | The tree at a ref as an archive.                 |
  * | `/:owner/:repo/terraform/:workspace/state`   | Terraform's HTTP state backend (`/lock`, `/unlock`). |
  * | `/-/image?url=`                              | An image from another site, fetched by the Worker. |
+ * | `/-/og/:version[/page path]`                 | A page's link preview image (Open Graph), 1200x630 PNG. |
  * | `/mcp`                                       | The MCP server (Streamable HTTP): what an agent's client is given. |
  * | `/oauth/authorize`, `/token`, `/register`, `/revoke` | The authorization server an MCP client signs in through. |
  * | `/.well-known/oauth-protected-resource[/mcp]`, `/.well-known/oauth-authorization-server` | Where a client finds the two above. |
@@ -151,6 +152,28 @@ export const IMAGE_PROXY_PATH = "/-/image";
 
 export const imageProxyPath = (url: string): string =>
   `${IMAGE_PROXY_PATH}?url=${encodeURIComponent(url)}`;
+
+/**
+ * Where a page's link preview image is (`og:image`): `/-/og/<version>` and
+ * then the path of the page it draws, `/` left out (`/-/og/<version>` is the
+ * site's own card, `/-/og/<version>/acme/infra/issues/4` an issue's). Only a
+ * namespace, a repository, a commit, an issue and a branch page have a card
+ * of their own; every other page shows its repository's, or the site's.
+ *
+ * `version` is 16 hex digits naming what the card draws, so a crawler or a
+ * cache that keeps an image keeps the right one, and a link shared after the
+ * repository changed gets a new image. The Worker draws what the page is now
+ * whatever version is asked for, as a signed-out visitor sees it: a private
+ * or missing page is the site's card. A namespace cannot be called `-`, so
+ * the path is never a repository's.
+ */
+export const OG_IMAGE_PATH = "/-/og";
+
+/** The size every link preview image is drawn at, as `og:image:width` and `og:image:height` say. */
+export const OG_IMAGE_SIZE = { width: 1200, height: 630 } as const;
+
+export const ogImagePath = (version: string, pagePath: string): string =>
+  `${OG_IMAGE_PATH}/${segment(version)}${pagePath === "/" ? "" : pagePath}`;
 
 /** The personal access token prefix (`iwg_`), for forms that recognise a pasted one. */
 export const ACCESS_TOKEN_PREFIX = "iwg_";
