@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   type ConfigurationEstimate,
+  type HclValue,
+  type Scope,
   MAX_CONFIGURATION_RESOURCES,
   type TerraformSnapshot,
   UNKNOWN,
@@ -18,9 +20,12 @@ const snapshot = (files: Record<string, string>, truncated = false): TerraformSn
   truncated,
 });
 
-const scope = (variables: Record<string, unknown>, locals: Record<string, string> = {}) => ({
-  variable: (name: string) => (name in variables ? (variables[name] as never) : UNKNOWN),
-  local: (name: string) => (name in locals ? evaluate(locals[name]!) : UNKNOWN),
+const scope = (
+  variables: Record<string, HclValue>,
+  locals: Record<string, string> = {},
+): Scope => ({
+  variable: (name) => (name in variables ? variables[name]! : UNKNOWN),
+  local: (name) => (name in locals ? evaluate(locals[name]!) : UNKNOWN),
 });
 
 describe("evaluate", () => {
