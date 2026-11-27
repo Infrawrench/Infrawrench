@@ -15,7 +15,6 @@ import {
   GIT_USERNAME_CHECKOUT_PATH,
   verifyGitUsernameCheckoutToken,
 } from "@infrawrench/client-core";
-import { gitBaseUrl } from "@infrawrench/server-core/ci/source";
 import {
   attachGitUsernameCheckout,
   completeGitUsernamePurchase,
@@ -27,6 +26,7 @@ import {
 import { db } from "../db/client";
 import { users } from "../db/schema";
 import { logAudit } from "./audit";
+import { appUrl, gitForgeReturnUrl } from "./git-forge-return";
 import { getStripe, getStripeGitShortUsernamePriceId } from "./stripe";
 
 /** What marks a Checkout session, and its PaymentIntent, as one of these. */
@@ -50,16 +50,12 @@ export function gitUsernameReturnUrl(
   returnPath: string | null,
   state: GitUsernameCheckoutReturn,
 ): string {
-  // Written by the forge, but it becomes a redirect: only ever a path on that site.
-  const path =
-    returnPath !== null && /^\/(?![/\\])/.test(returnPath) ? returnPath : DEFAULT_RETURN_PATH;
-  const url = new URL(path, gitBaseUrl());
-  url.searchParams.set(GIT_USERNAME_CHECKOUT_PARAM, state);
-  return url.toString();
-}
-
-function appUrl(): string {
-  return (process.env["APP_URL"] ?? "http://localhost:3000").replace(/\/$/, "");
+  return gitForgeReturnUrl({
+    returnPath,
+    fallback: DEFAULT_RETURN_PATH,
+    param: GIT_USERNAME_CHECKOUT_PARAM,
+    state,
+  });
 }
 
 /**

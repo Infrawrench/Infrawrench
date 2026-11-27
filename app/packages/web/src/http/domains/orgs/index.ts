@@ -1,16 +1,12 @@
 /**
  * Organization creation: `POST /api/orgs`, the handler. The caller becomes the
  * owner; the system roles, the default Home dashboard and the default
- * scorecard are seeded with it.
+ * scorecard are seeded with it (server-core `organizations/create.ts`).
  */
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
-import { v4 as uuid } from "uuid";
-import { ensureSystemRoles, getSystemRole } from "@infrawrench/server-core/permissions";
-import { ensureDefaultScorecard } from "@infrawrench/server-core/scorecards/store";
+import { createOrganization } from "@infrawrench/server-core/organizations/create";
 import { badRequest, Organization, OrgsApi } from "@infrawrench/api-contract";
-import { db } from "../../../db/client";
-import { dashboards, organizationMembers, organizations } from "../../../db/schema";
 import { makeDomain } from "../../domain";
 import { fieldsOf, readJson, trimmedField } from "../../request-body";
 import { legacy } from "../../legacy";
@@ -26,40 +22,14 @@ const OrgsHandlers = HttpApiBuilder.group(OrgsApi, "orgs", (handlers) =>
       const displayName = yield* trimmedField(body["displayName"], "displayName");
       if (!displayName) return yield* badRequest("Organization name is required");
 
-      const orgId = uuid();
-      yield* legacy(() => db.insert(organizations).values({ id: orgId, displayName }));
-
-      yield* legacy(() => ensureSystemRoles(orgId));
-      const ownerRole = yield* legacy(() => getSystemRole(orgId, "owner"));
-
-      yield* legacy(() =>
-        db.insert(organizationMembers).values({
-          id: uuid(),
-          userId: session.userId,
-          organizationId: orgId,
-          role: "owner",
-          roleId: ownerRole.id,
-        }),
+      // Roles, the owner, the Home dashboard and the default scorecard: the
+      // same call a workspace paid for from git.infrawrench.com makes.
+      const created = yield* legacy(() =>
+        createOrganization({ displayName, ownerUserId: session.userId }),
       );
-
-      // Seed the default Home dashboard so it's already in the sidebar's
-      // dashboard list when the client lands on the new org.
-      yield* legacy(() =>
-        db.insert(dashboards).values({
-          id: uuid(),
-          organizationId: orgId,
-          name: "Home",
-          isDefault: true,
-        }),
-      );
-
-      // Seed the default scorecard so the first service is graded against
-      // something. Best-effort: an org without it seeds lazily on first read.
-      yield* legacy(() =>
-        ensureDefaultScorecard(orgId).catch((err: unknown) =>
-          console.error("[orgs] default scorecard seed failed:", err),
-        ),
-      );
+      // A new id is never someone else's organization.
+      if (!created.ok) return yield* Effect.die(new Error("A new organization id was taken"));
+      const orgId = created.id;
 
       return yield* respond(Organization)({ id: orgId, displayName });
     }),

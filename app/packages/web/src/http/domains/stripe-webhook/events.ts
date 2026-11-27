@@ -5,8 +5,9 @@
  * Stripe redelivers anything that does not get a 2xx, so every branch here is
  * idempotent: the subscription writes set absolute values, capacity seats are
  * granted once per Checkout Session (a unique index), a short username on
- * git.infrawrench.com is claimed once per session the same way, and the Revnu
- * report is queued, never sent inline.
+ * git.infrawrench.com is claimed once per session the same way, a workspace
+ * set up from there is created once per session (the organization's id is the
+ * session's), and the Revnu report is queued, never sent inline.
  */
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
@@ -20,20 +21,16 @@ import {
   isGitUsernameCheckout,
   settleGitUsernameCheckout,
 } from "../../../services/git-username-checkout";
+import {
+  isGitWorkspaceCheckout,
+  settleGitWorkspaceCheckout,
+} from "../../../services/git-workspace-checkout";
 import { queuePaidCheckout } from "../../../services/revnu-checkout";
-
-/** Seat quantity from the licensed plan item; metered items carry no quantity. */
-function seatQuantity(sub: Stripe.Subscription): number {
-  return sub.items.data.find((i) => i.quantity != null)?.quantity ?? 1;
-}
-
-/**
- * The id of a field Stripe sends as an id unless the request expanded it,
- * which a webhook payload never does.
- */
-function idOf(value: string | { readonly id: string }): string {
-  return typeof value === "string" ? value : value.id;
-}
+import {
+  applyCheckoutSubscription,
+  idOf,
+  seatQuantity,
+} from "../../../services/subscription-checkout";
 
 /**
  * Grant the seats a settled capacity-slot payment bought.
@@ -112,22 +109,15 @@ export async function applyStripeEvent(stripe: Stripe, event: Stripe.Event): Pro
         return;
       }
       let purchased = session.payment_status === "paid";
-      if (isPaidCapacitySlotSession(session)) {
+      if (isGitWorkspaceCheckout(session)) {
+        // A workspace set up from git.infrawrench.com: the organization does
+        // not exist until now. Creates it once per session, then records its
+        // subscription as the branch below does for one that already existed.
+        await settleGitWorkspaceCheckout(stripe, session);
+      } else if (isPaidCapacitySlotSession(session)) {
         purchased = await grantCapacitySlots(stripe, session);
-      } else if (session.customer && session.subscription) {
-        const subscriptionId = idOf(session.subscription);
-        const sub = await stripe.subscriptions.retrieve(subscriptionId);
-        await db
-          .update(subscriptions)
-          .set({
-            stripeSubscriptionId: subscriptionId,
-            status: "active",
-            seatCount: seatQuantity(sub),
-            currentPeriodStart: new Date(sub.current_period_start * 1000),
-            currentPeriodEnd: new Date(sub.current_period_end * 1000),
-            updatedAt: new Date(),
-          })
-          .where(eq(subscriptions.stripeCustomerId, idOf(session.customer)));
+      } else {
+        await applyCheckoutSubscription(stripe, session);
       }
       // A redirect to the success URL is not a purchase. Delayed methods
       // report `completed` while unpaid and settle on `async_payment_succeeded`.

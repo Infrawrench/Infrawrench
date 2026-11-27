@@ -7,6 +7,7 @@
  */
 import { eq } from "drizzle-orm";
 import { Predicate } from "effect";
+import type Stripe from "stripe";
 import { v4 as uuid } from "uuid";
 import {
   CAPACITY_SLOT_PRICE_USD,
@@ -50,6 +51,24 @@ export async function isComplimentary(orgId: string): Promise<boolean> {
 }
 
 /**
+ * A Stripe customer for an org, named by the org's id in its metadata. With
+ * an `idempotencyKey`, a repeat of the same request answers the same
+ * customer: a workspace set up from git.infrawrench.com has no row to
+ * remember its customer on until it is paid for
+ * (`services/git-workspace-checkout.ts`).
+ */
+export async function createStripeCustomer(
+  organizationId: string,
+  email: string,
+  idempotencyKey?: string,
+): Promise<Stripe.Customer> {
+  const params = { email, metadata: { organizationId } };
+  return idempotencyKey === undefined
+    ? getStripe().customers.create(params)
+    : getStripe().customers.create(params, { idempotencyKey });
+}
+
+/**
  * The org's Stripe customer, created on first purchase.
  *
  * One customer per org, shared by the monthly subscription and one-time capacity
@@ -66,10 +85,7 @@ async function ensureStripeCustomer(organizationId: string, email: string): Prom
     .where(eq(subscriptions.organizationId, organizationId));
   if (sub) return sub.stripeCustomerId;
 
-  const customer = await getStripe().customers.create({
-    email,
-    metadata: { organizationId },
-  });
+  const customer = await createStripeCustomer(organizationId, email);
   await db.insert(subscriptions).values({
     id: uuid(),
     organizationId,
@@ -123,6 +139,55 @@ export async function billingStatus(orgId: string) {
   };
 }
 
+/** What a monthly-plan Checkout Session is opened with. */
+export interface ProCheckoutInput {
+  readonly customerId: string;
+  /** In the session's metadata: a later paid webhook finds this checkout by it. */
+  readonly organizationId: string;
+  /** More metadata for the session; `organizationId` is always there. */
+  readonly metadata?: Readonly<Record<string, string>>;
+  readonly successUrl: string;
+  readonly cancelUrl: string;
+  /** A repeat of the same request answers the same session, not a second one. */
+  readonly idempotencyKey?: string;
+}
+
+/**
+ * The monthly plan's Checkout Session: one Pro seat (the buyer may raise it
+ * on the page) and every metered price the deployment has. The one place its
+ * line items are written, for the billing page's "Upgrade" and for a
+ * workspace set up from git.infrawrench.com alike.
+ */
+export async function createProCheckoutSession(
+  input: ProCheckoutInput,
+): Promise<Stripe.Checkout.Session> {
+  const priceId = getStripePriceId();
+  const chatPriceId = getStripeChatPriceId();
+  // CI's metered prices too, so an organization that later gets CI is
+  // billed for it without touching its subscription.
+  const ciPriceIds = getStripeCiPriceIds();
+  // And the forge's storage price, for the same reason.
+  const gitStoragePriceId = getStripeGitStoragePriceId();
+  const params: Stripe.Checkout.SessionCreateParams = {
+    customer: input.customerId,
+    mode: "subscription",
+    // Metered prices take no quantity: Stripe bills them from the meter.
+    line_items: [
+      { price: priceId, quantity: 1, adjustable_quantity: { enabled: true, minimum: 1 } },
+      ...(chatPriceId ? [{ price: chatPriceId }] : []),
+      ...ciPriceIds.map((price) => ({ price })),
+      ...(gitStoragePriceId ? [{ price: gitStoragePriceId }] : []),
+    ],
+    metadata: { ...input.metadata, organizationId: input.organizationId },
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+  };
+  const sessions = getStripe().checkout.sessions;
+  return input.idempotencyKey === undefined
+    ? sessions.create(params)
+    : sessions.create(params, { idempotencyKey: input.idempotencyKey });
+}
+
 /**
  * `POST /checkout`: a monthly-plan Checkout Session for a non-complimentary
  * org. Resolves to its URL, or `null` when Stripe returned none.
@@ -132,37 +197,19 @@ export async function openSubscriptionCheckout(
   buyer: Buyer,
   body: unknown,
 ): Promise<string | null> {
-  const stripe = getStripe();
-  const priceId = getStripePriceId();
-
   const customerId = await ensureStripeCustomer(orgId, buyer.email);
   const measurement = measurementFromBody(body);
 
   const url = billingUrl(orgId);
-  const chatPriceId = getStripeChatPriceId();
-  // CI's metered prices too, so an organization that later gets CI is
-  // billed for it without touching its subscription.
-  const ciPriceIds = getStripeCiPriceIds();
-  // And the forge's storage price, for the same reason.
-  const gitStoragePriceId = getStripeGitStoragePriceId();
-  const checkoutSession = await stripe.checkout.sessions.create({
-    customer: customerId,
-    mode: "subscription",
-    // Metered prices take no quantity: Stripe bills them from the meter.
-    line_items: [
-      { price: priceId, quantity: 1, adjustable_quantity: { enabled: true, minimum: 1 } },
-      ...(chatPriceId ? [{ price: chatPriceId }] : []),
-      ...ciPriceIds.map((price) => ({ price })),
-      ...(gitStoragePriceId ? [{ price: gitStoragePriceId }] : []),
-    ],
-    // organizationId lets a later paid webhook find this checkout. The Revnu
-    // visitor id is a spare field; consent is stored on our row, not here.
-    metadata: {
-      organizationId: orgId,
-      ...(measurement.anonymousId ? { revnu_anonymous_id: measurement.anonymousId } : {}),
-    },
-    success_url: `${url}?success=true`,
-    cancel_url: url,
+  const checkoutSession = await createProCheckoutSession({
+    customerId,
+    organizationId: orgId,
+    // The Revnu visitor id is a spare field; consent is stored on our row, not here.
+    ...(measurement.anonymousId
+      ? { metadata: { revnu_anonymous_id: measurement.anonymousId } }
+      : {}),
+    successUrl: `${url}?success=true`,
+    cancelUrl: url,
   });
 
   if (checkoutSession.id) {

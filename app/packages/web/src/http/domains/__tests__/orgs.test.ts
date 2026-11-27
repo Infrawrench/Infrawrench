@@ -1,19 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApi } from "@/http/testing";
 
-const mockInsert = vi.fn();
-vi.mock("@/db/client", () => ({
-  db: { insert: (...a: unknown[]) => mockInsert(...a) },
+/**
+ * `POST /api/orgs`: what the handler refuses and what it asks for. The rows
+ * an organization is made of (roles, the owner, the Home dashboard, the
+ * scorecard) are server-core's `createOrganization`, held against a real
+ * Postgres by the forge's `workspace-checkout.test.ts`, which creates one the
+ * same way.
+ */
+const createOrganization = vi.fn();
+vi.mock("@infrawrench/server-core/organizations/create", () => ({
+  createOrganization: (...a: unknown[]) => createOrganization(...a),
 }));
-
-const mockEnsureSystemRoles = vi.fn();
-const mockGetSystemRole = vi.fn();
-vi.mock("@infrawrench/server-core/permissions", () => ({
-  ensureSystemRoles: (...a: unknown[]) => mockEnsureSystemRoles(...a),
-  getSystemRole: (...a: unknown[]) => mockGetSystemRole(...a),
-}));
-
-vi.mock("uuid", () => ({ v4: () => "org-uuid-1" }));
 
 const { orgsDomain } = await import("@/http/domains/orgs/index");
 const buildApp = () => buildTestApi(orgsDomain, { basePath: "/api/orgs" });
@@ -21,33 +19,27 @@ const buildApp = () => buildTestApi(orgsDomain, { basePath: "/api/orgs" });
 describe("Org management routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    const values = vi.fn().mockResolvedValue(undefined);
-    mockInsert.mockReturnValue({ values });
-    mockEnsureSystemRoles.mockResolvedValue(undefined);
-    mockGetSystemRole.mockResolvedValue({ id: "owner-role-1" });
+    createOrganization.mockImplementation(async (input: { displayName: string }) => ({
+      ok: true,
+      id: "org-uuid-1",
+      displayName: input.displayName,
+      created: true,
+    }));
   });
 
-  it("creates an org, an owner membership, and the default Home dashboard", async () => {
-    const res = await buildApp().request("/", {
+  it("creates an org owned by the caller, under the trimmed name", async () => {
+    const app = buildApp();
+    const res = await app.request("/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ displayName: "  Acme  " }),
     });
     expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body).toEqual({ id: "org-uuid-1", displayName: "Acme" });
-    // organizations + organizationMembers + default dashboard inserts
-    expect(mockInsert).toHaveBeenCalledTimes(3);
-    expect(mockEnsureSystemRoles).toHaveBeenCalledWith("org-uuid-1");
-    expect(mockGetSystemRole).toHaveBeenCalledWith("org-uuid-1", "owner");
-    const insertedValues = mockInsert.mock.results.flatMap((r) =>
-      (r.value.values as ReturnType<typeof vi.fn>).mock.calls.flat(),
-    );
-    expect(insertedValues).toContainEqual({
-      id: "org-uuid-1",
-      organizationId: "org-uuid-1",
-      name: "Home",
-      isDefault: true,
+    expect(await res.json()).toEqual({ id: "org-uuid-1", displayName: "Acme" });
+    expect(createOrganization).toHaveBeenCalledTimes(1);
+    expect(createOrganization).toHaveBeenCalledWith({
+      displayName: "Acme",
+      ownerUserId: expect.any(String),
     });
   });
 
@@ -59,7 +51,7 @@ describe("Org management routes", () => {
     });
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/required/i);
-    expect(mockInsert).not.toHaveBeenCalled();
+    expect(createOrganization).not.toHaveBeenCalled();
   });
 
   it("rejects a missing name with 400", async () => {
@@ -69,5 +61,6 @@ describe("Org management routes", () => {
       body: JSON.stringify({}),
     });
     expect(res.status).toBe(400);
+    expect(createOrganization).not.toHaveBeenCalled();
   });
 });
