@@ -91,6 +91,7 @@ import { calendarFeedDomain } from "./domains/calendar-feed/index";
 import { alertEmailUnsubscribeDomain } from "./domains/alert-email-unsubscribe/index";
 import { anomalyFeedbackLinkDomain } from "./domains/anomaly-feedback-link/index";
 import { githubDomain } from "./domains/github/index";
+import { gitUsernameCheckoutDomain } from "./domains/git-username-checkout/index";
 import { twilioDomain } from "./domains/twilio/index";
 import { pushDomain } from "./domains/push/index";
 import { k8sEfficiencyReportsDomain } from "./domains/k8s-efficiency-reports/index";
@@ -299,6 +300,7 @@ export const DOMAINS: readonly Domain[] = [
   alertEmailUnsubscribeDomain,
   anomalyFeedbackLinkDomain,
   githubDomain,
+  gitUsernameCheckoutDomain,
   twilioDomain,
   pushDomain,
   k8sEfficiencyReportsDomain,
