@@ -1689,7 +1689,7 @@ export interface components {
         };
         UsageBreakdown: {
             MeasuringUnit?: string | null;
-            /** Format: int64 */
+            /** Format: decimal */
             TotalUnits?: number;
             /** Format: decimal */
             Usage?: number;

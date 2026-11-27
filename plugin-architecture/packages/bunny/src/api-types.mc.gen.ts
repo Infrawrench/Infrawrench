@@ -129,8 +129,11 @@ export interface components {
             networkSettings?: components["schemas"]["NetworkLimits"];
             regionSettings: components["schemas"]["RegionSettings"];
             repositorySettings?: components["schemas"]["RepositorySettings"];
+            rollingUpdateFailurePolicy: components["schemas"]["RollingUpdateFailurePolicy"];
             runtimeType: components["schemas"]["ApplicationRuntimeType"];
             status: components["schemas"]["ApplicationStatus"];
+            /** Format: int64 */
+            terminationGracePeriodSeconds?: number;
             volumes: components["schemas"]["VolumeTemplate"][];
         };
         /** @enum {string} */
@@ -334,6 +337,8 @@ export interface components {
             repositoryName?: string | null;
             templateRepository?: string | null;
         };
+        /** @enum {string} */
+        RollingUpdateFailurePolicy: "rollback" | "complete";
         Statistics: {
             activeRegionsChart?: {
                 [key: string]: number | null;
