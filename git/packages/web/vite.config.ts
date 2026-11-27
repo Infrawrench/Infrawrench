@@ -28,6 +28,8 @@ export default defineConfig({
       "^/[^/]+/[^/]+/(raw|archive)/": WORKER,
       // Images from other sites (`images/proxy.ts`).
       "^/-/image(\\?|$)": WORKER,
+      // Link preview images (contract `urls.ts` `ogImagePath`, worker `og/mount.ts`).
+      "^/-/og/": WORKER,
       // Terraform writes and unlocks with a query (`state?ID=<lock>`), and Vite matches the URL with it.
       "^/[^/]+/[^/]+/terraform/[^/]+/state(/|\\?|$)": WORKER,
       // The MCP server, the authorization server its clients sign in through, and where

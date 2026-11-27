@@ -5,7 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" type="image/png" href="/favicon.png" />
+    <!--
+      The link preview tags. These are the site's own; the Worker sets each
+      one's value for the page asked for (worker/src/og/shell.ts), so every
+      tag it sets must be here, and these must stay the site's tags
+      (worker/src/og/__tests__/shell.test.ts holds both).
+    -->
     <title>Infrawrench Git</title>
+    <meta name="description" content="Git repositories, branch pages and CI on Infrawrench." />
+    <link rel="canonical" href="https://git.infrawrench.com/" />
+    <meta property="og:site_name" content="Infrawrench Git" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Infrawrench Git" />
+    <meta
+      property="og:description"
+      content="Git repositories, branch pages and CI on Infrawrench."
+    />
+    <meta property="og:url" content="https://git.infrawrench.com/" />
+    <meta property="og:image" content="https://git.infrawrench.com/-/og/b8db457a1ccd14a2" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Infrawrench Git" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Infrawrench Git" />
+    <meta
+      name="twitter:description"
+      content="Git repositories, branch pages and CI on Infrawrench."
+    />
+    <meta name="twitter:image" content="https://git.infrawrench.com/-/og/b8db457a1ccd14a2" />
+    <meta name="twitter:image:alt" content="Infrawrench Git" />
   </head>
   <body>
     <div id="root"></div>

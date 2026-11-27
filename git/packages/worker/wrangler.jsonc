@@ -51,6 +51,11 @@
   // each script went there and back. Their headers come from the `_headers`
   // file the UI's build copies in (`git/packages/web/public/_headers`). A
   // path with no file is the SPA's: `index.html`.
+  // The link preview renderer's fonts (`src/og/assets.ts`): bytes, as
+  // modules of the upload. A `.wasm` file is already a compiled module by
+  // wrangler's own rule.
+  "rules": [{ "type": "Data", "globs": ["**/*.woff"] }],
+
   "assets": {
     "directory": "../web/dist",
     "binding": "ASSETS",

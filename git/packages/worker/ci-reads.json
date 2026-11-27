@@ -6,6 +6,24 @@
       "why": "Checks the UI's static files carry the headers the Worker would have given them."
     },
     {
+      "files": ["git/packages/web/index.html"],
+      "from": ["src/og/__tests__/shell.test.ts"],
+      "why": "Checks the UI's shell carries every link preview tag the Worker sets, with the site's own values."
+    },
+    {
+      "files": [
+        "git/packages/web/public/assets/bots/claude-icon.svg",
+        "git/packages/web/public/assets/bots/cursor-avatar.png"
+      ],
+      "from": ["src/og/__tests__/fixtures.ts"],
+      "why": "Draws the bot cards with the bots' own pictures, as the Worker reads them from the built UI."
+    },
+    {
+      "files": ["git/packages/web/vite.config.ts"],
+      "from": ["src/og/__tests__/routes.test.ts"],
+      "why": "Checks the development server proxies the link preview images the Worker's router serves."
+    },
+    {
       "files": ["git/packages/web/vite.config.ts"],
       "from": ["src/mcp/__tests__/routes.test.ts"],
       "why": "Checks the development server proxies the MCP and OAuth paths the Worker's router serves."

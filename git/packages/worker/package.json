@@ -24,8 +24,10 @@
     "@infrawrench/git-terraform": "workspace:*",
     "@infrawrench/server-core": "workspace:*",
     "@modelcontextprotocol/server": "^2.4.0",
+    "@resvg/resvg-wasm": "2.4.1",
     "drizzle-orm": "^0.45.2",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "satori": "0.32.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260808.1",

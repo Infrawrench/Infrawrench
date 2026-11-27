@@ -11,3 +11,19 @@ declare module "cloudflare:workers" {
   export const DurableObject: typeof CloudflareWorkersModule.DurableObject;
   export type DurableObject<Env = unknown> = CloudflareWorkersModule.DurableObject<Env>;
 }
+
+/**
+ * Modules of the upload that are not code (`rules` in wrangler.jsonc): a
+ * `.wasm` file is a module Cloudflare compiles when the Worker is deployed,
+ * and a `.woff` font is its bytes. The link preview renderer reads both
+ * (`og/assets.ts`).
+ */
+declare module "*.wasm" {
+  const module: WebAssembly.Module;
+  export default module;
+}
+
+declare module "*.woff" {
+  const data: ArrayBuffer;
+  export default data;
+}

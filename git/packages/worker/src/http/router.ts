@@ -14,16 +14,26 @@
  * | `/:owner/:repo/terraform/:workspace/state..` | `terraform-state` |
  * | `/:owner/:repo/terraform/:workspace/runs/:id/plan` | `terraform-plan` |
  * | `/-/image`                                   | `image-proxy`     |
+ * | `/-/og/:version[/...]`                       | `og-image`        |
  * | `/mcp`                                       | `mcp`             |
  * | `/oauth/authorize`, `/token`, `/register`, `/revoke` | `oauth`   |
  * | `/.well-known/...`                           | `well-known`      |
  * | everything else                              | `assets` (the UI) |
  *
+ * A page of the UI is its shell, `index.html`, with the page's link preview
+ * tags put in by `Routes.page` (`og/mount.ts`) when it is wired.
+ *
  * The Git and Terraform routes are the storage's to serve. Until they exist
  * {@link serve} answers them 503 rather than the UI's shell, so `git clone`
  * and `terraform init` fail saying why.
  */
-import { AUTH_PATHS, IMAGE_PROXY_PATH, MCP_PATH, OAUTH_PATHS } from "@infrawrench/git-contract";
+import {
+  AUTH_PATHS,
+  IMAGE_PROXY_PATH,
+  MCP_PATH,
+  OAUTH_PATHS,
+  OG_IMAGE_PATH,
+} from "@infrawrench/git-contract";
 import type { Env } from "../env";
 import { requestIdOf, withSecurityHeaders } from "./security-headers";
 import { admissionFor } from "./admission";
@@ -53,6 +63,7 @@ export type Route =
       readonly runId: string;
     } & RepoPath)
   | { readonly kind: "image-proxy" }
+  | { readonly kind: "og-image" }
   | { readonly kind: "mcp" }
   | { readonly kind: "oauth"; readonly action: "authorize" | "token" | "register" | "revoke" }
   | { readonly kind: "well-known" }
@@ -72,8 +83,11 @@ export const routeOf = (pathname: string): Route => {
   const [first, second, third] = segments;
   if (first === "api") return { kind: "api" };
   // A namespace cannot be called `-` (client-core `git-names.ts`).
-  if (first === "-")
-    return pathname === IMAGE_PROXY_PATH ? { kind: "image-proxy" } : { kind: "not-found" };
+  if (first === "-") {
+    if (pathname === IMAGE_PROXY_PATH) return { kind: "image-proxy" };
+    if (pathname.startsWith(`${OG_IMAGE_PATH}/`)) return { kind: "og-image" };
+    return { kind: "not-found" };
+  }
   if (first === "auth") {
     if (pathname === AUTH_PATHS.signIn) return { kind: "auth", action: "sign-in" };
     if (pathname === AUTH_PATHS.callback) return { kind: "auth", action: "callback" };
@@ -169,6 +183,14 @@ export interface Routes {
   readonly terraformPlan?: Handler<Extract<Route, { kind: "terraform-plan" }>>;
   /** `/-/image?url=`: an image from another site (`images/proxy.ts`). */
   readonly imageProxy?: Handler<Extract<Route, { kind: "image-proxy" }>>;
+  /** `/-/og/<version>/...`: a page's link preview image (`og/mount.ts`). */
+  readonly ogImage?: Handler<Extract<Route, { kind: "og-image" }>>;
+  /**
+   * A page of the UI: its shell as the asset layer answered it, given back
+   * with the page's link preview tags (`og/mount.ts`). Only a `GET` the shell
+   * answered `200` with HTML comes here. Without it the shell goes out as built.
+   */
+  readonly page?: (request: Request, env: Env, ctx: Ctx, shell: Response) => Promise<Response>;
   /** `/mcp`: the MCP server agents connect to (`mcp/http.ts`). */
   readonly mcp?: Handler<Extract<Route, { kind: "mcp" }>>;
   /** `/oauth/...`: the authorization server MCP clients sign in through (`mcp/oauth/`). */
@@ -186,16 +208,31 @@ const text = (body: string, status: number, headers: Record<string, string> = {}
 const notReady = (what: string): Response =>
   text(`${what} is not available yet\n`, 503, { "retry-after": "60", "cache-control": "no-store" });
 
+const isShell = (response: Response): boolean =>
+  response.status === 200 &&
+  (response.headers.get("content-type") ?? "").toLowerCase().startsWith("text/html");
+
 /** The built UI, with `index.html` for a path that is one of its routes. */
-const assets = async (request: Request, env: Env): Promise<Response> => {
+const assets = async (request: Request, env: Env, ctx: Ctx, routes: Routes): Promise<Response> => {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return text("Method Not Allowed\n", 405, { allow: "GET, HEAD" });
   }
   if (!env.ASSETS) return text("Not Found\n", 404);
+  const page = request.method === "GET" ? routes.page : undefined;
+  // A page's shell differs by path once its tags are in, so it is asked for
+  // whole: a `304` for `index.html` would keep another page's tags.
+  const asked = page ? withoutConditionals(request) : request;
   // The `assets` binding's `not_found_handling: "single-page-application"`
   // answers `index.html` for a navigation to a path it has no file for.
-  const response = await env.ASSETS.fetch(request as never);
-  return response as unknown as Response;
+  const response = (await env.ASSETS.fetch(asked as never)) as unknown as Response;
+  return page && isShell(response) ? page(request, env, ctx, response) : response;
+};
+
+const withoutConditionals = (request: Request): Request => {
+  const headers = new Headers(request.headers);
+  headers.delete("if-none-match");
+  headers.delete("if-modified-since");
+  return new Request(request.url, { method: request.method, headers });
 };
 
 const dispatch = (request: Request, env: Env, ctx: Ctx, routes: Routes): Promise<Response> => {
@@ -229,6 +266,10 @@ const dispatch = (request: Request, env: Env, ctx: Ctx, routes: Routes): Promise
       return routes.imageProxy
         ? routes.imageProxy(request, env, ctx, route)
         : Promise.resolve(text("Not Found\n", 404));
+    case "og-image":
+      return routes.ogImage
+        ? routes.ogImage(request, env, ctx, route)
+        : Promise.resolve(text("Not Found\n", 404));
     case "mcp":
       return routes.mcp
         ? routes.mcp(request, env, ctx, route)
@@ -243,7 +284,7 @@ const dispatch = (request: Request, env: Env, ctx: Ctx, routes: Routes): Promise
         ? routes.wellKnown(request, env, ctx, route)
         : Promise.resolve(text("Not Found\n", 404));
     case "assets":
-      return assets(request, env);
+      return assets(request, env, ctx, routes);
     case "not-found":
       return Promise.resolve(text("Not Found\n", 404));
   }

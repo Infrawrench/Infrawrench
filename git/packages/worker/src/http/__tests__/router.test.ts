@@ -43,9 +43,11 @@ describe("routeOf", () => {
     });
   });
 
-  it("routes the image proxy, and nothing else under /-/", () => {
+  it("routes the image proxy and link preview images, and nothing else under /-/", () => {
     expect(routeOf("/-/image")).toEqual({ kind: "image-proxy" });
     expect(routeOf("/-/image/x")).toEqual({ kind: "not-found" });
+    expect(routeOf("/-/og/0123456789abcdef/acme/infra")).toEqual({ kind: "og-image" });
+    expect(routeOf("/-/og")).toEqual({ kind: "not-found" });
     expect(routeOf("/-/anything")).toEqual({ kind: "not-found" });
   });
 
@@ -148,6 +150,41 @@ describe("serve", () => {
       (await serve(request("/acme", { method: "POST" }), withAssets, ctx, routes)).status,
     ).toBe(405);
     expect((await serve(request("/acme"), env, ctx, routes)).status).toBe(404);
+  });
+
+  it("gives a page's shell to `page`, whole, and nothing else", async () => {
+    const asked: Array<string | null> = [];
+    const withAssets = {
+      ...env,
+      ASSETS: {
+        fetch: async (asking: Request) => {
+          asked.push(asking.headers.get("if-none-match"));
+          return new URL(asking.url).pathname.endsWith(".txt")
+            ? new Response("text", { headers: { "content-type": "text/plain" } })
+            : new Response("<!doctype html>", {
+                headers: { "content-type": "text/html; charset=utf-8", etag: '"x"' },
+              });
+        },
+      } as unknown as NonNullable<Env["ASSETS"]>,
+    };
+    const withPage: Routes = {
+      ...routes,
+      page: async (asking, _env, _ctx, shell) =>
+        new Response(`${await shell.text()}${new URL(asking.url).pathname}`, {
+          headers: { "content-type": "text/html" },
+        }),
+    };
+    const conditional = request("/acme/infra", { headers: { "if-none-match": '"x"' } });
+    expect(await (await serve(conditional, withAssets, ctx, withPage)).text()).toBe(
+      "<!doctype html>/acme/infra",
+    );
+    // Asked for whole: a 304 for `index.html` would keep another page's tags.
+    expect(asked).toEqual([null]);
+    expect(await (await serve(request("/robots.txt"), withAssets, ctx, withPage)).text()).toBe(
+      "text",
+    );
+    const head = await serve(request("/acme/infra", { method: "HEAD" }), withAssets, ctx, withPage);
+    expect(await head.text()).toBe("<!doctype html>");
   });
 
   it("answers a route that throws with a 500 that says nothing", async () => {

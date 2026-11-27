@@ -34,12 +34,15 @@ const GATEWAY_ONLY = fileURLToPath(
 );
 
 /**
- * The upload, uncompressed. It was 3.4 MB when the registry left it
- * (November 2026; 9.0 MB before). The room above that is for the forge to
- * grow into, not for server-core: something that adds megabytes at once is
- * a reach worth looking at before it ships.
+ * The upload's script, uncompressed. It was 3.4 MB when the registry left
+ * it (November 2026; 9.0 MB before), and 5.9 MB before the link preview
+ * renderer, whose JavaScript (Satori and its text shaping, about 0.8 MB) is
+ * evaluated only by the image route (`og/mount.ts`); its WebAssembly and
+ * fonts are modules of their own, outside this file. The room above that is
+ * for the forge to grow into, not for server-core: something that adds
+ * megabytes at once is a reach worth looking at before it ships.
  */
-const MAX_BUNDLE_BYTES = 6_000_000;
+const MAX_BUNDLE_BYTES = 7_000_000;
 
 /** Parts of server-core this Worker must never carry, each with what it would bring. */
 const FORBIDDEN_SOURCES: ReadonlyArray<readonly [fragment: string, why: string]> = [

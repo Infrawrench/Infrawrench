@@ -34,6 +34,7 @@ const git = async (request: Request, env: Env, ctx: Ctx): Promise<Response> =>
 const database = lazy(() => import("./db/client"));
 const terraform = lazy(() => import("./terraform/mount"));
 const mcp = lazy(() => import("./mcp/mount"));
+const og = lazy(() => import("./og/mount"));
 
 /** The cron expression of the instruction sweep, as `wrangler.jsonc` spells it. */
 const INSTRUCTIONS_CRON = "*/2 * * * *";
@@ -95,6 +96,11 @@ const routes: Routes = {
       siteHosts: [new URL(request.url).hostname, new URL(siteOrigin(env)).hostname],
     });
   },
+
+  // Link previews, as a signed-out visitor sees the page: the tags in a page's
+  // shell, and the image they name (`og/mount.ts`).
+  page: async (request, env, ctx, shell) => (await og()).pageFetch(request, env, ctx, shell),
+  ogImage: async (request, env, ctx) => (await og()).ogImageFetch(request, env, ctx),
 };
 
 export default {
