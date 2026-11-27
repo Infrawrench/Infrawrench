@@ -1,6 +1,6 @@
 ---
 title: Agents on git.infrawrench.com
-description: Start work from an ask with an Infrawrench agent or a T3 Code thread, send reviewer instructions to the agent that wrote a branch, and connect a T3 Code environment.
+description: Start work from an ask in a T3 Code thread or with any agent over MCP, send reviewer instructions to the agent that wrote a branch, and connect a T3 Code environment.
 sidebar_order: 9
 ---
 
@@ -8,15 +8,22 @@ On [git.infrawrench.com](./git-getting-started.md) a branch can name the agent t
 
 ## Start work from an ask
 
-Open **Start work** in a repository's **Branches**, write what you want done, and pick who does it. The forge creates a branch at the base branch's commit and opens the branch's page as a draft, with the ask as its description. The agent's first push is version 1.
+Open **Start work** in a repository's **Branches** and pick who does the work.
 
-| Agent                     | Where it runs                                        | How it starts                                                                |
-| ------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------- |
-| **Infrawrench** (default) | An [agent session](./agents.md) in your organization | The forge links to the app, which starts the session on the new branch       |
-| **T3 Code**               | A thread in one of your T3 Code environments         | The forge launches the thread itself                                         |
-| **Any other agent**       | Wherever you run it                                  | You point it at the branch; it reports through the forge's API or MCP server |
+| Agent                 | Where it runs                                | How it starts                                                               |
+| --------------------- | -------------------------------------------- | --------------------------------------------------------------------------- |
+| **T3 Code** (default) | A thread in one of your T3 Code environments | You write the ask and the forge launches the thread itself                  |
+| **Another agent**     | Wherever you run it                          | You install the forge's MCP server in it, and it starts the work when asked |
 
-Infrawrench agents need the repository to belong to an organization, because that is where sessions run. For a repository under your own name, pick another agent. [Agents](./agents.md#work-on-a-branch-from-gitinfrawrenchcom) has what the session is given: a credential that pushes that one branch and nothing else.
+With **T3 Code**, pick the environment, write what you want done, and choose the branch to start from. The forge creates a branch at the base branch's commit and opens the branch's page as a draft, with the ask as its description. The agent's first push is version 1.
+
+<insert [Start work on git.infrawrench.com with T3 Code selected under Agent: the Environment, Thread and Project pickers, the Ask editor with a few lines written, Start from set to main, the Branch field holding the name made from the ask, and the Start work button] here>
+
+With **Another agent**, the page shows how to install the forge's [MCP server](./git-agents-and-mcp.md) in Claude Code, Codex and Cursor, each with a copy button, and there is nothing to submit. Ask the agent for the change in its own session. It creates the branch and its page with its `start_work` tool.
+
+<insert [Start work on git.infrawrench.com with Another agent selected under Agent: the Claude Code command, the two Codex commands and the Cursor mcp.json block, each with a copy button, the line about start_work, and no ask box or Start work button] here>
+
+Start work does not start an [agent session](./agents.md#work-on-a-branch-from-gitinfrawrenchcom) in the Infrawrench app.
 
 ## Send an instruction
 

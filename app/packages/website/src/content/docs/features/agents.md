@@ -81,7 +81,7 @@ The desktop app shows the same picker when an organization is selected. In local
 
 ### Work on a branch from git.infrawrench.com
 
-**Start work** on [git.infrawrench.com](./git-agents.md#start-work-from-an-ask) with Infrawrench as the agent opens the Agents tab on the web app with that branch in place of the repository picker. **Create** then starts a terminal session that:
+A branch page on [git.infrawrench.com](./git-agents.md) whose agent is Infrawrench links to the app. The link opens the Agents tab on the web app with that branch in place of the repository picker. **Create** then starts a terminal session that:
 
 - clones the forge repository and checks out that branch, instead of a generated `infrawrench/agent-*` branch;
 - starts your coding tool with the title and description of the branch's page as its first prompt, along with how to push, record what it does and read reviewer instructions;
@@ -94,6 +94,8 @@ You need `git:write` in the organization. The branch's page must be open, in one
 The VM gets a credential that pushes that one branch and nothing else. It can't push another branch or a tag, delete the branch, or download archives. It lasts 6 hours. After that, pushes are refused until you **Open** the session again, which gives the VM a new one. The credential is also in the tool's environment as `INFRAWRENCH_GIT_TOKEN`, which the forge's trace and instruction endpoints take.
 
 The desktop app doesn't open these links yet. The work can only be started from the web app.
+
+**Start work** on git.infrawrench.com does not offer Infrawrench as an agent. A page gets this link when its agent is set to Infrawrench through the forge's API.
 
 ## Work with a session
 

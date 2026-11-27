@@ -18,6 +18,8 @@ https://git.infrawrench.com/mcp
 
 It speaks Streamable HTTP, in the current protocol revision (2026-07-28) and the earlier `initialize` handshake.
 
+A repository's **Start work** page shows the commands below, each with a copy button, when **Another agent** is selected. See [Start work from an ask](./git-agents.md#start-work-from-an-ask).
+
 ### Claude Code
 
 ```sh
