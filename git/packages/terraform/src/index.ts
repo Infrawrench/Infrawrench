@@ -147,6 +147,7 @@ export {
 } from "./roots/model.js";
 export {
   MAX_CONFIGURATION_RESOURCES,
+  MAX_INACTIVE_LISTED,
   configurationPricingInputs,
   providerOf,
   valueOf,

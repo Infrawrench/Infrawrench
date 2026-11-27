@@ -388,6 +388,13 @@ export const TerraformRoot = Schema.Struct({
     description: "It reads `terraform.workspace`, so it behaves differently per CLI workspace.",
   }),
   unreadable: Schema.Array(Schema.Struct({ file: Schema.String, reason: Schema.String })),
+  inactiveResources: Schema.Int.annotate({
+    description:
+      "Resources and module calls whose `count` or `for_each` is zero with the values the repository holds (variable defaults, committed `.tfvars`): switched off unless a run sets a variable the repository does not. They are not in the estimate.",
+  }),
+  inactiveAddresses: Schema.Array(Schema.String).annotate({
+    description: "Their addresses, the first 200.",
+  }),
   estimate: TerraformConfigurationEstimate,
 }).annotate({ identifier: "TerraformRoot" });
 export type TerraformRoot = typeof TerraformRoot.Type;

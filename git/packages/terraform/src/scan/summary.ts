@@ -44,6 +44,9 @@ export interface TerraformRootSummary {
   readonly tfvarsFiles: readonly string[];
   readonly usesWorkspace: boolean;
   readonly unreadable: ReadonlyArray<{ readonly file: string; readonly reason: string }>;
+  /** Resources and module calls with a `count` or `for_each` of zero with the repository's values. */
+  readonly inactiveResources: number;
+  readonly inactiveAddresses: readonly string[];
 }
 
 export const MAX_SUMMARY_TYPES = 100;
@@ -148,6 +151,8 @@ export function summarizeRoot(
     lockFile: own.lockFile,
     tfvarsFiles: own.tfvarsFiles,
     usesWorkspace: all.some((directory) => directory.usesWorkspace),
+    inactiveResources: root.pricing.inactiveCount,
+    inactiveAddresses: root.pricing.inactive,
     unreadable: all.flatMap((directory) =>
       directory.unreadable.map((item) => ({
         file: directory.path === "" ? item.file : `${directory.path}/${item.file}`,

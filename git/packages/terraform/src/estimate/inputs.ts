@@ -51,7 +51,17 @@ export interface ConfigurationPricingInputs {
   }>;
   /** A limit stopped the walk: there are resources this does not list. */
   readonly truncated: boolean;
+  /**
+   * Resources and module calls whose `count` or `for_each` is zero with the
+   * values the repository holds (defaults, committed `.tfvars`): switched off
+   * unless a run sets a variable the repository does not. At most
+   * {@link MAX_INACTIVE_LISTED}; `inactiveCount` is all of them.
+   */
+  readonly inactive: readonly string[];
+  readonly inactiveCount: number;
 }
+
+export const MAX_INACTIVE_LISTED = 200;
 
 /** Resources listed per root, after instances with the same values are folded together. */
 export const MAX_CONFIGURATION_RESOURCES = 2000;
@@ -263,6 +273,12 @@ export function configurationPricingInputs(
 ): ConfigurationPricingInputs {
   const resources: ConfigurationResource[] = [];
   const unreadModules: { address: string; source: string | null }[] = [];
+  const inactive: string[] = [];
+  let inactiveCount = 0;
+  const switchedOff = (address: string) => {
+    inactiveCount += 1;
+    if (inactive.length < MAX_INACTIVE_LISTED) inactive.push(address);
+  };
   let truncated = false;
   let moduleInstances = 0;
 
@@ -297,7 +313,10 @@ export function configurationPricingInputs(
       const base = `${prefix}${resource.type}.${resource.name}`;
       const { count, instances } = instancesOf(resource.count, resource.forEach, scope);
       const total = count === null || multiplier === null ? null : count * multiplier;
-      if (total === 0) continue;
+      if (total === 0) {
+        switchedOff(base);
+        continue;
+      }
       const providerRegion =
         regions.get(provider.alias ? `${provider.name}.${provider.alias}` : provider.name) ?? null;
 
@@ -348,7 +367,10 @@ export function configurationPricingInputs(
         continue;
       }
       const { count, instances } = instancesOf(call.count, call.forEach, scope);
-      if (count === 0) continue;
+      if (count === 0) {
+        switchedOff(address);
+        continue;
+      }
       const expanded = instances.length > 1 || instances[0]?.key !== null;
       for (const instance of instances) {
         moduleInstances += 1;
@@ -379,5 +401,5 @@ export function configurationPricingInputs(
 
   const model = models.get(root);
   if (model) walk({ model, arguments: new Map(), tfvars }, "", 1, new Map(), 0, []);
-  return { root, resources, unreadModules, truncated };
+  return { root, resources, unreadModules, truncated, inactive, inactiveCount };
 }

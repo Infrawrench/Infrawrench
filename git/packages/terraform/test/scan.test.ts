@@ -305,6 +305,9 @@ describe("scanTerraformSnapshot", () => {
       ["aws_nat_gateway.x", null],
       ["aws_instance.y", null],
     ]);
+    // A count of zero is switched off, and said so rather than dropped.
+    expect(scan.roots[0]!.pricing.inactive).toEqual(["aws_instance.off"]);
+    expect(summarizeScan(scan).roots[0]!.inactiveResources).toBe(1);
     // The provider has no region in the configuration.
     expect(resources[1]!.providerRegion).toBeNull();
   });
