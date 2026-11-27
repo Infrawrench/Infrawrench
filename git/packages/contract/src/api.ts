@@ -6,7 +6,9 @@ import { HttpApi } from "effect/http-api";
 import { withApiDefaults } from "./http/auth";
 import { CiGroup, StatusesGroup, TerraformGroup } from "./groups/automation";
 import { ContentsGroup } from "./groups/contents";
+import { IssueImportsGroup } from "./groups/imports";
 import { IssuesGroup, LabelsGroup, MilestonesGroup } from "./groups/issues";
+import { MirrorsGroup } from "./groups/mirrors";
 import { NamespacesGroup } from "./groups/namespaces";
 import { BranchesGroup } from "./groups/branches";
 import { RepositoriesGroup, RepositoryListsGroup } from "./groups/repositories";
@@ -52,6 +54,8 @@ export const GIT_API_GROUPS = [
   CollaboratorsGroup,
   ProtectedBranchesGroup,
   DeployKeysGroup,
+  MirrorsGroup,
+  IssueImportsGroup,
   AccountGroup,
   StatusesGroup,
   CiGroup,
@@ -82,6 +86,8 @@ export class GitApi extends withApiDefaults(
     .add(CollaboratorsGroup)
     .add(ProtectedBranchesGroup)
     .add(DeployKeysGroup)
+    .add(MirrorsGroup)
+    .add(IssueImportsGroup)
     .add(AccountGroup)
     .add(StatusesGroup)
     .add(CiGroup)
@@ -117,7 +123,9 @@ export class RepositorySettingsApi extends withApiDefaults(
   HttpApi.make("git-repository-settings")
     .add(CollaboratorsGroup)
     .add(ProtectedBranchesGroup)
-    .add(DeployKeysGroup),
+    .add(DeployKeysGroup)
+    .add(MirrorsGroup)
+    .add(IssueImportsGroup),
 ) {}
 export class AccountApi extends withApiDefaults(HttpApi.make("git-account").add(AccountGroup)) {}
 export class StatusesApi extends withApiDefaults(HttpApi.make("git-statuses").add(StatusesGroup)) {}

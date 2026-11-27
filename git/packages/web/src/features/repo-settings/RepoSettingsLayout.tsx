@@ -58,6 +58,16 @@ export function RepoSettingsLayout({ children }: { children: ReactNode }) {
                 ]
               : []),
             {
+              label: "Mirrors",
+              href: paths.repoSettings(repo, "mirrors"),
+              icon: <Icon name="refresh" size={13} />,
+            },
+            {
+              label: "Import",
+              href: paths.repoSettings(repo, "import"),
+              icon: <Icon name="download" size={13} />,
+            },
+            {
               label: "Labels",
               href: paths.repoSettings(repo, "labels"),
               icon: <Icon name="tag" size={13} />,

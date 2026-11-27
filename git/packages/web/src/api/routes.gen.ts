@@ -188,6 +188,18 @@ export const API_ROUTES = {
     create: ["POST", "/api/repos/:owner/:repo/deploy-keys"],
     delete: ["DELETE", "/api/repos/:owner/:repo/deploy-keys/:keyId"],
   },
+  mirrors: {
+    list: ["GET", "/api/repos/:owner/:repo/mirrors"],
+    create: ["POST", "/api/repos/:owner/:repo/mirrors"],
+    update: ["PATCH", "/api/repos/:owner/:repo/mirrors/:mirrorId"],
+    delete: ["DELETE", "/api/repos/:owner/:repo/mirrors/:mirrorId"],
+    sync: ["POST", "/api/repos/:owner/:repo/mirrors/:mirrorId/sync"],
+  },
+  issueImports: {
+    list: ["GET", "/api/repos/:owner/:repo/issue-imports"],
+    create: ["POST", "/api/repos/:owner/:repo/issue-imports"],
+    cancel: ["POST", "/api/repos/:owner/:repo/issue-imports/:importId/cancel"],
+  },
   account: {
     listKeys: ["GET", "/api/user/keys"],
     createKey: ["POST", "/api/user/keys"],

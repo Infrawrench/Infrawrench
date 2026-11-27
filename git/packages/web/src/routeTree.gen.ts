@@ -51,9 +51,11 @@ import { Route as OwnerRepoSettingsIndexRouteImport } from './routes/$owner/$rep
 import { Route as OwnerRepoSettingsBranchesRouteImport } from './routes/$owner/$repo/settings.branches'
 import { Route as OwnerRepoSettingsCiRouteImport } from './routes/$owner/$repo/settings.ci'
 import { Route as OwnerRepoSettingsCollaboratorsRouteImport } from './routes/$owner/$repo/settings.collaborators'
+import { Route as OwnerRepoSettingsImportRouteImport } from './routes/$owner/$repo/settings.import'
 import { Route as OwnerRepoSettingsKeysRouteImport } from './routes/$owner/$repo/settings.keys'
 import { Route as OwnerRepoSettingsLabelsRouteImport } from './routes/$owner/$repo/settings.labels'
 import { Route as OwnerRepoSettingsMilestonesRouteImport } from './routes/$owner/$repo/settings.milestones'
+import { Route as OwnerRepoSettingsMirrorsRouteImport } from './routes/$owner/$repo/settings.mirrors'
 import { Route as OwnerRepoSettingsReviewRouteImport } from './routes/$owner/$repo/settings.review'
 import { Route as OwnerRepoTreeSplatRouteImport } from './routes/$owner/$repo/tree.$'
 import { Route as OwnerRepoCiRunsRunIdRouteImport } from './routes/$owner/$repo/ci.runs.$runId'
@@ -281,6 +283,11 @@ const OwnerRepoSettingsCollaboratorsRoute =
     path: '/collaborators',
     getParentRoute: () => OwnerRepoSettingsRoute,
   } as any)
+const OwnerRepoSettingsImportRoute = OwnerRepoSettingsImportRouteImport.update({
+  id: '/import',
+  path: '/import',
+  getParentRoute: () => OwnerRepoSettingsRoute,
+} as any)
 const OwnerRepoSettingsKeysRoute = OwnerRepoSettingsKeysRouteImport.update({
   id: '/keys',
   path: '/keys',
@@ -295,6 +302,12 @@ const OwnerRepoSettingsMilestonesRoute =
   OwnerRepoSettingsMilestonesRouteImport.update({
     id: '/milestones',
     path: '/milestones',
+    getParentRoute: () => OwnerRepoSettingsRoute,
+  } as any)
+const OwnerRepoSettingsMirrorsRoute =
+  OwnerRepoSettingsMirrorsRouteImport.update({
+    id: '/mirrors',
+    path: '/mirrors',
     getParentRoute: () => OwnerRepoSettingsRoute,
   } as any)
 const OwnerRepoSettingsReviewRoute = OwnerRepoSettingsReviewRouteImport.update({
@@ -401,9 +414,11 @@ export interface FileRoutesByFullPath {
   '/$owner/$repo/settings/branches': typeof OwnerRepoSettingsBranchesRoute
   '/$owner/$repo/settings/ci': typeof OwnerRepoSettingsCiRoute
   '/$owner/$repo/settings/collaborators': typeof OwnerRepoSettingsCollaboratorsRoute
+  '/$owner/$repo/settings/import': typeof OwnerRepoSettingsImportRoute
   '/$owner/$repo/settings/keys': typeof OwnerRepoSettingsKeysRoute
   '/$owner/$repo/settings/labels': typeof OwnerRepoSettingsLabelsRoute
   '/$owner/$repo/settings/milestones': typeof OwnerRepoSettingsMilestonesRoute
+  '/$owner/$repo/settings/mirrors': typeof OwnerRepoSettingsMirrorsRoute
   '/$owner/$repo/settings/review': typeof OwnerRepoSettingsReviewRoute
   '/$owner/$repo/tree/$': typeof OwnerRepoTreeSplatRoute
   '/$owner/$repo/branches/': typeof OwnerRepoBranchesIndexRoute
@@ -456,9 +471,11 @@ export interface FileRoutesByTo {
   '/$owner/$repo/settings/branches': typeof OwnerRepoSettingsBranchesRoute
   '/$owner/$repo/settings/ci': typeof OwnerRepoSettingsCiRoute
   '/$owner/$repo/settings/collaborators': typeof OwnerRepoSettingsCollaboratorsRoute
+  '/$owner/$repo/settings/import': typeof OwnerRepoSettingsImportRoute
   '/$owner/$repo/settings/keys': typeof OwnerRepoSettingsKeysRoute
   '/$owner/$repo/settings/labels': typeof OwnerRepoSettingsLabelsRoute
   '/$owner/$repo/settings/milestones': typeof OwnerRepoSettingsMilestonesRoute
+  '/$owner/$repo/settings/mirrors': typeof OwnerRepoSettingsMirrorsRoute
   '/$owner/$repo/settings/review': typeof OwnerRepoSettingsReviewRoute
   '/$owner/$repo/tree/$': typeof OwnerRepoTreeSplatRoute
   '/$owner/$repo/branches': typeof OwnerRepoBranchesIndexRoute
@@ -516,9 +533,11 @@ export interface FileRoutesById {
   '/$owner/$repo/settings/branches': typeof OwnerRepoSettingsBranchesRoute
   '/$owner/$repo/settings/ci': typeof OwnerRepoSettingsCiRoute
   '/$owner/$repo/settings/collaborators': typeof OwnerRepoSettingsCollaboratorsRoute
+  '/$owner/$repo/settings/import': typeof OwnerRepoSettingsImportRoute
   '/$owner/$repo/settings/keys': typeof OwnerRepoSettingsKeysRoute
   '/$owner/$repo/settings/labels': typeof OwnerRepoSettingsLabelsRoute
   '/$owner/$repo/settings/milestones': typeof OwnerRepoSettingsMilestonesRoute
+  '/$owner/$repo/settings/mirrors': typeof OwnerRepoSettingsMirrorsRoute
   '/$owner/$repo/settings/review': typeof OwnerRepoSettingsReviewRoute
   '/$owner/$repo/tree/$': typeof OwnerRepoTreeSplatRoute
   '/$owner/$repo/branches/': typeof OwnerRepoBranchesIndexRoute
@@ -577,9 +596,11 @@ export interface FileRouteTypes {
     | '/$owner/$repo/settings/branches'
     | '/$owner/$repo/settings/ci'
     | '/$owner/$repo/settings/collaborators'
+    | '/$owner/$repo/settings/import'
     | '/$owner/$repo/settings/keys'
     | '/$owner/$repo/settings/labels'
     | '/$owner/$repo/settings/milestones'
+    | '/$owner/$repo/settings/mirrors'
     | '/$owner/$repo/settings/review'
     | '/$owner/$repo/tree/$'
     | '/$owner/$repo/branches/'
@@ -632,9 +653,11 @@ export interface FileRouteTypes {
     | '/$owner/$repo/settings/branches'
     | '/$owner/$repo/settings/ci'
     | '/$owner/$repo/settings/collaborators'
+    | '/$owner/$repo/settings/import'
     | '/$owner/$repo/settings/keys'
     | '/$owner/$repo/settings/labels'
     | '/$owner/$repo/settings/milestones'
+    | '/$owner/$repo/settings/mirrors'
     | '/$owner/$repo/settings/review'
     | '/$owner/$repo/tree/$'
     | '/$owner/$repo/branches'
@@ -691,9 +714,11 @@ export interface FileRouteTypes {
     | '/$owner/$repo/settings/branches'
     | '/$owner/$repo/settings/ci'
     | '/$owner/$repo/settings/collaborators'
+    | '/$owner/$repo/settings/import'
     | '/$owner/$repo/settings/keys'
     | '/$owner/$repo/settings/labels'
     | '/$owner/$repo/settings/milestones'
+    | '/$owner/$repo/settings/mirrors'
     | '/$owner/$repo/settings/review'
     | '/$owner/$repo/tree/$'
     | '/$owner/$repo/branches/'
@@ -1025,6 +1050,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OwnerRepoSettingsCollaboratorsRouteImport
       parentRoute: typeof OwnerRepoSettingsRoute
     }
+    '/$owner/$repo/settings/import': {
+      id: '/$owner/$repo/settings/import'
+      path: '/import'
+      fullPath: '/$owner/$repo/settings/import'
+      preLoaderRoute: typeof OwnerRepoSettingsImportRouteImport
+      parentRoute: typeof OwnerRepoSettingsRoute
+    }
     '/$owner/$repo/settings/keys': {
       id: '/$owner/$repo/settings/keys'
       path: '/keys'
@@ -1044,6 +1076,13 @@ declare module '@tanstack/react-router' {
       path: '/milestones'
       fullPath: '/$owner/$repo/settings/milestones'
       preLoaderRoute: typeof OwnerRepoSettingsMilestonesRouteImport
+      parentRoute: typeof OwnerRepoSettingsRoute
+    }
+    '/$owner/$repo/settings/mirrors': {
+      id: '/$owner/$repo/settings/mirrors'
+      path: '/mirrors'
+      fullPath: '/$owner/$repo/settings/mirrors'
+      preLoaderRoute: typeof OwnerRepoSettingsMirrorsRouteImport
       parentRoute: typeof OwnerRepoSettingsRoute
     }
     '/$owner/$repo/settings/review': {
@@ -1157,9 +1196,11 @@ interface OwnerRepoSettingsRouteChildren {
   OwnerRepoSettingsBranchesRoute: typeof OwnerRepoSettingsBranchesRoute
   OwnerRepoSettingsCiRoute: typeof OwnerRepoSettingsCiRoute
   OwnerRepoSettingsCollaboratorsRoute: typeof OwnerRepoSettingsCollaboratorsRoute
+  OwnerRepoSettingsImportRoute: typeof OwnerRepoSettingsImportRoute
   OwnerRepoSettingsKeysRoute: typeof OwnerRepoSettingsKeysRoute
   OwnerRepoSettingsLabelsRoute: typeof OwnerRepoSettingsLabelsRoute
   OwnerRepoSettingsMilestonesRoute: typeof OwnerRepoSettingsMilestonesRoute
+  OwnerRepoSettingsMirrorsRoute: typeof OwnerRepoSettingsMirrorsRoute
   OwnerRepoSettingsReviewRoute: typeof OwnerRepoSettingsReviewRoute
   OwnerRepoSettingsIndexRoute: typeof OwnerRepoSettingsIndexRoute
 }
@@ -1168,9 +1209,11 @@ const OwnerRepoSettingsRouteChildren: OwnerRepoSettingsRouteChildren = {
   OwnerRepoSettingsBranchesRoute: OwnerRepoSettingsBranchesRoute,
   OwnerRepoSettingsCiRoute: OwnerRepoSettingsCiRoute,
   OwnerRepoSettingsCollaboratorsRoute: OwnerRepoSettingsCollaboratorsRoute,
+  OwnerRepoSettingsImportRoute: OwnerRepoSettingsImportRoute,
   OwnerRepoSettingsKeysRoute: OwnerRepoSettingsKeysRoute,
   OwnerRepoSettingsLabelsRoute: OwnerRepoSettingsLabelsRoute,
   OwnerRepoSettingsMilestonesRoute: OwnerRepoSettingsMilestonesRoute,
+  OwnerRepoSettingsMirrorsRoute: OwnerRepoSettingsMirrorsRoute,
   OwnerRepoSettingsReviewRoute: OwnerRepoSettingsReviewRoute,
   OwnerRepoSettingsIndexRoute: OwnerRepoSettingsIndexRoute,
 }
