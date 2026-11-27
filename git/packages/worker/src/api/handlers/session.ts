@@ -16,6 +16,7 @@ import {
   SHORT_USERNAME_PAYMENT_REQUIRED,
   TooManyRequests,
   USERNAME_CHECKOUT_PATH,
+  WORKSPACE_CHECKOUT_PATH,
   badRequest,
   conflict,
   forbidden,
@@ -24,8 +25,13 @@ import {
   notFound,
   suggestSlug,
   usernamePriceCents,
+  workspaceNameProblem,
 } from "@infrawrench/git-contract";
-import { signGitUsernameCheckoutToken } from "@infrawrench/client-core";
+import {
+  GIT_WORKSPACE_RETURN_PATH_MAX_LENGTH,
+  signGitUsernameCheckoutToken,
+  signGitWorkspaceCheckoutToken,
+} from "@infrawrench/client-core";
 import { gitNamespaces, gitUsers, users } from "@infrawrench/server-core/db/schema";
 import { planAccess } from "@infrawrench/server-core/entitlements";
 import {
@@ -141,6 +147,34 @@ const sitePathOrNull = (value: string | undefined): string | null =>
   !/[\u0000-\u001f\u007f-\u009f]/.test(value)
     ? value
     : null;
+
+/**
+ * The page a workspace's payment comes back to (`startWorkspaceCheckout`):
+ * Settings > Organisations, or the username page with the username the person
+ * had chosen and where they were going. Kept short enough for the token; what
+ * does not fit is left out, the page first.
+ */
+const workspaceReturnPath = (payload: {
+  readonly from: "onboarding" | "settings";
+  readonly username?: string | undefined;
+  readonly returnTo?: string | undefined;
+}): string => {
+  if (payload.from === "settings") return "/settings/organisations";
+  const base = "/onboarding/username";
+  const query = new URLSearchParams();
+  if (payload.username !== undefined && namespaceSlugProblem(payload.username) === null) {
+    query.set("username", payload.username);
+  }
+  const returnTo = sitePathOrNull(payload.returnTo);
+  const full = new URLSearchParams(query);
+  if (returnTo !== null) full.set("returnTo", returnTo);
+  for (const candidate of [full, query]) {
+    const text = candidate.toString();
+    const path = text === "" ? base : `${base}?${text}`;
+    if (path.length <= GIT_WORKSPACE_RETURN_PATH_MAX_LENGTH) return path;
+  }
+  return base;
+};
 
 /**
  * The organisation a person's own repositories run in, as the session says
@@ -484,6 +518,36 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
                 at: iso(purchase.createdAt),
               }
             : null,
+        };
+      }),
+    )
+    .handle(
+      "startWorkspaceCheckout",
+      op(async (cx, { payload }) => {
+        // Who pays, and who will own what is paid for, is said in a browser.
+        if (cx.principal.kind !== "user" || cx.principal.via !== "session") {
+          throw forbidden("A workspace is set up from a signed-in browser, not with a token");
+        }
+        const userId = cx.principal.userId;
+        const name = payload.name.trim();
+        const problem = workspaceNameProblem(name);
+        if (problem !== null) throw badRequest(problem, "workspace_name_invalid");
+        // Offered to someone with nowhere to run. The app asks again before it opens a payment.
+        if ((await cx.viewer()).organizations.length > 0) {
+          throw conflict("You already belong to an organisation", "already_in_organisation");
+        }
+        // The forge has no Stripe key and creates no organisation: the app
+        // opens the payment page and, once it is paid, creates the one this
+        // token names (client-core `git-workspace-checkout-token.ts`). Nothing
+        // is written here, so someone who never pays leaves nothing behind.
+        const token = await signGitWorkspaceCheckoutToken(cx.env.GIT_JOB_TOKEN_KEY, {
+          organizationId: crypto.randomUUID(),
+          userId,
+          name,
+          returnPath: workspaceReturnPath(payload),
+        });
+        return {
+          checkoutUrl: `${appOrigin(cx.env)}${WORKSPACE_CHECKOUT_PATH}?token=${encodeURIComponent(token)}`,
         };
       }),
     )

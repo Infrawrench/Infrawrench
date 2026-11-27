@@ -24,3 +24,15 @@ export {
   GIT_USERNAME_CHECKOUT_PARAM as USERNAME_CHECKOUT_PARAM,
   gitUsernamePriceCents as usernamePriceCents,
 } from "@infrawrench/client-core";
+
+/**
+ * A workspace set up from here: an Infrawrench organisation on the Pro plan,
+ * offered to someone who belongs to none (client-core `git-forge.ts`).
+ */
+export {
+  GIT_WORKSPACE_CHECKOUT_PATH as WORKSPACE_CHECKOUT_PATH,
+  GIT_WORKSPACE_CHECKOUT_PARAM as WORKSPACE_CHECKOUT_PARAM,
+  GIT_WORKSPACE_PRICE_LABEL as WORKSPACE_PRICE_LABEL,
+  GIT_WORKSPACE_NAME_MAX_LENGTH as WORKSPACE_NAME_MAX_LENGTH,
+  gitWorkspaceNameProblem as workspaceNameProblem,
+} from "@infrawrench/client-core";

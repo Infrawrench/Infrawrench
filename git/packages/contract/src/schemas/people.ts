@@ -235,3 +235,10 @@ export const UsernameCheckout = Schema.Struct({
   ).annotate({ description: "The caller's most recent payment for a username, if any." }),
 }).annotate({ identifier: "UsernameCheckout" });
 export type UsernameCheckout = typeof UsernameCheckout.Type;
+
+export const WorkspaceCheckoutStart = Schema.Struct({
+  checkoutUrl: Schema.String.annotate({
+    description: "Where to send the browser to pay. Good for a few minutes.",
+  }),
+}).annotate({ identifier: "WorkspaceCheckoutStart" });
+export type WorkspaceCheckoutStart = typeof WorkspaceCheckoutStart.Type;

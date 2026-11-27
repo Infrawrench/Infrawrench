@@ -64,6 +64,7 @@ export * from "./ci-notes";
 // the app, checked by the forge's Worker.
 export * from "./git-job-token";
 export * from "./git-username-checkout-token";
+export * from "./git-workspace-checkout-token";
 // The instance pricing warehouse's tables, as data: documented by the API
 // contract, created and read by server-core.
 export * as PricingWarehouse from "./pricing-warehouse";

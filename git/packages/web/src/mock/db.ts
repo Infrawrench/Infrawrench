@@ -4,7 +4,8 @@
  * through the functions here.
  *
  * Who is signed in is a scenario kept in `sessionStorage`, switched with
- * `?mock=signed-in | signed-out | new-user` on any URL.
+ * `?mock=signed-in | signed-out | new-user | solo | new-solo` on any URL
+ * (`solo`: in no organisation; `new-solo`: that, and no username yet).
  */
 import {
   httpCloneUrl,
@@ -24,10 +25,21 @@ import { mockError, notFound, unauthorized, type Mutable } from "./define";
 import { FIXTURE_PEOPLE, fixtureInstance, type FixtureName, type GitFixture } from "./git";
 import { commitTexts, textAt } from "./git-write";
 
-export type MockScenario = "signed-in" | "signed-out" | "new-user";
+export type MockScenario = "signed-in" | "signed-out" | "new-user" | "solo" | "new-solo";
 
 const SCENARIO_KEY = "git-mock-scenario";
-const SCENARIOS: ReadonlyArray<MockScenario> = ["signed-in", "signed-out", "new-user"];
+const SCENARIOS: ReadonlyArray<MockScenario> = [
+  "signed-in",
+  "signed-out",
+  "new-user",
+  "solo",
+  "new-solo",
+];
+
+/** Someone who has not chosen a username yet. */
+const isNew = (which: MockScenario): boolean => which === "new-user" || which === "new-solo";
+/** Someone who belongs to no organisation until they set up a workspace. */
+const isSolo = (which: MockScenario): boolean => which === "solo" || which === "new-solo";
 
 function readScenario(): MockScenario {
   try {
@@ -50,10 +62,14 @@ let scenario: MockScenario = readScenario();
 export function setScenario(next: MockScenario): void {
   scenario = next;
   // Someone new has no username yet, and has chosen nowhere to run.
-  if (next === "new-user") {
+  if (isNew(next)) {
     myUsername = null;
     myWorkspaceId = null;
+  } else if (myUsername === null) {
+    myUsername = "mara";
   }
+  if (isSolo(next)) myWorkspaceId = null;
+  paidWorkspaces.length = 0;
   try {
     sessionStorage.setItem(SCENARIO_KEY, next);
   } catch {
@@ -66,18 +82,36 @@ export const ACME_ORG_ID = "org_acme";
 const TIDEWATER_ORG_ID = "org_tidewater";
 
 const me = FIXTURE_PEOPLE["mara@acme.example"]!;
-let myUsername: string | null = scenario === "new-user" ? null : "mara";
+let myUsername: string | null = isNew(scenario) ? null : "mara";
+/** The workspaces the person set up from here (`startWorkspaceCheckout`): theirs, on the Pro plan. */
+const paidWorkspaces: Array<{ id: string; name: string }> = [];
 /** The organisation the person's own repositories run CI and review agents in. */
 let myWorkspaceId: string | null = null;
 
 /** Every organisation the person belongs to, by id. */
 const organizationNames = (): Map<string, string> =>
   new Map([
-    ...namespaces
-      .filter((n) => n.kind === "org")
-      .map((n) => [n.organizationId!, n.displayName ?? n.slug] as const),
-    ...unclaimedOrganizations.map((organization) => [organization.id, organization.name] as const),
+    ...paidWorkspaces.map((workspace) => [workspace.id, workspace.name] as const),
+    ...(isSolo(scenario) ? [] : memberOrganizationNames()),
   ]);
+
+const memberOrganizationNames = (): Array<readonly [string, string]> => [
+  ...namespaces
+    .filter((n) => n.kind === "org")
+    .map((n) => [n.organizationId!, n.displayName ?? n.slug] as const),
+  ...unclaimedOrganizations.map((organization) => [organization.id, organization.name] as const),
+];
+
+/**
+ * A workspace's payment went through: the organisation exists, the person
+ * owns it, and their own namespace runs in it when they have one.
+ */
+export function setUpMyWorkspace(name: string): { id: string; name: string } {
+  const workspace = { id: `org_workspace_${paidWorkspaces.length + 1}`, name };
+  paidWorkspaces.push(workspace);
+  if (myUsername !== null && myWorkspaceId === null) myWorkspaceId = workspace.id;
+  return workspace;
+}
 
 export function myWorkspace(): { id: string; name: string } | null {
   const name = myWorkspaceId === null ? undefined : organizationNames().get(myWorkspaceId);
@@ -146,37 +180,62 @@ export function session(): Session {
     },
     personal: own ? { ...fits(own), workspace: myWorkspace() } : null,
     organizations: [
-      ...namespaces
-        .filter((n) => n.kind === "org")
-        .map((n) => ({
-          id: n.organizationId!,
-          name: n.displayName ?? n.slug,
-          namespace: n.slug,
-          permissions: ["git:read", "git:write", "git:admin"] as const,
-          namespacePlanRefusal: null,
-          canClaimNamespace: false,
-          ...fits(n),
-          paid: n.plan === "paid",
-        })),
-      ...unclaimedOrganizations.map((organization) => ({
-        id: organization.id,
-        name: organization.name,
+      ...paidWorkspaces.map((workspace) => ({
+        id: workspace.id,
+        name: workspace.name,
         namespace: null,
-        permissions: organization.permissions,
-        namespacePlanRefusal: namespaceClaimRefusal(organization.plan),
-        canClaimNamespace:
-          organization.plan === "paid" && organization.permissions.includes("git:admin"),
+        permissions: ["git:read", "git:write", "git:admin"] as const,
+        namespacePlanRefusal: null,
+        canClaimNamespace: true,
         privateRepositories: true,
         privateRepositoryRefusal: null,
         defaultVisibility: "private" as const,
-        paid: organization.plan === "paid",
+        paid: true,
       })),
+      ...(isSolo(scenario) ? [] : memberOrganizations(fits)),
     ],
     signInUrl: "/auth/sign-in",
     appUrl: APP_URL,
     sshEnabled: true,
     reservedNamesAllowed: false,
   };
+}
+
+/** The organisations the fixtures put the person in. */
+function memberOrganizations(
+  fits: (namespace: NamespaceRecord) => {
+    privateRepositories: boolean;
+    privateRepositoryRefusal: string | null;
+    defaultVisibility: Visibility;
+  },
+): Session["organizations"] {
+  return [
+    ...namespaces
+      .filter((n) => n.kind === "org")
+      .map((n) => ({
+        id: n.organizationId!,
+        name: n.displayName ?? n.slug,
+        namespace: n.slug,
+        permissions: ["git:read", "git:write", "git:admin"] as const,
+        namespacePlanRefusal: null,
+        canClaimNamespace: false,
+        ...fits(n),
+        paid: n.plan === "paid",
+      })),
+    ...unclaimedOrganizations.map((organization) => ({
+      id: organization.id,
+      name: organization.name,
+      namespace: null,
+      permissions: organization.permissions,
+      namespacePlanRefusal: namespaceClaimRefusal(organization.plan),
+      canClaimNamespace:
+        organization.plan === "paid" && organization.permissions.includes("git:admin"),
+      privateRepositories: true,
+      privateRepositoryRefusal: null,
+      defaultVisibility: "private" as const,
+      paid: organization.plan === "paid",
+    })),
+  ];
 }
 
 export function claimUsername(username: string): NamespaceRef {

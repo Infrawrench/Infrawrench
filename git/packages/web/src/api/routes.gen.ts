@@ -11,6 +11,7 @@ export const API_ROUTES = {
     startUsernameCheckout: ["POST", "/api/session/username/checkout"],
     usernameCheckout: ["GET", "/api/session/username/checkout"],
     setWorkspace: ["PUT", "/api/session/workspace"],
+    startWorkspaceCheckout: ["POST", "/api/session/workspace/checkout"],
   },
   namespaces: {
     get: ["GET", "/api/namespaces/:namespace"],

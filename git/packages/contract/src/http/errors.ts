@@ -87,6 +87,8 @@ export const ERROR_CODES = [
   "username_reserved",
   "username_invalid",
   "username_payment_required",
+  "workspace_name_invalid",
+  "already_in_organisation",
   "namespace_taken",
   "namespace_already_claimed",
   "name_taken",

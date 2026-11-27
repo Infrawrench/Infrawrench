@@ -13,7 +13,7 @@ sidebar_order: 7
 1. Open [git.infrawrench.com](https://git.infrawrench.com) and click **Sign in**. You sign in with your Infrawrench account, the same one as the app.
 2. The first time, you are asked to **Choose a username**. It becomes your personal namespace: your own repositories live at `git.infrawrench.com/<username>/<repository>`.
 
-3. Under **Run CI and review agents in**, pick one of your organizations, or **None**. Your own repositories then run [CI](./ci.md) and [review agents](./git-branches.md#review-agents) in that organization; see [Where your own repositories run](#where-your-own-repositories-run). When exactly one of your organizations is on a paid plan it is already selected; otherwise you choose.
+3. Under **Run CI and review agents in**, pick one of your organizations, or **None**. Your own repositories then run [CI](./ci.md) and [review agents](./git-branches.md#review-agents) in that organization; see [Where your own repositories run](#where-your-own-repositories-run). When exactly one of your organizations is on a paid plan it is already selected; otherwise you choose. If you are not in an organization, the page offers to [set up a workspace](#set-up-a-workspace) instead, or you can click **Not now**.
 
 Usernames use letters, digits, dots, dashes and underscores, are at most 39 characters, and cannot end in `.git`. The field tells you whether a name is available as you type.
 
@@ -24,6 +24,24 @@ A username of 6 characters or fewer costs $50, paid once. Longer usernames are f
 You can change your username later under **Settings > Profile**. Addresses of your repositories change with it and the old ones stop working, so update your remotes afterwards. Changing to a username of 6 characters or fewer costs $50 as well; keeping the one you have, or changing only its capitalization, costs nothing. Organization names are never charged for, whatever their length.
 
 <insert [The Choose a username page on git.infrawrench.com after the first sign-in: the Username field filled in with "Available" under it, the "Run CI and review agents in" menu set to an organisation, and the Continue button] here>
+
+### Set up a workspace
+
+CI and review agents run in an Infrawrench organization. If you do not belong to one, the username page offers to create one for you, without leaving git.infrawrench.com:
+
+1. Under **Set up a workspace**, type an **Organisation name**. It starts as your own name followed by "workspace"; change it to whatever you like, up to 100 characters.
+2. Click **Continue to payment ($20 a month)**. You pay by card on Stripe's page for one seat of the [Pro plan](../team-and-billing/billing-and-plans.md).
+3. You come back to git.infrawrench.com with the organization created, you as its owner, your username claimed and your own repositories running in it.
+
+Nothing is created until the payment goes through. If you leave the payment page, you are back on the username page with the name you typed, no organization exists and nothing is charged. **Not now** skips the offer: you get your username and your repositories run nowhere until you connect them to an organization.
+
+The organization is an ordinary Infrawrench organization: sign in to the app with the same account to invite people, connect cloud accounts or [manage billing](../team-and-billing/billing-and-plans.md). If you also chose a username of 6 characters or fewer, you pay for the workspace first and for the username when you come back.
+
+<insert [The Choose a username page for someone in no organization: the Username field with "Available" under it, the "Set up a workspace" section with the line "CI and review agents run in it. Pro, $20 a month." and the Organisation name field filled in, and the buttons "Continue to payment ($20 a month)" and "Not now"] here>
+
+If you skipped it, the same offer is under **Settings > Organisations** for as long as you are in no organization. Paying there creates the organization and connects your own repositories to it.
+
+<insert [Settings > Organisations on git.infrawrench.com for someone in no organization: "You are not in an organisation", the "Set up a workspace" section with the Organisation name field and the "Continue to payment ($20 a month)" button] here>
 
 ### Where your own repositories run
 
