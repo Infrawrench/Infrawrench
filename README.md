@@ -118,3 +118,5 @@ User-facing docs live in `app/packages/website/src/content/docs/` and are publis
 ## A note from a passing wrench
 
 This section exists only to test the branch, version and trace flow on git.infrawrench.com. It does nothing, configures nothing and can be deleted without ceremony. If you are reading it on `main`, someone forgot to throw it away.
+
+Fun fact for the road: the token that recorded this branch's trace is an `iwj_` job token with an `agent` claim, minted for six hours and good for nothing but this branch's notes.
