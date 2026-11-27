@@ -432,6 +432,7 @@ export interface components {
             /** @default  */
             max_conversation_duration_message?: string;
             prompt?: components["schemas"]["PromptAgentAPIModel-Input"];
+            subagent_config?: components["schemas"]["SubagentConfig-Input"];
             text_behavior_overrides?: {
                 [key: string]: components["schemas"]["BehaviorOverride"];
             } | null;
@@ -449,6 +450,7 @@ export interface components {
             /** @default  */
             max_conversation_duration_message?: string;
             prompt?: components["schemas"]["PromptAgentAPIModel-Output"];
+            subagent_config?: components["schemas"]["SubagentConfig-Output"];
             text_behavior_overrides?: {
                 [key: string]: components["schemas"]["BehaviorOverride"];
             } | null;
@@ -606,7 +608,7 @@ export interface components {
                 [key: string]: components["schemas"]["WorkflowEdgeModel-Input"];
             };
             nodes?: {
-                [key: string]: components["schemas"]["WorkflowStartNodeModel-Input"] | components["schemas"]["WorkflowEndNodeModel-Input"] | components["schemas"]["WorkflowPhoneNumberNodeModel-Input"] | components["schemas"]["WorkflowOverrideAgentNodeModel-Input"] | components["schemas"]["WorkflowStandaloneAgentNodeModel-Input"] | components["schemas"]["WorkflowToolNodeModel-Input"];
+                [key: string]: components["schemas"]["WorkflowStartNodeModel-Input"] | components["schemas"]["WorkflowEndNodeModel-Input"] | components["schemas"]["WorkflowPhoneNumberNodeModel-Input"] | components["schemas"]["WorkflowOverrideAgentNodeModel-Input"] | components["schemas"]["WorkflowStandaloneAgentNodeModel-Input"] | components["schemas"]["WorkflowSayNodeModel-Input"] | components["schemas"]["WorkflowToolNodeModel-Input"] | components["schemas"]["WorkflowUpdateStateNodeModel-Input"] | components["schemas"]["WorkflowStartProcedureNodeModel-Input"];
             };
             /** @default false */
             prevent_subagent_loops?: boolean;
@@ -616,7 +618,7 @@ export interface components {
                 [key: string]: components["schemas"]["WorkflowEdgeModel-Output"];
             };
             nodes: {
-                [key: string]: components["schemas"]["WorkflowStartNodeModel-Output"] | components["schemas"]["WorkflowEndNodeModel-Output"] | components["schemas"]["WorkflowPhoneNumberNodeModel-Output"] | components["schemas"]["WorkflowOverrideAgentNodeModel-Output"] | components["schemas"]["WorkflowStandaloneAgentNodeModel-Output"] | components["schemas"]["WorkflowToolNodeModel-Output"];
+                [key: string]: components["schemas"]["WorkflowStartNodeModel-Output"] | components["schemas"]["WorkflowEndNodeModel-Output"] | components["schemas"]["WorkflowPhoneNumberNodeModel-Output"] | components["schemas"]["WorkflowOverrideAgentNodeModel-Output"] | components["schemas"]["WorkflowStandaloneAgentNodeModel-Output"] | components["schemas"]["WorkflowSayNodeModel-Output"] | components["schemas"]["WorkflowToolNodeModel-Output"] | components["schemas"]["WorkflowUpdateStateNodeModel-Output"] | components["schemas"]["WorkflowStartProcedureNodeModel-Output"];
             };
             /** @default false */
             prevent_subagent_loops: boolean;
@@ -667,6 +669,7 @@ export interface components {
         };
         AlertingSettings: {
             auto_resolve_after_inactive_minutes?: number | null;
+            environments?: string[] | null;
             monitor_configs?: {
                 [key: string]: components["schemas"]["AlertingMonitorConfig"];
             };
@@ -674,6 +677,7 @@ export interface components {
         };
         AlertingSettingsResponse: {
             auto_resolve_after_inactive_minutes?: number | null;
+            environments?: string[] | null;
             monitor_configs?: {
                 [key: string]: components["schemas"]["AlertingMonitorConfig"];
             };
@@ -757,6 +761,18 @@ export interface components {
          * @enum {string}
          */
         AnalysisScope: "conversation" | "agent";
+        "AnyOfJsonSchemaProperty-Input": {
+            any_of: components["schemas"]["ObjectJsonSchemaProperty-Input"][];
+            /** @default  */
+            description?: string;
+            discriminator: string;
+        };
+        "AnyOfJsonSchemaProperty-Output": {
+            any_of: components["schemas"]["ObjectJsonSchemaProperty-Output"][];
+            /** @default  */
+            description?: string;
+            discriminator: string;
+        };
         ApiIntegrationWebhookOverrides: {
             request_headers?: {
                 [key: string]: string | components["schemas"]["ConvAIDynamicVariable"];
@@ -864,7 +880,7 @@ export interface components {
              *       "is_omitted": false
              *     }
              */
-            items?: components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["ObjectJsonSchemaProperty-Input"] | components["schemas"]["ArrayJsonSchemaProperty-Input"];
+            items?: components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["ObjectJsonSchemaProperty-Input"] | components["schemas"]["ArrayJsonSchemaProperty-Input"] | components["schemas"]["AnyOfJsonSchemaProperty-Input"];
             /**
              * @default array
              * @enum {string}
@@ -895,7 +911,7 @@ export interface components {
              *       "is_omitted": false
              *     }
              */
-            items?: components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["ObjectJsonSchemaProperty-Output"] | components["schemas"]["ArrayJsonSchemaProperty-Output"];
+            items?: components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["ObjectJsonSchemaProperty-Output"] | components["schemas"]["ArrayJsonSchemaProperty-Output"] | components["schemas"]["AnyOfJsonSchemaProperty-Output"];
             /**
              * @default array
              * @constant
@@ -904,7 +920,7 @@ export interface components {
         };
         ASRConversationalConfig: {
             keywords?: string[];
-            /** @default scribe_realtime */
+            /** @default scribe_v3_live */
             provider?: components["schemas"]["ASRProvider"];
             /** @default high */
             quality?: components["schemas"]["ASRQuality"];
@@ -930,10 +946,10 @@ export interface components {
          */
         ASRInputFormat: "pcm_8000" | "pcm_16000" | "pcm_22050" | "pcm_24000" | "pcm_44100" | "pcm_48000" | "ulaw_8000";
         /**
-         * @default scribe_realtime
+         * @default scribe_v3_live
          * @enum {string}
          */
-        ASRProvider: "elevenlabs" | "scribe_realtime" | "scribe_v2_turbo";
+        ASRProvider: "elevenlabs" | "scribe_realtime" | "scribe_v2_turbo" | "scribe_v3_live" | "scribe_v3_live_medical";
         /**
          * @default high
          * @enum {string}
@@ -1476,6 +1492,8 @@ export interface components {
             /** @default false */
             no_verbatim?: boolean;
             num_speakers?: number | null;
+            numbers_format?: ("digits" | "words") | null;
+            secondary_language_codes?: string[] | null;
             seed?: number | null;
             source_url?: string | null;
             /** @default true */
@@ -1499,7 +1517,10 @@ export interface components {
             } | null;
         };
         Body_text_to_speech_full: {
-            /** @default false */
+            /**
+             * @deprecated
+             * @default false
+             */
             apply_language_text_normalization?: boolean;
             /**
              * @default auto
@@ -1567,8 +1588,13 @@ export interface components {
              */
             smb_tool_type: "check_service_availability";
         };
+        ChunkingOverride: {
+            custom_separators: string[] | null;
+            max_chunk_size: number | null;
+            overlap_percentage: number | null;
+        };
         /** @enum {string} */
-        ClientEvent: "conversation_initiation_metadata" | "asr_initiation_metadata" | "ping" | "audio" | "interruption" | "user_transcript" | "tentative_user_transcript" | "agent_response" | "agent_response_correction" | "client_tool_call" | "mcp_tool_call" | "mcp_connection_status" | "agent_tool_request" | "agent_tool_response" | "agent_tool_response_full_payload" | "agent_response_metadata" | "vad_score" | "agent_chat_response_part" | "client_error" | "guardrail_triggered" | "dtmf_request" | "agent_response_complete" | "context_usage" | "internal_turn_probability" | "internal_tentative_agent_response";
+        ClientEvent: "conversation_initiation_metadata" | "asr_initiation_metadata" | "ping" | "audio" | "interruption" | "user_transcript" | "tentative_user_transcript" | "agent_response" | "agent_response_correction" | "client_tool_call" | "mcp_tool_call" | "mcp_connection_status" | "agent_tool_request" | "agent_tool_response" | "agent_tool_response_full_payload" | "agent_response_metadata" | "vad_score" | "agent_chat_response_part" | "client_error" | "guardrail_triggered" | "dtmf_request" | "agent_response_complete" | "context_usage" | "agent_speaker" | "internal_turn_probability" | "internal_tentative_agent_response";
         "ClientToolConfig-Input": {
             assignments?: components["schemas"]["DynamicVariableAssignment"][];
             description: string;
@@ -1652,7 +1678,14 @@ export interface components {
         /** @enum {string} */
         ColumnUnit: "ms" | "s" | "min" | "duration" | "credits" | "usd" | "eur" | "inr" | "pln" | "gbp" | "ratio" | "rating";
         /** @enum {string} */
-        ConfigEntityType: "name" | "name.name_given" | "name.name_family" | "name.name_other" | "email_address" | "contact_number" | "dob" | "age" | "religious_belief" | "political_opinion" | "sexual_orientation" | "ethnicity_race" | "marital_status" | "occupation" | "physical_attribute" | "language" | "username" | "password" | "url" | "organization" | "financial_id" | "financial_id.payment_card" | "financial_id.payment_card.payment_card_number" | "financial_id.payment_card.payment_card_expiration_date" | "financial_id.payment_card.payment_card_cvv" | "financial_id.bank_account" | "financial_id.bank_account.bank_account_number" | "financial_id.bank_account.bank_routing_number" | "financial_id.bank_account.swift_bic_code" | "financial_id.financial_id_other" | "location" | "location.location_address" | "location.location_city" | "location.location_postal_code" | "location.location_coordinate" | "location.location_state" | "location.location_country" | "location.location_other" | "date" | "date_interval" | "unique_id" | "unique_id.government_issued_id" | "unique_id.account_number" | "unique_id.vehicle_id" | "unique_id.healthcare_number" | "unique_id.healthcare_number.medical_record_number" | "unique_id.healthcare_number.health_plan_beneficiary_number" | "unique_id.device_id" | "unique_id.unique_id_other" | "medical" | "medical.medical_condition" | "medical.medication" | "medical.medical_procedure" | "medical.medical_measurement" | "medical.medical_other";
+        ConfigEntityType: "name" | "name.name_given" | "name.name_family" | "name.name_other" | "email_address" | "contact_number" | "dob" | "age" | "religious_belief" | "political_opinion" | "sexual_orientation" | "ethnicity_race" | "marital_status" | "occupation" | "physical_attribute" | "language" | "criminal_record" | "username" | "password" | "url" | "organization" | "financial_id" | "financial_id.payment_card" | "financial_id.payment_card.payment_card_number" | "financial_id.payment_card.payment_card_expiration_date" | "financial_id.payment_card.payment_card_cvv" | "financial_id.bank_account" | "financial_id.bank_account.bank_account_number" | "financial_id.bank_account.bank_routing_number" | "financial_id.bank_account.swift_bic_code" | "financial_id.financial_id_other" | "location" | "location.location_address" | "location.location_city" | "location.location_postal_code" | "location.location_coordinate" | "location.location_state" | "location.location_country" | "location.location_other" | "date" | "date_interval" | "unique_id" | "unique_id.government_issued_id" | "unique_id.account_number" | "unique_id.vehicle_id" | "unique_id.healthcare_number" | "unique_id.healthcare_number.medical_record_number" | "unique_id.healthcare_number.health_plan_beneficiary_number" | "unique_id.device_id" | "unique_id.unique_id_other" | "medical" | "medical.medical_condition" | "medical.medication" | "medical.medical_procedure" | "medical.medical_measurement" | "medical.medical_other";
+        ConfirmChangeParams: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            smb_tool_type: "smb_confirm_change";
+        };
         ConstantSchemaOverride: {
             constant_value: string | number | boolean | unknown[] | {
                 [key: string]: unknown;
@@ -1821,7 +1854,7 @@ export interface components {
          * @default unknown
          * @enum {string}
          */
-        ConversationInitiationSource: "unknown" | "android_sdk" | "node_js_sdk" | "react_native_sdk" | "react_sdk" | "js_sdk" | "python_sdk" | "widget" | "sip_trunk" | "twilio" | "exotel" | "genesys" | "avaya" | "audiocodes" | "swift_sdk" | "whatsapp" | "twilio_sms" | "flutter_sdk" | "zendesk_integration" | "slack_integration" | "telegram_integration" | "intercom_integration" | "freshdesk_integration" | "salesforce_integration" | "template_preview" | "genesys_bot_connector" | "subagent_tool";
+        ConversationInitiationSource: "unknown" | "android_sdk" | "node_js_sdk" | "react_native_sdk" | "react_sdk" | "js_sdk" | "python_sdk" | "widget" | "sip_trunk" | "twilio" | "exotel" | "genesys" | "avaya" | "audiocodes" | "swift_sdk" | "whatsapp" | "twilio_sms" | "flutter_sdk" | "unity_sdk" | "zendesk_integration" | "slack_integration" | "telegram_integration" | "intercom_integration" | "freshdesk_integration" | "plain_integration" | "salesforce_integration" | "template_preview" | "genesys_bot_connector" | "subagent_tool" | "agent_messages_api" | "websocket_api";
         /** @enum {string} */
         ConversationProduct: "agents" | "speech_engine";
         ConversationSentimentAnalysis: {
@@ -2018,6 +2051,8 @@ export interface components {
             model?: "gemini-2.5-flash-lite" | "gemini-2.5-flash" | "gemini-3.1-flash-lite" | "gemini-3.5-flash" | "claude-haiku-4-5" | "claude-sonnet-4-6" | "gpt-5.4-nano" | "gpt-5.4-mini";
             name: string;
             prompt: string;
+            /** @default standard */
+            service_tier?: components["schemas"]["LLMServiceTier"];
             trigger_action?: components["schemas"]["EndCallTriggerAction"] | components["schemas"]["RetryTriggerAction"];
         };
         "CustomGuardrailsConfig-Input": {
@@ -2033,6 +2068,7 @@ export interface components {
             api_version?: string | null;
             auth_connection?: components["schemas"]["AuthConnectionLocator"] | components["schemas"]["EnvironmentAuthConnectionLocator"] | null;
             model_id?: string | null;
+            mtls_auth_connection?: components["schemas"]["AuthConnectionLocator"] | components["schemas"]["EnvironmentAuthConnectionLocator"] | null;
             request_headers?: {
                 [key: string]: string | components["schemas"]["ConvAISecretLocator"] | components["schemas"]["ConvAIDynamicVariable"] | components["schemas"]["ConvAIEnvVarLocator"];
             };
@@ -2344,6 +2380,54 @@ export interface components {
         };
         /** @enum {string} */
         EvaluationSuccessResult: "success" | "failure" | "unknown";
+        "ExotelColdBlindTransferConfig-Input": {
+            transfer_destination: components["schemas"]["PhoneDestination-Input"] | components["schemas"]["PhoneDynamicVariableDestination-Input"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "exotel_cold_blind_transfer";
+        };
+        "ExotelColdBlindTransferConfig-Output": {
+            transfer_destination: components["schemas"]["PhoneDestination-Output"] | components["schemas"]["PhoneDynamicVariableDestination-Output"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "exotel_cold_blind_transfer";
+        };
+        "ExotelTransfer-Input": {
+            config: components["schemas"]["ExotelColdBlindTransferConfig-Input"] | components["schemas"]["ExotelWarmTransferConfig-Input"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "exotel";
+        };
+        "ExotelTransfer-Output": {
+            config: components["schemas"]["ExotelColdBlindTransferConfig-Output"] | components["schemas"]["ExotelWarmTransferConfig-Output"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "exotel";
+        };
+        "ExotelWarmTransferConfig-Input": {
+            transfer_destination: components["schemas"]["PhoneDestination-Input"] | components["schemas"]["PhoneDynamicVariableDestination-Input"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "exotel_warm_transfer";
+        };
+        "ExotelWarmTransferConfig-Output": {
+            transfer_destination: components["schemas"]["PhoneDestination-Output"] | components["schemas"]["PhoneDynamicVariableDestination-Output"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "exotel_warm_transfer";
+        };
         ExportOptions: components["schemas"]["SegmentedJsonExportOptions"] | components["schemas"]["DocxExportOptions"] | components["schemas"]["PdfExportOptions"] | components["schemas"]["TxtExportOptions"] | components["schemas"]["HtmlExportOptions"] | components["schemas"]["SrtExportOptions"];
         ExtendedSubscriptionResponseModel: {
             allowed_to_extend_character_limit: boolean;
@@ -2352,6 +2436,8 @@ export interface components {
             can_extend_voice_limit: boolean;
             can_use_instant_voice_cloning: boolean;
             can_use_professional_voice_cloning: boolean;
+            /** @default false */
+            cancels_immediately?: boolean;
             character_count: number;
             character_limit: number;
             character_refresh_period?: components["schemas"]["CharacterRefreshPeriod"] | null;
@@ -2399,7 +2485,7 @@ export interface components {
             type: components["schemas"]["ExternalSyncProvider"];
         };
         /** @enum {string} */
-        ExternalSyncProvider: "google_drive";
+        ExternalSyncProvider: "google_drive" | "sharepoint";
         FileInputConfig: {
             /** @default true */
             enabled?: boolean;
@@ -2546,6 +2632,7 @@ export interface components {
         GetKnowledgeBaseSummaryFileResponseModel: {
             access_info: components["schemas"]["ResourceAccessInfo"];
             auto_sync_info?: components["schemas"]["AutoSyncInfo"] | null;
+            chunking_override?: components["schemas"]["ChunkingOverride"] | null;
             /** @deprecated */
             dependent_agents: (components["schemas"]["DependentAvailableAgentIdentifier"] | components["schemas"]["DependentUnknownAgentIdentifier"])[];
             external_sync_info?: components["schemas"]["ExternalFileSyncInfo"] | null;
@@ -2568,6 +2655,7 @@ export interface components {
             access_info: components["schemas"]["ResourceAccessInfo"];
             auto_sync_info?: components["schemas"]["AutoSyncInfo"] | null;
             children_count: number;
+            chunking_override?: components["schemas"]["ChunkingOverride"] | null;
             /** @deprecated */
             dependent_agents: (components["schemas"]["DependentAvailableAgentIdentifier"] | components["schemas"]["DependentUnknownAgentIdentifier"])[];
             document_count: number;
@@ -2588,6 +2676,7 @@ export interface components {
         };
         GetKnowledgeBaseSummaryTextResponseModel: {
             access_info: components["schemas"]["ResourceAccessInfo"];
+            chunking_override?: components["schemas"]["ChunkingOverride"] | null;
             /** @deprecated */
             dependent_agents: (components["schemas"]["DependentAvailableAgentIdentifier"] | components["schemas"]["DependentUnknownAgentIdentifier"])[];
             folder_parent_id?: string | null;
@@ -2605,6 +2694,7 @@ export interface components {
         GetKnowledgeBaseSummaryURLResponseModel: {
             access_info: components["schemas"]["ResourceAccessInfo"];
             auto_sync_info?: components["schemas"]["AutoSyncInfo"] | null;
+            chunking_override?: components["schemas"]["ChunkingOverride"] | null;
             /** @deprecated */
             dependent_agents: (components["schemas"]["DependentAvailableAgentIdentifier"] | components["schemas"]["DependentUnknownAgentIdentifier"])[];
             folder_parent_id?: string | null;
@@ -2847,6 +2937,17 @@ export interface components {
         HTTPValidationError: {
             detail?: components["schemas"]["ValidationError"][];
         };
+        "IdentityPolicy-Input": {
+            rules: components["schemas"]["IdentityPolicyRule"][];
+        };
+        "IdentityPolicy-Output": {
+            rules: components["schemas"]["IdentityPolicyRule"][];
+        };
+        IdentityPolicyRule: {
+            verification_method: components["schemas"]["IdentityVerificationMethod"];
+        };
+        /** @enum {string} */
+        IdentityVerificationMethod: "unverified" | "workspace_asserted" | "provider_asserted" | "challenge_verified";
         ImageAvatar: {
             /**
              * @default image
@@ -3100,7 +3201,7 @@ export interface components {
          */
         LivekitStackType: "standard" | "static";
         /** @enum {string} */
-        LLM: "gpt-4o-mini" | "gpt-4o" | "gpt-4" | "gpt-4-turbo" | "gpt-4.1" | "gpt-4.1-mini" | "gpt-4.1-nano" | "gpt-5" | "gpt-5.1" | "gpt-5.2" | "gpt-5.2-chat-latest" | "gpt-5.4" | "gpt-5.4-mini" | "gpt-5.4-nano" | "gpt-5.5" | "gpt-5.6-sol" | "gpt-5.6-terra" | "gpt-5.6-luna" | "gpt-6-astra" | "gpt-6-sol" | "gpt-6-luna" | "gpt-6.1-sol" | "gpt-6.1-terra" | "gpt-5-mini" | "gpt-5-nano" | "gpt-3.5-turbo" | "gemini-1.5-pro" | "gemini-1.5-flash" | "gemini-2.0-flash" | "gemini-2.0-flash-lite" | "gemini-2.5-flash-lite" | "gemini-2.5-flash" | "gemini-3-pro-preview" | "gemini-3-flash-preview" | "gemini-3.1-pro-preview" | "gemini-3.1-flash-lite-preview" | "gemini-3.1-flash-lite" | "gemini-3.5-flash" | "gemini-3.5-flash-lite" | "gemini-3.6-flash" | "gemini-3.7-flash" | "gemini-3.8-flash" | "gemini-4-argon" | "claude-sonnet-4-5" | "claude-opus-4-6" | "claude-opus-4-7" | "claude-opus-4-8" | "claude-opus-5" | "claude-opus-5-5" | "claude-sonnet-4-6" | "claude-sonnet-5" | "claude-sonnet-5-5" | "claude-sonnet-4" | "claude-haiku-4-5" | "claude-haiku-5-5" | "claude-3-7-sonnet" | "claude-3-5-sonnet" | "claude-3-5-sonnet-v1" | "claude-3-haiku" | "grok-beta" | "custom-llm" | "qwen3-4b" | "qwen3-30b-a3b" | "qwen36-35b-a3b" | "qwen35-397b-a17b" | "gpt-oss-20b" | "gpt-oss-120b" | "glm-45-air-fp8" | "glm-52" | "deepseek-v41-flash" | "nemotron-35-super-vl-nvfp4" | "gemini-2.5-flash-preview-09-2025" | "gemini-2.5-flash-lite-preview-09-2025" | "gemini-2.5-flash-preview-05-20" | "gemini-2.5-flash-preview-04-17" | "gemini-2.5-flash-lite-preview-06-17" | "gemini-2.0-flash-lite-001" | "gemini-2.0-flash-001" | "gemini-1.5-flash-002" | "gemini-1.5-flash-001" | "gemini-1.5-pro-002" | "gemini-1.5-pro-001" | "claude-sonnet-4@20250514" | "claude-sonnet-4-5@20250929" | "claude-haiku-4-5@20251001" | "claude-3-7-sonnet@20250219" | "claude-3-5-sonnet@20240620" | "claude-3-5-sonnet-v2@20241022" | "claude-3-haiku@20240307" | "gpt-5-2025-08-07" | "gpt-5.1-2025-11-13" | "gpt-5.2-2025-12-11" | "gpt-5.4-2026-03-05" | "gpt-5.4-mini-2026-03-17" | "gpt-5.4-nano-2026-03-17" | "gpt-5.5-2026-04-23" | "gpt-5-mini-2025-08-07" | "gpt-5-nano-2025-08-07" | "gpt-4.1-2025-04-14" | "gpt-4.1-mini-2025-04-14" | "gpt-4.1-nano-2025-04-14" | "gpt-4o-mini-2024-07-18" | "gpt-4o-2024-11-20" | "gpt-4o-2024-08-06" | "gpt-4o-2024-05-13" | "gpt-4-0613" | "gpt-4-0314" | "gpt-4-turbo-2024-04-09" | "gpt-3.5-turbo-0125" | "gpt-3.5-turbo-1106" | "watt-tool-8b" | "watt-tool-70b";
+        LLM: "gpt-4o-mini" | "gpt-4o" | "gpt-4" | "gpt-4-turbo" | "gpt-4.1" | "gpt-4.1-mini" | "gpt-4.1-nano" | "gpt-5" | "gpt-5.1" | "gpt-5.2" | "gpt-5.2-chat-latest" | "gpt-5.4" | "gpt-5.4-mini" | "gpt-5.4-nano" | "gpt-5.5" | "gpt-5.6-sol" | "gpt-5.6-terra" | "gpt-5.6-luna" | "gpt-6-astra" | "gpt-6-sol" | "gpt-6-luna" | "gpt-6.1-sol" | "gpt-6.1-terra" | "gpt-6.2-astra" | "gpt-6.2-sol" | "gpt-5-mini" | "gpt-5-nano" | "gpt-3.5-turbo" | "gemini-1.5-pro" | "gemini-1.5-flash" | "gemini-2.0-flash" | "gemini-2.0-flash-lite" | "gemini-2.5-flash-lite" | "gemini-2.5-flash" | "gemini-3-pro-preview" | "gemini-3-flash-preview" | "gemini-3.1-pro-preview" | "gemini-3.1-flash-lite-preview" | "gemini-3.1-flash-lite" | "gemini-3.5-flash" | "gemini-3.5-flash-lite" | "gemini-3.6-flash" | "gemini-3.7-flash" | "gemini-3.8-flash" | "gemini-4-argon" | "gemini-4-hydrogen" | "gemini-4-neon" | "claude-sonnet-4-5" | "claude-opus-4-6" | "claude-opus-4-7" | "claude-opus-4-8" | "claude-opus-5" | "claude-opus-5-5" | "claude-sonnet-4-6" | "claude-sonnet-5" | "claude-sonnet-5-5" | "claude-sonnet-4" | "claude-haiku-4-5" | "claude-haiku-5-5" | "claude-3-7-sonnet" | "claude-3-5-sonnet" | "claude-3-5-sonnet-v1" | "claude-3-haiku" | "custom-llm" | "qwen3-4b" | "qwen3-30b-a3b" | "qwen36-35b-a3b" | "qwen35-397b-a17b" | "gpt-oss-20b" | "gpt-oss-120b" | "glm-45-air-fp8" | "glm-52" | "deepseek-v41-flash" | "nemotron-35-super-vl-nvfp4" | "gemini-2.5-flash-preview-09-2025" | "gemini-2.5-flash-lite-preview-09-2025" | "gemini-2.5-flash-preview-05-20" | "gemini-2.5-flash-preview-04-17" | "gemini-2.5-flash-lite-preview-06-17" | "gemini-2.0-flash-lite-001" | "gemini-2.0-flash-001" | "gemini-1.5-flash-002" | "gemini-1.5-flash-001" | "gemini-1.5-pro-002" | "gemini-1.5-pro-001" | "claude-sonnet-4@20250514" | "claude-sonnet-4-5@20250929" | "claude-haiku-4-5@20251001" | "claude-3-7-sonnet@20250219" | "claude-3-5-sonnet@20240620" | "claude-3-5-sonnet-v2@20241022" | "claude-3-haiku@20240307" | "gpt-5-2025-08-07" | "gpt-5.1-2025-11-13" | "gpt-5.2-2025-12-11" | "gpt-5.4-2026-03-05" | "gpt-5.4-mini-2026-03-17" | "gpt-5.4-nano-2026-03-17" | "gpt-5.5-2026-04-23" | "gpt-5-mini-2025-08-07" | "gpt-5-nano-2025-08-07" | "gpt-4.1-2025-04-14" | "gpt-4.1-mini-2025-04-14" | "gpt-4.1-nano-2025-04-14" | "gpt-4o-mini-2024-07-18" | "gpt-4o-2024-11-20" | "gpt-4o-2024-08-06" | "gpt-4o-2024-05-13" | "gpt-4-0613" | "gpt-4-0314" | "gpt-4-turbo-2024-04-09" | "gpt-3.5-turbo-0125" | "gpt-3.5-turbo-1106" | "watt-tool-8b" | "watt-tool-70b";
         LLMDeprecationConfigModel: {
             fallback_complete_days: number;
             fallback_complete_percentage: number;
@@ -3328,6 +3429,7 @@ export interface components {
             transcripts: components["schemas"]["SpeechToTextChunkResponseModel"][];
         };
         "ObjectJsonSchemaProperty-Input": {
+            additional_properties?: (components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["ObjectJsonSchemaProperty-Input"] | components["schemas"]["ArrayJsonSchemaProperty-Input"] | components["schemas"]["AnyOfJsonSchemaProperty-Input"]) | null;
             constant_value?: {
                 [key: string]: unknown;
             } | null;
@@ -3338,7 +3440,7 @@ export interface components {
             /** @default false */
             is_omitted?: boolean;
             properties?: {
-                [key: string]: components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["ObjectJsonSchemaProperty-Input"] | components["schemas"]["ArrayJsonSchemaProperty-Input"];
+                [key: string]: components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["ObjectJsonSchemaProperty-Input"] | components["schemas"]["ArrayJsonSchemaProperty-Input"] | components["schemas"]["AnyOfJsonSchemaProperty-Input"];
             };
             /**
              * @default object
@@ -3354,6 +3456,7 @@ export interface components {
             type?: "object";
         };
         "ObjectJsonSchemaProperty-Output": {
+            additional_properties?: (components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["ObjectJsonSchemaProperty-Output"] | components["schemas"]["ArrayJsonSchemaProperty-Output"] | components["schemas"]["AnyOfJsonSchemaProperty-Output"]) | null;
             constant_value?: {
                 [key: string]: unknown;
             } | null;
@@ -3364,7 +3467,7 @@ export interface components {
             /** @default false */
             is_omitted?: boolean;
             properties?: {
-                [key: string]: components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["ObjectJsonSchemaProperty-Output"] | components["schemas"]["ArrayJsonSchemaProperty-Output"];
+                [key: string]: components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["ObjectJsonSchemaProperty-Output"] | components["schemas"]["ArrayJsonSchemaProperty-Output"] | components["schemas"]["AnyOfJsonSchemaProperty-Output"];
             };
             required?: string[];
             required_constraints?: components["schemas"]["RequiredConstraints"] | null;
@@ -3512,6 +3615,38 @@ export interface components {
             next_tier: "free" | "starter" | "go" | "creator" | "pro" | "growing_business" | "scale_2024_08_10" | "grant_tier_1_2025_07_23" | "grant_tier_2_2025_07_23" | "grant" | "trial" | "enterprise";
             timestamp_seconds: number;
         };
+        "PhoneDestination-Input": {
+            destination: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "phone";
+        };
+        "PhoneDestination-Output": {
+            destination: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "phone";
+        };
+        "PhoneDynamicVariableDestination-Input": {
+            destination: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "phone_dynamic_variable";
+        };
+        "PhoneDynamicVariableDestination-Output": {
+            destination: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "phone_dynamic_variable";
+        };
         PhoneNumberAgentInfo: {
             agent_id: string;
             agent_name: string;
@@ -3595,8 +3730,38 @@ export interface components {
             amount: string;
             currency: components["schemas"]["Currency"];
         };
-        "PrivacyConfig-Input": Shared_871f1e95;
-        "PrivacyConfig-Output": Shared_871f1e95;
+        "PrivacyConfig-Input": {
+            /** @default false */
+            apply_to_existing_conversations?: boolean;
+            conversation_history_redaction?: components["schemas"]["ConversationHistoryRedactionConfig"];
+            /** @default false */
+            delete_audio?: boolean;
+            /** @default false */
+            delete_transcript_and_pii?: boolean;
+            /** @default true */
+            record_voice?: boolean;
+            /** @default -1 */
+            retention_days?: number;
+            user_memory?: components["schemas"]["UserMemorySettings-Input"];
+            /** @default false */
+            zero_retention_mode?: boolean;
+        };
+        "PrivacyConfig-Output": {
+            /** @default false */
+            apply_to_existing_conversations?: boolean;
+            conversation_history_redaction?: components["schemas"]["ConversationHistoryRedactionConfig"];
+            /** @default false */
+            delete_audio?: boolean;
+            /** @default false */
+            delete_transcript_and_pii?: boolean;
+            /** @default true */
+            record_voice?: boolean;
+            /** @default -1 */
+            retention_days?: number;
+            user_memory?: components["schemas"]["UserMemorySettings-Output"];
+            /** @default false */
+            zero_retention_mode?: boolean;
+        };
         ProcedureDraftRef: {
             procedure_id: string;
             version_id?: null;
@@ -3615,6 +3780,8 @@ export interface components {
             /** @default free_form */
             type?: components["schemas"]["ProcedureType"];
             version_id?: string | null;
+            visibility?: components["schemas"]["ProcedureVisibility-Output"] | null;
+            written_dynamic_variables?: string[];
         };
         /**
          * @default free_form
@@ -3624,6 +3791,9 @@ export interface components {
         ProcedureVersionRef: {
             procedure_id: string;
             version_id: string;
+        };
+        "ProcedureVisibility-Output": {
+            expression: components["schemas"]["ASTNode-Output"];
         };
         "PromptAgentAPIModel-Input": {
             backup_llm_config?: components["schemas"]["BackupLLMDefault"] | components["schemas"]["BackupLLMDisabled"] | components["schemas"]["BackupLLMOverride"];
@@ -3813,15 +3983,66 @@ export interface components {
             pronunciation_dictionary_id: string;
             version_id: string | null;
         };
+        "QueryArrayJsonSchemaProperty-Input": {
+            constant_value?: unknown[] | null;
+            /** @default  */
+            description?: string;
+            /** @default  */
+            dynamic_variable?: string;
+            /** @default false */
+            is_omitted?: boolean;
+            /**
+             * @default {
+             *       "type": "string",
+             *       "description": "Array element",
+             *       "is_system_provided": false,
+             *       "dynamic_variable": "",
+             *       "allowed_values_dynamic_variable": "",
+             *       "constant_value": "",
+             *       "is_omitted": false
+             *     }
+             */
+            items?: components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["ObjectJsonSchemaProperty-Input"] | components["schemas"]["ArrayJsonSchemaProperty-Input"] | components["schemas"]["AnyOfJsonSchemaProperty-Input"];
+            /**
+             * @default array
+             * @enum {string}
+             */
+            property_kind?: "array" | "object";
+            /** @constant */
+            type: "array";
+        };
+        "QueryArrayJsonSchemaProperty-Output": {
+            constant_value?: unknown[] | null;
+            /** @default  */
+            description?: string;
+            /** @default  */
+            dynamic_variable?: string;
+            /** @default false */
+            is_omitted?: boolean;
+            /**
+             * @default {
+             *       "type": "string",
+             *       "description": "Array element",
+             *       "is_system_provided": false,
+             *       "dynamic_variable": "",
+             *       "allowed_values_dynamic_variable": "",
+             *       "constant_value": "",
+             *       "is_omitted": false
+             *     }
+             */
+            items?: components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["ObjectJsonSchemaProperty-Output"] | components["schemas"]["ArrayJsonSchemaProperty-Output"] | components["schemas"]["AnyOfJsonSchemaProperty-Output"];
+            /** @constant */
+            type: "array";
+        };
         "QueryParamsJsonSchema-Input": {
             properties: {
-                [key: string]: components["schemas"]["LiteralJsonSchemaProperty"];
+                [key: string]: components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["QueryArrayJsonSchemaProperty-Input"];
             };
             required?: string[];
         };
         "QueryParamsJsonSchema-Output": {
             properties: {
-                [key: string]: components["schemas"]["LiteralJsonSchemaProperty"];
+                [key: string]: components["schemas"]["LiteralJsonSchemaProperty"] | components["schemas"]["QueryArrayJsonSchemaProperty-Output"];
             };
             required?: string[];
         };
@@ -3927,6 +4148,44 @@ export interface components {
             trim_end?: number | null;
             trim_start?: number | null;
         };
+        "SayNodeLiteralMessage-Input": {
+            text: string;
+            text_translations?: {
+                [key: string]: components["schemas"]["TranslatedString"];
+            };
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "literal";
+        };
+        "SayNodeLiteralMessage-Output": {
+            text: string;
+            text_translations: {
+                [key: string]: components["schemas"]["TranslatedString"];
+            };
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "literal";
+        };
+        "SayNodePromptMessage-Input": {
+            prompt: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "prompt";
+        };
+        "SayNodePromptMessage-Output": {
+            prompt: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "prompt";
+        };
         ScheduleGroupSessionParams: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -3960,6 +4219,16 @@ export interface components {
             max_segment_duration_s?: number | null;
             segment_on_silence_longer_than_s?: number | null;
         };
+        SelfSubagent: {
+            description?: string | null;
+            /**
+             * @default immediate
+             * @enum {string}
+             */
+            execution_mode?: "immediate" | "async";
+            /** @default 60 */
+            timeout_secs?: number;
+        };
         SendCustomEmailParams: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -3975,11 +4244,69 @@ export interface components {
              */
             smb_tool_type: "set_booking_slug";
         };
+        "SIPColdConferenceTransferConfig-Input": {
+            custom_sip_headers?: (components["schemas"]["CustomSIPHeader"] | components["schemas"]["CustomSIPHeaderWithDynamicVariable"])[];
+            transfer_destination: components["schemas"]["PhoneDestination-Input"] | components["schemas"]["PhoneDynamicVariableDestination-Input"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sip_cold_conference_transfer";
+        };
+        "SIPColdConferenceTransferConfig-Output": {
+            custom_sip_headers: (components["schemas"]["CustomSIPHeader"] | components["schemas"]["CustomSIPHeaderWithDynamicVariable"])[];
+            transfer_destination: components["schemas"]["PhoneDestination-Output"] | components["schemas"]["PhoneDynamicVariableDestination-Output"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sip_cold_conference_transfer";
+        };
+        "SIPColdReferTransferConfig-Input": {
+            custom_sip_headers?: (components["schemas"]["CustomSIPHeader"] | components["schemas"]["CustomSIPHeaderWithDynamicVariable"])[];
+            /** @default true */
+            play_dialtone?: boolean;
+            transfer_destination: components["schemas"]["PhoneDestination-Input"] | components["schemas"]["SipUriDestination-Input"] | components["schemas"]["PhoneDynamicVariableDestination-Input"] | components["schemas"]["SipUriDynamicVariableDestination-Input"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sip_cold_refer_transfer";
+            uui?: components["schemas"]["UUITransferConfig"] | null;
+        };
+        "SIPColdReferTransferConfig-Output": {
+            custom_sip_headers: (components["schemas"]["CustomSIPHeader"] | components["schemas"]["CustomSIPHeaderWithDynamicVariable"])[];
+            /** @default true */
+            play_dialtone: boolean;
+            transfer_destination: components["schemas"]["PhoneDestination-Output"] | components["schemas"]["SipUriDestination-Output"] | components["schemas"]["PhoneDynamicVariableDestination-Output"] | components["schemas"]["SipUriDynamicVariableDestination-Output"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sip_cold_refer_transfer";
+            uui: components["schemas"]["UUITransferConfig"] | null;
+        };
         /**
          * @default allowed
          * @enum {string}
          */
         SIPMediaEncryptionEnum: "disabled" | "allowed" | "required";
+        "SIPTransfer-Input": {
+            config: components["schemas"]["SIPColdConferenceTransferConfig-Input"] | components["schemas"]["SIPColdReferTransferConfig-Input"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sip_trunk";
+        };
+        "SIPTransfer-Output": {
+            config: components["schemas"]["SIPColdConferenceTransferConfig-Output"] | components["schemas"]["SIPColdReferTransferConfig-Output"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sip_trunk";
+        };
         SIPTrunkCredentialsRequestModel: {
             password?: string | null;
             username: string;
@@ -3989,6 +4316,38 @@ export interface components {
          * @enum {string}
          */
         SIPTrunkTransportEnum: "auto" | "udp" | "tcp" | "tls";
+        "SipUriDestination-Input": {
+            destination: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sip_uri";
+        };
+        "SipUriDestination-Output": {
+            destination: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sip_uri";
+        };
+        "SipUriDynamicVariableDestination-Input": {
+            destination: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sip_uri_dynamic_variable";
+        };
+        "SipUriDynamicVariableDestination-Output": {
+            destination: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sip_uri_dynamic_variable";
+        };
         SIPUriDynamicVariableTransferDestination: {
             sip_uri: string;
             /**
@@ -4035,7 +4394,7 @@ export interface components {
             /** @default allow */
             interruption_mode?: components["schemas"]["ToolInterruptionMode"];
             name: string;
-            params: components["schemas"]["SearchClientsParams"] | components["schemas"]["SendCustomEmailParams"] | components["schemas"]["ListClientsParams"] | components["schemas"]["GetClientByPhoneParams"] | components["schemas"]["CreateClientParams"] | components["schemas"]["UpdateClientParams"] | components["schemas"]["DeleteClientParams"] | components["schemas"]["ListStaffParams"] | components["schemas"]["CreateStaffParams"] | components["schemas"]["UpdateStaffParams"] | components["schemas"]["DeleteStaffParams"] | components["schemas"]["ListAssetsParams"] | components["schemas"]["CreateAssetParams"] | components["schemas"]["UpdateAssetParams"] | components["schemas"]["DeleteAssetParams"] | components["schemas"]["ListServicesParams"] | components["schemas"]["CreateServiceParams"] | components["schemas"]["UpdateServiceParams"] | components["schemas"]["DeleteServiceParams"] | components["schemas"]["ListProductsParams"] | components["schemas"]["CreateProductParams"] | components["schemas"]["UpdateProductParams"] | components["schemas"]["DeleteProductParams"] | components["schemas"]["CheckServiceAvailabilityParams"] | components["schemas"]["CreateClientAppointmentParams"] | components["schemas"]["GetClientAppointmentsParams"] | components["schemas"]["GetAppointmentByConfirmationNumberParams"] | components["schemas"]["CreateOrderParams"] | components["schemas"]["GetOrderByConfirmationNumberParams"] | components["schemas"]["GetClientOrdersParams"] | components["schemas"]["UpdateOrderParams"] | components["schemas"]["CancelOrderParams"] | components["schemas"]["ListGroupSessionsParams"] | components["schemas"]["ScheduleGroupSessionParams"] | components["schemas"]["RegisterForGroupSessionParams"] | components["schemas"]["CancelGroupSessionRegistrationParams"] | components["schemas"]["UpdateGroupSessionSeatsParams"] | components["schemas"]["CancelGroupSessionForAllParams"] | components["schemas"]["DeleteGroupSessionParams"] | components["schemas"]["ListCalendarEventsParams"] | components["schemas"]["UpdateCalendarEventParams"] | components["schemas"]["CancelCalendarEventParams"] | components["schemas"]["RestoreCalendarEventParams"] | components["schemas"]["DeleteCalendarEventParams"] | components["schemas"]["ListCustomerFacingAgentsParams"] | components["schemas"]["GetAgentConfigParams"] | components["schemas"]["ListAgentRulesParams"] | components["schemas"]["CreateAgentRuleParams"] | components["schemas"]["UpdateAgentRuleParams"] | components["schemas"]["DeleteAgentRuleParams"] | components["schemas"]["ListTransferRulesParams"] | components["schemas"]["CreateTransferRuleParams"] | components["schemas"]["UpdateTransferRuleParams"] | components["schemas"]["DeleteTransferRuleParams"] | components["schemas"]["ListAgentProceduresParams"] | components["schemas"]["ListAgentReferencesParams"] | components["schemas"]["CreateAgentProcedureParams"] | components["schemas"]["UpdateAgentProcedureParams"] | components["schemas"]["DeleteAgentProcedureParams"] | components["schemas"]["ListHolidaysParams"] | components["schemas"]["CreateHolidayParams"] | components["schemas"]["UpdateHolidayParams"] | components["schemas"]["DeleteHolidayParams"] | components["schemas"]["GetScheduleParams"] | components["schemas"]["SubmitBusinessInfoParams"] | components["schemas"]["UpdateBusinessInfoParams"] | components["schemas"]["UpdateAgentConfigParams"] | components["schemas"]["GetAnalyticsSummaryParams"] | components["schemas"]["GetWorkspacePlanParams"] | components["schemas"]["GetBookingPageSettingsParams"] | components["schemas"]["UpdateBookingPageSettingsParams"] | components["schemas"]["UpdateBookingPageAppearanceParams"] | components["schemas"]["GetBookingSlugStatusParams"] | components["schemas"]["SetBookingSlugParams"] | components["schemas"]["ListClientInteractionsParams"] | components["schemas"]["CreateClientInteractionParams"] | components["schemas"]["DeleteClientInteractionParams"] | components["schemas"]["ListLocationsParams"] | components["schemas"]["CreateLocationParams"] | components["schemas"]["UpdateLocationParams"] | components["schemas"]["DeleteLocationParams"] | components["schemas"]["LeaveMessageParams"] | components["schemas"]["CreateServiceQuoteRequestParams"] | components["schemas"]["CreateProductQuoteRequestParams"] | components["schemas"]["ReportKnowledgeGapParams"] | components["schemas"]["OptInSmsReminderParams"] | components["schemas"]["OptOutSmsReminderParams"] | components["schemas"]["TriggerUserVerificationParams"] | components["schemas"]["ValidateUserVerificationCodeParams"] | components["schemas"]["OwnerListStaffParams"] | components["schemas"]["OwnerListAssetsParams"] | components["schemas"]["OwnerListLocationsParams"] | components["schemas"]["OwnerListServicesParams"] | components["schemas"]["OwnerListProductsParams"] | components["schemas"]["OwnerGetClientAppointmentsParams"];
+            params: components["schemas"]["SearchClientsParams"] | components["schemas"]["SendCustomEmailParams"] | components["schemas"]["ListClientsParams"] | components["schemas"]["GetClientByPhoneParams"] | components["schemas"]["CreateClientParams"] | components["schemas"]["UpdateClientParams"] | components["schemas"]["DeleteClientParams"] | components["schemas"]["ListStaffParams"] | components["schemas"]["CreateStaffParams"] | components["schemas"]["UpdateStaffParams"] | components["schemas"]["DeleteStaffParams"] | components["schemas"]["ListAssetsParams"] | components["schemas"]["CreateAssetParams"] | components["schemas"]["UpdateAssetParams"] | components["schemas"]["DeleteAssetParams"] | components["schemas"]["ListServicesParams"] | components["schemas"]["CreateServiceParams"] | components["schemas"]["UpdateServiceParams"] | components["schemas"]["DeleteServiceParams"] | components["schemas"]["ListProductsParams"] | components["schemas"]["CreateProductParams"] | components["schemas"]["UpdateProductParams"] | components["schemas"]["DeleteProductParams"] | components["schemas"]["CheckServiceAvailabilityParams"] | components["schemas"]["CreateClientAppointmentParams"] | components["schemas"]["GetClientAppointmentsParams"] | components["schemas"]["GetAppointmentByConfirmationNumberParams"] | components["schemas"]["CreateOrderParams"] | components["schemas"]["GetOrderByConfirmationNumberParams"] | components["schemas"]["GetClientOrdersParams"] | components["schemas"]["UpdateOrderParams"] | components["schemas"]["CancelOrderParams"] | components["schemas"]["ListGroupSessionsParams"] | components["schemas"]["ScheduleGroupSessionParams"] | components["schemas"]["RegisterForGroupSessionParams"] | components["schemas"]["CancelGroupSessionRegistrationParams"] | components["schemas"]["UpdateGroupSessionSeatsParams"] | components["schemas"]["CancelGroupSessionForAllParams"] | components["schemas"]["DeleteGroupSessionParams"] | components["schemas"]["ListCalendarEventsParams"] | components["schemas"]["UpdateCalendarEventParams"] | components["schemas"]["CancelCalendarEventParams"] | components["schemas"]["RestoreCalendarEventParams"] | components["schemas"]["DeleteCalendarEventParams"] | components["schemas"]["ListCustomerFacingAgentsParams"] | components["schemas"]["GetAgentConfigParams"] | components["schemas"]["ListAgentRulesParams"] | components["schemas"]["CreateAgentRuleParams"] | components["schemas"]["UpdateAgentRuleParams"] | components["schemas"]["DeleteAgentRuleParams"] | components["schemas"]["ListTransferRulesParams"] | components["schemas"]["CreateTransferRuleParams"] | components["schemas"]["UpdateTransferRuleParams"] | components["schemas"]["DeleteTransferRuleParams"] | components["schemas"]["ListAgentProceduresParams"] | components["schemas"]["ListAgentReferencesParams"] | components["schemas"]["CreateAgentProcedureParams"] | components["schemas"]["UpdateAgentProcedureParams"] | components["schemas"]["DeleteAgentProcedureParams"] | components["schemas"]["ListHolidaysParams"] | components["schemas"]["CreateHolidayParams"] | components["schemas"]["UpdateHolidayParams"] | components["schemas"]["DeleteHolidayParams"] | components["schemas"]["GetScheduleParams"] | components["schemas"]["SubmitBusinessInfoParams"] | components["schemas"]["UpdateBusinessInfoParams"] | components["schemas"]["UpdateAgentConfigParams"] | components["schemas"]["GetAnalyticsSummaryParams"] | components["schemas"]["GetWorkspacePlanParams"] | components["schemas"]["GetBookingPageSettingsParams"] | components["schemas"]["UpdateBookingPageSettingsParams"] | components["schemas"]["UpdateBookingPageAppearanceParams"] | components["schemas"]["GetBookingSlugStatusParams"] | components["schemas"]["ConfirmChangeParams"] | components["schemas"]["SetBookingSlugParams"] | components["schemas"]["ListClientInteractionsParams"] | components["schemas"]["CreateClientInteractionParams"] | components["schemas"]["DeleteClientInteractionParams"] | components["schemas"]["ListLocationsParams"] | components["schemas"]["CreateLocationParams"] | components["schemas"]["UpdateLocationParams"] | components["schemas"]["DeleteLocationParams"] | components["schemas"]["LeaveMessageParams"] | components["schemas"]["CreateServiceQuoteRequestParams"] | components["schemas"]["CreateProductQuoteRequestParams"] | components["schemas"]["ReportKnowledgeGapParams"] | components["schemas"]["OptInSmsReminderParams"] | components["schemas"]["OptOutSmsReminderParams"] | components["schemas"]["TriggerUserVerificationParams"] | components["schemas"]["ValidateUserVerificationCodeParams"] | components["schemas"]["OwnerListStaffParams"] | components["schemas"]["OwnerListAssetsParams"] | components["schemas"]["OwnerListLocationsParams"] | components["schemas"]["OwnerListServicesParams"] | components["schemas"]["OwnerListProductsParams"] | components["schemas"]["OwnerGetClientAppointmentsParams"];
             /** @default auto */
             pre_tool_speech?: components["schemas"]["PreToolSpeechMode"];
             /** @default 20 */
@@ -4061,6 +4420,8 @@ export interface components {
             /** @default Hhmmmm...yeah. */
             message?: string;
             /** @default false */
+            pause_after_filler?: boolean;
+            /** @default false */
             randomize_fillers?: boolean;
             /** @default -1 */
             timeout_seconds?: number;
@@ -4083,6 +4444,7 @@ export interface components {
             llm_generated_message_prompt_override?: string | null;
             max_soft_timeouts_per_generation?: number | null;
             message?: string | null;
+            pause_after_filler?: boolean | null;
             randomize_fillers?: boolean | null;
             timeout_seconds?: number | null;
             use_llm_generated_message?: boolean | null;
@@ -4193,6 +4555,62 @@ export interface components {
              * @enum {string}
              */
             system_tool_type: "start_procedure";
+        };
+        "StateUpdate-Input": {
+            expression: components["schemas"]["ASTNode-Input"];
+            /** @default true */
+            required?: boolean;
+            /**
+             * @default dynamic_variable
+             * @constant
+             */
+            type?: "dynamic_variable";
+            variable_name: string;
+        };
+        "StateUpdate-Output": {
+            expression: components["schemas"]["ASTNode-Output"];
+            /** @default true */
+            required: boolean;
+            /**
+             * @default dynamic_variable
+             * @constant
+             */
+            type: "dynamic_variable";
+            variable_name: string;
+        };
+        "SubAgent-Input": {
+            agent_id: string;
+            branch_id?: string | null;
+            description: string;
+            /**
+             * @default immediate
+             * @enum {string}
+             */
+            execution_mode?: "immediate" | "async";
+            parameters?: components["schemas"]["ObjectJsonSchemaProperty-Input"] | null;
+            /** @default 60 */
+            timeout_secs?: number;
+        };
+        "SubAgent-Output": {
+            agent_id: string;
+            branch_id?: string | null;
+            description: string;
+            /**
+             * @default immediate
+             * @enum {string}
+             */
+            execution_mode?: "immediate" | "async";
+            parameters?: components["schemas"]["ObjectJsonSchemaProperty-Output"] | null;
+            /** @default 60 */
+            timeout_secs?: number;
+        };
+        "SubagentConfig-Input": {
+            agents?: components["schemas"]["SubAgent-Input"][];
+            self_subagent?: components["schemas"]["SelfSubagent"] | null;
+        };
+        "SubagentConfig-Output": {
+            agents?: components["schemas"]["SubAgent-Output"][];
+            self_subagent?: components["schemas"]["SelfSubagent"] | null;
         };
         SubmitBusinessInfoParams: {
             /**
@@ -4340,6 +4758,14 @@ export interface components {
             kind: "error";
             message: string;
         };
+        "TransferRule-Input": {
+            condition: string;
+            provider_configs: (components["schemas"]["TwilioTransfer-Input"] | components["schemas"]["SIPTransfer-Input"] | components["schemas"]["ExotelTransfer-Input"])[];
+        };
+        "TransferRule-Output": {
+            condition: string;
+            provider_configs: (components["schemas"]["TwilioTransfer-Output"] | components["schemas"]["SIPTransfer-Output"] | components["schemas"]["ExotelTransfer-Output"])[];
+        };
         "TransferToAgentToolConfig-Input": {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -4364,6 +4790,7 @@ export interface components {
              * @enum {string}
              */
             system_tool_type: "transfer_to_number";
+            transfer_rules?: components["schemas"]["TransferRule-Input"][];
             transfers: components["schemas"]["PhoneNumberTransfer"][];
         };
         "TransferToNumberToolConfig-Output": {
@@ -4374,6 +4801,7 @@ export interface components {
              * @enum {string}
              */
             system_tool_type: "transfer_to_number";
+            transfer_rules?: components["schemas"]["TransferRule-Output"][];
             transfers: components["schemas"]["PhoneNumberTransfer"][];
         };
         /**
@@ -4381,6 +4809,9 @@ export interface components {
          * @enum {string}
          */
         TransferTypeEnum: "blind" | "conference" | "sip_refer";
+        TranslatedString: {
+            value: string;
+        };
         TriggerUserVerificationParams: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -4596,6 +5027,58 @@ export interface components {
          * @enum {string}
          */
         TurnModel: "turn_v2" | "turn_v3";
+        "TwilioColdBlindTransferConfig-Input": {
+            post_dial_digits?: (components["schemas"]["PostDialDigitsStatic"] | components["schemas"]["PostDialDigitsDynamicVariable"]) | null;
+            transfer_destination: components["schemas"]["PhoneDestination-Input"] | components["schemas"]["PhoneDynamicVariableDestination-Input"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "twilio_cold_blind_transfer";
+        };
+        "TwilioColdBlindTransferConfig-Output": {
+            post_dial_digits: (components["schemas"]["PostDialDigitsStatic"] | components["schemas"]["PostDialDigitsDynamicVariable"]) | null;
+            transfer_destination: components["schemas"]["PhoneDestination-Output"] | components["schemas"]["PhoneDynamicVariableDestination-Output"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "twilio_cold_blind_transfer";
+        };
+        "TwilioTransfer-Input": {
+            config: components["schemas"]["TwilioWarmConferenceTransferConfig-Input"] | components["schemas"]["TwilioColdBlindTransferConfig-Input"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "twilio";
+        };
+        "TwilioTransfer-Output": {
+            config: components["schemas"]["TwilioWarmConferenceTransferConfig-Output"] | components["schemas"]["TwilioColdBlindTransferConfig-Output"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "twilio";
+        };
+        "TwilioWarmConferenceTransferConfig-Input": {
+            post_dial_digits?: (components["schemas"]["PostDialDigitsStatic"] | components["schemas"]["PostDialDigitsDynamicVariable"]) | null;
+            transfer_destination: components["schemas"]["PhoneDestination-Input"] | components["schemas"]["PhoneDynamicVariableDestination-Input"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "twilio_warm_conference_transfer";
+        };
+        "TwilioWarmConferenceTransferConfig-Output": {
+            post_dial_digits: (components["schemas"]["PostDialDigitsStatic"] | components["schemas"]["PostDialDigitsDynamicVariable"]) | null;
+            transfer_destination: components["schemas"]["PhoneDestination-Output"] | components["schemas"]["PhoneDynamicVariableDestination-Output"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "twilio_warm_conference_transfer";
+        };
         TxtExportOptions: {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -4763,6 +5246,25 @@ export interface components {
             usage: {
                 [key: string]: number[];
             };
+        };
+        /**
+         * @default balanced
+         * @enum {string}
+         */
+        UserMemoryScale: "minimal" | "balanced" | "maximum";
+        "UserMemorySettings-Input": {
+            /** @default false */
+            enabled?: boolean;
+            identity_policy?: components["schemas"]["IdentityPolicy-Input"];
+            /** @default balanced */
+            scale?: components["schemas"]["UserMemoryScale"];
+        };
+        "UserMemorySettings-Output": {
+            /** @default false */
+            enabled?: boolean;
+            identity_policy?: components["schemas"]["IdentityPolicy-Output"];
+            /** @default balanced */
+            scale?: components["schemas"]["UserMemoryScale"];
         };
         UtteranceResponseModel: {
             end: number;
@@ -5064,8 +5566,8 @@ export interface components {
          * @enum {string}
          */
         WhatsAppAccountType: "cloud_api" | "coexistence";
-        "WidgetConfig-Input": Shared_66cc25f3;
-        "WidgetConfig-Output": Shared_66cc25f3;
+        "WidgetConfig-Input": Shared_5ec3a305;
+        "WidgetConfig-Output": Shared_5ec3a305;
         WidgetEndFeedbackConfig: {
             /** @default rating */
             type?: components["schemas"]["WidgetEndFeedbackType"];
@@ -5093,6 +5595,11 @@ export interface components {
             text_contents?: components["schemas"]["WidgetTextContents"] | null;
             text_contents_translation?: components["schemas"]["WidgetTextContentsTranslation"] | null;
         };
+        /**
+         * @default default
+         * @enum {string}
+         */
+        WidgetLayout: "default" | "side-panel";
         /**
          * @default bottom-right
          * @enum {string}
@@ -5131,19 +5638,31 @@ export interface components {
             agent_error?: string | null;
             agent_working?: string | null;
             attach_file?: string | null;
+            cancel_end_confirmation?: string | null;
+            carousel_next?: string | null;
+            carousel_previous?: string | null;
             change_language?: string | null;
             chatting_status?: string | null;
             collapse?: string | null;
+            collapse_widget?: string | null;
             connecting_status?: string | null;
             conversation_id?: string | null;
             copied?: string | null;
             copy?: string | null;
             copy_id?: string | null;
+            dismiss?: string | null;
             dismiss_terms?: string | null;
             download?: string | null;
             end_call?: string | null;
+            end_call_confirm?: string | null;
+            end_call_confirmation_description?: string | null;
+            end_call_confirmation_title?: string | null;
+            end_chat?: string | null;
+            end_chat_confirmation_description?: string | null;
+            end_chat_confirmation_title?: string | null;
             error_occurred?: string | null;
             expand?: string | null;
+            expand_widget?: string | null;
             file_limit_reached?: string | null;
             file_too_large?: string | null;
             file_type_unsupported?: string | null;
@@ -5159,11 +5678,16 @@ export interface components {
             main_label?: string | null;
             mute_microphone?: string | null;
             new_call?: string | null;
+            new_message?: string | null;
+            new_messages?: string | null;
+            open_chat?: string | null;
             queue_timed_out?: string | null;
             queue_waiting_status?: string | null;
             queue_waiting_status_short?: string | null;
+            reconnecting_status?: string | null;
             remove_file?: string | null;
             request_follow_up_feedback?: string | null;
+            resume_call?: string | null;
             rich_content_unavailable?: string | null;
             send_message?: string | null;
             speaking_status?: string | null;
@@ -5173,11 +5697,14 @@ export interface components {
             switched_to_text_mode?: string | null;
             switched_to_voice_mode?: string | null;
             text_mode?: string | null;
+            text_mode_label?: string | null;
             thanks_for_feedback?: string | null;
             thanks_for_feedback_details?: string | null;
+            thinking_status?: string | null;
             typing_indicator?: string | null;
             user_ended_conversation?: string | null;
             voice_mode?: string | null;
+            voice_mode_label?: string | null;
             wrap?: string | null;
         };
         WidgetTextContentsTranslation: {
@@ -5269,6 +5796,8 @@ export interface components {
             additional_knowledge_base?: components["schemas"]["KnowledgeBaseLocator"][];
             additional_prompt?: string;
             additional_tool_ids?: string[];
+            /** @default false */
+            allow_interruptions_on_entry?: boolean;
             conversation_config?: components["schemas"]["ConversationalConfigAPIModelWorkflowOverride-Input"];
             edge_order?: string[];
             /** @default auto */
@@ -5285,6 +5814,8 @@ export interface components {
             additional_knowledge_base: components["schemas"]["KnowledgeBaseLocator"][];
             additional_prompt: string;
             additional_tool_ids: string[];
+            /** @default false */
+            allow_interruptions_on_entry: boolean;
             conversation_config: components["schemas"]["ConversationalConfigAPIModelWorkflowOverride-Output"];
             edge_order: string[];
             /** @default auto */
@@ -5302,6 +5833,7 @@ export interface components {
             edge_order?: string[];
             position?: components["schemas"]["Position-Input"];
             post_dial_digits?: (components["schemas"]["PostDialDigitsStatic"] | components["schemas"]["PostDialDigitsDynamicVariable"]) | null;
+            provider_configs?: (components["schemas"]["TwilioTransfer-Input"] | components["schemas"]["SIPTransfer-Input"] | components["schemas"]["ExotelTransfer-Input"])[];
             /** @default true */
             sip_refer_play_dialtone?: boolean;
             transfer_destination: components["schemas"]["PhoneNumberTransferDestination"] | components["schemas"]["SIPUriTransferDestination"] | components["schemas"]["PhoneNumberDynamicVariableTransferDestination"] | components["schemas"]["SIPUriDynamicVariableTransferDestination"];
@@ -5319,6 +5851,7 @@ export interface components {
             edge_order: string[];
             position: components["schemas"]["Position-Output"];
             post_dial_digits: (components["schemas"]["PostDialDigitsStatic"] | components["schemas"]["PostDialDigitsDynamicVariable"]) | null;
+            provider_configs: (components["schemas"]["TwilioTransfer-Output"] | components["schemas"]["SIPTransfer-Output"] | components["schemas"]["ExotelTransfer-Output"])[];
             /** @default true */
             sip_refer_play_dialtone: boolean;
             transfer_destination: components["schemas"]["PhoneNumberTransferDestination"] | components["schemas"]["SIPUriTransferDestination"] | components["schemas"]["PhoneNumberDynamicVariableTransferDestination"] | components["schemas"]["SIPUriDynamicVariableTransferDestination"];
@@ -5348,6 +5881,44 @@ export interface components {
              * @enum {string}
              */
             type: "result";
+        };
+        "WorkflowSayNodeModel-Input": {
+            additional_knowledge_base?: components["schemas"]["KnowledgeBaseLocator"][];
+            additional_prompt?: string;
+            additional_tool_ids?: string[];
+            conversation_config?: components["schemas"]["ConversationalConfigAPIModelWorkflowOverride-Input"];
+            edge_order?: string[];
+            label: string;
+            message: components["schemas"]["SayNodeLiteralMessage-Input"] | components["schemas"]["SayNodePromptMessage-Input"];
+            position?: components["schemas"]["Position-Input"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "say";
+            /** @default false */
+            wait_for_speech_completion?: boolean;
+            /** @default false */
+            wait_for_user_response?: boolean;
+        };
+        "WorkflowSayNodeModel-Output": {
+            additional_knowledge_base: components["schemas"]["KnowledgeBaseLocator"][];
+            additional_prompt: string;
+            additional_tool_ids: string[];
+            conversation_config: components["schemas"]["ConversationalConfigAPIModelWorkflowOverride-Output"];
+            edge_order: string[];
+            label: string;
+            message: components["schemas"]["SayNodeLiteralMessage-Output"] | components["schemas"]["SayNodePromptMessage-Output"];
+            position: components["schemas"]["Position-Output"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "say";
+            /** @default false */
+            wait_for_speech_completion: boolean;
+            /** @default false */
+            wait_for_user_response: boolean;
         };
         "WorkflowStandaloneAgentNodeModel-Input": {
             agent_id?: string | null;
@@ -5409,6 +5980,26 @@ export interface components {
              */
             type: "start";
         };
+        "WorkflowStartProcedureNodeModel-Input": {
+            edge_order?: string[];
+            position?: components["schemas"]["Position-Input"];
+            procedure_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "start_procedure";
+        };
+        "WorkflowStartProcedureNodeModel-Output": {
+            edge_order: string[];
+            position: components["schemas"]["Position-Output"];
+            procedure_id: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "start_procedure";
+        };
         WorkflowToolLocator: {
             schema_overrides?: {
                 [key: string]: components["schemas"]["ConstantSchemaOverride"] | components["schemas"]["DynamicVariableSchemaOverride"] | components["schemas"]["LLMSchemaOverride"] | components["schemas"]["OmitSchemaOverride"];
@@ -5450,6 +6041,28 @@ export interface components {
              * @enum {string}
              */
             type: "unconditional";
+        };
+        "WorkflowUpdateStateNodeModel-Input": {
+            edge_order?: string[];
+            label: string;
+            position?: components["schemas"]["Position-Input"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "update_state";
+            updates: components["schemas"]["StateUpdate-Input"][];
+        };
+        "WorkflowUpdateStateNodeModel-Output": {
+            edge_order: string[];
+            label: string;
+            position: components["schemas"]["Position-Output"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "update_state";
+            updates: components["schemas"]["StateUpdate-Output"][];
         };
         WorkspaceAnalyticsQueryResponseModel: {
             column_types: ("String" | "Float" | "DateTime" | "Int" | "Bool" | "JSON" | "Map" | "Array")[];
@@ -5666,6 +6279,7 @@ export interface operations {
                 main_languages?: string[] | null;
                 page_size?: number;
                 parent_conversation_id?: string | null;
+                phone_number_ids?: string[] | null;
                 rating_max?: number | null;
                 rating_min?: number | null;
                 /** @deprecated */
@@ -5675,6 +6289,9 @@ export interface operations {
                 tag_ids?: string[] | null;
                 termination_reasons?: string[] | null;
                 text_only?: boolean | null;
+                tool_ids?: string[] | null;
+                tool_ids_errored?: string[] | null;
+                tool_ids_successful?: string[] | null;
                 tool_names?: string[] | null;
                 tool_names_errored?: string[] | null;
                 tool_names_successful?: string[] | null;
@@ -5684,6 +6301,7 @@ export interface operations {
                 version_id?: string | null;
                 visited_agent_branch_ids?: string[] | null;
                 visited_agent_ids?: string[] | null;
+                whatsapp_phone_number_ids?: string[] | null;
                 workflow_node_entered_id?: string | null;
             };
             header?: {
@@ -5869,6 +6487,7 @@ export interface operations {
                 search?: string | null;
                 sort_direction?: ("asc" | "desc") | null;
                 source?: ("TTS" | "STS" | "Flows") | null;
+                sources?: ("TTS" | "STS" | "Flows")[] | null;
                 start_after_history_item_id?: string | null;
                 voice_id?: string | null;
             };
@@ -6318,22 +6937,7 @@ type Shared_4b5aa306 = {
     /** @default false */
     text_only?: boolean;
 };
-type Shared_6276b3c9 = {
-    /** @default e5_mistral_7b_instruct */
-    embedding_model?: components["schemas"]["EmbeddingModelEnum"];
-    /** @default false */
-    enabled?: boolean;
-    knowledge_base_tool_info?: components["schemas"]["KnowledgeBaseToolInfo"] | null;
-    /** @default 50000 */
-    max_documents_length?: number;
-    /** @default 20 */
-    max_retrieved_rag_chunks_count?: number;
-    /** @default 0.6 */
-    max_vector_distance?: number;
-    num_candidates?: number | null;
-    query_rewrite_prompt_override?: string | null;
-};
-type Shared_66cc25f3 = {
+type Shared_5ec3a305 = {
     action_text?: string | null;
     /** @default false */
     always_expanded?: boolean;
@@ -6373,6 +6977,8 @@ type Shared_66cc25f3 = {
     };
     /** @default false */
     language_selector?: boolean;
+    /** @default default */
+    layout?: components["schemas"]["WidgetLayout"];
     listening_text?: string | null;
     /** @default true */
     markdown_link_allow_http?: boolean;
@@ -6420,20 +7026,20 @@ type Shared_66cc25f3 = {
     /** @default full */
     variant?: components["schemas"]["EmbedVariant"];
 };
-type Shared_871f1e95 = {
+type Shared_6276b3c9 = {
+    /** @default e5_mistral_7b_instruct */
+    embedding_model?: components["schemas"]["EmbeddingModelEnum"];
     /** @default false */
-    apply_to_existing_conversations?: boolean;
-    conversation_history_redaction?: components["schemas"]["ConversationHistoryRedactionConfig"];
-    /** @default false */
-    delete_audio?: boolean;
-    /** @default false */
-    delete_transcript_and_pii?: boolean;
-    /** @default true */
-    record_voice?: boolean;
-    /** @default -1 */
-    retention_days?: number;
-    /** @default false */
-    zero_retention_mode?: boolean;
+    enabled?: boolean;
+    knowledge_base_tool_info?: components["schemas"]["KnowledgeBaseToolInfo"] | null;
+    /** @default 50000 */
+    max_documents_length?: number;
+    /** @default 20 */
+    max_retrieved_rag_chunks_count?: number;
+    /** @default 0.6 */
+    max_vector_distance?: number;
+    num_candidates?: number | null;
+    query_rewrite_prompt_override?: string | null;
 };
 type Shared_9fbc5792 = components["schemas"]["WebhookToolConfig-Input"] | components["schemas"]["ClientToolConfig-Input"] | components["schemas"]["SystemToolConfig-Input"] | components["schemas"]["MCPToolConfig-Input"] | components["schemas"]["ApiIntegrationWebhookToolConfig-Input"] | components["schemas"]["SMBToolConfig"];
 type Shared_b9492024 = components["schemas"]["WebhookToolConfig-Output"] | components["schemas"]["ClientToolConfig-Output"] | components["schemas"]["SystemToolConfig-Output"] | components["schemas"]["MCPToolConfig-Output"] | components["schemas"]["ApiIntegrationWebhookToolConfig-Output"] | components["schemas"]["SMBToolConfig"];
