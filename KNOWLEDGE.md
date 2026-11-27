@@ -6327,7 +6327,8 @@ The detail is in "CI in the app" below (the bullet "A run's repository is on Git
 
 - A forge run is a `ci_runs` row with `git_repository_id` set and `installation_id` `0`; only `ci/source.ts` knows the difference. Runners fetch over smart HTTP with a `read` job token, and neither the runner nor the proxy changed.
 - The queue consumer calls `handleGitEvent` per moved branch and per synchronised branch page; a fork's proposed branch is never `trusted`.
-- The app writes commit statuses (`writeGitCommitStatus` into `git_commit_statuses`), the forge shows them and reads them for required checks.
+- The app writes commit statuses (`writeGitCommitStatus` into `git_commit_statuses`), the forge shows them and reads them for required checks. A status CI writes carries its run (`ci_run_id`, set by `ci/status.ts` `write` and following the newest report, so a rerun's status names the rerun); the forge's `CommitStatus.runId` is that column, and its UI links a check to the forge's own run page by it rather than to `target_url`, which stays the app's page. A Terraform workspace's status has no run id and links where it always did.
+- **Commit checks in the forge's UI are one batched lookup per page and one request per opened list.** `commitDecorator` reads the combined state of a page's commits in one query (`combinedStatesFor`); its `statuses` option is `true` (history lists), `false` (blame, tags), or the ids a listing wants them for (a tree's own newest commit, which its header shows, and not its rows). `contents.latestCommit` carries the status, since the strip above a listing and a file is drawn from it. The list of checks (`statuses.forRef`) is read only when someone presses the icon (`git/packages/web/NOTES.md` "Commit checks and profiles").
 - **A job's note commands become notes on its commit's branch page** (`ci/git-notes.ts`; "CI notes" under "CI in the app" below). The app writes the findings and trace entries itself, through the functions the forge's reviewers write with, which is why those functions live in server-core (`git-review/`) and the Worker re-exports them.
 - **The Worker bundles `server-core/src/ci/` and must not reach the plugin loader through it** (`worker/src/__tests__/import-graph.test.ts`). With `__INFRAWRENCH_EDGE_PLUGINS__` defined, `lendingCode()` in `ci/runs.ts` folds away, so a run that lends something (a connection, an SSH key, an `env-file:`) is left for the app's gateway to send and every other run is sent from the Worker. That is what took the bundle from 9.0 MB to 3.4 MB and removed the need for a copy of the edge `alias` map.
 - `CI_PROXY_URL`, `CI_PROXY_KEY` and `APP_URL` are optional secrets of the Worker; without them a push still records its run and the app's poller sends it. Locally CI is off for that reason.
@@ -6433,6 +6434,16 @@ There is one UI for everyone, in one sidebar shell. Someone signed in gets the w
 ### Git feature flag (removed)
 
 Git was behind a per-organisation flag set in `/admin` (table `git_feature_access`, added by migration `0202` and dropped by `0208`) from 2026-11-26 to 2026-11-27. It is gone: Git is on for every organisation, anyone signed in may claim a username on git.infrawrench.com, and both sites mark Git as Beta (`BetaBadge` in `@infrawrench/ui`, `beta: true` on the Git entry of each platform's `useOrgTools`; the forge's sidebar brand and signed-out page). `gitEnabled` on `/team/me` still answers, always `true`, until the next major API version.
+
+### Profiles and uploaded pictures
+
+A namespace's profile is columns of its own row (`display_name`, `description`, `website_url`, `location`, `avatar_url`); nothing was migrated for it. `git/packages/worker/NOTES.md` ("Profiles and uploaded pictures") has the detail. What was settled:
+
+- **A bio is plain text, 280 characters** (`BIO_MAX_LENGTH`, contract `profile.ts`), shown as one paragraph with `http(s)` addresses linked and nothing else read from it. No Markdown: a profile is the one text on the site strangers read without choosing a repository.
+- **Organisations upload a picture, people do not.** A person's picture is the one on their Infrawrench account (`git_users.avatar_url`, through `namespaceAvatarUrl`), so the header, their page and their commits agree; a second source would need a rule for which wins.
+- **An upload is served from the forge's own origin** (`/-/avatar/<namespace id>/<content hash>.<ext>`, R2 `avatars/<namespace id>/`), so the page's `img-src 'self' data: blob:` did not change and no reader's request leaves the site. The path is content-addressed and public, like the namespace's page.
+- **The Worker validates and does not re-encode.** It has no image codec, so what is stored is what was sent, once `inspectAvatar` has read a still PNG, JPEG or WebP of allowed size from the bytes themselves. It is served with `nosniff` and a sandboxing policy, which is what makes a polyglot file harmless. The UI crops and redraws before sending, which also drops a photo's metadata; an API client that skips that is held to the same check.
+- **Edits are a session's.** `canAdminister` is false for a token, as for every settings surface, and an organisation's needs `git:admin`.
 
 ### Security decisions
 

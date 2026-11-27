@@ -7,7 +7,7 @@ The JSON API of git.infrawrench.com as Effect `HttpApi` definitions. The worker 
 - `src/http/`: `errors.ts` (one `Schema.Error` class per status, `{ error, code? }` on the wire), `annotations.ts` (the gates), `auth.ts` (the middleware tags and the services they provide, `withApiDefaults`).
 - `src/schemas/`: every request and response shape, by subject. `git.ts` is the content the UI draws directly.
 - `src/groups/`: the endpoints. `src/api.ts` assembles `GitApi` (everything) and the per-group APIs.
-- `src/names.ts`, `src/urls.ts`: pure functions both sides use (name rules and the reserved list; `parseBranchKey`, `formatBranchKey` and `branchPagePath`; clone, raw, archive and sign-in paths; a page's link preview image (`ogImagePath`, `OG_IMAGE_SIZE`); `MCP_PATH`, `OAUTH_PATHS` and `WELL_KNOWN_PATHS` for the MCP server and its authorization server, which are not `HttpApi` endpoints: MCP is JSON-RPC over one path, and OAuth's endpoints are forms and a page whose shapes the RFCs fix).
+- `src/names.ts`, `src/urls.ts`: pure functions both sides use (name rules and the reserved list; `parseBranchKey`, `formatBranchKey` and `branchPagePath`; clone, raw, archive and sign-in paths; a page's link preview image (`ogImagePath`, `OG_IMAGE_SIZE`); an organisation's uploaded picture (`avatarPath`, `parseAvatarPath`); `MCP_PATH`, `OAUTH_PATHS` and `WELL_KNOWN_PATHS` for the MCP server and its authorization server, which are not `HttpApi` endpoints: MCP is JSON-RPC over one path, and OAuth's endpoints are forms and a page whose shapes the RFCs fix).
 - `src/bots.ts`: the bot accounts (Claude, Cursor), re-exported from client-core (`git-bots.ts`, beside the name rules that keep their usernames), and `botUserRef`, the `UserRef` one is named by (`kind: "bot"`). `UserRef.kind` is absent for a person.
 - `src/limits.ts`: the plan limits and the sentence that refuses one more private repository, re-exported from client-core (`git-forge.ts`), where the app's Settings > Git words the same numbers.
 
@@ -64,3 +64,7 @@ The JSON API of git.infrawrench.com as Effect `HttpApi` definitions. The worker 
 
 - Webhooks, notifications, releases, repository redirects after a rename, editing files in the browser, requested reviewers, reactions.
 - An OpenAPI document is not published; `OpenApi.fromApi(GitApi)` builds one (the test checks that it does).
+
+## Profiles (`src/profile.ts`)
+
+`BIO_MAX_LENGTH`, `AVATAR_LIMITS` and `inspectAvatar` are here rather than in the Worker because the UI needs them too: the form's counter, the upload's own check before it sends, and the dev mock, which refuses a file with the sentence the API would. `inspectAvatar` reads only headers (a PNG's `IHDR`, a JPEG's first start-of-frame, a WebP's first chunk); it does not decode pixels, and the Worker serves what it accepted with `nosniff` and a sandbox rather than trusting the rest of the file.

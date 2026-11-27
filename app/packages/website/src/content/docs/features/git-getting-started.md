@@ -69,6 +69,21 @@ A repository belongs to a namespace:
 
 Members of an organization get access to its repositories from their [role](../team-and-billing/roles-and-permissions.md): `git:read` reads all of them, `git:write` pushes and creates, `git:admin` changes repository settings.
 
+### Profiles
+
+Every namespace has a page at `git.infrawrench.com/<name>` with its repositories and a short profile: a name, a bio, a website and a location. Anyone who can open the forge can read it.
+
+- **Your own**: open the account menu, go to **Settings > Profile** and save the form under your username. Your picture is the one on your Infrawrench account; change it in the app.
+- **An organization's**: someone with `git:admin` opens the organization's page and chooses **Edit profile**. The same form opens with the organization's picture above it. **Upload a picture** takes a PNG, JPEG or WebP image, crops it to a square and saves it at once; **Remove** goes back to the organization's initials.
+
+A bio is plain text of up to 280 characters. Web addresses in it become links; nothing else in it is formatted. A picture can be up to 1 MB after cropping, and animated images are refused.
+
+Profiles are edited in a signed-in browser. An access token cannot change one.
+
+<insert [An organisation's page on git.infrawrench.com with the Edit profile dialog open: the Picture row with Upload a picture and Remove, then the Name, Bio (with its "101 of 280 characters" count), Website and Location fields and the Save profile button] here>
+
+<insert [A person's page on git.infrawrench.com: their picture, name and username, a bio with a linked web address, then location, website and the date they joined, beside their repositories] here>
+
 ## Create a repository
 
 1. Open the workspace menu at the top of the sidebar and choose to create a repository.
@@ -178,6 +193,16 @@ git push -u origin main
 - **Star** keeps a repository in your stars, under your name at the foot of the sidebar. **Explore** and the sidebar's search find public repositories and the private ones you can read.
 
 <insert [A file's page on the Code tab: the path, the last commit, line numbers with syntax highlighting, and the Raw, Blame and History buttons] here>
+
+### Checks on a commit
+
+When [CI](./ci.md) or anything else reports on a commit, a small icon appears beside it wherever the commit is summarised: a turning ring while checks run, a green tick when all passed, a red cross when one failed. A commit with no checks shows nothing.
+
+You see it on the line above the file list and above a file, on each row of **Commits**, on a commit's page, beside each branch under **Branches > All branches**, on each row of the branch pages list, and at the top of a branch page.
+
+Click the icon to list the checks: each one's name, its state, what it said, and **Details**, which opens the run's page under the repository's **CI** tab. Failed checks are listed first. The list on the page you are reading updates on its own while a check is still running.
+
+<insert [A repository's Code tab on git.infrawrench.com with the checks icon beside the last commit pressed: a box under it headed "3 checks" with "1 failed, 2 passed", then one row per check with its icon, name, "Failed" or "Passed" and a Details link] here>
 
 ## Who a commit is by
 
