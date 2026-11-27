@@ -15,6 +15,7 @@ export * from "./limits";
 export * from "./urls";
 export * from "./t3-connect";
 export * from "./trailers";
+export * from "./bots";
 export * from "./languages";
 export * from "./schemas/common";
 export * from "./schemas/people";

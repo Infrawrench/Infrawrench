@@ -1,9 +1,10 @@
 /**
  * What Postgres adds to the commits a `RepoReader` answers: the Infrawrench
- * user an author's email belongs to, and the commit's combined status.
+ * user an author's email belongs to (or the bot account, which needs no
+ * lookup), and the commit's combined status.
  */
 import { eq, inArray, sql } from "drizzle-orm";
-import type { CommitSummary, UserRef } from "@infrawrench/git-contract";
+import { botUserForEmail, type CommitSummary, type UserRef } from "@infrawrench/git-contract";
 import { gitNamespaces, gitUsers, users } from "@infrawrench/server-core/db/schema";
 import { db } from "../../db/client";
 import { combinedStatesFor } from "../../db/policy";
@@ -65,7 +66,8 @@ export const commitDecorator = async (
       ? combinedStatesFor(repositoryId, [...new Set(known.map((commit) => commit.oid))])
       : Promise.resolve(new Map<string, CommitSummary["status"]>()),
   ]);
-  const user = (email: string) => people.get(email.toLowerCase()) ?? null;
+  // A bot's address is the bot whatever the commit calls it, before any person.
+  const user = (email: string) => botUserForEmail(email) ?? people.get(email.toLowerCase()) ?? null;
   const decorate = <C extends CommitSummary>(commit: C): C => ({
     ...commit,
     authorUser: user(commit.author.email),

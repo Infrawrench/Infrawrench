@@ -19,7 +19,7 @@ import type {
   TreeEntry,
   UserRef,
 } from "@infrawrench/git-contract";
-import { coAuthorsOf } from "@infrawrench/git-contract";
+import { botUserForEmail, coAuthorsOf } from "@infrawrench/git-contract";
 import { mockError, notFound } from "./define";
 import { buildHunks, countChanges, diffLines } from "./diff";
 import edgeRouterJson from "./fixtures/edge-router.generated.json";
@@ -226,6 +226,10 @@ export function statusOf(fx: GitFixture, oid: string): StatusState | null {
   return null;
 }
 
+/** Who an address on a commit is, as the Worker's decorator answers: a bot first, then a person. */
+export const personOf = (email: string): UserRef | null =>
+  botUserForEmail(email) ?? FIXTURE_PEOPLE[email] ?? null;
+
 export function summarize(fx: GitFixture, oid: string): CommitSummary {
   const commit = commitOf(fx, oid);
   const [summary = "", ...rest] = commit.message.split("\n");
@@ -235,10 +239,10 @@ export function summarize(fx: GitFixture, oid: string): CommitSummary {
     hasBody: rest.some((line) => line.trim() !== ""),
     author: commit.author,
     committer: commit.committer,
-    authorUser: FIXTURE_PEOPLE[commit.author.email] ?? null,
+    authorUser: personOf(commit.author.email),
     coAuthors: coAuthorsOf(commit.message, commit.author.email).map((person) => ({
       ...person,
-      user: FIXTURE_PEOPLE[person.email] ?? null,
+      user: personOf(person.email),
     })),
     parents: commit.parents,
     status: statusOf(fx, commit.oid),
@@ -251,7 +255,7 @@ export function fullCommit(fx: GitFixture, oid: string): Commit {
     ...summarize(fx, oid),
     treeOid: commit.tree,
     message: commit.message,
-    committerUser: FIXTURE_PEOPLE[commit.committer.email] ?? null,
+    committerUser: personOf(commit.committer.email),
     signed: false,
   };
 }

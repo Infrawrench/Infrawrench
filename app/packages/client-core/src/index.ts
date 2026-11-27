@@ -53,6 +53,7 @@ export { ALL_PERMISSIONS } from "./permission-catalog";
 export * from "./products";
 export * from "./ci";
 export * from "./git-forge";
+export * from "./git-bots";
 export * from "./git-names";
 export * from "./git-branch-key";
 export * from "./ci-access";

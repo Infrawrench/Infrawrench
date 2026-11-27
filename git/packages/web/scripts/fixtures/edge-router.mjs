@@ -136,5 +136,24 @@ export function isHealthy(upstream: string): boolean {
 `,
 });
 steps.push({ checkout: "main" });
+// Work done with coding tools: their addresses resolve to the forge's bot accounts.
+commit(
+  jonas,
+  50,
+  "Answer 404 for a host with no routes\n\nA request for an unknown host fell through to the first route.\n\nCo-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>",
+  { "src/router.ts": `${router2}\nexport const NO_ROUTE = 404;\n` },
+);
+commit(
+  { name: "Cursor Agent", email: "cursoragent@cursor.com" },
+  52,
+  "Document the route weights\n\nCo-authored-by: Mara Lindqvist <mara@acme.example>",
+  { "README.md": `${readme}\nRoutes with the same prefix are ordered by weight.\n` },
+);
+commit(
+  mara,
+  54,
+  "Log the route a request took\n\nCo-authored-by: Cursor <cursoragent@cursor.com>\nCo-authored-by: Claude <noreply@anthropic.com>",
+  { "src/server.ts": `${server}\nexport const LOG_ROUTES = true;\n` },
+);
 
 export const history = { defaultBranch: "main", steps };

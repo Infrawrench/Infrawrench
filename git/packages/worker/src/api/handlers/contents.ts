@@ -11,6 +11,7 @@ import {
   GitApi,
   accessAtLeast,
   badRequest,
+  botByUsername,
   isValidRefName,
   ok,
   unprocessable,
@@ -89,6 +90,8 @@ const branchViews = async (cx: RepoCx, branches: readonly ReaderBranch[]): Promi
 const authorEmails = async (author: string | undefined): Promise<string[] | undefined> => {
   if (author === undefined || author === "") return undefined;
   if (author.includes("@")) return [author.toLowerCase()];
+  const bot = botByUsername(author);
+  if (bot !== null) return [...bot.emails];
   const person = await userByUsername(author);
   const user = person ? await getUser(person.id) : null;
   // A username nobody has matches nothing, rather than everything.

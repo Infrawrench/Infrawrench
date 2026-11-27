@@ -9,6 +9,7 @@
  * domain), and the app's contract imports nothing from the forge. The forge's
  * contract re-exports these, so there is one list.
  */
+import { gitBotByUsername } from "./git-bots";
 
 export const GIT_NAME_MAX_LENGTH = 39;
 export const GIT_REPOSITORY_NAME_MAX_LENGTH = 100;
@@ -86,7 +87,7 @@ export const GIT_RESERVED_REPOSITORY_NAMES: readonly string[] = [
 ];
 
 export type GitNameProblem =
-  "empty" | "too_long" | "characters" | "git_suffix" | "dots" | "reserved";
+  "empty" | "too_long" | "characters" | "git_suffix" | "dots" | "reserved" | "bot";
 
 const shapeProblem = (name: string, maxLength: number): GitNameProblem | null => {
   if (name.length === 0) return "empty";
@@ -98,10 +99,18 @@ const shapeProblem = (name: string, maxLength: number): GitNameProblem | null =>
   return null;
 };
 
-/** Why `slug` cannot be a namespace, or null when it can (it may still be taken). */
+/**
+ * Why `slug` cannot be a namespace, or null when it can (it may still be
+ * taken). `bot` is a bot account's username (`git-bots.ts`): unlike
+ * `reserved`, nobody is let past it, a platform admin included.
+ */
 export const gitNamespaceSlugProblem = (slug: string): GitNameProblem | null =>
   shapeProblem(slug, GIT_NAME_MAX_LENGTH) ??
-  (GIT_RESERVED_NAMESPACES.includes(slug.toLowerCase()) ? "reserved" : null);
+  (gitBotByUsername(slug) !== null
+    ? "bot"
+    : GIT_RESERVED_NAMESPACES.includes(slug.toLowerCase())
+      ? "reserved"
+      : null);
 
 /** Why `name` cannot be a repository's name, or null when it can. */
 export const gitRepositoryNameProblem = (name: string): GitNameProblem | null =>
@@ -123,6 +132,8 @@ export const gitNameProblemMessage = (problem: GitNameProblem, maxLength: number
       return "Names cannot end in a dot or contain two dots in a row";
     case "reserved":
       return "That name is reserved";
+    case "bot":
+      return "That name belongs to a bot account";
   }
 };
 

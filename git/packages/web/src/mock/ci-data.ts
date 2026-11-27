@@ -13,7 +13,7 @@ import type {
 } from "@infrawrench/git-contract";
 import type { Mutable } from "./define";
 import { APP_URL, gitOf, type RepositoryRecord } from "./db";
-import { FIXTURE_PEOPLE, commitOf, statusOf, type GitFixture } from "./git";
+import { FIXTURE_PEOPLE, commitOf, personOf, statusOf, type GitFixture } from "./git";
 import { newId, person } from "./settings-data";
 
 type JobStatus = "passed" | "failed" | "skipped" | "error" | "cancelled";
@@ -276,7 +276,7 @@ function makeRun(repo: RepositoryRecord, fx: GitFixture, seed: RunSeed): RunReco
 }
 
 const authorOf = (fx: GitFixture, oid: string): UserRef | null =>
-  FIXTURE_PEOPLE[commitOf(fx, oid).author.email] ?? null;
+  personOf(commitOf(fx, oid).author.email);
 
 function seedRuns(repo: RepositoryRecord): RunRecord[] {
   if (repo.fixture === null || !repo.hasCi) return [];

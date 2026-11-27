@@ -1,7 +1,12 @@
 /** A user's or an organisation's page: who they are and their repositories. */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { REPOSITORY_LIST_TYPES, REPOSITORY_SORTS, type Namespace } from "@infrawrench/git-contract";
+import {
+  REPOSITORY_LIST_TYPES,
+  REPOSITORY_SORTS,
+  botByUsername,
+  type Namespace,
+} from "@infrawrench/git-contract";
 import { api } from "../../api/client";
 import { queries, usePages } from "../../api/queries";
 import { ButtonLink } from "../../components/Button";
@@ -16,6 +21,7 @@ import { formatDate, plural } from "../../lib/format";
 import { paths } from "../../lib/paths";
 import { webUrl } from "../../lib/safe-url";
 import { SORT_LABEL, type RepositorySortName } from "../explore/ExplorePage";
+import { BotPage } from "./BotPage";
 
 type ListType = (typeof REPOSITORY_LIST_TYPES)[number];
 
@@ -28,6 +34,13 @@ const TYPE_LABEL: Record<ListType, string> = {
 };
 
 export function NamespacePage({ slug, tab }: { slug: string; tab: "repositories" | "stars" }) {
+  // A bot account is no namespace: its page is drawn from the contract, with nothing asked.
+  const bot = botByUsername(slug);
+  if (bot !== null) return <BotPage bot={bot} />;
+  return <NamespaceProfile slug={slug} tab={tab} />;
+}
+
+function NamespaceProfile({ slug, tab }: { slug: string; tab: "repositories" | "stars" }) {
   const namespace = useQuery(queries.namespaces.get({ params: { namespace: slug } }));
   return (
     <Page>

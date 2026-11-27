@@ -10,12 +10,19 @@ import { IsoDateTime, Visibility } from "./common";
  * is the Infrawrench user id. `username` is null until they claim one, which
  * only happens for people named by the app's own tables (an organisation
  * member who has never opened the forge).
+ *
+ * A commit's author, committer or co-author may be a bot account instead
+ * (`bots.ts`): `kind` is `bot`, `id` is `bot:<username>` and `avatarUrl` is a
+ * path on this site. Nothing else names a bot.
  */
 export const UserRef = Schema.Struct({
   id: Schema.String,
   username: Schema.NullOr(Schema.String),
   displayName: Schema.NullOr(Schema.String),
   avatarUrl: Schema.NullOr(Schema.String),
+  kind: Schema.optionalKey(Schema.Literals(["user", "bot"])).annotate({
+    description: "`bot` for a bot account. Absent for a person.",
+  }),
 }).annotate({ identifier: "UserRef" });
 export type UserRef = typeof UserRef.Type;
 

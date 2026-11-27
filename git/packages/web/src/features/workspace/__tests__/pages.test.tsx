@@ -381,3 +381,46 @@ describe("the lists", () => {
     ).toBe("/acme/infra/issues/15");
   });
 });
+
+describe("bot accounts", () => {
+  it("gives a bot a page with its picture and a badge, and nothing of its own", async () => {
+    open("/claude");
+    expect(await screen.findByRole("heading", { name: "Claude" }, wait)).toBeTruthy();
+    const profile = within(screen.getByRole("region", { name: "Profile" }));
+    expect(profile.getByText("Bot")).toBeTruthy();
+    expect(
+      profile.getByText("Commits made with Claude are attributed to this account."),
+    ).toBeTruthy();
+    expect(profile.getByRole("presentation", { hidden: true }).getAttribute("src")).toBe(
+      "/assets/bots/claude-icon.svg",
+    );
+    // No repositories, stars or settings, and no namespace was asked for.
+    expect(screen.queryByRole("navigation", { name: "Profile" })).toBeNull();
+    expect(screen.queryByText(/Repositories|Stars|Settings|New repository/)).toBeNull();
+    expect(screen.queryByText(/not found|No such/i)).toBeNull();
+  });
+
+  it("finds a bot's page whatever the case of the address", async () => {
+    open("/Cursor");
+    // The bar names the page by its address; the profile by the account.
+    expect((await screen.findAllByRole("heading", { name: "Cursor" }, wait)).length).toBe(2);
+    expect(
+      screen.getByText("Commits made with Cursor are attributed to this account."),
+    ).toBeTruthy();
+  });
+
+  it("names the bots on a commit list, each linked to its page", async () => {
+    open("/acme/edge-router/commits");
+    const row = (await screen.findByText("Log the route a request took", {}, wait)).closest("li")!;
+    // Three faces, then the author and how many more.
+    expect(row.textContent).toContain("mara");
+    expect(row.textContent).toContain("2 others");
+    expect(row.querySelector("[title='mara, Cursor, Claude']")).toBeTruthy();
+    const one = screen.getByText("Answer 404 for a host with no routes").closest("li")!;
+    expect(within(one).getByRole("link", { name: "Claude" }).getAttribute("href")).toBe("/claude");
+    // Cursor wrote this one itself, under another name.
+    const own = screen.getByText("Document the route weights").closest("li")!;
+    expect(within(own).getByRole("link", { name: "Cursor" }).getAttribute("href")).toBe("/cursor");
+    expect(own.textContent).not.toContain("Cursor Agent");
+  });
+});

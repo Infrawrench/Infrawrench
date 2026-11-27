@@ -86,6 +86,12 @@ export function Avatar({ name, src, size = 20, square = false }: AvatarProps) {
   );
 }
 
+/** What a person is called in a row: their username, and a bot account by its name ("Claude"). */
+const labelOf = (user: UserRef): string =>
+  user.kind === "bot"
+    ? (user.displayName ?? user.username ?? "Unknown")
+    : (user.username ?? user.displayName ?? "Unknown");
+
 /** A person by username, linked to their page; plain text when they have not claimed one. */
 export function UserLink({
   user,
@@ -96,7 +102,7 @@ export function UserLink({
   avatar?: boolean;
   className?: string;
 }) {
-  const label = user.username ?? user.displayName ?? "Unknown";
+  const label = labelOf(user);
   const content = (
     <>
       {avatar ? <Avatar name={user.displayName ?? label} src={user.avatarUrl} size={16} /> : null}
@@ -118,7 +124,10 @@ export function UserLink({
   );
 }
 
-/** A commit's author: the Infrawrench user when the email belongs to one, the written name otherwise. */
+/**
+ * A commit's author: the Infrawrench user when the email belongs to one (or
+ * the bot account whose address it is), the written name otherwise.
+ */
 export function CommitAuthor({
   author,
   user,
@@ -158,7 +167,7 @@ function CommitPersonName({
 }
 
 const nameOf = (name: string, user: UserRef | null): string =>
-  user?.username ?? user?.displayName ?? name;
+  user === null ? name : labelOf(user);
 
 /**
  * A commit's author and the people its `Co-authored-by:` trailers name, as
