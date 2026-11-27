@@ -5,8 +5,14 @@
  * archive, delete) follow the same answer.
  */
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
-import { gitUsers } from "@infrawrench/server-core/db/schema";
+import { and, eq } from "drizzle-orm";
+import { GIT_FORGE_NAMESPACE_PLAN_REQUIRED } from "@infrawrench/client-core";
+import {
+  auditLogs,
+  gitNamespaces,
+  gitUsers,
+  organizations,
+} from "@infrawrench/server-core/db/schema";
 import { db } from "../../db/client";
 import { type Person, type World, configured, makeWorld } from "./world";
 
@@ -253,36 +259,233 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
     expect((await create(erin, { owner: free.slug, name: "shown" })).status).toBe(200);
   });
 
-  it("lets only git:admin claim an organisation's namespace, once", async () => {
+  it("lets only git:admin claim an organisation's namespace, once, from a browser", async () => {
     const unclaimed = await world.organization("fresh", {
+      paid: true,
       members: [
         [erin, "admin"],
         [dave, "member"],
       ],
       namespace: false,
+      git: true,
     });
+    const path = `/api/orgs/${unclaimed.id}/namespace`;
     const claim = (who: Person | undefined, slug: string) =>
-      world.call("POST", `/api/orgs/${unclaimed.id}/namespace`, { as: who, body: { slug } });
+      world.call("POST", path, { as: who, body: { slug } });
+    const audited = () =>
+      db
+        .select()
+        .from(auditLogs)
+        .where(
+          and(
+            eq(auditLogs.organizationId, unclaimed.id),
+            eq(auditLogs.action, "git.namespace.claim"),
+          ),
+        );
+    const sessionEntry = async (who: Person, options: { scopes?: ["repo:write"] } = {}) => {
+      const me = await world.call("GET", "/api/session", { as: who, ...options });
+      return me.body.organizations.find((o: { id: string }) => o.id === unclaimed.id);
+    };
+
+    // The session says who may: the administrator, in a browser.
+    expect(await sessionEntry(erin)).toMatchObject({
+      namespace: null,
+      gitEnabled: true,
+      namespacePlanRefusal: null,
+      canClaimNamespace: true,
+    });
+    expect(await sessionEntry(dave)).toMatchObject({ gitEnabled: true, canClaimNamespace: false });
+    expect(await sessionEntry(erin, { scopes: ["repo:write"] })).toMatchObject({
+      canClaimNamespace: false,
+    });
+
     expect((await claim(undefined, unclaimed.slug)).status).toBe(401);
     expect((await claim(bob, unclaimed.slug)).status).toBe(403);
     expect((await claim(dave, unclaimed.slug)).status).toBe(403);
-    expect(await claim(erin, "explore")).toMatchObject({ status: 400 });
-    expect(await claim(erin, alice.username)).toMatchObject({
+    // No token claims a name, whatever it may write, and no API key either.
+    expect(
+      (
+        await world.call("POST", path, {
+          as: erin,
+          scopes: ["repo:read", "repo:write"],
+          body: { slug: unclaimed.slug },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await world.call("POST", path, {
+          principal: {
+            kind: "api-key",
+            apiKeyId: "key-1",
+            organizationId: unclaimed.id,
+            userId: erin.id,
+            permissions: ["git:read", "git:write", "git:admin"],
+          },
+          body: { slug: unclaimed.slug },
+        })
+      ).status,
+    ).toBe(403);
+    expect(await claim(erin, "explore")).toMatchObject({
+      status: 400,
+      body: { code: "username_reserved" },
+    });
+    expect(await claim(erin, "-nope")).toMatchObject({
+      status: 400,
+      body: { code: "name_invalid" },
+    });
+    expect(await claim(erin, alice.username.toUpperCase())).toMatchObject({
       status: 409,
       body: { code: "namespace_taken" },
     });
+    expect(await audited()).toHaveLength(0);
+
     const claimed = await claim(erin, unclaimed.slug);
     expect(claimed.status).toBe(200);
     expect(claimed.body).toMatchObject({ slug: unclaimed.slug, kind: "org" });
     expect(claimed.body.viewer).toMatchObject({ isOwner: true, canCreateRepository: true });
+    // The row is the one the app's Settings > Git writes.
+    const [row] = await db
+      .select()
+      .from(gitNamespaces)
+      .where(eq(gitNamespaces.organizationId, unclaimed.id));
+    expect(row).toMatchObject({
+      kind: "org",
+      slug: unclaimed.slug,
+      slugLower: unclaimed.slug.toLowerCase(),
+      displayName: "fresh",
+      claimedByUserId: erin.id,
+      userId: null,
+    });
+    // And so is the audit entry.
+    const entries = await audited();
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      userId: erin.id,
+      apiKeyId: null,
+      entityType: "git_namespace",
+      entityId: unclaimed.id,
+      metadata: { slug: unclaimed.slug, from: null },
+    });
+
     expect(await claim(erin, `${unclaimed.slug}-2`)).toMatchObject({
       status: 409,
       body: { code: "namespace_already_claimed" },
     });
+    expect(await audited()).toHaveLength(1);
     // The session says so too.
+    expect(await sessionEntry(erin)).toMatchObject({
+      namespace: unclaimed.slug,
+      canClaimNamespace: false,
+    });
+  });
+
+  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+  it("refuses a claim while Git is not turned on for the organisation", async () => {
+    const off = await world.organization("gitoff", {
+      paid: true,
+      members: [[erin, "owner"]],
+      namespace: false,
+    });
     const me = await world.call("GET", "/api/session", { as: erin });
-    const entry = me.body.organizations.find((o: { id: string }) => o.id === unclaimed.id);
-    expect(entry).toMatchObject({ namespace: unclaimed.slug, canClaimNamespace: false });
+    expect(me.body.organizations.find((o: { id: string }) => o.id === off.id)).toMatchObject({
+      gitEnabled: false,
+      canClaimNamespace: false,
+    });
+    expect(
+      await world.call("POST", `/api/orgs/${off.id}/namespace`, {
+        as: erin,
+        body: { slug: off.slug },
+      }),
+    ).toMatchObject({ status: 403, body: { code: "git_not_enabled" } });
+    expect(
+      await db.select().from(gitNamespaces).where(eq(gitNamespaces.organizationId, off.id)),
+    ).toHaveLength(0);
+  });
+
+  it("refuses a claim by an organisation that is not on a paid plan, and keeps a namespace it has", async () => {
+    const free = await world.organization("unpaid", {
+      members: [[erin, "owner"]],
+      namespace: false,
+      git: true,
+    });
+    const path = `/api/orgs/${free.id}/namespace`;
+    const entry = async () => {
+      const me = await world.call("GET", "/api/session", { as: erin });
+      return me.body.organizations.find((o: { id: string }) => o.id === free.id);
+    };
+    expect(await entry()).toMatchObject({
+      gitEnabled: true,
+      namespacePlanRefusal: GIT_FORGE_NAMESPACE_PLAN_REQUIRED,
+      canClaimNamespace: false,
+    });
+    expect(await world.call("POST", path, { as: erin, body: { slug: free.slug } })).toMatchObject({
+      status: 402,
+      body: { code: "plan_required", error: GIT_FORGE_NAMESPACE_PLAN_REQUIRED },
+    });
+    expect(
+      await db.select().from(gitNamespaces).where(eq(gitNamespaces.organizationId, free.id)),
+    ).toHaveLength(0);
+    expect(await db.select().from(auditLogs).where(eq(auditLogs.organizationId, free.id))).toEqual(
+      [],
+    );
+
+    // An unexpired trial is a paid plan here as everywhere.
+    await db
+      .update(organizations)
+      .set({ trialExpiresAt: new Date(Date.now() + 86_400_000) })
+      .where(eq(organizations.id, free.id));
+    expect(await entry()).toMatchObject({ namespacePlanRefusal: null, canClaimNamespace: true });
+    expect((await world.call("POST", path, { as: erin, body: { slug: free.slug } })).status).toBe(
+      200,
+    );
+
+    // The trial ends: the namespace stays, and a second claim is still a 409.
+    await db
+      .update(organizations)
+      .set({ trialExpiresAt: new Date(Date.now() - 86_400_000) })
+      .where(eq(organizations.id, free.id));
+    expect(await entry()).toMatchObject({
+      namespace: free.slug,
+      namespacePlanRefusal: null,
+      canClaimNamespace: false,
+    });
+    expect(
+      await world.call("POST", path, { as: erin, body: { slug: `${free.slug}-2` } }),
+    ).toMatchObject({ status: 409, body: { code: "namespace_already_claimed" } });
+    expect((await world.call("GET", `/api/namespaces/${free.slug}`, { as: erin })).status).toBe(
+      200,
+    );
+  });
+
+  it("gives an organisation one namespace when two administrators claim at once", async () => {
+    const raced = await world.organization("raced", {
+      paid: true,
+      members: [
+        [erin, "admin"],
+        [carol, "owner"],
+      ],
+      namespace: false,
+      git: true,
+    });
+    const path = `/api/orgs/${raced.id}/namespace`;
+    const answers = await Promise.all([
+      world.call("POST", path, { as: erin, body: { slug: `${raced.slug}-a` } }),
+      world.call("POST", path, { as: carol, body: { slug: `${raced.slug}-b` } }),
+    ]);
+    expect(answers.map((answer) => answer.status).sort()).toEqual([200, 409]);
+    expect(answers.find((answer) => answer.status === 409)!.body.code).toBe(
+      "namespace_already_claimed",
+    );
+    const rows = await db
+      .select()
+      .from(gitNamespaces)
+      .where(eq(gitNamespaces.organizationId, raced.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.slug).toBe(answers.find((answer) => answer.status === 200)!.body.slug);
+    const entries = await db.select().from(auditLogs).where(eq(auditLogs.organizationId, raced.id));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.metadata).toEqual({ slug: rows[0]!.slug, from: null });
   });
 
   it("shows a person's sign-in picture wherever their namespace shows, until they set one", async () => {

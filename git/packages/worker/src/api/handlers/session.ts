@@ -12,6 +12,7 @@ import {
   GitApi,
   NAME_MAX_LENGTH,
   type Namespace,
+  PaymentRequired,
   TooManyRequests,
   badRequest,
   conflict,
@@ -22,9 +23,13 @@ import {
   suggestSlug,
 } from "@infrawrench/git-contract";
 import { gitNamespaces, gitUsers, users } from "@infrawrench/server-core/db/schema";
-import { gitPrivateRepositoryRefusal } from "@infrawrench/server-core/git/quota";
+import {
+  gitOrganizationClaimRefusal,
+  gitPrivateRepositoryRefusal,
+} from "@infrawrench/server-core/git/quota";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { signOut } from "../../auth/sign-in";
+import { recordAudit } from "../../db/audit";
 import { db } from "../../db/client";
 import {
   type NamespaceRow,
@@ -40,7 +45,7 @@ import {
 } from "../../db/namespaces";
 import { getOrganization } from "../../db/organizations";
 import { countVisibleRepositories } from "../../db/repository-lists";
-import { maySignUp } from "../../db/signups"; // git-feature-flag
+import { gitEnabledAmong, maySignUp } from "../../db/signups"; // git-feature-flag
 import { getGitUser, getUser } from "../../db/users";
 import { appOrigin, sshEnabled } from "../../env";
 import { type Cx, op } from "../context";
@@ -155,6 +160,10 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
           getNamespaceForUser(user.id),
           cx.viewer(),
         ]);
+        // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+        const gitEnabled = await gitEnabledAmong(viewer.organizations.map(({ id }) => id));
+        // A token never claims a name (`claimForOrganization`).
+        const inBrowser = cx.principal.kind === "user" && cx.principal.via === "session";
         const organizations = await Promise.all(
           viewer.organizations.map(async (organization) => {
             const permissions = gitPermissionsOf(organization.permissions);
@@ -163,13 +172,25 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
               organizationId: organization.id,
               userId: null,
             });
+            // Only an organisation without a namespace is asked: one that has
+            // a namespace keeps it whatever its plan becomes.
+            const namespacePlanRefusal =
+              organization.namespace === null
+                ? await gitOrganizationClaimRefusal(organization.id)
+                : null;
             return {
               id: organization.id,
               name: organization.name,
               namespace: organization.namespace,
               permissions,
+              gitEnabled: gitEnabled.has(organization.id), // git-feature-flag
+              namespacePlanRefusal,
               canClaimNamespace:
-                organization.namespace === null && permissions.includes("git:admin"),
+                inBrowser &&
+                organization.namespace === null &&
+                permissions.includes("git:admin") &&
+                namespacePlanRefusal === null &&
+                gitEnabled.has(organization.id), // git-feature-flag
               privateRepositories: refusal === null,
               privateRepositoryRefusal: refusal,
               defaultVisibility: organization.defaultVisibility ?? "private",
@@ -323,19 +344,51 @@ export const NamespacesHandlers = HttpApiBuilder.group(GitApi, "namespaces", (ha
     .handle(
       "claimForOrganization",
       op(async (cx, { params, payload }) => {
+        // `git:admin` there is the middleware's (`RequiredOrgPermission`), which
+        // also lets an API key through; a name is claimed by a person.
+        if (cx.principal.kind !== "user" || cx.principal.via !== "session") {
+          throw forbidden("A name is claimed from a signed-in browser, not with a token");
+        }
+        const userId = cx.principal.userId;
         const organization = await getOrganization(params.orgId);
         if (!organization) throw notFound("No such organisation");
+        // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+        if (!(await gitEnabledAmong([organization.id])).has(organization.id)) {
+          throw forbidden("Git is not turned on for this organisation", "git_not_enabled");
+        }
+        // The app lets a platform admin take a reserved name (`mayUseReservedNames`).
+        // Nobody does here: that stays in the app's Settings > Git.
         checkSlug(payload.slug, "name_invalid", "username_reserved");
-        const claimedBy = cx.principal.kind === "anonymous" ? null : cx.principal;
-        const userId = claimedBy && "userId" in claimedBy ? claimedBy.userId : "";
+        // An organisation's namespace needs a paid plan, as in the app. One that
+        // has a namespace is not asked: it is answered 409 below, whatever its plan.
+        if ((await getNamespaceForOrganization(organization.id)) === null) {
+          const planRefusal = await gitOrganizationClaimRefusal(organization.id);
+          if (planRefusal !== null) {
+            throw new PaymentRequired({ error: planRefusal, code: "plan_required" });
+          }
+        }
         const claimed = await claimOrganizationNamespace(organization.id, payload.slug, userId, {
           displayName: organization.name,
         });
         if (!claimed.ok) {
           throw claimed.reason === "already_claimed"
-            ? conflict("This organisation already has a namespace", "namespace_already_claimed")
+            ? conflict(
+                "This organisation already has a name. Change it in the app, in Settings > Git",
+                "namespace_already_claimed",
+              )
             : conflict("That name is taken", "namespace_taken");
         }
+        // The row the app writes when the claim is made in its Settings > Git.
+        cx.background(
+          recordAudit({
+            organizationId: organization.id,
+            userId,
+            action: "git.namespace.claim",
+            entityType: "git_namespace",
+            entityId: organization.id,
+            metadata: { slug: claimed.namespace.slug, from: null },
+          }),
+        );
         return namespaceView(cx, claimed.namespace);
       }),
     )

@@ -237,6 +237,8 @@ describe("plan limits", () => {
           name: "Acme",
           namespace: "acme",
           permissions: ["git:write"],
+          gitEnabled: true, // git-feature-flag
+          namespacePlanRefusal: null,
           canClaimNamespace: false,
           privateRepositories: true,
           privateRepositoryRefusal: null,

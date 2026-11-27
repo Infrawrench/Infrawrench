@@ -95,8 +95,18 @@ export const SessionOrganization = Schema.Struct({
   permissions: Schema.Array(Schema.Literals(GIT_PERMISSIONS)).annotate({
     description: "The person's `git:*` permissions there.",
   }),
+  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+  gitEnabled: Schema.Boolean.annotate({
+    description:
+      "Whether Git is turned on for the organisation in the app. Only claiming its namespace reads this: one that has a namespace keeps working either way.",
+  }),
+  namespacePlanRefusal: Schema.NullOr(Schema.String).annotate({
+    description:
+      "Why the organisation's plan does not let it claim a namespace, as the sentence the claim would refuse with: an organisation's namespace needs a paid plan. Null when the plan allows it, and for one that has a namespace.",
+  }),
   canClaimNamespace: Schema.Boolean.annotate({
-    description: "Holds `git:admin` and the organisation has no namespace yet.",
+    description:
+      "Holds `git:admin` in a signed-in browser, Git is on for the organisation, its plan allows it and it has no namespace yet.",
   }),
   privateRepositories: Schema.Boolean.annotate({
     description: "One more private repository fits the organisation's plan.",

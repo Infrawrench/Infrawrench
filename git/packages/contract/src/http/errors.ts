@@ -89,6 +89,8 @@ export const ERROR_CODES = [
   "username_invalid",
   "namespace_taken",
   "namespace_already_claimed",
+  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+  "git_not_enabled",
   "name_taken",
   "name_invalid",
   "repository_archived",
