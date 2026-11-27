@@ -381,6 +381,8 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
         "t3_project_clone",
         "t3_project_create",
         "t3_thread_launch",
+        // The names of the model the thread got, for the branch's page.
+        "orchestrator_capabilities",
       ]);
       expect(t3.calls[1]!.args).toEqual({
         remoteUrl: cloneUrl,
@@ -446,7 +448,11 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
         t3EnvironmentId: environmentId,
       });
       expect(second.status).toBe(200);
-      expect(t3.calls.map((call) => call.tool)).toEqual(["t3_project_list", "t3_thread_launch"]);
+      expect(t3.calls.map((call) => call.tool)).toEqual([
+        "t3_project_list",
+        "t3_thread_launch",
+        "orchestrator_capabilities",
+      ]);
       expect(t3.threads).toHaveLength(2);
     });
 
@@ -488,8 +494,7 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
     });
 
     it("keeps the page when the launch fails, and starts the thread when asked again", async () => {
-      t3.failNext["t3_thread_launch"] =
-        "Pass modelSelection: the project has no default model. orchestrator_capabilities lists providers and models.";
+      t3.failNext["t3_thread_launch"] = "The worktree could not be made. No thread was created.";
       const started = await start(alice, {
         kind: "t3",
         displayName: "T3 Code",
@@ -497,8 +502,17 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
       });
       expect(started.status).toBe(200);
       expect(started.body.agent.externalRefs.launchError).toContain(
-        "the project has no default model",
+        "The worktree could not be made",
       );
+      // The branch's page says so too: its state carries the link.
+      const state = await world.call(
+        "GET",
+        `${pagePath(repo, started.body.page.key)}/branch-state`,
+        {
+          as: alice,
+        },
+      );
+      expect(state.body.agent.externalRefs.launchError).toContain("The worktree could not be made");
       expect(started.body.agent.externalRefs.threadId).toBeUndefined();
       expect(t3.threads).toHaveLength(0);
 
@@ -509,15 +523,112 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
           displayName: "T3 Code",
           t3EnvironmentId: environmentId,
           // What a client echoes back is not what the forge believes.
-          externalRefs: { launchError: "stale", startUrl: "https://evil.example.org" },
+          externalRefs: {
+            launchError: "stale",
+            startUrl: "https://evil.example.org",
+            modelName: "Somebody's model",
+            sendError: "stale",
+          },
+          // Try again, with a model this time.
+          t3Model: {
+            providerId: "claudeAgent",
+            model: "claude-opus-5-5",
+            reasoning: { optionId: "effort", level: "xhigh" },
+          },
         },
       });
       expect(again.body.agent.externalRefs).toEqual({
         threadId: t3.threads[0]!.threadId,
         projectId: t3.projects[0]!.id,
         threadUrl: expect.stringContaining("https://app.t3.codes/threads/"),
+        modelProviderId: "claudeAgent",
+        modelId: "claude-opus-5-5",
+        modelName: "Claude Opus 5.5",
+        reasoningLevel: "xhigh",
       });
+      expect(t3.threads[0]!.launch["modelSelection"]).toEqual({
+        instanceId: "claudeAgent",
+        model: "claude-opus-5-5",
+        options: [{ id: "effort", value: "xhigh" }],
+      });
+      // The same key as the first try: a thread that try had made would be found, not doubled.
+      expect(t3.threads[0]!.launch["clientRequestId"]).toBe(
+        `infrawrench-git:work:${started.body.page.id}`,
+      );
       expect(String(t3.threads[0]!.launch["message"])).toContain("Per key, 100 a minute.");
+    });
+
+    it("picks a model when nobody chose and the project has no default", async () => {
+      t3.requireModel = true;
+      const started = await start(alice, {
+        kind: "t3",
+        displayName: "T3 Code",
+        t3EnvironmentId: environmentId,
+      });
+      expect(started.status).toBe(200);
+      expect(t3.threads).toHaveLength(1);
+      expect(started.body.agent.externalRefs).toMatchObject({
+        threadId: t3.threads[0]!.threadId,
+        modelProviderId: "claudeAgent",
+        modelId: "claude-opus-5-5",
+        modelName: "Claude Opus 5.5",
+        reasoningLevel: "high",
+        modelPickedBy: "forge",
+      });
+      expect(started.body.agent.externalRefs.launchError).toBeUndefined();
+      const launches = t3.calls.filter((call) => call.tool === "t3_thread_launch");
+      expect(launches.map((call) => call.args["modelSelection"])).toEqual([
+        undefined,
+        {
+          instanceId: "claudeAgent",
+          model: "claude-opus-5-5",
+          options: [{ id: "effort", value: "high" }],
+        },
+      ]);
+      expect(new Set(launches.map((call) => call.args["clientRequestId"])).size).toBe(1);
+    });
+
+    it("lists an environment's models, with the default of the repository's project", async () => {
+      const name = repo.split("/").slice(-2).join("/");
+      const [owner, repository] = name.split("/");
+      const models = `/api/t3/environments/${environmentId}/models?owner=${owner}&repo=${repository}`;
+      const none = await world.call("GET", models, { as: alice });
+      expect(none.status).toBe(200);
+      expect(none.body.default).toBeNull();
+      // Only what can run a thread: the provider that is not signed in is left out.
+      expect(none.body.providers.map((each: { id: string }) => each.id)).toEqual([
+        "codex",
+        "claudeAgent",
+      ]);
+      expect(none.body.providers[1].models[0]).toEqual({
+        id: "claude-opus-5-5",
+        label: "Claude Opus 5.5",
+        reasoning: {
+          optionId: "effort",
+          levels: ["low", "medium", "high", "xhigh"],
+          default: "high",
+        },
+      });
+
+      t3.projects.push({
+        id: "p-default",
+        title: name,
+        workspaceRoot: "/w/it",
+        remoteUrl: `https://git.example.test/${name}.git`,
+        defaultModelSelection: {
+          instanceId: "codex",
+          model: "gpt-6-astra",
+          options: [{ id: "reasoningEffort", value: "low" }],
+        },
+      });
+      const preset = await world.call("GET", models, { as: alice });
+      expect(preset.body.default).toEqual({
+        providerId: "codex",
+        model: "gpt-6-astra",
+        reasoning: { optionId: "reasoningEffort", level: "low" },
+      });
+      // Somebody else's environment is not theirs to ask.
+      expect((await world.call("GET", models, { as: bob })).status).toBe(404);
     });
 
     it("names an existing thread without starting one", async () => {
@@ -574,6 +685,10 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
         body: { source: "text", body: "And document it." },
       });
       expect(waiting.body).toMatchObject({ status: "queued", deliveredVia: null });
+      // The branch's page says why it waits.
+      expect(
+        (await world.call("GET", `${pull}/branch-state`, { as: alice })).body.agent.externalRefs,
+      ).toMatchObject({ sendError: "The environment did not answer" });
       expect((await rowOf(environmentId)).lastError).toBe("The environment did not answer");
       // Still connected: asleep is not signed out.
       expect((await rowOf(environmentId)).status).toBe("connected");
@@ -593,6 +708,9 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
         ["delivered", "t3"],
       ]);
       expect((await rowOf(environmentId)).lastError).toBeNull();
+      const told = (await world.call("GET", `${pull}/branch-state`, { as: alice })).body.agent;
+      expect(told.externalRefs.sendError).toBeUndefined();
+      expect(told.externalRefs.threadId).toBe(thread.threadId);
     });
 
     it("forgets an environment and its sign-in, and its branches fall back to asking", async () => {

@@ -13,9 +13,12 @@
  *   Given a `threadId` it names that thread. Without one the forge starts a
  *   thread for the work (`t3/work.ts`): the environment's project for the
  *   repository is found or cloned first, before anything is made on the
- *   forge, and the thread is launched once the branch's page exists. A
- *   launch that fails leaves the link with `launchError`; setting the agent
- *   again tries again, and finds the same thread if it was made after all.
+ *   forge, and the thread is launched once the branch's page exists, with
+ *   the model the person chose (`t3Model`) or, with none, the project's
+ *   default or one picked here (`t3/work.ts` `launchThread`). The link says
+ *   which model the thread got. A launch that fails leaves the link with
+ *   `launchError`; setting the agent again tries again, and finds the same
+ *   thread if it was made after all.
  * - **`mcp`**: any agent that reaches the forge itself. Nothing to start.
  */
 import type { AgentLinkSet } from "@infrawrench/git-contract";
@@ -27,7 +30,7 @@ import { type AgentLinkRow, getAgentLink, setAgentLink } from "../db/review";
 import { appOrigin } from "../env";
 import { type EnvironmentRow, errorSentence, getEnvironment, t3Deps } from "../t3/environments";
 import { T3Error } from "../t3/http";
-import { T3_REFS, projectFor, startThread } from "../t3/work";
+import { FORGE_REFS, T3_REFS, projectFor, startThread } from "../t3/work";
 
 /** What was settled before the branch and its page were made. */
 export interface PreparedAgent {
@@ -108,9 +111,7 @@ export const connectAgent = async (
   const ready = prepared ?? (await prepareAgent(cx, agent));
   const refs: Record<string, string> = { ...(agent.externalRefs ?? {}) };
   // Never what a client sent: these are the forge's to say.
-  delete refs["launchError"];
-  delete refs["startUrl"];
-  delete refs["threadStatus"];
+  for (const key of FORGE_REFS) delete refs[key];
 
   if (agent.kind === "infrawrench") {
     const organizationId = cx.repo.owner.organizationId;
@@ -143,16 +144,26 @@ export const connectAgent = async (
           ask: found.thread.body ?? "",
           branch: found.pull.headRef,
           baseRef: found.pull.baseRef,
+          model: agent.t3Model,
         },
       );
       refs[T3_REFS.thread] = started.threadId;
       refs[T3_REFS.project] = started.projectId;
       if (started.link !== null) refs[T3_REFS.link] = started.link;
+      if (started.model !== null) {
+        refs[T3_REFS.modelProvider] = started.model.providerId;
+        refs[T3_REFS.model] = started.model.modelId;
+        refs[T3_REFS.modelName] = started.model.name;
+        if (started.model.reasoningLevel !== null) {
+          refs[T3_REFS.reasoning] = started.model.reasoningLevel;
+        }
+        if (started.model.picked) refs[T3_REFS.modelPickedBy] = "forge";
+      }
     } catch (error) {
       // The page stands. The link says why there is no thread, and
       // setting the agent again tries again.
       refs[T3_REFS.project] = ready.projectId;
-      refs["launchError"] = errorSentence(error);
+      refs[T3_REFS.launchError] = errorSentence(error);
     }
   }
 

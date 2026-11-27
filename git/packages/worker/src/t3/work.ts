@@ -7,9 +7,11 @@
  *   environment does not have yet. Both need the person to have approved
  *   this site for full access; T3 Code refuses otherwise, in a sentence
  *   that is passed on.
+ * - `orchestrator_capabilities`: the providers and models a thread can run,
+ *   for the model picker and for choosing one when nobody did (`models.ts`).
  * - `t3_thread_launch`: a thread on a new worktree for the branch, with the
- *   ask as its first message. `clientRequestId` makes a retry find the
- *   thread the first try made.
+ *   ask as its first message and the model as `modelSelection`.
+ *   `clientRequestId` makes a retry find the thread the first try made.
  * - `t3_thread_send` (`mode: "auto"`): an instruction, to a thread that is
  *   idle (it starts), running (it is steered) or busy (it is queued).
  * - `t3_thread_read`: what the thread is doing, kept for a few seconds.
@@ -29,22 +31,24 @@
  * ({@link markerSetup}): a token for its one branch's markers, in exchange
  * for the Git credential its machine already has (`api/agent-token.ts`).
  */
-import type { T3Thread } from "@infrawrench/git-contract";
+import type { T3ModelChoice, T3Models, T3Thread } from "@infrawrench/git-contract";
 import { branchPagePath, httpCloneUrl } from "@infrawrench/git-contract";
 import { pageKey } from "../db/branch-pages";
-import { getAgentLink } from "../db/review";
+import { getAgentLink, noteAgentLinkRef } from "../db/review";
 import { type Env } from "../env";
 import type { InstructionSender } from "../review/instructions";
 import {
   type EnvironmentRow,
   type T3Deps,
   accessToken,
+  errorSentence,
   getEnvironment,
   noteOutcome,
   t3Deps,
 } from "./environments";
 import { T3Error } from "./http";
 import { McpClient } from "./mcp";
+import { choiceName, choiceOf, pickModel, providersOf, selectionOf, wantsModel } from "./models";
 import { MCP_PATH } from "./oauth";
 
 type Json = Record<string, unknown>;
@@ -98,6 +102,8 @@ interface T3Project {
   readonly title: string;
   /** Every way the project names its remote, normalised (`host/owner/name`). */
   readonly remotes: readonly string[];
+  /** The model the project starts a thread with, when it sets one. */
+  readonly defaultModel: T3ModelChoice | null;
 }
 
 /** `host/path` of a Git remote, lower case, without scheme, credentials or `.git`. */
@@ -135,13 +141,21 @@ const projectOf = (value: Json): T3Project | null => {
     remoteKey(str(rec(identity["locator"])["remoteUrl"]) ?? ""),
     remoteKey(str(origin["remoteUrl"]) ?? ""),
   ].filter((each): each is string => each !== null);
-  return { id, title: str(value["title"]) ?? id, remotes };
+  return {
+    id,
+    title: str(value["title"]) ?? id,
+    remotes,
+    defaultModel: choiceOf(value["defaultModelSelection"]),
+  };
 };
 
 /** Pages of projects read before giving up on finding one. */
 const PROJECT_PAGES = 5;
 
-const listProjects = async (client: McpClient): Promise<T3Project[]> => {
+/** What of a client the work here uses: a tool, called. */
+export type ToolCaller = Pick<McpClient, "callTool">;
+
+const listProjects = async (client: ToolCaller): Promise<T3Project[]> => {
   const found: T3Project[] = [];
   let cursor: number | null = 0;
   for (let page = 0; page < PROJECT_PAGES && cursor !== null; page++) {
@@ -204,6 +218,72 @@ export interface WorkRepository {
   readonly name: string;
 }
 
+const repositoryKey = (repository: WorkRepository, siteOrigin: string): string =>
+  remoteKey(httpCloneUrl({ owner: repository.owner, repo: repository.name }, siteOrigin))!;
+
+/**
+ * The providers and models the environment can run a thread with, and the
+ * default of its project for `repository`. A default whose provider cannot
+ * run is no default; one the short list left out is added to it.
+ */
+export const modelsOf = async (
+  client: ToolCaller,
+  repository: WorkRepository | null,
+  siteOrigin: string,
+): Promise<T3Models> => {
+  const [capabilities, projects] = await Promise.all([
+    client.callTool("orchestrator_capabilities", {}),
+    // The models still list without the projects: the default is best effort.
+    repository === null ? [] : listProjects(client).catch(() => [] as T3Project[]),
+  ]);
+  const providers = providersOf(capabilities);
+  const key = repository === null ? null : repositoryKey(repository, siteOrigin);
+  const preset =
+    key === null
+      ? null
+      : (projects.find((project) => project.remotes.includes(key))?.defaultModel ?? null);
+  const provider = providers.find((each) => each.id === preset?.providerId);
+  if (preset === null || provider === undefined) return { providers, default: null };
+  const model = provider.models.find((each) => each.id === preset.model);
+  if (model === undefined) {
+    const added = { id: preset.model, label: preset.model, reasoning: null };
+    return {
+      providers: providers.map((each) =>
+        each === provider ? { ...each, models: [added, ...each.models] } : each,
+      ),
+      default: { providerId: preset.providerId, model: preset.model },
+    };
+  }
+  // A level the model does not list would be refused: the model's own default stands in.
+  const level = preset.reasoning;
+  const known =
+    level !== undefined &&
+    model.reasoning !== null &&
+    model.reasoning.optionId === level.optionId &&
+    model.reasoning.levels.includes(level.level);
+  if (known) return { providers, default: preset };
+  return {
+    providers,
+    default: {
+      providerId: preset.providerId,
+      model: preset.model,
+      ...(model.reasoning === null || model.reasoning.default === null
+        ? {}
+        : {
+            reasoning: { optionId: model.reasoning.optionId, level: model.reasoning.default },
+          }),
+    },
+  };
+};
+
+/** {@link modelsOf}, asked of an environment. */
+export const listModels = (
+  deps: T3Deps,
+  row: EnvironmentRow,
+  repository: WorkRepository | null,
+): Promise<T3Models> =>
+  withEnvironment(deps, row, (client) => modelsOf(client, repository, deps.siteOrigin));
+
 /**
  * The environment's project for a forge repository: the one whose remote is
  * the repository's clone address, or a new clone registered as a project.
@@ -221,7 +301,7 @@ export const projectFor = (
       { owner: repository.owner, repo: repository.name },
       deps.siteOrigin,
     );
-    const key = remoteKey(cloneUrl)!;
+    const key = repositoryKey(repository, deps.siteOrigin);
     const known = (await listProjects(client)).find((project) => project.remotes.includes(key));
     if (known) return { projectId: known.id };
 
@@ -257,6 +337,8 @@ export interface WorkToStart {
   readonly ask: string;
   readonly branch: string;
   readonly baseRef: string;
+  /** The model the person chose. Without one the project's default runs, or one picked here. */
+  readonly model?: T3ModelChoice | undefined;
 }
 
 /** The longest ask sent whole. T3 Code takes 120,000 characters of first message. */
@@ -400,11 +482,24 @@ export const workPrompt = (work: WorkToStart, siteOrigin: string): string => {
   ].join("\n\n");
 };
 
+/** The model a thread runs, in the words a page shows. */
+export interface StartedModel {
+  readonly providerId: string;
+  readonly modelId: string;
+  /** "Claude, Opus 5.5": the environment's names where it gave them. */
+  readonly name: string;
+  readonly reasoningLevel: string | null;
+  /** Picked here, because nobody chose and the project had no default. */
+  readonly picked: boolean;
+}
+
 export interface StartedThread {
   readonly threadId: string;
   readonly projectId: string;
   /** Where a person opens the thread. */
   readonly link: string | null;
+  /** Null when the environment did not say and none was sent. */
+  readonly model: StartedModel | null;
 }
 
 /**
@@ -412,50 +507,128 @@ export interface StartedThread {
  * starts from the base branch as the remote has it and is named for the
  * work's branch, which the forge made at that same commit, so the thread's
  * first push moves it forward.
+ *
+ * The model is the one chosen. With none, the launch is tried without, which
+ * runs the project's default; refused for want of one, a model is picked
+ * (`pickModel`) and the launch sent again. Every try carries the same
+ * `clientRequestId`, so whichever of them made a thread, a later one finds it.
  */
+export const launchThread = async (
+  client: ToolCaller,
+  projectId: string,
+  work: WorkToStart,
+  siteOrigin: string,
+): Promise<StartedThread> => {
+  const launch = (model: T3ModelChoice | null): Promise<unknown> =>
+    client.callTool(
+      "t3_thread_launch",
+      {
+        projectId,
+        title: work.title.slice(0, 200),
+        message: workPrompt(work, siteOrigin),
+        workspaceStrategy: {
+          type: "worktree",
+          baseRef: `origin/${work.baseRef}`,
+          branch: work.branch,
+          startFromOrigin: true,
+        },
+        ...(model === null ? {} : { modelSelection: selectionOf(model) }),
+        // One thread per pull request, however often this is retried.
+        clientRequestId: `infrawrench-git:work:${work.pullRequestId}`,
+      },
+      { timeoutMs: SLOW_TOOL_MS },
+    );
+  const capabilitiesOrNull = (): Promise<unknown> =>
+    client.callTool("orchestrator_capabilities", {}).catch(() => null);
+
+  let capabilities: unknown;
+  let sent = work.model ?? null;
+  let picked = false;
+  let answer: unknown;
+  try {
+    answer = await launch(sent);
+  } catch (error) {
+    if (sent !== null || !(error instanceof T3Error) || !wantsModel(error.message)) throw error;
+    capabilities = await capabilitiesOrNull();
+    sent = pickModel(capabilities);
+    // Nothing to pick from: T3 Code's own sentence says what is missing.
+    if (sent === null) throw error;
+    picked = true;
+    answer = await launch(sent);
+  }
+  const launched = rec(answer);
+  const threadId = str(launched["threadId"]);
+  if (threadId === null) throw new T3Error("bad_answer", "T3 Code did not name the thread");
+  const link = str(launched["link"]);
+
+  // What the thread runs is what the environment says it got: a retry that
+  // found the first try's thread has that thread's model, whatever was sent now.
+  const runs = choiceOf(launched["modelSelection"]) ?? sent;
+  let model: StartedModel | null = null;
+  if (runs !== null) {
+    // The names are best effort: the thread is started either way.
+    capabilities ??= await capabilitiesOrNull();
+    model = {
+      providerId: runs.providerId,
+      modelId: runs.model,
+      name: choiceName(runs, providersOf(capabilities)),
+      reasoningLevel: runs.reasoning?.level ?? null,
+      picked:
+        picked && sent !== null && runs.providerId === sent.providerId && runs.model === sent.model,
+    };
+  }
+  return {
+    threadId,
+    projectId: str(launched["projectId"]) ?? projectId,
+    // Only an https address is kept as a link: it is shown as one.
+    link: link !== null && /^https:\/\//i.test(link) ? link : null,
+    model,
+  };
+};
+
+/** {@link launchThread}, in an environment. */
 export const startThread = (
   deps: T3Deps,
   row: EnvironmentRow,
   projectId: string,
   work: WorkToStart,
 ): Promise<StartedThread> =>
-  withEnvironment(deps, row, async (client) => {
-    const launched = rec(
-      await client.callTool(
-        "t3_thread_launch",
-        {
-          projectId,
-          title: work.title.slice(0, 200),
-          message: workPrompt(work, deps.siteOrigin),
-          workspaceStrategy: {
-            type: "worktree",
-            baseRef: `origin/${work.baseRef}`,
-            branch: work.branch,
-            startFromOrigin: true,
-          },
-          // One thread per pull request, however often this is retried.
-          clientRequestId: `infrawrench-git:work:${work.pullRequestId}`,
-        },
-        { timeoutMs: SLOW_TOOL_MS },
-      ),
-    );
-    const threadId = str(launched["threadId"]);
-    if (threadId === null) throw new T3Error("bad_answer", "T3 Code did not name the thread");
-    const link = str(launched["link"]);
-    return {
-      threadId,
-      projectId: str(launched["projectId"]) ?? projectId,
-      // Only an https address is kept as a link: it is shown as one.
-      link: link !== null && /^https:\/\//i.test(link) ? link : null,
-    };
-  });
+  withEnvironment(deps, row, (client) => launchThread(client, projectId, work, deps.siteOrigin));
 
 // ---------------------------------------------------------------------------
 // Instructions and state
 // ---------------------------------------------------------------------------
 
 /** What `git_agent_links.external_refs` holds for a T3 Code thread. */
-export const T3_REFS = { thread: "threadId", project: "projectId", link: "threadUrl" } as const;
+export const T3_REFS = {
+  thread: "threadId",
+  project: "projectId",
+  link: "threadUrl",
+  /** Why there is no thread: T3 Code's sentence, or one written here. */
+  launchError: "launchError",
+  /** The model the thread was started with: its provider, its id, both in words, its reasoning level. */
+  modelProvider: "modelProviderId",
+  model: "modelId",
+  modelName: "modelName",
+  reasoning: "reasoningLevel",
+  /** `forge` when the model was picked here rather than chosen or the project's default. */
+  modelPickedBy: "modelPickedBy",
+  /** Why the last instruction did not reach the thread. Gone once one does. */
+  sendError: "sendError",
+} as const;
+
+/** The refs only the forge writes: never taken from what a client sends. */
+export const FORGE_REFS: readonly string[] = [
+  T3_REFS.launchError,
+  T3_REFS.modelProvider,
+  T3_REFS.model,
+  T3_REFS.modelName,
+  T3_REFS.reasoning,
+  T3_REFS.modelPickedBy,
+  T3_REFS.sendError,
+  "startUrl",
+  "threadStatus",
+];
 
 const environmentOfLink = async (link: {
   readonly t3EnvironmentId: string | null;
@@ -499,10 +672,37 @@ export const instructionMessage = (
   ].join("\n\n");
 };
 
-/** Tell a T3 Code thread an instruction (`review/instructions.ts` `InstructionSender`). */
+/**
+ * Tell a T3 Code thread an instruction (`review/instructions.ts`
+ * `InstructionSender`). One that does not get there stays queued and is sent
+ * again; why is left on the link (`sendError`) for the branch's page to say,
+ * and taken away by the next that arrives.
+ */
 export const sendInstructionToThread: InstructionSender = async (env, target, instruction) => {
   const threadId = target.link.externalRefs[T3_REFS.thread];
+  // A thread that never started says so itself (`launchError`).
   if (!threadId) throw new T3Error("unsupported", "The branch's agent has no T3 Code thread yet");
+  const noted = target.link.externalRefs[T3_REFS.sendError];
+  try {
+    await sendToThread(env, target, instruction, threadId);
+  } catch (error) {
+    const sentence = errorSentence(error);
+    if (noted !== sentence) {
+      await noteAgentLinkRef(target.link.pullRequestId, T3_REFS.sendError, sentence);
+    }
+    throw error;
+  }
+  if (noted !== undefined) {
+    await noteAgentLinkRef(target.link.pullRequestId, T3_REFS.sendError, null);
+  }
+};
+
+const sendToThread = async (
+  env: Parameters<InstructionSender>[0],
+  target: Parameters<InstructionSender>[1],
+  instruction: Parameters<InstructionSender>[2],
+  threadId: string,
+): Promise<void> => {
   const deps = t3Deps(env);
   const row = await environmentOfLink(target.link);
   const { owner, repository } = target.repo;

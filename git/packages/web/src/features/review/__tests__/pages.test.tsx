@@ -469,6 +469,18 @@ describe("proposing a fork's branch", () => {
   });
 });
 
+/** The Model field once the environment's models are in, showing `selected`. */
+async function modelField(
+  scope: Pick<typeof screen, "getByLabelText">,
+  selected: string,
+): Promise<HTMLSelectElement> {
+  return waitFor(() => {
+    const field = scope.getByLabelText("Model") as HTMLSelectElement;
+    expect(field.selectedOptions[0]?.textContent).toBe(selected);
+    return field;
+  }, wait);
+}
+
 describe("start work", () => {
   it("names the branch from the ask, offers the agents, and goes to the new branch's page", async () => {
     serve();
@@ -503,6 +515,35 @@ describe("start work", () => {
     fireEvent.change(ask, { target: { value: "Tag every subnet with its tier" } });
     const branch = screen.getByLabelText("Branch") as HTMLInputElement;
     expect(branch.value).toBe("work/tag-every-subnet-with-its-tier");
+    // The model is asked for, by name, starting at the project's default and its reasoning level.
+    const model = await modelField(screen, "Claude Opus 5.5");
+    expect(
+      [...model.querySelectorAll("optgroup")].map((group) => [
+        group.label,
+        [...group.querySelectorAll("option")].map((option) => option.textContent),
+      ]),
+    ).toEqual([
+      ["Codex", ["GPT-6 Astra"]],
+      ["Claude", ["Claude Opus 5.5", "Claude Haiku 5.5"]],
+    ]);
+    const reasoning = screen.getByLabelText("Reasoning") as HTMLSelectElement;
+    expect(reasoning.value).toBe("high");
+    expect([...reasoning.options].map((option) => option.textContent)).toEqual([
+      "Low",
+      "Medium",
+      "High",
+      "Extra high",
+    ]);
+    // A model with no levels has no Reasoning field.
+    fireEvent.change(model, { target: { value: "claudeAgent\nclaude-haiku-5-5" } });
+    expect(screen.queryByLabelText("Reasoning")).toBeNull();
+    fireEvent.change(model, { target: { value: "claudeAgent\nclaude-opus-5-5" } });
+    fireEvent.change(screen.getByLabelText("Reasoning"), { target: { value: "xhigh" } });
+    // A thread that already runs has its model: nothing to choose.
+    fireEvent.change(screen.getByLabelText("Thread"), { target: { value: "t3thread_peering" } });
+    expect(screen.queryByLabelText("Model")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Thread"), { target: { value: "" } });
+    expect((screen.getByLabelText("Reasoning") as HTMLSelectElement).value).toBe("xhigh");
     fireEvent.click(screen.getByRole("button", { name: "Start work" }));
     await waitFor(
       () => expect(pathOf(router)).toBe("/acme/infra/branches/work/tag-every-subnet-with-its-tier"),
@@ -519,6 +560,99 @@ describe("start work", () => {
       headRef: "work/tag-every-subnet-with-its-tier",
       body: "Tag every subnet with its tier",
     });
+    // The thread was started with what was chosen, and the page says which model it runs.
+    const { agent } = await api.agents.get({
+      params: { owner: "acme", repo: "infra", branch: "work/tag-every-subnet-with-its-tier" },
+    });
+    expect(agent?.externalRefs).toMatchObject({
+      modelProviderId: "claudeAgent",
+      modelId: "claude-opus-5-5",
+      reasoningLevel: "xhigh",
+    });
+    expect(agent?.externalRefs["modelPickedBy"]).toBeUndefined();
+    expect(await screen.findByText("Claude Opus 5.5, extra high reasoning", {}, wait)).toBeTruthy();
+  });
+
+  it("waits for a model when the project has none, shows a launch that failed, and tries again", async () => {
+    serve();
+    const router = open("/acme/infra/start");
+    const ask = await screen.findByPlaceholderText("What should change", {}, wait);
+    fireEvent.change(ask, { target: { value: "Rotate the bastion keys" } });
+    fireEvent.change(await screen.findByLabelText("Environment", {}, wait), {
+      target: { value: "t3env_mini" },
+    });
+    // This environment's project has no default model: nothing is chosen, and Start waits.
+    const model = await modelField(screen, "Choose a model");
+    const start = screen.getByRole("button", { name: "Start work" }) as HTMLButtonElement;
+    expect(start.disabled).toBe(true);
+    expect(screen.queryByLabelText("Reasoning")).toBeNull();
+    fireEvent.change(model, { target: { value: "codex\ngpt-6-astra" } });
+    // The model's own level to begin with.
+    expect((screen.getByLabelText("Reasoning") as HTMLSelectElement).value).toBe("medium");
+    expect(start.disabled).toBe(false);
+    fireEvent.click(start);
+    await waitFor(
+      () => expect(pathOf(router)).toBe("/acme/infra/branches/work/rotate-the-bastion-keys"),
+      wait,
+    );
+
+    // The environment refused the launch: the panel says so in its words, and is not "Idle".
+    const failed = await screen.findByText("The thread did not start", {}, wait);
+    const panel = failed.closest("section") as HTMLElement;
+    expect(
+      within(panel).getByText(
+        "The branch is already checked out in another worktree. No thread was created.",
+      ),
+    ).toBeTruthy();
+    expect(within(panel).queryByText("Idle")).toBeNull();
+    expect(within(panel).queryByText(/Working/)).toBeNull();
+
+    // Try again asks for the model too, and the same ask starts the thread.
+    const again = await modelField(within(panel), "Choose a model");
+    const retry = within(panel).getByRole("button", { name: "Try again" }) as HTMLButtonElement;
+    expect(retry.disabled).toBe(true);
+    fireEvent.change(again, { target: { value: "codex\ngpt-6-astra" } });
+    fireEvent.change(within(panel).getByLabelText("Reasoning"), { target: { value: "high" } });
+    fireEvent.click(retry);
+    expect(await within(panel).findByText("Idle", {}, wait)).toBeTruthy();
+    expect(within(panel).getByText("Codex, GPT-6 Astra, high reasoning")).toBeTruthy();
+    expect(within(panel).queryByText("The thread did not start")).toBeNull();
+    expect(within(panel).queryByRole("button", { name: "Try again" })).toBeNull();
+    const { agent } = await api.agents.get({
+      params: { owner: "acme", repo: "infra", branch: "work/rotate-the-bastion-keys" },
+    });
+    expect(agent?.externalRefs["launchError"]).toBeUndefined();
+    expect(agent?.externalRefs["threadId"]).toBeTruthy();
+  });
+
+  it("says when the forge picked the model, and when an instruction did not arrive", async () => {
+    // The branch the test before this one made.
+    serve();
+    const params = { owner: "acme", repo: "infra", branch: "work/rotate-the-bastion-keys" };
+    // An old branch tried again with nothing chosen: the forge picks, and the page says so.
+    await api.agents.set({
+      params,
+      payload: { kind: "t3", displayName: "T3 Code on Mac mini", t3EnvironmentId: "t3env_mini" },
+    });
+    // The environment was away when a reviewer's instruction was sent.
+    setTransport(async (call: ApiCall) => {
+      const answer = (await mock(call)) as { agent?: { externalRefs: Record<string, string> } };
+      if (call.group === "versions" && call.endpoint === "branchState" && answer.agent) {
+        answer.agent.externalRefs["sendError"] = "The environment did not answer";
+      }
+      return answer;
+    });
+    open("/acme/infra/branches/work/rotate-the-bastion-keys");
+    expect(
+      await screen.findByText(
+        "The last instruction did not reach the thread and will be sent again: The environment did not answer",
+        {},
+        wait,
+      ),
+    ).toBeTruthy();
+    expect(
+      await screen.findByText("Claude Opus 5.5, high reasoning (picked automatically)", {}, wait),
+    ).toBeTruthy();
   });
 });
 

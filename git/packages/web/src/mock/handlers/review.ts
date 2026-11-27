@@ -10,6 +10,7 @@
 import type {
   AgentIdentity,
   AgentLink,
+  AgentLinkSet,
   BranchPageState,
   BranchVersion,
   Instruction,
@@ -37,6 +38,7 @@ import {
   visibleRepositories,
   type RepositoryRecord,
 } from "../db";
+import { launchT3Thread, t3Environments } from "../t3-data";
 import { ancestors, diffCommits, flatten, mergeBase, statsOf, summarize, summaryOf } from "../git";
 import { fakeOid, writeCommit } from "../git-write";
 import {
@@ -46,7 +48,6 @@ import {
   reviewOf,
   reviewSettingsOf,
   syncVersions,
-  t3Environments,
   tallyOf,
   type ReviewState,
   type StoredFinding,
@@ -438,6 +439,30 @@ const slug = (text: string): string =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 48)
     .replace(/-+$/, "");
+
+/** The refs only the forge writes: what a client sends of them is dropped. */
+const FORGE_REFS = [
+  "launchError",
+  "modelProviderId",
+  "modelId",
+  "modelName",
+  "reasoningLevel",
+  "modelPickedBy",
+  "sendError",
+  "startUrl",
+  "threadStatus",
+];
+
+/** A link's refs as the forge keeps them: a T3 Code thread is started when none is named. */
+function agentRefsOf(repo: { owner: { slug: string }; name: string }, agent: AgentLinkSet) {
+  const refs: Record<string, string> = { ...(agent.externalRefs ?? {}) };
+  for (const key of FORGE_REFS) delete refs[key];
+  if (agent.kind !== "t3" || !agent.t3EnvironmentId || refs["threadId"] !== undefined) return refs;
+  return {
+    ...refs,
+    ...launchT3Thread(agent.t3EnvironmentId, `${repo.owner.slug}/${repo.name}`, agent.t3Model),
+  };
+}
 
 function environmentAt(id: string) {
   const found = t3Environments.find((item) => item.id === id);
@@ -880,7 +905,7 @@ export default defineMockHandlers({
       state.agent = {
         kind: payload.kind,
         displayName: payload.displayName,
-        externalRefs: { ...(payload.externalRefs ?? {}) },
+        externalRefs: agentRefsOf(repo, payload),
         t3EnvironmentId: payload.t3EnvironmentId ?? null,
         connectedBy: user,
         createdAt: state.agent?.createdAt ?? at,
@@ -948,26 +973,29 @@ export default defineMockHandlers({
         state.agent = {
           kind: payload.agent.kind,
           displayName: payload.agent.displayName,
-          externalRefs: { ...(payload.agent.externalRefs ?? {}) },
+          externalRefs: agentRefsOf(repo, payload.agent),
           t3EnvironmentId: payload.agent.t3EnvironmentId ?? null,
           connectedBy: user,
           createdAt: at,
           updatedAt: at,
         };
-        state.traces.push({
-          id: newId("trace"),
-          kind: "ask",
-          body: ask,
-          anchors: [],
-          needsCode: false,
-          evidence: null,
-          author: user,
-          agent: identityOf(state.agent),
-          branch,
-          version: null,
-          createdAt: at,
-        });
-        state.work.push({ instructionId: null, since: Date.now(), note: ask, started: false });
+        // A thread that did not start records nothing and works on nothing.
+        if (state.agent.externalRefs["launchError"] === undefined) {
+          state.traces.push({
+            id: newId("trace"),
+            kind: "ask",
+            body: ask,
+            anchors: [],
+            needsCode: false,
+            evidence: null,
+            author: user,
+            agent: identityOf(state.agent),
+            branch,
+            version: null,
+            createdAt: at,
+          });
+          state.work.push({ instructionId: null, since: Date.now(), note: ask, started: false });
+        }
       }
       return { page: toBranchPage(repo, thread), branch, agent: state.agent };
     },

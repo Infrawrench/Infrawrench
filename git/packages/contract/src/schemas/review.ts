@@ -123,6 +123,25 @@ export const AgentLink = Schema.Struct({
 }).annotate({ identifier: "AgentLink" });
 export type AgentLink = typeof AgentLink.Type;
 
+const T3Id = Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200));
+
+/**
+ * The model a T3 Code thread is started with, as `t3.listModels` names it:
+ * a provider of the environment's, one of its models and, where the model
+ * has reasoning levels, one of those.
+ */
+export const T3ModelChoice = Schema.Struct({
+  providerId: T3Id,
+  model: T3Id,
+  reasoning: Schema.optionalKey(
+    Schema.Struct({
+      optionId: T3Id.annotate({ description: "The model's `reasoning.optionId`." }),
+      level: T3Id,
+    }),
+  ),
+}).annotate({ identifier: "T3ModelChoice" });
+export type T3ModelChoice = typeof T3ModelChoice.Type;
+
 export const AgentLinkSet = Schema.Struct({
   kind: AgentKind,
   displayName: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(200)),
@@ -131,6 +150,12 @@ export const AgentLinkSet = Schema.Struct({
     Schema.NullOr(
       Schema.String.annotate({ description: "One of the caller's own T3 Code environments." }),
     ),
+  ),
+  t3Model: Schema.optionalKey(
+    T3ModelChoice.annotate({
+      description:
+        "For a T3 Code thread the forge starts: the model it runs. Without one the project's default is used, or a model the forge picks when the project has none.",
+    }),
   ),
 }).annotate({ identifier: "AgentLinkSet" });
 export type AgentLinkSet = typeof AgentLinkSet.Type;
@@ -751,3 +776,34 @@ export const T3Thread = Schema.Struct({
   updatedAt: Schema.NullOr(IsoDateTime),
 }).annotate({ identifier: "T3Thread" });
 export type T3Thread = typeof T3Thread.Type;
+
+/** A model of a T3 Code environment, for picking the one a thread runs. */
+export const T3Model = Schema.Struct({
+  id: Schema.String,
+  label: Schema.String,
+  reasoning: Schema.NullOr(
+    Schema.Struct({
+      optionId: Schema.String,
+      levels: Schema.Array(Schema.String),
+      default: Schema.NullOr(Schema.String),
+    }),
+  ).annotate({ description: "The model's reasoning levels, or null when it has none." }),
+}).annotate({ identifier: "T3Model" });
+export type T3Model = typeof T3Model.Type;
+
+export const T3ModelProvider = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  models: Schema.Array(T3Model),
+}).annotate({ identifier: "T3ModelProvider" });
+export type T3ModelProvider = typeof T3ModelProvider.Type;
+
+/** What an environment can run, and what the repository's project there runs by default. */
+export const T3Models = Schema.Struct({
+  providers: Schema.Array(T3ModelProvider),
+  default: Schema.NullOr(T3ModelChoice).annotate({
+    description:
+      "The default model of the environment's project for the repository asked about. Null when it has none, or has no such project yet.",
+  }),
+}).annotate({ identifier: "T3Models" });
+export type T3Models = typeof T3Models.Type;

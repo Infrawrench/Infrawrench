@@ -53,6 +53,7 @@ import {
   T3Environment,
   T3EnvironmentCreate,
   T3EnvironmentUpdate,
+  T3Models,
   T3Thread,
   TraceEntry,
   TraceRecord,
@@ -521,6 +522,23 @@ export class T3Group extends HttpApiGroup.make("t3")
       .annotate(RequiresUser, true)
       .annotate(OpenApi.Summary, "An environment's threads, for picking one")
       .annotate(SuccessDescription, "Threads, the most recent first"),
+    HttpApiEndpoint.get("listModels", "/environments/:environmentId/models", {
+      params: EnvironmentParams,
+      query: {
+        owner: Schema.optionalKey(Schema.String),
+        repo: Schema.optionalKey(
+          Schema.String.annotate({
+            description:
+              "With `owner`: the repository whose project's default model is answered as `default`.",
+          }),
+        ),
+      },
+      success: T3Models,
+      error: UnprocessableEntity,
+    })
+      .annotate(RequiresUser, true)
+      .annotate(OpenApi.Summary, "An environment's providers and models, for picking one")
+      .annotate(SuccessDescription, "Providers that can run a thread, each with its models"),
   )
   .prefix("/api/t3")
   .middleware(Authentication)

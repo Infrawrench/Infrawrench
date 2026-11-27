@@ -13,7 +13,11 @@
  *   back to `AUTH_PATHS.t3Callback` (`t3/callback.ts`).
  * - **Tokens are sealed** (`t3/environments.ts`) and never part of an answer.
  * - **`listThreads`** asks the environment itself, for the picker that names
- *   the thread behind a branch.
+ *   the thread behind a branch, and **`listModels`** for the one that names
+ *   the model a new thread runs. Given a repository, `listModels` also says
+ *   the default of the environment's project for it; the name is only
+ *   compared with the projects' remotes, so naming a repository the caller
+ *   cannot read answers nothing about it.
  *
  * The group is session only (`middleware.ts` `SESSION_ONLY`), like the rest
  * of a person's credentials, and every row is read through its owner's id:
@@ -47,7 +51,7 @@ import {
 } from "../../t3/environments";
 import { connectOrigin } from "../../t3/connect";
 import { T3Error, environmentOrigin } from "../../t3/http";
-import { listThreads } from "../../t3/work";
+import { listModels, listThreads } from "../../t3/work";
 import { iso, isoOrNull } from "../views/repositories";
 
 const view = (row: EnvironmentRow): T3Environment => ({
@@ -152,6 +156,23 @@ export const T3Handlers = HttpApiBuilder.group(GitApi, "t3", (handlers) =>
         const row = await environmentOr404(cx, params.environmentId);
         try {
           return { threads: await listThreads(t3Deps(cx.env, cx.request), row, query.q) };
+        } catch (error) {
+          return refuseT3(error);
+        }
+      }),
+    )
+    .handle(
+      "listModels",
+      op(async (cx, { params, query }) => {
+        const row = await environmentOr404(cx, params.environmentId);
+        const owner = query.owner?.trim() ?? "";
+        const name = query.repo?.trim() ?? "";
+        try {
+          return await listModels(
+            t3Deps(cx.env, cx.request),
+            row,
+            owner === "" || name === "" ? null : { owner, name },
+          );
         } catch (error) {
           return refuseT3(error);
         }

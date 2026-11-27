@@ -1,6 +1,12 @@
 /**
  * The agent that writes a branch: who it is, what it is doing, and where its
  * session or thread can be opened. Without one, how any agent connects.
+ *
+ * A T3 Code thread the forge could not start is shown as that, in T3 Code's
+ * own sentence (`externalRefs.launchError`), with Try again for the person
+ * whose environment it is: the same ask, with a model chosen. "Idle" is only
+ * ever a thread that exists. An instruction that did not reach the thread
+ * (`sendError`) is said too; it stays queued and is sent again.
  */
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -11,6 +17,7 @@ import {
   type T3Environment,
 } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
+import { Button } from "../../components/Button";
 import { invalidate, queries } from "../../api/queries";
 import { AppLink } from "../../components/AppLink";
 import { CopyButton } from "../../components/controls";
@@ -22,6 +29,7 @@ import { plural } from "../../lib/format";
 import { webUrl } from "../../lib/safe-url";
 import { useSession } from "../../lib/session";
 import { optional } from "./optional";
+import { levelLabel, useT3ModelFields } from "./T3Model";
 
 export const AGENT_KIND_LABEL: Record<AgentKind, string> = {
   infrawrench: "Infrawrench",
@@ -114,7 +122,8 @@ export function sessionLink(
   environments: ReadonlyArray<T3Environment>,
   appUrl: string | null,
 ): { href: string; label: string } | null {
-  const given = agent.externalRefs["url"];
+  // `threadUrl` is what the forge keeps for a thread it started.
+  const given = agent.externalRefs["url"] ?? agent.externalRefs["threadUrl"];
   if (given !== undefined && webUrl(given) !== null) {
     return { href: given, label: agent.kind === "t3" ? "Open thread" : "Open session" };
   }
@@ -153,7 +162,39 @@ export function AgentPanel({
       void invalidate("versions", "branchState");
     },
   });
+  const retry = useMutation({
+    mutationFn: (model: Parameters<typeof api.agents.set>[0]["payload"]["t3Model"]) =>
+      api.agents.set({
+        params: { ...repo, branch: branchKey },
+        payload: {
+          kind: "t3",
+          displayName: agent?.displayName ?? "T3 Code",
+          t3EnvironmentId: agent?.t3EnvironmentId ?? null,
+          ...(model === undefined ? {} : { t3Model: model }),
+        },
+      }),
+    onSuccess: () => {
+      void invalidate("agents");
+      void invalidate("versions", "branchState");
+    },
+  });
   const working = state.state === "agent_working";
+  const refs = agent?.externalRefs ?? {};
+  const isT3 = agent?.kind === "t3";
+  const hasThread = !isT3 || refs["threadId"] !== undefined;
+  const launchError = isT3 && !hasThread ? (refs["launchError"] ?? null) : null;
+  // Only the person whose environment it is can ask it again.
+  const ownEnvironment =
+    (environments.data?.environments ?? []).find(
+      (item) => item.id === agent?.t3EnvironmentId && item.status === "connected",
+    ) ?? null;
+  const canRetry = canEdit && isT3 && !hasThread && ownEnvironment !== null;
+  const model = useT3ModelFields({
+    environmentId: ownEnvironment?.id ?? null,
+    repo,
+    enabled: canRetry,
+  });
+  const modelName = refs["modelName"] ?? refs["modelId"] ?? null;
   const link =
     agent === null
       ? null
@@ -186,21 +227,63 @@ export function AgentPanel({
             </span>
             <span className="shrink-0 text-on-surface-muted">{AGENT_KIND_LABEL[agent.kind]}</span>
           </p>
-          <p role="status" className="flex items-center gap-1.5 text-on-surface-secondary">
-            {working ? (
-              <>
-                <Spinner size={12} className="text-notice" />
-                {state.workingOnVersion === null
-                  ? "Working"
-                  : `Working on v${state.workingOnVersion}`}
-              </>
-            ) : (
-              <>
-                <Icon name="circleDot" size={12} className="text-on-surface-muted" />
-                Idle
-              </>
-            )}
-          </p>
+          {!hasThread ? (
+            <div className="space-y-1.5">
+              <p role="status" className="flex items-center gap-1.5 font-medium text-danger">
+                <Icon name="alertCircle" size={12} />
+                {launchError !== null ? "The thread did not start" : "No thread started"}
+              </p>
+              {launchError !== null ? (
+                <p className="break-words text-on-surface-secondary">{launchError}</p>
+              ) : null}
+              {canRetry ? (
+                <form
+                  className="space-y-1.5"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    if (model.ready) retry.mutate(model.choice);
+                  }}
+                >
+                  {model.fields}
+                  <Button type="submit" size="sm" busy={retry.isPending} disabled={!model.ready}>
+                    Try again
+                  </Button>
+                  <InlineError error={retry.error} />
+                </form>
+              ) : null}
+            </div>
+          ) : (
+            <p role="status" className="flex items-center gap-1.5 text-on-surface-secondary">
+              {working ? (
+                <>
+                  <Spinner size={12} className="text-notice" />
+                  {state.workingOnVersion === null
+                    ? "Working"
+                    : `Working on v${state.workingOnVersion}`}
+                </>
+              ) : (
+                <>
+                  <Icon name="circleDot" size={12} className="text-on-surface-muted" />
+                  Idle
+                </>
+              )}
+            </p>
+          )}
+          {hasThread && isT3 && modelName !== null ? (
+            <p className="text-on-surface-muted">
+              {modelName}
+              {refs["reasoningLevel"] !== undefined
+                ? `, ${levelLabel(refs["reasoningLevel"]).toLowerCase()} reasoning`
+                : ""}
+              {refs["modelPickedBy"] === "forge" ? " (picked automatically)" : ""}
+            </p>
+          ) : null}
+          {hasThread && isT3 && refs["sendError"] !== undefined ? (
+            <p className="break-words text-danger">
+              The last instruction did not reach the thread and will be sent again:{" "}
+              {refs["sendError"]}
+            </p>
+          ) : null}
           {state.pendingTraceEntries > 0 ? (
             <p className="text-on-surface-muted">
               {plural(state.pendingTraceEntries, "trace entry", "trace entries")} not pushed yet

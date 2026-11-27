@@ -22,8 +22,6 @@ import type {
   ReviewFinding,
   ReviewRun,
   ReviewSettings,
-  T3Environment,
-  T3Thread,
   TraceEntry,
   UserRef,
 } from "@infrawrench/git-contract";
@@ -929,56 +927,3 @@ export function findingsGate(
     blocks: reviewSettingsOf(repo).mustFixBlocksMerge,
   };
 }
-
-export const t3Environments: Array<Mutable<T3Environment>> = [
-  {
-    id: "t3env_workstation",
-    label: "Workstation",
-    baseUrl: "https://t3.mara.example",
-    status: "connected",
-    scopes: ["threads:read", "threads:write"],
-    tokenExpiresAt: hoursAgo(-24 * 20),
-    lastError: null,
-    lastUsedAt: hoursAgo(3),
-    createdAt: hoursAgo(24 * 12),
-    updatedAt: hoursAgo(3),
-  },
-  {
-    id: "t3env_cloud",
-    label: "Cloud box",
-    baseUrl: "https://t3.acme.example",
-    status: "pending",
-    scopes: [],
-    tokenExpiresAt: null,
-    lastError: null,
-    lastUsedAt: null,
-    createdAt: hoursAgo(2),
-    updatedAt: hoursAgo(2),
-  },
-];
-
-export const t3Threads: Record<string, T3Thread[]> = {
-  t3env_workstation: [
-    {
-      id: "thr_backups",
-      title: "Aurora backup retention",
-      projectId: "prj_infra",
-      projectName: "infra",
-      updatedAt: hoursAgo(0.2),
-    },
-    {
-      id: "thr_nat",
-      title: "NAT cost breakdown",
-      projectId: "prj_infra",
-      projectName: "infra",
-      updatedAt: hoursAgo(30),
-    },
-    {
-      id: "thr_router",
-      title: "Edge router health checks",
-      projectId: "prj_router",
-      projectName: "edge-router",
-      updatedAt: hoursAgo(76),
-    },
-  ],
-};
