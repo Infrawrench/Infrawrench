@@ -1017,7 +1017,7 @@ export interface components {
                 service_name?: string;
                 service_plan?: string;
                 /** @enum {string} */
-                service_type?: "alert_triage" | "alertmanager" | "application" | "clickhouse" | "datahub" | "elasticsearch" | "flink" | "grafana" | "kafka" | "kafka_connect" | "kafka_mirrormaker" | "mysql" | "nomadclient" | "opensearch" | "pg" | "sandbox" | "sandbox_api" | "sparkpool" | "stresstester" | "sw" | "thanos" | "thanoscompactor" | "thanosparquet" | "thanosquery" | "thanosreceiver" | "thanosruler" | "thanosstore" | "valkey" | "vector" | "vmalert";
+                service_type?: "alert_triage" | "alertmanager" | "application" | "clickhouse" | "context_catalog" | "copepod" | "datahub" | "elasticsearch" | "flink" | "grafana" | "kafka" | "kafka_connect" | "kafka_mirrormaker" | "mysql" | "nomadclient" | "opensearch" | "pg" | "sandbox" | "sandbox_api" | "sparkpool" | "stresstester" | "sw" | "thanos" | "thanoscompactor" | "thanosparquet" | "thanosquery" | "thanosreceiver" | "thanosruler" | "thanosstore" | "valkey" | "vector" | "vmalert";
                 tags?: {
                     [key: string]: string;
                 };
@@ -1280,7 +1280,7 @@ export interface components {
             vat_id?: string;
             zip_code?: string;
         };
-        ProjectCreateResponse: ProjectCreateResponse_f8eef7bb;
+        ProjectCreateResponse: ProjectCreateResponse_0e6ecb91;
         ProjectCreditsClaimResponse: BillingGroupCreditsClaimResponse_09a5b53c;
         ProjectCreditsListResponse: BillingGroupCreditsListResponse_ad0ff17b;
         ProjectDeleteResponse: {
@@ -1308,6 +1308,7 @@ export interface components {
             message?: string;
         };
         ProjectGetServiceLogsRequestBody: {
+            build_id?: string;
             /** @default 100 */
             limit?: number;
             /** @enum {string} */
@@ -1587,7 +1588,7 @@ export interface components {
             vat_id?: string;
             zip_code?: string;
         };
-        ProjectUpdateResponse: ProjectCreateResponse_f8eef7bb;
+        ProjectUpdateResponse: ProjectCreateResponse_0e6ecb91;
         ServiceAlertsListResponse: {
             alerts: {
                 create_time: string;
@@ -1640,7 +1641,7 @@ export interface components {
             termination_protection?: boolean;
             user_config?: Record<string, never>;
         };
-        ServiceCreateResponse: ServiceCreateResponse_358a5a70;
+        ServiceCreateResponse: ServiceCreateResponse_4abff27c;
         ServiceDatabaseCreateRequestBody: {
             database: string;
             /** @default en_US.UTF-8 */
@@ -1672,7 +1673,7 @@ export interface components {
             }[];
             message?: string;
         };
-        ServiceGetResponse: ServiceCreateResponse_358a5a70;
+        ServiceGetResponse: ServiceCreateResponse_4abff27c;
         ServiceIntegrationCreateRequestBody: {
             dest_endpoint_id?: string;
             dest_project?: string;
@@ -2075,7 +2076,7 @@ export interface components {
                 status: number;
             }[];
             message?: string;
-            services: service_b365295b[];
+            services: service_0b37477f[];
         };
         ServiceMaintenanceStartResponse: {
             errors?: {
@@ -2226,7 +2227,7 @@ export interface components {
             termination_protection?: boolean;
             user_config?: Record<string, never>;
         };
-        ServiceUpdateResponse: ServiceCreateResponse_358a5a70;
+        ServiceUpdateResponse: ServiceCreateResponse_4abff27c;
         ServiceUserCreateRequestBody: {
             access_control?: access_control_d98472df;
             /** @enum {string} */
@@ -2283,7 +2284,7 @@ export interface components {
                 cloud_description?: string;
                 cloud_name: string;
                 cmk_id?: string;
-                components?: Shared_b9e2c34e[];
+                components?: Shared_7fa3da96[];
                 connection_info?: Record<string, never>;
                 connection_pools?: {
                     connection_uri: string;
@@ -4539,7 +4540,7 @@ type plugin_d122f324 = {
     type: "sink" | "source" | "unknown";
     version: string;
 };
-type ProjectCreateResponse_f8eef7bb = {
+type ProjectCreateResponse_0e6ecb91 = {
     errors?: {
         message: string;
         more_info?: string;
@@ -4551,15 +4552,15 @@ type ProjectCreateResponse_f8eef7bb = {
         account_name?: string;
         address_lines?: string[];
         available_credits?: string;
-        billing_address: string;
+        billing_address?: string;
         /** @enum {string} */
         billing_currency?: "AUD" | "CAD" | "CHF" | "DKK" | "EUR" | "GBP" | "JPY" | "NOK" | "NZD" | "SEK" | "SGD" | "USD";
-        billing_emails: {
+        billing_emails?: {
             email: string;
         }[];
         billing_extra_text?: string;
         billing_group_id: string;
-        billing_group_name: string;
+        billing_group_name?: string;
         card_info?: {
             brand: string;
             card_id: string;
@@ -4573,8 +4574,8 @@ type ProjectCreateResponse_f8eef7bb = {
         };
         city?: string;
         company?: string;
-        country: string;
-        country_code: string;
+        country?: string;
+        country_code?: string;
         default_cloud: string;
         end_of_life_extension?: {
             elasticsearch?: {
@@ -4582,11 +4583,11 @@ type ProjectCreateResponse_f8eef7bb = {
                 version: string;
             };
         };
-        estimated_balance: string;
+        estimated_balance?: string;
         estimated_balance_local?: string;
         features?: Record<string, never>;
         organization_id: string;
-        payment_method: string;
+        payment_method?: string;
         project_name: string;
         state?: string;
         tags?: Record<string, never>;
@@ -4595,11 +4596,11 @@ type ProjectCreateResponse_f8eef7bb = {
         }[];
         tenant_id?: string;
         trial_expiration_time?: string;
-        vat_id: string;
+        vat_id?: string;
         zip_code?: string;
     };
 };
-type service_b365295b = {
+type service_0b37477f = {
     acl?: {
         id?: string;
         /** @enum {string} */
@@ -4624,7 +4625,7 @@ type service_b365295b = {
     cloud_description?: string;
     cloud_name: string;
     cmk_id?: string;
-    components?: Shared_b9e2c34e[];
+    components?: Shared_7fa3da96[];
     connection_info?: Record<string, never>;
     connection_pools?: {
         connection_uri: string;
@@ -4699,14 +4700,14 @@ type service_b365295b = {
     };
     users?: Shared_efde2fce[];
 };
-type ServiceCreateResponse_358a5a70 = {
+type ServiceCreateResponse_4abff27c = {
     errors?: {
         message: string;
         more_info?: string;
         status: number;
     }[];
     message?: string;
-    service: service_b365295b;
+    service: service_0b37477f;
 };
 type ServiceKafkaConnectCreateConnectorResponse_c8a006bf = {
     connector: connector_6e27ca17;
@@ -4760,6 +4761,26 @@ type Shared_765d88e4 = {
     source_service_type: string;
     user_config?: Record<string, never>;
 };
+type Shared_7fa3da96 = {
+    az?: string;
+    component: string;
+    host: string;
+    /** @enum {string} */
+    kafka_authentication_method?: "certificate" | "sasl";
+    /** @enum {string} */
+    kafka_ssl_ca?: "project_ca" | "letsencrypt";
+    node_position?: number;
+    path?: string;
+    port: number;
+    privatelink_connection_id?: string;
+    /** @enum {string} */
+    route: "dynamic" | "public" | "private" | "privatelink";
+    security_redirect_uris?: string[];
+    shard_position?: number;
+    ssl?: boolean;
+    /** @enum {string} */
+    usage: "disaster_recovery" | "primary" | "replica" | "ha_replica" | "shard" | "node";
+};
 type Shared_8a3b4aca = {
     availability_zone: string;
     name: string;
@@ -4788,25 +4809,6 @@ type Shared_8a3b4aca = {
     };
     /** @enum {string} */
     state: "leaving" | "running" | "setting_up_vm" | "syncing_data" | "timing_out" | "unknown";
-};
-type Shared_b9e2c34e = {
-    az?: string;
-    component: string;
-    host: string;
-    /** @enum {string} */
-    kafka_authentication_method?: "certificate" | "sasl";
-    /** @enum {string} */
-    kafka_ssl_ca?: "project_ca" | "letsencrypt";
-    node_position?: number;
-    path?: string;
-    port: number;
-    privatelink_connection_id?: string;
-    /** @enum {string} */
-    route: "dynamic" | "public" | "private" | "privatelink";
-    shard_position?: number;
-    ssl?: boolean;
-    /** @enum {string} */
-    usage: "disaster_recovery" | "primary" | "replica" | "ha_replica" | "shard" | "node";
 };
 type Shared_bdf4f24c = {
     host: string;
