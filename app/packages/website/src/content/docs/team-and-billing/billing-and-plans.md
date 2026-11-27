@@ -8,22 +8,23 @@ sidebar_order: 3
 
 ## Plans
 
-| Feature                          | Free                   | Paid                       |
-| -------------------------------- | ---------------------- | -------------------------- |
-| Users                            | 1                      | Unlimited                  |
-| Connected accounts               | 3                      | Unlimited                  |
-| Plugins                          | All 153                | All 153                    |
-| Dashboards                       | Yes                    | Yes                        |
-| SSH terminal / SQL               | Yes                    | Yes                        |
-| Audit log                        | No                     | Yes                        |
-| Custom graphs                    | No                     | Yes                        |
-| API keys                         | No                     | Yes                        |
-| AI chat                          | $5 usage / mo included | Metered, pay-as-you-go     |
-| [CI](#ci)                        | No                     | Metered, by usage          |
-| [Git](#git) public repositories  | Unlimited              | Unlimited                  |
-| [Git](#git) private repositories | 3, up to 1 GiB         | Unlimited, 10 GiB included |
-| Price                            | $0                     | $20 / seat / mo            |
-| Prepaid capacity                 | Not available          | $200 / seat / 2 years      |
+| Feature                            | Free                   | Paid                       |
+| ---------------------------------- | ---------------------- | -------------------------- |
+| Users                              | 1                      | Unlimited                  |
+| Connected accounts                 | 3                      | Unlimited                  |
+| Plugins                            | All 153                | All 153                    |
+| Dashboards                         | Yes                    | Yes                        |
+| SSH terminal / SQL                 | Yes                    | Yes                        |
+| Audit log                          | No                     | Yes                        |
+| Custom graphs                      | No                     | Yes                        |
+| API keys                           | No                     | Yes                        |
+| AI chat                            | $5 usage / mo included | Metered, pay-as-you-go     |
+| [CI](#ci)                          | No                     | Metered, by usage          |
+| [Git](#git) organization namespace | No                     | Yes                        |
+| [Git](#git) public repositories    | Unlimited              | Unlimited                  |
+| [Git](#git) private repositories   | 3, up to 1 GiB         | Unlimited, 10 GiB included |
+| Price                              | $0                     | $20 / seat / mo            |
+| Prepaid capacity                   | Not available          | $200 / seat / 2 years      |
 
 On the free plan, inviting a teammate or connecting a fourth account is refused with a prompt to upgrade.
 
@@ -122,11 +123,12 @@ Repositories on [git.infrawrench.com](../features/git.md) follow your plan:
 
 |                      | Free      | Paid                                                         |
 | -------------------- | --------- | ------------------------------------------------------------ |
+| Claim a namespace    | No        | Yes                                                          |
 | Public repositories  | Unlimited | Unlimited                                                    |
 | Private repositories | 3         | Unlimited                                                    |
 | Private storage      | 1 GiB     | 10 GiB included, then metered by the GiB-hour, up to 100 GiB |
 
-Public repositories are free on every plan, and their storage counts toward nothing. On the free plan the limits are fixed: a fourth private repository is refused, and so are pushes to private repositories once they hold 1 GiB. On a paid plan the first 10 GiB of private storage is included, and storage above that is measured every hour and billed on the same invoice as your seats. Pushes to private repositories are refused at 100 GiB. Write to us if you need more.
+An organization needs a paid plan to [claim its namespace](../features/git.md#claim-a-namespace), in the app or on git.infrawrench.com. A namespace it already has stays when the plan ends, with the free limits. Public repositories are free on every plan, and their storage counts toward nothing. On the free plan the limits are fixed: a fourth private repository is refused, and so are pushes to private repositories once they hold 1 GiB. On a paid plan the first 10 GiB of private storage is included, and storage above that is measured every hour and billed on the same invoice as your seats. Pushes to private repositories are refused at 100 GiB. Write to us if you need more.
 
 Going over a limit never deletes or hides anything, including after you cancel: your repositories stay readable and clonable, and you can't add to the private ones until you're back under. **Settings > Git** shows where you stand. Complimentary organizations are never billed for Git storage.
 

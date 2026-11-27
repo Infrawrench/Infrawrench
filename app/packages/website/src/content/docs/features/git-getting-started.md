@@ -21,10 +21,10 @@ You can change your username later under **Settings > Profile**. Addresses of yo
 
 A repository belongs to a namespace:
 
-| Namespace         | Who it belongs to                                                                                                                                                                            |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Your username     | You. Created when you choose a username.                                                                                                                                                     |
-| An organization's | An Infrawrench organization. Someone with `git:admin` claims it once, in the app under [**Settings > Git**](./git.md#claim-a-namespace), and it shows on the forge as an owner you can pick. |
+| Namespace         | Who it belongs to                                                                                                                                                                                                                                                     |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Your username     | You. Created when you choose a username.                                                                                                                                                                                                                              |
+| An organization's | An Infrawrench organization. Someone with `git:admin` claims it once, on the forge under **Settings > Organisations** or in the app under [**Settings > Git**](./git.md#claim-a-namespace), and it shows on the forge as an owner you can pick. It needs a paid plan. |
 
 Members of an organization get access to its repositories from their [role](../team-and-billing/roles-and-permissions.md): `git:read` reads all of them, `git:write` pushes and creates, `git:admin` changes repository settings.
 

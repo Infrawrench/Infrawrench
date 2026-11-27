@@ -27,9 +27,15 @@ A namespace is the first part of every repository address: `git.infrawrench.com/
 1. Go to **Settings > Git**.
 2. Type a name and click **Claim**.
 
+You can also claim it on git.infrawrench.com itself, without opening the app: open the account menu there and go to **Settings > Organisations**, which lists every organization you belong to, and click **Claim** beside yours. Both places follow the same rules and write the same [audit log](../team-and-billing/audit-log.md) entry.
+
 Names use letters, digits, dots, dashes and underscores, start with a letter, digit or underscore, are at most 39 characters, and cannot end in `.git`. Some names are reserved (`api`, `settings`, `explore` and similar). The page tells you which rule a name breaks as you type, and tells you when someone else already has it.
 
 You need the `git:admin` permission. Admins and owners have it by default.
+
+An organization's namespace needs a [paid plan](../team-and-billing/billing-and-plans.md#git). On the free plan, **Settings > Git** and the forge's **Settings > Organisations** show **Organisations on git.infrawrench.com need a paid plan** with a button to billing where the name field would be. Your own username on git.infrawrench.com needs no plan. A namespace your organization already has stays, and you can still rename it, if the plan later ends.
+
+<insert [Settings > Organisations on git.infrawrench.com: one organization with its git.infrawrench.com link and a Create a repository button, one with the Name field filled in, "Available" under it and the Claim button, one that says to ask an administrator, and one on the free plan with the paid plan sentence and Open billing] here>
 
 <insert [Settings > Git before a namespace is claimed: the Name field with git.infrawrench.com/ in front, a reserved name typed in and the "That name is reserved" message under it] here>
 
@@ -57,7 +63,7 @@ The **Usage** card shows what your namespace holds against your plan:
 | Private repositories | 3         | Unlimited                                    |
 | Private storage      | 1 GiB     | 10 GiB included, then metered, up to 100 GiB |
 
-Public repositories are free on every plan and count toward neither limit. Storage is the size of a repository's packs on the forge, measured after each push.
+An organization claims its namespace on a paid plan; the Free column is what a namespace keeps if the plan later ends. Public repositories are free on every plan and count toward neither limit. Storage is the size of a repository's packs on the forge, measured after each push.
 
 When you reach a limit:
 
