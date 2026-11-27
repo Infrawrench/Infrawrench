@@ -228,7 +228,7 @@ export function AllBranches({ lead }: { lead: ReactNode }) {
                       <AppLink
                         href={paths.tree(repo, branch.name)}
                         title={branch.name}
-                        className="max-w-72 truncate rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-on-surface hover:underline"
+                        className="max-w-56 truncate rounded bg-surface-sunken 2xl:max-w-96 px-1.5 py-0.5 font-mono text-on-surface hover:underline"
                       >
                         {branch.name}
                       </AppLink>
@@ -250,11 +250,13 @@ export function AllBranches({ lead }: { lead: ReactNode }) {
                   <Td>
                     <Divergence branch={branch} base={repository.defaultBranch} />
                   </Td>
-                  <Td>
+                  {/* The one column that gives: it takes what the others leave and cuts its title there. */}
+                  <Td className="w-full max-w-0 min-w-32">
                     {branch.page !== null ? (
                       <AppLink
                         href={paths.branchPage(repo, branch.page.key)}
-                        className="inline-flex max-w-64 items-center gap-1.5 text-on-surface hover:underline"
+                        title={branch.page.title}
+                        className="flex min-w-0 items-center gap-1.5 text-on-surface hover:underline"
                       >
                         <ThreadStateIcon
                           kind={pageKind(branch.page.state, branch.page.draft)}
