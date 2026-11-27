@@ -1502,6 +1502,16 @@ export interface components {
             verification_attempts_remaining: number | null;
             web3_wallets: components["schemas"]["Web3Wallet"][];
         };
+        UserCursorPage: {
+            cursor: {
+                ending_before: string | null;
+                has_next_page: boolean;
+                remaining_count_at_least?: number;
+                remaining_count_exact?: number;
+                starting_after: string | null;
+            };
+            data: components["schemas"]["User"][];
+        };
         verification_admin: {
             attempts: number | null;
             expire_at: number | null;
@@ -1780,6 +1790,14 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["EnterpriseConnections"];
+            };
+        };
+        FeatureNotEnabled: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ClerkErrors"];
             };
         };
         Instance: {
@@ -2105,12 +2123,12 @@ export interface components {
                 "application/json": components["schemas"]["TotalCount"];
             };
         };
-        "User.List": {
+        "User.ListOrCursorPage": {
             headers: {
                 [name: string]: unknown;
             };
             content: {
-                "application/json": components["schemas"]["User"][];
+                "application/json": components["schemas"]["User"][] | components["schemas"]["UserCursorPage"];
             };
         };
     };
@@ -3432,6 +3450,7 @@ export interface operations {
                 created_at_before?: number;
                 email_address?: string[];
                 email_address_query?: string;
+                ending_before?: string;
                 external_id?: string[];
                 last_active_at_after?: number;
                 last_active_at_before?: number;
@@ -3440,15 +3459,18 @@ export interface operations {
                 last_sign_in_at_after?: number;
                 last_sign_in_at_before?: number;
                 limit?: components["parameters"]["LimitParameter"];
+                metadata?: string[];
                 name_query?: string;
                 offset?: components["parameters"]["OffsetParameter"];
                 order_by?: string;
                 organization_id?: string[];
+                pagination?: "offset" | "cursor";
                 phone_number?: string[];
                 phone_number_query?: string;
                 provider?: string;
                 provider_user_id?: string[];
                 query?: string;
+                remaining_count?: "100" | "1000" | "10000" | "exact";
                 starting_after?: string;
                 user_id?: string[];
                 username?: string[];
@@ -3461,7 +3483,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            200: components["responses"]["User.List"];
+            200: components["responses"]["User.ListOrCursorPage"];
         };
     };
     CreateUser: {
@@ -3579,6 +3601,7 @@ export interface operations {
                     primary_phone_number_id?: string | null;
                     primary_web3_wallet_id?: string | null;
                     profile_image_id?: string | null;
+                    reset_client_trust?: boolean | null;
                     sign_out_of_other_sessions?: boolean | null;
                     skip_legal_checks?: boolean | null;
                     skip_password_checks?: boolean | null;
