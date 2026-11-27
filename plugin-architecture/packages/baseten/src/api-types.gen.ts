@@ -1952,6 +1952,8 @@ export interface components {
             /** Format: date-time */
             created_at: string;
             environment: string | null;
+            /** @default null */
+            failure_reason?: string | null;
             id: string;
             instance_type_name: string | null;
             is_development: boolean;
@@ -2016,6 +2018,8 @@ export interface components {
         };
         GetTrainingGpuCapacityResponseV1: {
             gpu_capacities: components["schemas"]["TrainingGpuCapacityItemV1"][];
+            /** @default false */
+            spot_enabled?: boolean;
             team_gpu_capacities?: components["schemas"]["TeamTrainingGpuCapacityItemV1"][];
         };
         GetTrainingJobMetricsResponseV1: {
@@ -2023,7 +2027,19 @@ export interface components {
             cpu_memory_usage_bytes: components["schemas"]["TrainingJobMetricV1"][];
             cpu_usage: components["schemas"]["TrainingJobMetricV1"][];
             ephemeral_storage: components["schemas"]["StorageMetricsV1"];
+            gpu_memory_bandwidth_utilization: {
+                [key: string]: components["schemas"]["TrainingJobMetricV1"][];
+            };
             gpu_memory_usage_bytes: {
+                [key: string]: components["schemas"]["TrainingJobMetricV1"][];
+            };
+            gpu_power_usage_watts: {
+                [key: string]: components["schemas"]["TrainingJobMetricV1"][];
+            };
+            gpu_temperature_celsius: {
+                [key: string]: components["schemas"]["TrainingJobMetricV1"][];
+            };
+            gpu_tensor_core_utilization: {
                 [key: string]: components["schemas"]["TrainingJobMetricV1"][];
             };
             gpu_utilization: {
@@ -2134,6 +2150,10 @@ export interface components {
             model_name: string;
             output_tokens: number;
             subtotal: number | string;
+            /** @default null */
+            team_id?: string | null;
+            /** @default null */
+            team_name?: string | null;
         };
         ModelAPIOrgDetailsV1: {
             /** Format: date-time */
@@ -2453,7 +2473,8 @@ export interface components {
             id?: string | null;
             percent_traffic: number;
             propagate_client_cancellation: boolean;
-            sampling_mode: components["schemas"]["TrafficRoutingRuleShadowSamplingModeV1"];
+            /** @default USER_SESSION */
+            sampling_mode?: components["schemas"]["TrafficRoutingRuleShadowSamplingModeV1"];
             targets: components["schemas"]["TrafficRoutingTargetUpsertV1"][];
             /** @constant */
             type: "SHADOW";
@@ -2482,12 +2503,24 @@ export interface components {
             environment?: string | null;
             model_id: string;
         };
+        TrainingBDNConfigResponseV1: {
+            mounts?: components["schemas"]["TrainingBDNMountResponseV1"][];
+        };
+        TrainingBDNMountResponseV1: {
+            exclude?: string[];
+            include?: string[];
+            path: string;
+            source: string;
+        };
         TrainingGpuCapacityItemV1: {
             baseline: number;
             /** @default 0 */
             dedicated_usage_count?: number;
             gpu_type: string;
             limit: number;
+            on_demand_quota: number;
+            /** @default null */
+            spot_quota?: number | null;
             /** @default 0 */
             spot_usage_count?: number;
             usage_count: number;
@@ -2502,7 +2535,19 @@ export interface components {
             cpu_memory_usage_bytes: components["schemas"]["TrainingJobMetricV1"][];
             cpu_usage: components["schemas"]["TrainingJobMetricV1"][];
             ephemeral_storage: components["schemas"]["StorageMetricsV1"];
+            gpu_memory_bandwidth_utilization: {
+                [key: string]: components["schemas"]["TrainingJobMetricV1"][];
+            };
             gpu_memory_usage_bytes: {
+                [key: string]: components["schemas"]["TrainingJobMetricV1"][];
+            };
+            gpu_power_usage_watts: {
+                [key: string]: components["schemas"]["TrainingJobMetricV1"][];
+            };
+            gpu_temperature_celsius: {
+                [key: string]: components["schemas"]["TrainingJobMetricV1"][];
+            };
+            gpu_tensor_core_utilization: {
                 [key: string]: components["schemas"]["TrainingJobMetricV1"][];
             };
             gpu_utilization: {
@@ -2526,6 +2571,7 @@ export interface components {
         TrainingJobV1: {
             /** @default standard */
             availability_model?: components["schemas"]["AvailabilityModelV1"];
+            bdn?: components["schemas"]["TrainingBDNConfigResponseV1"];
             /** @default null */
             checkpoint_sync_status?: components["schemas"]["CheckpointSyncStatus"] | null;
             /** Format: date-time */
