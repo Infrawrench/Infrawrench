@@ -2,16 +2,13 @@
  * Trace entries' rows (`git_trace_entries`): what an agent recorded while it
  * worked. An entry is written to a branch with no version; the next push to
  * the branch claims it (`db/review.ts` `claimTraceEntries`). What goes into
- * a row has already been masked (`review/trace.ts`).
+ * a row has already been masked (`review/trace.ts`). Writing a row is
+ * server-core's (`git-review/trace-rows.ts`), shared with the app's CI, which
+ * writes a job's notes straight onto a version.
  */
 import { and, asc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
-import {
-  type GitAgentIdentity,
-  gitBranchVersions,
-  gitTraceEntries,
-} from "@infrawrench/server-core/db/schema";
-import type { PreparedTraceEntry } from "../review/trace";
-import { db, newId } from "./client";
+import { gitBranchVersions, gitTraceEntries } from "@infrawrench/server-core/db/schema";
+import { db } from "./client";
 import { type PageOf, type TimeCursor, afterCursor, cursorTime, toPage } from "./cursor";
 
 export type TraceEntryRow = typeof gitTraceEntries.$inferSelect;
@@ -31,47 +28,7 @@ export const pendingTraceCounts = async (
   return { branch: row?.branch ?? 0, repository: row?.repository ?? 0 };
 };
 
-/**
- * Insert a call's entries, in the order they were given. They are spaced a
- * millisecond apart ending at the call's own time, so "oldest first" is the
- * order the agent wrote them in whatever their ids sort like, and none is
- * dated after the call: a push that follows at once claims them all
- * (`claimTraceEntries` takes what was written at or before the push).
- */
-export const insertTraceEntries = async (input: {
-  readonly repositoryId: string;
-  readonly branch: string;
-  readonly authorUserId: string | null;
-  readonly agent: GitAgentIdentity | null;
-  readonly entries: readonly PreparedTraceEntry[];
-  readonly now?: Date;
-}): Promise<TraceEntryRow[]> => {
-  if (input.entries.length === 0) return [];
-  const base = (input.now ?? new Date()).getTime();
-  const rows = await db
-    .insert(gitTraceEntries)
-    .values(
-      input.entries.map((entry, index) => ({
-        id: newId(),
-        repositoryId: input.repositoryId,
-        branch: input.branch,
-        kind: entry.kind,
-        body: entry.body,
-        anchors: entry.anchors,
-        needsCode: entry.needsCode,
-        evidence: entry.evidence,
-        authorUserId: input.authorUserId,
-        agent: input.agent,
-        // A millisecond apart: cursors compare to the millisecond (`cursor.ts`).
-        createdAt: new Date(base - (input.entries.length - 1 - index)),
-      })),
-    )
-    .returning();
-  const order = new Map(rows.map((row) => [row.id, row] as const));
-  return [...order.values()].sort(
-    (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id),
-  );
-};
+export { insertTraceEntries } from "@infrawrench/server-core/git-review/trace-rows";
 
 export interface TraceScope {
   /** Entries a push has claimed: those of these versions. */

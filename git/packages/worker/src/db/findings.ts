@@ -4,19 +4,16 @@
  * `git_merge_overrides`).
  *
  * A finding is one row for the life of its pull request, carried from version
- * to version by `fingerprint` (unique per pull request). Writing one that is
- * already there updates it, reopens it when it was fixed, and leaves it alone
- * when a person dismissed it: that is how a dismissal is remembered.
+ * to version by `fingerprint` (unique per pull request). Writing one is
+ * server-core's (`git-review/findings.ts`, re-exported below), shared with
+ * the app's CI; reading, dismissing and the runs are here.
  *
  * A run is leased by `started_at`: a delivery claims a run that is queued, or
  * one that has been running longer than the lease (its invocation died), so
  * no row stays `running` for ever and two deliveries never run one at once.
  */
-import { and, asc, desc, eq, inArray, lt, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import {
-  type GitDiffSide,
-  type GitFindingEvidence,
-  type GitFindingSeverity,
   type GitFindingStatus,
   type GitReviewRunStatus,
   gitMergeOverrides,
@@ -81,109 +78,15 @@ export const getFinding = async (
   return row ?? null;
 };
 
-export interface NewFinding {
-  readonly reviewerKind: string;
-  readonly fingerprint: string;
-  readonly severity: GitFindingSeverity;
-  readonly title: string;
-  readonly body: string;
-  readonly path: string | null;
-  readonly side: GitDiffSide;
-  readonly startLine: number | null;
-  readonly endLine: number | null;
-  /** Resolved already (`review/needs-code.ts`). A later report's value replaces an earlier one's. */
-  readonly needsCode: boolean;
-  readonly evidence: readonly GitFindingEvidence[];
-}
-
-export interface FindingTarget {
-  readonly repositoryId: string;
-  readonly pullRequestId: string;
-  /** The version the finding was seen on. Its commit is the one the lines are numbered in. */
-  readonly version: Pick<VersionRow, "id" | "number" | "tipOid">;
-  readonly runId: string | null;
-}
-
-/**
- * What writing a finding did: `raised` for a new one, `reopened` for one that
- * had been marked fixed, `seen` for one that was open already, and
- * `dismissed` for one a person dismissed, which is left exactly as it was.
- */
-export type FindingOutcome = "raised" | "reopened" | "seen" | "dismissed";
-
-/**
- * Write a finding by its fingerprint. An older version never overwrites what
- * a newer one saw: a run that finishes late leaves the newer anchors alone.
- */
-export const upsertFinding = async (
-  target: FindingTarget,
-  finding: NewFinding,
-): Promise<{ readonly row: FindingRow; readonly outcome: FindingOutcome }> => {
-  const { version } = target;
-  const content = {
-    runId: target.runId,
-    reviewerKind: finding.reviewerKind,
-    severity: finding.severity,
-    title: finding.title,
-    body: finding.body,
-    path: finding.path,
-    side: finding.side,
-    startLine: finding.startLine,
-    endLine: finding.endLine,
-    needsCode: finding.needsCode,
-    commitOid: version.tipOid,
-    evidence: [...finding.evidence],
-  };
-  const [inserted] = await db
-    .insert(gitReviewFindings)
-    .values({
-      id: newId(),
-      repositoryId: target.repositoryId,
-      pullRequestId: target.pullRequestId,
-      versionId: version.id,
-      versionNumber: version.number,
-      lastSeenVersionNumber: version.number,
-      fingerprint: finding.fingerprint,
-      ...content,
-    })
-    .onConflictDoNothing({
-      target: [gitReviewFindings.pullRequestId, gitReviewFindings.fingerprint],
-    })
-    .returning();
-  if (inserted) return { row: inserted, outcome: "raised" };
-
-  const [existing] = await db
-    .select()
-    .from(gitReviewFindings)
-    .where(
-      and(
-        eq(gitReviewFindings.pullRequestId, target.pullRequestId),
-        eq(gitReviewFindings.fingerprint, finding.fingerprint),
-      ),
-    )
-    .limit(1);
-  if (!existing) throw new Error("A finding vanished while it was being written");
-  if (existing.status === "dismissed") return { row: existing, outcome: "dismissed" };
-  // Seen by a newer version already: this report is of the past.
-  if (existing.lastSeenVersionNumber > version.number) return { row: existing, outcome: "seen" };
-  if (existing.status === "fixed" && (existing.fixedInVersionNumber ?? 0) > version.number) {
-    return { row: existing, outcome: "seen" };
-  }
-  const [updated] = await db
-    .update(gitReviewFindings)
-    .set({
-      ...content,
-      status: "open",
-      fixedInVersionNumber: null,
-      lastSeenVersionNumber: version.number,
-      updatedAt: new Date(),
-    })
-    // Not one a person dismissed in the meantime.
-    .where(and(eq(gitReviewFindings.id, existing.id), ne(gitReviewFindings.status, "dismissed")))
-    .returning();
-  if (!updated) return { row: existing, outcome: "dismissed" };
-  return { row: updated, outcome: existing.status === "fixed" ? "reopened" : "seen" };
-};
+export {
+  type FindingOutcome,
+  type FindingTarget,
+  type NewFinding,
+  carryFindings,
+  markOthersFixed,
+  markUnseenFixed,
+  upsertFinding,
+} from "@infrawrench/server-core/git-review/findings";
 
 /** An open finding is still there on a version, possibly on other lines. */
 export const confirmFinding = async (
@@ -229,28 +132,6 @@ export const markFindingsFixed = async (
     )
     .returning();
 };
-
-/**
- * A reviewer said this is everything it finds on a version: its open
- * findings last seen before that version are fixed in it.
- */
-export const markUnseenFixed = async (
-  pullRequestId: string,
-  reviewerKind: string,
-  versionNumber: number,
-): Promise<FindingRow[]> =>
-  db
-    .update(gitReviewFindings)
-    .set({ status: "fixed", fixedInVersionNumber: versionNumber, updatedAt: new Date() })
-    .where(
-      and(
-        eq(gitReviewFindings.pullRequestId, pullRequestId),
-        eq(gitReviewFindings.reviewerKind, reviewerKind),
-        eq(gitReviewFindings.status, "open"),
-        sql`${gitReviewFindings.lastSeenVersionNumber} < ${versionNumber}`,
-      ),
-    )
-    .returning();
 
 /** Dismiss an open finding. Null when it was not open. */
 export const dismissFinding = async (
