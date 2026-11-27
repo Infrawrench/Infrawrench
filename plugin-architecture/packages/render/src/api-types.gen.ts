@@ -387,17 +387,7 @@ export interface paths {
         trace?: never;
     };
     "/metrics/active-connections": {
-        parameters: {
-            query?: {
-                endTime?: components["parameters"]["endTimeParam"];
-                resolutionSeconds?: number;
-                resource?: string;
-                startTime?: components["parameters"]["startTimeParam"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
+        parameters: parameters_9a8206de;
         get: operations["get-active-connections"];
         put?: never;
         post?: never;
@@ -408,18 +398,7 @@ export interface paths {
         trace?: never;
     };
     "/metrics/bandwidth": {
-        parameters: {
-            query?: {
-                endTime?: components["parameters"]["endTimeParam"];
-                resource?: string;
-                /** @deprecated */
-                service?: string;
-                startTime?: components["parameters"]["startTimeParam"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
+        parameters: parameters_76fe5e31;
         get: operations["get-bandwidth"];
         put?: never;
         post?: never;
@@ -430,7 +409,7 @@ export interface paths {
         trace?: never;
     };
     "/metrics/cpu": {
-        parameters: parameters_8a282b04;
+        parameters: parameters_03ae7198;
         get: operations["get-cpu"];
         put?: never;
         post?: never;
@@ -441,19 +420,7 @@ export interface paths {
         trace?: never;
     };
     "/metrics/disk-capacity": {
-        parameters: {
-            query?: {
-                endTime?: components["parameters"]["endTimeParam"];
-                resolutionSeconds?: number;
-                resource?: string;
-                /** @deprecated */
-                service?: string;
-                startTime?: components["parameters"]["startTimeParam"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
+        parameters: parameters_de99afe6;
         get: operations["get-disk-capacity"];
         put?: never;
         post?: never;
@@ -464,19 +431,7 @@ export interface paths {
         trace?: never;
     };
     "/metrics/disk-usage": {
-        parameters: {
-            query?: {
-                endTime?: components["parameters"]["endTimeParam"];
-                resolutionSeconds?: number;
-                resource?: string;
-                /** @deprecated */
-                service?: string;
-                startTime?: components["parameters"]["startTimeParam"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
+        parameters: parameters_de99afe6;
         get: operations["get-disk-usage"];
         put?: never;
         post?: never;
@@ -487,7 +442,7 @@ export interface paths {
         trace?: never;
     };
     "/metrics/http-latency": {
-        parameters: parameters_f7279a3e;
+        parameters: parameters_e9fa3a09;
         get: operations["get-http-latency"];
         put?: never;
         post?: never;
@@ -498,7 +453,7 @@ export interface paths {
         trace?: never;
     };
     "/metrics/http-requests": {
-        parameters: parameters_1d6ee4d4;
+        parameters: parameters_37a4c5e4;
         get: operations["get-http-requests"];
         put?: never;
         post?: never;
@@ -509,19 +464,7 @@ export interface paths {
         trace?: never;
     };
     "/metrics/instance-count": {
-        parameters: {
-            query?: {
-                endTime?: components["parameters"]["endTimeParam"];
-                resolutionSeconds?: number;
-                resource?: string;
-                /** @deprecated */
-                service?: string;
-                startTime?: components["parameters"]["startTimeParam"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
+        parameters: parameters_de99afe6;
         get: operations["get-instance-count"];
         put?: never;
         post?: never;
@@ -532,7 +475,7 @@ export interface paths {
         trace?: never;
     };
     "/metrics/memory": {
-        parameters: parameters_8a282b04;
+        parameters: parameters_e0714995;
         get: operations["get-memory"];
         put?: never;
         post?: never;
@@ -543,17 +486,7 @@ export interface paths {
         trace?: never;
     };
     "/metrics/replication-lag": {
-        parameters: {
-            query?: {
-                endTime?: components["parameters"]["endTimeParam"];
-                resolutionSeconds?: number;
-                resource?: string;
-                startTime?: components["parameters"]["startTimeParam"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
+        parameters: parameters_9a8206de;
         get: operations["get-replication-lag"];
         put?: never;
         post?: never;
@@ -1446,8 +1379,8 @@ export interface components {
             registryCredentialId?: string;
         };
         envGroup: components["schemas"]["envGroupMeta"] & {
-            envVars: components["schemas"]["envVar"][];
-            secretFiles: components["schemas"]["secretFile"][];
+            envVars?: components["schemas"]["envVar"][];
+            secretFiles?: components["schemas"]["secretFile"][];
         };
         envGroupLink: {
             id: string;
@@ -2460,6 +2393,14 @@ export interface components {
                 "application/json": components["schemas"]["error"];
             };
         };
+        "400MetricsBadRequest": {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["error"];
+            };
+        };
         "401Unauthorized": {
             headers: {
                 [name: string]: unknown;
@@ -2555,7 +2496,7 @@ export interface components {
                         id: string;
                         labels: {
                             /** @enum {string} */
-                            name: "resource" | "instance" | "host" | "statusCode" | "method" | "level" | "workflowService" | "workflowVeresion" | "task" | "taskRun" | "sandbox" | "type" | "text" | "path" | "blocked";
+                            name: "resource" | "instance" | "host" | "statusCode" | "method" | "level" | "workflowService" | "workflowVeresion" | "task" | "taskRun" | "sandbox" | "build" | "type" | "text" | "path" | "blocked";
                             value: string;
                         }[];
                         message: string;
@@ -3473,8 +3414,10 @@ export interface operations {
     "list-logs": {
         parameters: {
             query: {
+                build?: string[];
                 direction?: "forward" | "backward";
                 endTime?: components["parameters"]["endTimeParam"];
+                environment?: string;
                 host?: string[];
                 instance?: string[];
                 level?: string[];
@@ -3482,7 +3425,9 @@ export interface operations {
                 method?: string[];
                 ownerId: string;
                 path?: string[];
-                resource: string[];
+                project?: string;
+                region?: string;
+                resource?: string[];
                 sandbox?: string[];
                 startTime?: components["parameters"]["startTimeParam"];
                 statusCode?: string[];
@@ -3578,20 +3523,9 @@ export interface operations {
             };
         };
     };
-    "get-active-connections": Shared_8871a05b;
+    "get-active-connections": Shared_933afbef;
     "get-bandwidth": {
-        parameters: {
-            query?: {
-                endTime?: components["parameters"]["endTimeParam"];
-                resource?: string;
-                /** @deprecated */
-                service?: string;
-                startTime?: components["parameters"]["startTimeParam"];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
+        parameters: parameters_76fe5e31;
         requestBody?: never;
         responses: {
             200: {
@@ -3615,11 +3549,35 @@ export interface operations {
             };
         };
     };
-    "get-cpu": Shared_a64685ef;
-    "get-disk-capacity": Shared_62569993;
-    "get-disk-usage": Shared_62569993;
+    "get-cpu": {
+        parameters: parameters_03ae7198;
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        labels: {
+                            field: string;
+                            value: string;
+                        }[];
+                        unit: string;
+                        values: {
+                            /** Format: date-time */
+                            timestamp: string;
+                            value: number;
+                        }[];
+                    }[];
+                };
+            };
+        };
+    };
+    "get-disk-capacity": Shared_6fc466eb;
+    "get-disk-usage": Shared_6fc466eb;
     "get-http-latency": {
-        parameters: parameters_f7279a3e;
+        parameters: parameters_e9fa3a09;
         requestBody?: never;
         responses: {
             200: {
@@ -3644,7 +3602,7 @@ export interface operations {
         };
     };
     "get-http-requests": {
-        parameters: parameters_1d6ee4d4;
+        parameters: parameters_37a4c5e4;
         requestBody?: never;
         responses: {
             200: {
@@ -3668,9 +3626,33 @@ export interface operations {
             };
         };
     };
-    "get-instance-count": Shared_62569993;
-    "get-memory": Shared_a64685ef;
-    "get-replication-lag": Shared_8871a05b;
+    "get-instance-count": Shared_6fc466eb;
+    "get-memory": {
+        parameters: parameters_e0714995;
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        labels: {
+                            field: string;
+                            value: string;
+                        }[];
+                        unit: string;
+                        values: {
+                            /** Format: date-time */
+                            timestamp: string;
+                            value: number;
+                        }[];
+                    }[];
+                };
+            };
+        };
+    };
+    "get-replication-lag": Shared_933afbef;
     "list-owners": {
         parameters: {
             query?: {
@@ -5000,12 +4982,14 @@ type job_ffab24d7 = {
     /** @enum {string} */
     status?: "pending" | "running" | "succeeded" | "failed" | "canceled";
 };
-type parameters_1d6ee4d4 = {
+type parameters_03ae7198 = {
     query?: {
-        aggregateBy?: "statusCode" | "host";
+        aggregationMethod?: "AVG" | "MAX" | "MIN";
         endTime?: components["parameters"]["endTimeParam"];
-        host?: string;
-        path?: string;
+        environment?: string;
+        instance?: string;
+        project?: string;
+        region?: string;
         resolutionSeconds?: number;
         resource?: string;
         /** @deprecated */
@@ -5016,11 +5000,77 @@ type parameters_1d6ee4d4 = {
     path?: never;
     cookie?: never;
 };
-type parameters_8a282b04 = {
+type parameters_37a4c5e4 = {
+    query?: {
+        aggregateBy?: "statusCode" | "host";
+        endTime?: components["parameters"]["endTimeParam"];
+        environment?: string;
+        host?: string;
+        path?: string;
+        project?: string;
+        region?: string;
+        resolutionSeconds?: number;
+        resource?: string;
+        /** @deprecated */
+        service?: string;
+        startTime?: components["parameters"]["startTimeParam"];
+    };
+    header?: never;
+    path?: never;
+    cookie?: never;
+};
+type parameters_76fe5e31 = {
+    query?: {
+        endTime?: components["parameters"]["endTimeParam"];
+        environment?: string;
+        project?: string;
+        region?: string;
+        resource?: string;
+        /** @deprecated */
+        service?: string;
+        startTime?: components["parameters"]["startTimeParam"];
+    };
+    header?: never;
+    path?: never;
+    cookie?: never;
+};
+type parameters_9a8206de = {
+    query?: {
+        endTime?: components["parameters"]["endTimeParam"];
+        environment?: string;
+        project?: string;
+        region?: string;
+        resolutionSeconds?: number;
+        resource?: string;
+        startTime?: components["parameters"]["startTimeParam"];
+    };
+    header?: never;
+    path?: never;
+    cookie?: never;
+};
+type parameters_de99afe6 = {
+    query?: {
+        endTime?: components["parameters"]["endTimeParam"];
+        environment?: string;
+        project?: string;
+        region?: string;
+        resolutionSeconds?: number;
+        resource?: string;
+        /** @deprecated */
+        service?: string;
+        startTime?: components["parameters"]["startTimeParam"];
+    };
+    header?: never;
+    path?: never;
+    cookie?: never;
+};
+type parameters_e0714995 = {
     query?: {
         aggregationMethod?: "AVG" | "MAX" | "MIN";
         endTime?: components["parameters"]["endTimeParam"];
         instance?: string;
+        project?: string;
+        region?: string;
         resolutionSeconds?: number;
         resource?: string;
         /** @deprecated */
@@ -5031,12 +5081,15 @@ type parameters_8a282b04 = {
     path?: never;
     cookie?: never;
 };
-type parameters_f7279a3e = {
+type parameters_e9fa3a09 = {
     query?: {
         endTime?: components["parameters"]["endTimeParam"];
+        environment?: string;
         host?: string;
         path?: string;
+        project?: string;
         quantile?: number;
+        region?: string;
         resolutionSeconds?: number;
         resource?: string;
         /** @deprecated */
@@ -5100,20 +5153,26 @@ type Shared_5a64bd46 = {
         "application/json": job_ffab24d7;
     };
 };
-type Shared_62569993 = {
-    parameters: {
-        query?: {
-            endTime?: components["parameters"]["endTimeParam"];
-            resolutionSeconds?: number;
-            resource?: string;
-            /** @deprecated */
-            service?: string;
-            startTime?: components["parameters"]["startTimeParam"];
+type Shared_62866caa = {
+    buildId: string;
+    trigger: {
+        clearCache: boolean;
+        deployedByRender: boolean;
+        envUpdated: boolean;
+        firstBuild: boolean;
+        manual: boolean;
+        newCommit?: string;
+        rollback: boolean;
+        rollbackTargetDeployId?: string;
+        updatedProperty?: string;
+        user?: {
+            email: string;
+            id: string;
         };
-        header?: never;
-        path?: never;
-        cookie?: never;
     };
+};
+type Shared_6fc466eb = {
+    parameters: parameters_de99afe6;
     requestBody?: never;
     responses: {
         200: {
@@ -5137,36 +5196,8 @@ type Shared_62569993 = {
         };
     };
 };
-type Shared_62866caa = {
-    buildId: string;
-    trigger: {
-        clearCache: boolean;
-        deployedByRender: boolean;
-        envUpdated: boolean;
-        firstBuild: boolean;
-        manual: boolean;
-        newCommit?: string;
-        rollback: boolean;
-        rollbackTargetDeployId?: string;
-        updatedProperty?: string;
-        user?: {
-            email: string;
-            id: string;
-        };
-    };
-};
-type Shared_8871a05b = {
-    parameters: {
-        query?: {
-            endTime?: components["parameters"]["endTimeParam"];
-            resolutionSeconds?: number;
-            resource?: string;
-            startTime?: components["parameters"]["startTimeParam"];
-        };
-        header?: never;
-        path?: never;
-        cookie?: never;
-    };
+type Shared_933afbef = {
+    parameters: parameters_9a8206de;
     requestBody?: never;
     responses: {
         200: {
@@ -5203,31 +5234,6 @@ type Shared_960b7183 = {
     requestBody?: never;
     responses: {
         200: Shared_5a64bd46;
-    };
-};
-type Shared_a64685ef = {
-    parameters: parameters_8a282b04;
-    requestBody?: never;
-    responses: {
-        200: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/json": {
-                    labels: {
-                        field: string;
-                        value: string;
-                    }[];
-                    unit: string;
-                    values: {
-                        /** Format: date-time */
-                        timestamp: string;
-                        value: number;
-                    }[];
-                }[];
-            };
-        };
     };
 };
 type Shared_ee75c5cd = {
