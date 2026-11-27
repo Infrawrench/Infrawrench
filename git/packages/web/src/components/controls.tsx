@@ -75,7 +75,7 @@ export function LinkTabs({
     // scrollbar appears where the system always shows them.
     <nav
       aria-label={label}
-      className={`-mb-px flex overflow-x-auto overflow-y-hidden pb-px ${className}`}
+      className={`no-scrollbar -mb-px flex overflow-x-auto overflow-y-hidden pb-px ${className}`}
     >
       {tabs.map((tab) => {
         const path = tab.href.split("?")[0]!;

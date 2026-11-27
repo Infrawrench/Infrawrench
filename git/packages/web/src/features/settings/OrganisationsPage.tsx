@@ -206,7 +206,7 @@ export function OrganisationsPage() {
   const organizations = session.data.organizations;
   return (
     <SettingsSection title="Organisations">
-      <Panel className="max-w-2xl">
+      <Panel>
         {organizations.length === 0 ? (
           <EmptyState
             action={

@@ -38,7 +38,7 @@ export const canRunPlan = (repository: Pick<Repository, "owner" | "viewer">): bo
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="min-w-0">
+    <div className="max-w-full min-w-0 sm:max-w-md">
       <dt className="text-[11px] text-on-surface-muted">{label}</dt>
       <dd className="truncate text-xs font-medium text-on-surface">{children}</dd>
     </div>
@@ -113,7 +113,7 @@ export function WorkspaceLayout({
             <InlineError error={plan.error} />
           </div>
         ) : null}
-        <dl className="mb-4 grid grid-cols-2 gap-x-6 gap-y-3 rounded-md border border-border bg-surface-raised px-3 py-2.5 sm:grid-cols-3 lg:grid-cols-6">
+        <dl className="mb-4 flex flex-wrap gap-x-10 gap-y-3 rounded-md border border-border bg-surface-raised px-3 py-2.5">
           <Fact label="Accounts">
             {workspace.accounts.length === 0
               ? "None"

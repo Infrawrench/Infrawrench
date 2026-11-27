@@ -76,7 +76,7 @@ export function NewIssuePage() {
   };
 
   return (
-    <Page>
+    <Page width="reading">
       <h1 className="mb-4 text-base font-semibold text-on-surface">New issue</h1>
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
         <form onSubmit={submit} className="min-w-0 space-y-3">

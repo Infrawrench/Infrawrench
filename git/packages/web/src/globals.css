@@ -4,9 +4,44 @@
 @source "./**/*.{ts,tsx}";
 @source "../../../../app/packages/ui/src/**/*.{ts,tsx}";
 
-html {
-  background-color: var(--color-surface);
+body {
+  /* Under the bar's own colour, so a window scrolled past its end shows no seam. */
+  background-color: var(--color-surface-raised);
+}
+
+:root {
+  /* The page's own surface, so the scrollbar's gutter is not a strip of the sidebar's. */
+  background-color: var(--color-surface-raised);
   color: var(--color-on-surface);
+  /* A page that scrolls and one that does not keep the bar's controls in the same place. */
+  scrollbar-gutter: stable;
+  scrollbar-color: var(--color-border-strong) transparent;
+}
+
+/* Whatever scrolls inside the page (the sidebar, a menu, a code block, a table) gets a quiet bar. */
+:where(body *) {
+  scrollbar-width: thin;
+}
+
+/*
+ * The app's dark border is two steps off the page's surface, where the light
+ * one is five. Here a page is mostly hairlines (rows, pills, panels), so the
+ * dark scheme takes a border as far from its surface as the light one is.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-border: #4b4b52;
+    --color-border-strong: #62626a;
+  }
+}
+
+/* A select in the look of an input: no platform chrome, one chevron for both schemes. */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2381818a' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.4rem center;
+  background-size: 12px;
 }
 
 body {
@@ -51,12 +86,12 @@ body {
   overflow-wrap: anywhere;
 }
 
-.markdown > :first-child {
-  margin-top: 0;
-}
-
-.markdown > :last-child {
-  margin-bottom: 0;
+/*
+ * Prose keeps a line a person can read on a wide window; a table or a code
+ * block may use the room it is given.
+ */
+.markdown > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6, hr) {
+  max-width: 60rem;
 }
 
 .markdown :is(h1, h2, h3, h4, h5, h6) {
@@ -185,12 +220,37 @@ body {
 }
 
 /*
+ * After every block's own margin, and doubled so it outranks them: the
+ * `:is(p, ..., .overflow-x-auto)` rule above weighs as much as a class does,
+ * and a comment's last paragraph kept its margin under the card's padding.
+ */
+.markdown.markdown > :first-child {
+  margin-top: 0;
+}
+
+.markdown.markdown > :last-child {
+  margin-bottom: 0;
+}
+
+/* A strip that scrolls sideways (tabs on a phone, a row of versions) shows no bar of its own. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+/*
  * The branch page (features/review). A sticky row of it stops this far down
  * the window: under the shell's bar. A shell with no bar at the top sets it
  * to 0.
  */
 .review-page {
   --review-sticky-top: 3rem;
+}
+
+/* Below `sm` the bar is two rows: where the page is, then the repository's sections. */
+@media (max-width: 639px) {
+  .review-page {
+    --review-sticky-top: 5.125rem;
+  }
 }
 
 /* What hangs on a diff's lines or sits in the page's text: a soft card. */

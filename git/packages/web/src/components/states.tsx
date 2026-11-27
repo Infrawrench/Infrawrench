@@ -214,7 +214,12 @@ export function ErrorState({
       role="alert"
       className={`flex flex-col items-center gap-3 px-4 py-10 text-center ${className}`}
     >
-      <p className="text-xs text-on-surface-muted">
+      {/* Nothing is at this address: said as the page's one line, not as a footnote. */}
+      <p
+        className={
+          missing ? "text-sm font-medium text-on-surface" : "text-xs text-on-surface-muted"
+        }
+      >
         {missing ? (error.message === "" ? "Not found" : error.message) : errorMessage(error)}
       </p>
       {onRetry !== undefined && !missing ? (

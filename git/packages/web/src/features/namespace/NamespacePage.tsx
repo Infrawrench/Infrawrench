@@ -8,7 +8,7 @@ import { ButtonLink } from "../../components/Button";
 import { LinkTabs } from "../../components/controls";
 import { SearchInput, Select } from "../../components/forms";
 import { Icon } from "../../components/icons";
-import { Page, Panel } from "../../components/Panel";
+import { Page, Panel, PanelHeader } from "../../components/Panel";
 import { Avatar } from "../../components/people";
 import { RepoList } from "../../components/RepoList";
 import { EmptyState, ErrorState, Loading, LoadMore, QueryView } from "../../components/states";
@@ -158,17 +158,12 @@ function Repositories({ namespace }: { namespace: Namespace }) {
   return (
     <section aria-label="Repositories" className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        {namespace.kind === "org" ? (
-          <h2 className="mr-2 text-sm font-semibold text-on-surface">
-            {plural(namespace.repositoryCount, "repository", "repositories")}
-          </h2>
-        ) : null}
         <SearchInput
           label="Find a repository"
           placeholder="Find a repository"
           value={q}
           onChange={(event) => setQ(event.target.value)}
-          className="w-44"
+          className="w-40"
         />
         <Select
           aria-label="Type"
@@ -186,7 +181,7 @@ function Repositories({ namespace }: { namespace: Namespace }) {
           aria-label="Language"
           value={language}
           onChange={(event) => setLanguage(event.target.value)}
-          className="!w-36"
+          className="!w-32"
         >
           <option value="">Any language</option>
           {languages.map((name) => (
@@ -199,7 +194,7 @@ function Repositories({ namespace }: { namespace: Namespace }) {
           aria-label="Sort by"
           value={sort}
           onChange={(event) => setSort(event.target.value as RepositorySortName)}
-          className="!w-40"
+          className="!w-36"
         >
           {REPOSITORY_SORTS.map((name) => (
             <option key={name} value={name}>
@@ -216,6 +211,11 @@ function Repositories({ namespace }: { namespace: Namespace }) {
         ) : null}
       </div>
       <Panel>
+        {namespace.kind === "org" ? (
+          <PanelHeader>
+            <h2>{plural(namespace.repositoryCount, "repository", "repositories")}</h2>
+          </PanelHeader>
+        ) : null}
         {list.isLoading ? (
           <Loading framed={false} />
         ) : list.error ? (
