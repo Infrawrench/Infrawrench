@@ -639,7 +639,9 @@ export function SidebarShell({ session, children }: { session: SessionData; chil
         )}
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center gap-3 border-b border-border bg-surface-raised px-4 md:px-10">
+        {/* Below `sm` the bar is a grid: the menu, where the page is and what it
+            keeps beside that, then a second row for a page's sections or filters. */}
+        <header className="sticky top-0 z-30 grid min-h-12 shrink-0 grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-3 gap-y-1.5 border-b border-border bg-surface-raised px-4 py-2 sm:flex sm:h-12 sm:py-0 md:px-10">
           <button
             type="button"
             aria-label="Open the sidebar"

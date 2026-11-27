@@ -61,8 +61,12 @@ export function TopBar({ title, actions }: { title: ReactNode; actions?: ReactNo
   const bar = (
     <>
       <BarTitle>{title}</BarTitle>
-      <div className="flex-1" />
-      {actions !== undefined ? <div className="flex items-center gap-3">{actions}</div> : null}
+      <div className="flex-1 max-sm:hidden" />
+      {actions !== undefined ? (
+        <div className="flex items-center gap-3 whitespace-nowrap max-sm:col-span-full max-sm:row-start-2 no-scrollbar max-sm:overflow-x-auto">
+          {actions}
+        </div>
+      ) : null}
     </>
   );
   if (slot === null) {

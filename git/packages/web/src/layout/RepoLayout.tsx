@@ -482,10 +482,13 @@ function RepoBarFrame({
     <RepositoryContext.Provider value={repository}>
       <RepoBarContext.Provider value={slots}>
         <BarPortal>
-          <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
+          <nav
+            aria-label="Breadcrumb"
+            className="flex min-w-0 items-center gap-1.5 overflow-hidden text-sm"
+          >
             <AppLink
               href={paths.namespace(repository.owner.slug)}
-              className="shrink-0 text-on-surface-muted hover:text-on-surface"
+              className="max-w-40 shrink truncate text-on-surface-muted hover:text-on-surface"
             >
               {repository.owner.slug}
             </AppLink>
@@ -494,7 +497,7 @@ function RepoBarFrame({
             </span>
             <AppLink
               href={paths.repo(repo)}
-              className={`max-w-56 shrink-0 truncate hover:text-on-surface ${
+              className={`max-w-56 min-w-8 shrink truncate hover:text-on-surface ${
                 named > 0 ? "text-on-surface-muted" : "font-medium text-on-surface"
               }`}
             >
@@ -518,12 +521,12 @@ function RepoBarFrame({
             ) : null}
             <span ref={setCrumb} className="contents" />
           </nav>
-          <div className="flex-1" />
+          <div className="flex-1 max-sm:hidden" />
           <QuietTabs
             label="Repository"
             compact
             tabs={tabsFor(repository, repo)}
-            className="shrink-0"
+            className="no-scrollbar shrink-0 max-sm:col-span-full max-sm:row-start-2 max-sm:-mx-2 max-sm:overflow-x-auto"
           />
           <span ref={setActions} className="flex shrink-0 items-center gap-3 empty:hidden" />
           <span className="flex shrink-0 items-center border-l border-border pl-2">
@@ -560,12 +563,22 @@ export function RepoLayout({
       const signedOut = session.data !== undefined && session.data.user === null;
       return (
         <Page>
-          <ErrorState error={query.error} onRetry={() => void query.refetch()} />
-          {isNotFound(query.error) && signedOut ? (
+          <ErrorState
+            error={query.error}
+            onRetry={() => void query.refetch()}
+            className="!pt-20 !pb-4"
+          />
+          {isNotFound(query.error) ? (
             <p className="text-center">
-              <a href={signInHref()} className={buttonClass("primary")}>
-                Sign in
-              </a>
+              {signedOut ? (
+                <a href={signInHref()} className={buttonClass("primary")}>
+                  Sign in
+                </a>
+              ) : (
+                <AppLink href={paths.home()} className={buttonClass("secondary")}>
+                  Home
+                </AppLink>
+              )}
             </p>
           ) : null}
         </Page>
