@@ -272,12 +272,10 @@ export function ProfilePage({ returned }: { returned?: string | undefined } = {}
       </SettingsSection>
       {commitEmails.data === undefined ? null : (
         <SettingsSection title="Commit emails">
-          <Panel className="px-3 py-3">
-            <CommitEmails
-              organization={null}
-              emails={commitEmails.data.emails.filter((email) => email.organizationId === null)}
-            />
-          </Panel>
+          <CommitEmails
+            organization={null}
+            emails={commitEmails.data.emails.filter((email) => email.organizationId === null)}
+          />
         </SettingsSection>
       )}
       <SettingsSection title="Infrawrench account">

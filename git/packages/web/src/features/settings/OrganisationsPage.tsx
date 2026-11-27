@@ -208,9 +208,11 @@ function OrganisationRow({
         ) : null}
       </div>
       {organization.canClaimNamespace ? <ClaimForm organization={organization} /> : null}
-      {/* An address counts in the organisation's repositories: one with no name has none. */}
+      {/* An address counts in the organisation's repositories: one with no name has none. Under the name, in line with it. */}
       {slug !== null && emails !== undefined ? (
-        <CommitEmails organization={organization} emails={emails} />
+        <div className="sm:pl-[34px]">
+          <CommitEmails organization={organization} emails={emails} />
+        </div>
       ) : null}
     </li>
   );

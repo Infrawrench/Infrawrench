@@ -246,13 +246,18 @@ export const keyInUse = (fingerprint: string): boolean => usedFingerprints().has
 /** The code the mock "mails": there is no mailbox to read one from. */
 export const MOCK_COMMIT_EMAIL_CODE = "ABCD-2345";
 
+/** An address another member of every mock organisation has added without verifying it. */
+export const MOCK_HELD_COMMIT_EMAIL = "builds@harbour.example";
+
 /** The signed-in person's commit emails, by organisation; a null one is their own repositories'. */
 export const commitEmails: Mutable<CommitEmail>[] = [
   {
     id: "cem_1",
     organizationId: ACME_ORG_ID,
     email: "mara@lindqvist.example",
+    active: true,
     verifiedAt: daysAgo(30),
+    codeRequestedAt: daysAgo(30),
     codeSentAt: daysAgo(30),
     createdAt: daysAgo(30),
   },
@@ -260,15 +265,19 @@ export const commitEmails: Mutable<CommitEmail>[] = [
     id: "cem_2",
     organizationId: ACME_ORG_ID,
     email: "mara.lindqvist@harbour.example",
+    active: true,
     verifiedAt: null,
-    codeSentAt: hoursAgo(2),
+    codeRequestedAt: null,
+    codeSentAt: null,
     createdAt: hoursAgo(2),
   },
   {
     id: "cem_3",
     organizationId: null,
     email: "mara@laptop.example",
+    active: true,
     verifiedAt: daysAgo(12),
+    codeRequestedAt: daysAgo(12),
     codeSentAt: daysAgo(12),
     createdAt: daysAgo(12),
   },
@@ -276,8 +285,10 @@ export const commitEmails: Mutable<CommitEmail>[] = [
     id: "cem_4",
     organizationId: null,
     email: "mara@studio.example",
+    active: true,
     verifiedAt: null,
-    codeSentAt: hoursAgo(1),
+    codeRequestedAt: null,
+    codeSentAt: null,
     createdAt: hoursAgo(1),
   },
 ];

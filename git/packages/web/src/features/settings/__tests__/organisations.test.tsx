@@ -49,6 +49,13 @@ const wait = { timeout: 10_000 };
 vi.setConfig({ testTimeout: 20_000 });
 
 beforeAll(() => {
+  // jsdom has no layout: dialogs open by attribute.
+  HTMLDialogElement.prototype.showModal ??= function (this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+  HTMLDialogElement.prototype.close ??= function (this: HTMLDialogElement) {
+    this.removeAttribute("open");
+  };
   window.scrollTo = () => {};
   setTransport(mockTransport());
 });
@@ -230,18 +237,18 @@ describe("Settings > Organisations", () => {
   it("lists the reader's commit emails under each organisation with a name", async () => {
     const list = await open();
     const acme = within(await list.findByRole("region", { name: "Commit emails in Acme" }, wait));
+    expect(acme.getByRole("heading", { name: "Commit emails" })).toBeTruthy();
     const rows = within(acme.getByRole("list", { name: "Commit emails in Acme" }));
-    const [verified, pending] = rows.getAllByRole("listitem");
+    const [verified, added] = rows.getAllByRole("listitem");
     expect(verified!.textContent).toContain("mara@lindqvist.example");
     expect(within(verified!).getByText("Verified")).toBeTruthy();
-    expect(within(verified!).queryByRole("textbox")).toBeNull();
-    expect(pending!.textContent).toContain("mara.lindqvist@harbour.example");
-    expect(within(pending!).getByText("Pending")).toBeTruthy();
-    expect(
-      within(pending!).getByRole("textbox", {
-        name: "Code sent to mara.lindqvist@harbour.example",
-      }),
-    ).toBeTruthy();
+    expect(within(verified!).queryByRole("button", { name: "Verify" })).toBeNull();
+    // One that was only added counts all the same: nothing says it is waiting.
+    expect(added!.textContent).toContain("mara.lindqvist@harbour.example");
+    expect(within(added!).queryByText("Verified")).toBeNull();
+    expect(within(added!).queryByText(/pending|waiting|unverified/i)).toBeNull();
+    expect(within(added!).getByRole("button", { name: "Verify" })).toBeTruthy();
+    expect(within(added!).queryByRole("textbox")).toBeNull();
     // Tidewater has a name and none yet; one without a name is not asked.
     const tidewater = within(list.getByRole("region", { name: "Commit emails in Tidewater" }));
     expect(tidewater.queryByRole("list")).toBeNull();
@@ -250,11 +257,21 @@ describe("Settings > Organisations", () => {
     expect(list.queryByRole("region", { name: "Commit emails in Saltmarsh Studio" })).toBeNull();
   });
 
-  it("verifies a pending address with its code, and says when the code is wrong", async () => {
+  it("verifies an address when asked, with the code's field in that row only", async () => {
     const list = await open();
     const acme = within(await list.findByRole("region", { name: "Commit emails in Acme" }, wait));
-    const field = () =>
-      acme.getByRole("textbox", { name: "Code sent to mara.lindqvist@harbour.example" });
+    const name = "Code sent to mara.lindqvist@harbour.example";
+    expect(acme.queryByRole("textbox", { name })).toBeNull();
+    fireEvent.click(acme.getByRole("button", { name: "Verify" }));
+    const field = () => acme.getByRole("textbox", { name });
+    expect(field()).toBeTruthy();
+    // The one field, beside the one for adding.
+    expect(acme.getAllByRole("textbox")).toHaveLength(2);
+    // Cancel puts the row back as it was, and the address still counts.
+    fireEvent.click(acme.getByRole("button", { name: "Cancel" }));
+    expect(acme.queryByRole("textbox", { name })).toBeNull();
+    fireEvent.click(acme.getByRole("button", { name: "Verify" }));
+
     fireEvent.change(field(), { target: { value: "WXYZ-9999" } });
     fireEvent.click(acme.getByRole("button", { name: "Verify" }));
     expect((await acme.findByRole("alert", undefined, wait)).textContent).toBe(
@@ -264,11 +281,11 @@ describe("Settings > Organisations", () => {
     fireEvent.change(field(), { target: { value: "abcd2345" } });
     fireEvent.click(acme.getByRole("button", { name: "Verify" }));
     await waitFor(() => expect(acme.getAllByText("Verified")).toHaveLength(2), wait);
-    expect(acme.queryByText("Pending")).toBeNull();
     expect(acme.queryByRole("button", { name: "Verify" })).toBeNull();
+    expect(acme.queryByRole("textbox", { name })).toBeNull();
   });
 
-  it("adds an address, which waits for its code, and removes one", async () => {
+  it("adds an address, which counts at once, and removes one after asking", async () => {
     const list = await open();
     const tidewater = within(
       await list.findByRole("region", { name: "Commit emails in Tidewater" }, wait),
@@ -277,7 +294,7 @@ describe("Settings > Organisations", () => {
     const addButton = tidewater.getByRole("button", { name: "Add" }) as HTMLButtonElement;
     expect(addButton.disabled).toBe(true);
 
-    // Another member's address, and a bot's, are refused in a sentence.
+    // Another member's address, and a bot's, are refused in a sentence under the field.
     fireEvent.change(input, { target: { value: "jonas@acme.example" } });
     fireEvent.click(addButton);
     expect((await tidewater.findByRole("alert", undefined, wait)).textContent).toBe(
@@ -291,13 +308,10 @@ describe("Settings > Organisations", () => {
 
     fireEvent.change(input, { target: { value: "Mara@Old.Example" } });
     fireEvent.click(addButton);
-    const added = await tidewater.findByRole(
-      "textbox",
-      { name: "Code sent to mara@old.example" },
-      wait,
-    );
-    expect(added).toBeTruthy();
-    expect(tidewater.getByText("Pending")).toBeTruthy();
+    expect(await tidewater.findByText("mara@old.example", undefined, wait)).toBeTruthy();
+    // No code is asked for: the row offers to verify, and no more.
+    expect(tidewater.queryByRole("textbox", { name: /^Code sent to/ })).toBeNull();
+    expect(tidewater.getByRole("button", { name: "Verify" })).toBeTruthy();
     expect((input as HTMLInputElement).value).toBe("");
     // The same address is its own in another organisation: Acme's list is as it was.
     expect(
@@ -306,7 +320,51 @@ describe("Settings > Organisations", () => {
       ),
     ).toBeNull();
 
+    // Removing asks first, and Cancel keeps the address.
     fireEvent.click(tidewater.getByRole("button", { name: "Remove mara@old.example" }));
+    const asked = within(await screen.findByRole("dialog", undefined, wait));
+    expect(asked.getByText("Remove commit email")).toBeTruthy();
+    fireEvent.click(asked.getByRole("button", { name: "Cancel" }));
+    expect(tidewater.getByText("mara@old.example")).toBeTruthy();
+    fireEvent.click(tidewater.getByRole("button", { name: "Remove mara@old.example" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", undefined, wait)).getByRole("button", {
+        name: "Remove",
+      }),
+    );
     await waitFor(() => expect(tidewater.queryByText("mara@old.example")).toBeNull(), wait);
+  });
+
+  it("shows an address another member added as waiting for its code", async () => {
+    const list = await open();
+    const tidewater = within(
+      await list.findByRole("region", { name: "Commit emails in Tidewater" }, wait),
+    );
+    fireEvent.change(tidewater.getByRole("textbox", { name: "Add an address in Tidewater" }), {
+      target: { value: "builds@harbour.example" },
+    });
+    fireEvent.click(tidewater.getByRole("button", { name: "Add" }));
+    const field = await tidewater.findByRole(
+      "textbox",
+      { name: "Code sent to builds@harbour.example" },
+      wait,
+    );
+    expect(
+      tidewater.getByText("Another member added this address. It counts for you once verified."),
+    ).toBeTruthy();
+    // Its code is the only way on: there is nothing to cancel back to.
+    expect(tidewater.queryByRole("button", { name: "Cancel" })).toBeNull();
+    fireEvent.change(field, { target: { value: "ABCD-2345" } });
+    fireEvent.click(tidewater.getByRole("button", { name: "Verify" }));
+    expect(await tidewater.findByText("Verified", undefined, wait)).toBeTruthy();
+    expect(tidewater.queryByText(/Another member added/)).toBeNull();
+    // Left as it was found for the next test.
+    fireEvent.click(tidewater.getByRole("button", { name: "Remove builds@harbour.example" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", undefined, wait)).getByRole("button", {
+        name: "Remove",
+      }),
+    );
+    await waitFor(() => expect(tidewater.queryByText("builds@harbour.example")).toBeNull(), wait);
   });
 });

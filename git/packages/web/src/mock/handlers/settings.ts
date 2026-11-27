@@ -4,6 +4,7 @@ import { requireUser, session } from "../db";
 import { FIXTURE_PEOPLE } from "../git";
 import {
   MOCK_COMMIT_EMAIL_CODE,
+  MOCK_HELD_COMMIT_EMAIL,
   commitEmails,
   fingerprintOf,
   keyInUse,
@@ -64,12 +65,16 @@ export default defineMockHandlers({
         throw conflict("You have added that address already", "email_taken");
       }
       const now = new Date().toISOString();
+      // It counts at once, and no code is mailed. One another member holds waits for its code.
+      const held = payload.organizationId !== null && email === MOCK_HELD_COMMIT_EMAIL;
       const added = {
         id: newId("cem"),
         organizationId: payload.organizationId,
         email,
+        active: !held,
         verifiedAt: null,
-        codeSentAt: now,
+        codeRequestedAt: held ? now : null,
+        codeSentAt: held ? now : null,
         createdAt: now,
       };
       commitEmails.push(added);
@@ -78,7 +83,15 @@ export default defineMockHandlers({
     sendCommitEmailCode: ({ params }) => {
       requireUser();
       const email = commitEmail(params.emailId);
-      email.codeSentAt = new Date().toISOString();
+      if (email.verifiedAt !== null) throw conflict("That address is verified already");
+      if (
+        email.codeRequestedAt !== null &&
+        Date.now() - Date.parse(email.codeRequestedAt) < 60_000
+      ) {
+        throw conflict("A code was sent less than a minute ago");
+      }
+      email.codeRequestedAt = new Date().toISOString();
+      email.codeSentAt = email.codeRequestedAt;
       return email;
     },
     verifyCommitEmail: ({ params, payload }) => {
@@ -89,6 +102,7 @@ export default defineMockHandlers({
         throw badRequest("That code is not right", "code_invalid");
       }
       email.verifiedAt = new Date().toISOString();
+      email.active = true;
       return email;
     },
     removeCommitEmail: ({ params }) => {
