@@ -1,8 +1,10 @@
+import { Text } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { useOrgPermissions } from "@/lib/permissions";
 import { Card, EmptyView, ErrorView, LoadingView, Row, Screen } from "@/components/ui";
+import { colors } from "@/lib/theme";
 import type { Account } from "@infrawrench/client-core";
 
 export default function AccountsScreen() {
@@ -92,11 +94,11 @@ export default function AccountsScreen() {
           subtitle="Deploy frequency, lead time, failure rate and time to restore"
           onPress={() => router.push(`/org/${orgId}/delivery`)}
         />
-        {/* git-feature-flag: hidden while the organisation does not have Git (`has` says no). */}
         {has("git:read") ? (
           <Row
             title="Git"
             subtitle="Repositories on git.infrawrench.com"
+            right={<Text style={{ color: colors.textMuted, fontSize: 13 }}>Beta</Text>}
             onPress={() => router.push(`/org/${orgId}/git`)}
           />
         ) : null}

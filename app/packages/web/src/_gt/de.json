@@ -24102,5 +24102,6 @@
   "841a1e8baa49bf07": "Dieser Branch stammt aus einem Fork. CI läuft erst, wenn ein Maintainer diesen Commit genehmigt, und ohne Ihre Secrets.",
   "795c16e01f8abc54": "Ausgelöst durch: Branch-Seite von {branch}",
   "04dbb16d9b692feb": "Offene Branches",
-  "6dba06121f9a9447": "Organisationen auf git.infrawrench.com benötigen einen kostenpflichtigen Tarif."
+  "6dba06121f9a9447": "Organisationen auf git.infrawrench.com benötigen einen kostenpflichtigen Tarif.",
+  "45fa271ea0e1ac8e": "Beta"
 }

@@ -13,6 +13,7 @@ import {
   type GitForgeVisibility,
   type GitNameProblem,
 } from "@infrawrench/client-core";
+import { BetaBadge } from "../components/BetaBadge.js";
 import { CiStatusIcon } from "../ci/CiStatusIcon.js";
 import { useStableGT } from "../i18n/stable-gt.js";
 import { notifyGitForgeNamespaceChanged } from "../git/forge-link.js";
@@ -145,7 +146,10 @@ export function GitSection() {
   if (!overview) {
     return (
       <div className="max-w-4xl">
-        <h1 className="text-xl font-semibold mb-6">{gt("Git")}</h1>
+        <h1 className="mb-6 flex items-center gap-2 text-xl font-semibold">
+          {gt("Git")}
+          <BetaBadge />
+        </h1>
         {error ? (
           <p className="text-sm text-danger">{error}</p>
         ) : (
@@ -159,7 +163,10 @@ export function GitSection() {
   return (
     <div className="max-w-4xl">
       <div className="mb-6 flex items-center justify-between gap-3">
-        <h1 className="text-xl font-semibold">{gt("Git")}</h1>
+        <h1 className="flex items-center gap-2 text-xl font-semibold">
+          {gt("Git")}
+          <BetaBadge />
+        </h1>
         {namespace && (
           <button
             type="button"
