@@ -878,10 +878,7 @@ export interface components {
             alertSettings?: components["schemas"]["AccountAlertSettings"];
             features?: string[];
             id: string;
-            integrations?: {
-                connected: boolean;
-                type: string;
-            }[];
+            integrations?: components["schemas"]["AccountIntegration"][];
             name?: string;
             plan?: string;
             planDisplayName?: string;
@@ -900,9 +897,21 @@ export interface components {
         AccountAlertSettings: {
             [key: string]: unknown;
         };
+        AccountGenericIntegration: {
+            connected: boolean;
+            entitled: boolean;
+            type: string;
+        };
+        AccountIntegration: components["schemas"]["AccountSlackIntegration"] | components["schemas"]["AccountGenericIntegration"];
         AccountList: components["schemas"]["Account"][];
         AccountSettings: {
             [key: string]: unknown;
+        };
+        AccountSlackIntegration: {
+            connected: boolean;
+            entitled: boolean;
+            /** @enum {string} */
+            type: "SLACK";
         };
         AgenticAssertion: {
             actual?: string;
@@ -945,6 +954,9 @@ export interface components {
             created_at?: string;
             id: number;
             sendDegraded?: boolean;
+            sendErrorGroupCreated?: boolean | null;
+            sendErrorGroupRegression?: boolean | null;
+            sendErrorGroupResolved?: boolean | null;
             sendFailure?: boolean;
             sendRecovery?: boolean;
             /** @default false */
@@ -976,6 +988,9 @@ export interface components {
             autoSubscribe?: boolean;
             config: components["schemas"]["AlertChannelCreateConfig"];
             sendDegraded?: boolean;
+            sendErrorGroupCreated?: boolean | null;
+            sendErrorGroupRegression?: boolean | null;
+            sendErrorGroupResolved?: boolean | null;
             sendFailure?: boolean;
             sendRecovery?: boolean;
             /** @default false */
@@ -1010,6 +1025,9 @@ export interface components {
             id: number;
             projectBindings?: components["schemas"]["ProjectBindingsV1"];
             sendDegraded?: boolean;
+            sendErrorGroupCreated?: boolean | null;
+            sendErrorGroupRegression?: boolean | null;
+            sendErrorGroupResolved?: boolean | null;
             sendFailure?: boolean;
             sendRecovery?: boolean;
             /** @default false */
@@ -1844,6 +1862,7 @@ export interface components {
             overMaxResponseTime?: boolean | null;
             playwrightCheckResult?: components["schemas"]["CheckResultPlaywright"];
             responseTime?: number;
+            responseTimeWithoutDns?: number | null;
             /** @enum {string} */
             resultType: "FINAL" | "ATTEMPT" | "ALL";
             runLocation?: string;
@@ -1856,6 +1875,7 @@ export interface components {
             stoppedAt?: string | null;
             traceId: string | null;
             tracerouteCheckResult?: components["schemas"]["CheckResultTraceroute"];
+            urlCheckResult?: components["schemas"]["CheckResultURL"];
         };
         CheckResultAgentic: {
             artifactManifest?: {
@@ -1882,9 +1902,9 @@ export interface components {
             pcapDataUrl?: string | null;
             request?: {
                 data?: string;
-                headers?: components["schemas"]["CheckResultFreeformObject"];
+                headers?: components["schemas"]["CheckResultFreeformObject"] & unknown;
                 method?: string;
-                params?: components["schemas"]["CheckResultFreeformObject"];
+                params?: components["schemas"]["CheckResultFreeformObject"] & unknown;
                 url?: string;
             };
             requestError?: string | null;
@@ -1994,6 +2014,7 @@ export interface components {
             overMaxResponseTime?: boolean | null;
             playwrightCheckResult?: components["schemas"]["CheckResultPlaywright"];
             responseTime?: number;
+            responseTimeWithoutDns?: number | null;
             /** @enum {string} */
             resultType?: "FINAL" | "ATTEMPT" | "ALL";
             runLocation?: string;
@@ -2006,6 +2027,7 @@ export interface components {
             stoppedAt?: string | null;
             traceId?: string | null;
             tracerouteCheckResult?: components["schemas"]["CheckResultTraceroute"];
+            urlCheckResult?: components["schemas"]["CheckResultURL"];
         };
         CheckResultSsl: {
             assertions?: components["schemas"]["CheckResultFreeformObject"][] | null;
@@ -2066,6 +2088,14 @@ export interface components {
                 [key: string]: unknown;
             } | null;
             totalHops?: number;
+        } | null;
+        CheckResultURL: {
+            requestError?: string | null;
+            statusCode?: number | null;
+            statusText?: string | null;
+            timingPhases?: {
+                [key: string]: unknown;
+            } | null;
         } | null;
         CheckSessionsV2CheckSession: {
             /** Format: uuid */
@@ -2444,7 +2474,7 @@ export interface components {
             intent?: components["schemas"]["ChecksV1CheckIntent"];
             localSetupScript?: string | null;
             localTearDownScript?: string | null;
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             maxResponseTime?: number | null;
             muted?: boolean;
             name?: string;
@@ -2589,7 +2619,7 @@ export interface components {
             groupId?: number | null;
             groupOrder?: number | null;
             intent?: components["schemas"]["ChecksV1CheckIntent"];
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             muted?: boolean;
             name?: string;
             privateLocations?: string[] | null;
@@ -2642,7 +2672,7 @@ export interface components {
             intent?: components["schemas"]["ChecksV1CheckIntent"];
             localSetupScript?: string | null;
             localTearDownScript?: string | null;
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             maxResponseTime?: number | null;
             muted?: boolean;
             name?: string;
@@ -2925,7 +2955,7 @@ export interface components {
                 requiredOutcomes?: string[];
             } | null;
             /** @default [] */
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             maxResponseTime?: number | null;
             /** @default false */
             muted?: boolean;
@@ -3201,7 +3231,7 @@ export interface components {
             intent?: components["schemas"]["ChecksV1CheckIntent"];
             localSetupScript?: string | null;
             localTearDownScript?: string | null;
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             maxResponseTime?: number | null;
             muted?: boolean;
             name?: string;
@@ -3370,7 +3400,7 @@ export interface components {
             /** @default null */
             localTearDownScript?: string | null;
             /** @default [] */
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             /** @default 20000 */
             maxResponseTime?: number | null;
             /** @default false */
@@ -3499,7 +3529,7 @@ export interface components {
             intent?: components["schemas"]["ChecksV1CheckIntent"];
             localSetupScript?: string | null;
             localTearDownScript?: string | null;
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             maxResponseTime?: number | null;
             muted?: boolean;
             name?: string;
@@ -3793,7 +3823,7 @@ export interface components {
             intent?: components["schemas"]["ChecksV1CheckIntent"];
             localSetupScript?: string | null;
             localTearDownScript?: string | null;
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             maxPacketLossThreshold?: number | null;
             maxResponseTime?: number | null;
             muted?: boolean;
@@ -3925,7 +3955,7 @@ export interface components {
             groupId?: number | null;
             groupOrder?: number | null;
             intent?: components["schemas"]["ChecksV1CheckIntent"];
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             muted?: boolean;
             name?: string;
             privateLocations?: string[] | null;
@@ -3999,6 +4029,7 @@ export interface components {
             privateLocations?: string[] | null;
             project?: components["schemas"]["ChecksV1CheckProject"];
             projectBindings?: components["schemas"]["ProjectBindingsV1"];
+            resolvedEngineVersion: string | null;
             /** @default false */
             runParallel?: boolean;
             /** @default [] */
@@ -4207,7 +4238,7 @@ export interface components {
             intent?: components["schemas"]["ChecksV1CheckIntent"];
             localSetupScript?: string | null;
             localTearDownScript?: string | null;
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             maxResponseTime?: number;
             muted?: boolean;
             name?: string;
@@ -4464,7 +4495,7 @@ export interface components {
             groupId?: number | null;
             groupOrder?: number | null;
             intent?: components["schemas"]["ChecksV1CheckIntent"];
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             maxResponseTime?: number | null;
             muted?: boolean;
             name?: string;
@@ -4612,7 +4643,7 @@ export interface components {
             intent?: components["schemas"]["ChecksV1CheckIntent"];
             localSetupScript?: string | null;
             localTearDownScript?: string | null;
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             maxResponseTime?: number | null;
             muted?: boolean;
             name?: string;
@@ -4890,7 +4921,7 @@ export interface components {
             groupId?: number | null;
             groupOrder?: number | null;
             intent?: components["schemas"]["ChecksV1CheckIntent"];
-            locations?: locations_09f17dc2;
+            locations?: locations_6acee25f;
             maxResponseTime?: number | null;
             muted?: boolean;
             name?: string;
@@ -5417,7 +5448,7 @@ export interface components {
         /** @enum {string} */
         Model16: "Conflict";
         /** @enum {string} */
-        Model17: Shared_7c973383;
+        Model17: Shared_99054b81;
         Model18: components["schemas"]["Model17"][];
         /**
          * @default null
@@ -5676,7 +5707,8 @@ export interface components {
             };
             pricingRule: components["schemas"]["UsageV2PricingRule"];
             /** @enum {string} */
-            pricingRuleKey: "apiChecks" | "multistepChecks" | "browserChecks" | "playwrightCheckSuites" | "uptimeMonitors" | "aiInvocations" | "statusPages" | "statusPageAdditionalServices" | "statusPageAdditionalSubscribers" | "additionalSms" | "additionalPhoneAlerts";
+            pricingRuleKey: pricingRuleKey_2ca99dad;
+            unitsUsed: number | null;
             /** Format: uuid */
             usageTermsId: string;
         };
@@ -5686,6 +5718,7 @@ export interface components {
             includedQuantity: number | null;
             measuredQuantity: number;
             rateCondition: string | null;
+            unitsUsed: number | null;
         } | {
             appliedDailyCredits: number;
             billableResourceDays: number;
@@ -5694,6 +5727,7 @@ export interface components {
                 /** @enum {number} */
                 daysPerYear: 365;
             };
+            unitsUsed: number | null;
         } | {
             appliedDailyCreditsPerBlock: number;
             billableBlockDays: number;
@@ -5706,6 +5740,7 @@ export interface components {
             };
             /** @enum {string} */
             scope: "statusPage";
+            unitsUsed: number | null;
         };
         UsageV2PricingRule: {
             credits: number;
@@ -5768,7 +5803,9 @@ export interface components {
                 additionalPhoneAlerts?: components["schemas"]["UsageV2PricingRule"];
                 additionalSms?: components["schemas"]["UsageV2PricingRule"];
                 aiInvocations?: components["schemas"]["UsageV2PricingRule"];
+                apiAndMultistepChecks?: components["schemas"]["UsageV2PricingRule"];
                 apiChecks?: components["schemas"]["UsageV2PricingRule"];
+                browserAndPlaywrightChecks?: components["schemas"]["UsageV2PricingRule"];
                 browserChecks?: components["schemas"]["UsageV2PricingRule"];
                 multistepChecks?: components["schemas"]["UsageV2PricingRule"];
                 playwrightCheckSuites?: components["schemas"]["UsageV2PricingRule"];
@@ -5778,6 +5815,9 @@ export interface components {
                 uptimeMonitors?: components["schemas"]["UsageV2PricingRule"];
             } | null;
             standardCreditsPerUnit: number | null;
+            /** @enum {string} */
+            unit: "credits" | "usdCents";
+            unitBudget: number | null;
             /** Format: date */
             usageStartDate: string;
         };
@@ -5799,7 +5839,10 @@ export interface components {
             };
             totals: {
                 creditsUsed: number | null;
+                unitsUsed: number | null;
             };
+            /** @enum {string|null} */
+            unit: "credits" | "usdCents" | null;
             usageTermsIds: string[];
         };
         UsageV2TermsCollectionResponse: {
@@ -7574,11 +7617,12 @@ export interface operations {
         parameters: {
             query?: {
                 checkType?: "AGENTIC" | "API" | "BROWSER" | "HEARTBEAT" | "ICMP" | "MULTI_STEP" | "TCP" | "PLAYWRIGHT" | "TRACEROUTE" | "URL" | "DNS" | "SSL" | "GRPC";
-                fields?: ("id" | "name" | "checkId" | "hasFailures" | "hasErrors" | "isDegraded" | "isCancelled" | "overMaxResponseTime" | "runLocation" | "startedAt" | "stoppedAt" | "created_at" | "createdAt" | "responseTime" | "apiCheckResult" | "browserCheckResult" | "multiStepCheckResult" | "agenticCheckResult" | "playwrightCheckResult" | "tracerouteCheckResult" | "grpcCheckResult" | "sslCheckResult" | "checkRunId" | "attempts" | "resultType" | "sequenceId" | "traceId" | "errorGroupIds")[];
+                fields?: ("id" | "name" | "checkId" | "hasFailures" | "hasErrors" | "isDegraded" | "isCancelled" | "overMaxResponseTime" | "runLocation" | "startedAt" | "stoppedAt" | "created_at" | "createdAt" | "responseTime" | "responseTimeWithoutDns" | "apiCheckResult" | "browserCheckResult" | "multiStepCheckResult" | "agenticCheckResult" | "playwrightCheckResult" | "tracerouteCheckResult" | "urlCheckResult" | "grpcCheckResult" | "sslCheckResult" | "checkRunId" | "attempts" | "resultType" | "sequenceId" | "traceId" | "errorGroupIds")[];
                 from?: number;
                 hasFailures?: boolean;
                 limit?: number;
                 location?: Shared_7c973383;
+                maxAgeSeconds?: number;
                 nextId?: string;
                 resultType?: "FINAL" | "ATTEMPT" | "ALL";
                 to?: number;
@@ -7633,7 +7677,7 @@ export interface operations {
             query?: {
                 accountIds?: string[];
                 from?: string;
-                pricingRuleKeys?: ("apiChecks" | "multistepChecks" | "browserChecks" | "playwrightCheckSuites" | "uptimeMonitors" | "aiInvocations" | "statusPages" | "statusPageAdditionalServices" | "statusPageAdditionalSubscribers" | "additionalSms" | "additionalPhoneAlerts")[];
+                pricingRuleKeys?: (pricingRuleKey_2ca99dad)[];
                 to?: string;
                 usageTermsIds?: string[];
             };
@@ -7988,6 +8032,7 @@ type ChecksV1SslSecurityBaselinePatch_76ce7f43 = {
     };
 };
 type locations_09f17dc2 = (Shared_7c973383)[] | null;
+type locations_6acee25f = (Shared_99054b81)[] | null;
 type parameters_7b3c4116 = {
     query: {
         aggregationInterval?: number;
@@ -8028,6 +8073,7 @@ type parameters_bf8e32d4 = {
     };
     cookie?: never;
 };
+type pricingRuleKey_2ca99dad = "apiChecks" | "multistepChecks" | "browserChecks" | "playwrightCheckSuites" | "apiAndMultistepChecks" | "browserAndPlaywrightChecks" | "uptimeMonitors" | "aiInvocations" | "statusPages" | "statusPageAdditionalServices" | "statusPageAdditionalSubscribers" | "additionalSms" | "additionalPhoneAlerts";
 type retryStrategy_abae1760 = {
     /** @default 60 */
     baseBackoffSeconds?: number;
@@ -8040,6 +8086,7 @@ type retryStrategy_abae1760 = {
     type: "FIXED" | "LINEAR" | "EXPONENTIAL" | "SINGLE_RETRY";
 } | null;
 type Shared_7c973383 = "us-east-1" | "us-east-2" | "us-west-1" | "us-west-2" | "ca-central-1" | "sa-east-1" | "eu-west-1" | "eu-central-1" | "eu-west-2" | "eu-west-3" | "eu-north-1" | "eu-south-1" | "me-south-1" | "ap-southeast-1" | "ap-northeast-1" | "ap-east-1" | "ap-southeast-2" | "ap-southeast-3" | "ap-northeast-2" | "ap-northeast-3" | "ap-south-1" | "af-south-1";
+type Shared_99054b81 = "us-east-1" | "us-east-2" | "us-west-1" | "us-west-2" | "ca-central-1" | "sa-east-1" | "eu-west-1" | "eu-central-1" | "eu-west-2" | "eu-west-3" | "eu-north-1" | "eu-south-1" | "ap-southeast-1" | "ap-northeast-1" | "ap-east-1" | "ap-southeast-2" | "ap-southeast-3" | "ap-northeast-2" | "ap-northeast-3" | "ap-south-1" | "af-south-1";
 type Shared_d694164e = {
     /**
      * @default RUN_BASED
