@@ -15,21 +15,17 @@ const configured = !!process.env["DATABASE_URL"];
 
 const orgId = `test-org-${randomUUID()}`;
 const otherOrgId = `test-org-${randomUUID()}`;
-const flaglessOrgId = `test-org-${randomUUID()}`;
 const userId = `test-user-${randomUUID()}`;
 const suffix = randomUUID().slice(0, 8);
 const namespace = `acme-${suffix}`;
 const otherNamespace = `other-${suffix}`;
-const flaglessNamespace = `noflag-${suffix}`;
 const ids = {
   namespace: randomUUID(),
   otherNamespace: randomUUID(),
-  flaglessNamespace: randomUUID(),
   repo: randomUUID(),
   fork: randomUUID(),
   archived: randomUUID(),
   otherRepo: randomUUID(),
-  flaglessRepo: randomUUID(),
 };
 const OID = "a".repeat(40);
 
@@ -77,7 +73,7 @@ describe.skipIf(!configured)("agent work on a git.infrawrench.com branch page", 
     // Namespaces cascade to repositories, threads, pages and links.
     await db
       .delete(schema.organizations)
-      .where(inArray(schema.organizations.id, [orgId, otherOrgId, flaglessOrgId]));
+      .where(inArray(schema.organizations.id, [orgId, otherOrgId]));
     await db.delete(schema.users).where(inArray(schema.users.id, [userId]));
     await db.$client.end();
   });
@@ -85,17 +81,13 @@ describe.skipIf(!configured)("agent work on a git.infrawrench.com branch page", 
   let pageId = "";
   let reusedOpenId = "";
 
-  it("sets up two organisations with Git and one without", async () => {
+  it("sets up two organisations", async () => {
     const { db, schema } = await modules();
     await db.insert(schema.users).values({ id: userId, email: `${userId}@example.test` });
     await db.insert(schema.organizations).values([
       { id: orgId, displayName: "Agent work" },
       { id: otherOrgId, displayName: "Someone else" },
-      { id: flaglessOrgId, displayName: "No Git" },
     ]);
-    await db
-      .insert(schema.gitFeatureAccess)
-      .values([{ organizationId: orgId }, { organizationId: otherOrgId }]);
     await db.insert(schema.gitNamespaces).values([
       {
         id: ids.namespace,
@@ -111,13 +103,6 @@ describe.skipIf(!configured)("agent work on a git.infrawrench.com branch page", 
         kind: "org",
         organizationId: otherOrgId,
       },
-      {
-        id: ids.flaglessNamespace,
-        slug: flaglessNamespace,
-        slugLower: flaglessNamespace,
-        kind: "org",
-        organizationId: flaglessOrgId,
-      },
     ]);
     await db.insert(schema.gitRepositories).values([
       { id: ids.repo, namespaceId: ids.namespace, name: "Infra", nameLower: "infra" },
@@ -130,12 +115,6 @@ describe.skipIf(!configured)("agent work on a git.infrawrench.com branch page", 
         archived: true,
       },
       { id: ids.otherRepo, namespaceId: ids.otherNamespace, name: "infra", nameLower: "infra" },
-      {
-        id: ids.flaglessRepo,
-        namespaceId: ids.flaglessNamespace,
-        name: "infra",
-        nameLower: "infra",
-      },
     ]);
     pageId = await page(ids.repo, 1);
     await page(ids.repo, 2, { state: "closed" });
@@ -151,7 +130,6 @@ describe.skipIf(!configured)("agent work on a git.infrawrench.com branch page", 
     await page(ids.repo, 10, { headRepositoryId: ids.fork, headRef: "work/ask-1" });
     await page(ids.archived, 1);
     await page(ids.otherRepo, 1);
-    await page(ids.flaglessRepo, 1);
     // An issue numbered 5 that is no branch page.
     await db.insert(schema.gitIssues).values({
       id: randomUUID(),
@@ -210,7 +188,6 @@ describe.skipIf(!configured)("agent work on a git.infrawrench.com branch page", 
       [orgId, { owner: namespace, repo: "nothing", branch: "work/ask-1" }], // no such repository
       [orgId, { owner: otherNamespace, repo: "infra", branch: "work/ask-1" }], // another organisation's
       [otherOrgId, { owner: namespace, repo: "infra", branch: "work/ask-1" }], // asked by another organisation
-      [flaglessOrgId, { owner: flaglessNamespace, repo: "infra", branch: "work/ask-1" }], // Git off
       [orgId, { owner: "../x", repo: "infra", branch: "work/ask-1" }], // not an address
       [orgId, { owner: namespace, repo: "infra", branch: "a:b:c" }], // not a key
       [orgId, { owner: namespace, repo: "infra", branch: "" }],

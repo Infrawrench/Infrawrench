@@ -2,7 +2,6 @@ import { useOrgTools } from "../lib/org-tools";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
-  gitFeatureHides,
   hasPermission,
   isSearchObjectKind,
   type CloudOrg,
@@ -43,8 +42,6 @@ export function DesktopCommandPalette({
   const navigate = useNavigate();
   const { results, loading } = useLocalSpotlightResults("navigate");
   const [permissions, setPermissions] = useState<readonly string[]>([]);
-  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-  const [gitEnabled, setGitEnabled] = useState<boolean | undefined>(undefined);
 
   // Cloud actions are gated like the pages they open; local mode has no roles.
   useEffect(() => {
@@ -53,10 +50,7 @@ export function DesktopCommandPalette({
     createDesktopSettingsApi()
       .get<OrgMembership>(`/api/org/${cloudOrgId}/team/me`)
       .then((me) => {
-        if (!cancelled) {
-          setPermissions(me.permissions);
-          setGitEnabled(me.gitEnabled); // git-feature-flag
-        }
+        if (!cancelled) setPermissions(me.permissions);
       })
       .catch(() => {
         if (!cancelled) setPermissions([]);
@@ -67,12 +61,8 @@ export function DesktopCommandPalette({
   }, [cloudOrgId]);
 
   const has = useCallback(
-    (permission: string) =>
-      cloudOrgId
-        ? // git-feature-flag: `git:` permissions grant nothing while the org does not have Git.
-          !gitFeatureHides(permission, { gitEnabled }) && hasPermission(permissions, permission)
-        : true,
-    [cloudOrgId, permissions, gitEnabled],
+    (permission: string) => (cloudOrgId ? hasPermission(permissions, permission) : true),
+    [cloudOrgId, permissions],
   );
   const open = useCallback(
     (target: WorkspaceTabTarget, label: string) =>

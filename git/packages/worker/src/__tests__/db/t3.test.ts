@@ -618,7 +618,6 @@ describe.skipIf(!configured)("T3 Code, against a real Postgres", () => {
 
     const org = await world.organization(`acme${count}`, {
       paid: true,
-      git: true,
       members: [[alice, "owner"]],
     });
     const repo = (await world.repository(alice, org.slug, "infra", "private")).path;

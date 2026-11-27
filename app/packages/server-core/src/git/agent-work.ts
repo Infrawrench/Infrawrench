@@ -26,7 +26,6 @@ import {
   gitPullRequests,
   gitRepositories,
 } from "../db/schema.js";
-import { isGitEnabled } from "./feature-flag.js"; // git-feature-flag
 
 /** What the app is asked to work on: a branch page, by its address on the forge. */
 export interface GitWorkRequest {
@@ -67,8 +66,8 @@ export interface GitWork {
 
 /**
  * The one refusal for a branch page that cannot be worked on: missing, not
- * this organisation's, private and unreadable, closed, from a fork, or Git
- * off. One message for all of them, so the answer never says whether a
+ * this organisation's, private and unreadable, closed, or from a fork. One
+ * message for all of them, so the answer never says whether a
  * private repository exists.
  */
 export class GitWorkUnavailable extends Error {
@@ -193,8 +192,6 @@ export async function resolveGitWork(
   if (!isGitWorkRequest(request)) throw new GitWorkUnavailable();
   const key = parseGitBranchKey(request.branch);
   if (!key || key.fork !== null) throw new GitWorkUnavailable();
-  // No forge work until the organisation has Git.
-  if (!(await isGitEnabled(organizationId))) throw new GitWorkUnavailable(); // git-feature-flag
   // Every page of the branch in the repository, oldest first: the key's
   // ordinal counts them.
   const pages = await db
@@ -270,8 +267,6 @@ export async function gitWorkForSession(
   organizationId: string,
   sessionId: string,
 ): Promise<GitWork | null> {
-  // Git turned off stops handing out tokens too.
-  if (!(await isGitEnabled(organizationId))) return null; // git-feature-flag
   const [row] = await db
     .select(workColumns)
     .from(gitAgentLinks)

@@ -53,8 +53,6 @@ export { ALL_PERMISSIONS } from "./permission-catalog";
 export * from "./products";
 export * from "./ci";
 export * from "./git-forge";
-// git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-export * from "./git-feature-flag";
 export * from "./git-names";
 export * from "./git-branch-key";
 export * from "./ci-access";

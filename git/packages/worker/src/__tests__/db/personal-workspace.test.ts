@@ -250,12 +250,10 @@ describe.skipIf(!configured)("a person's namespace connected to an organisation"
 
   it("is asked with the username, and a refusal claims nothing", async () => {
     const carol = await world.person("carol", { username: false });
-    // git-feature-flag: sign-ups are for members of an organisation that has Git.
     const hers = await world.organization("carolco", {
       paid: true,
       members: [[carol, "member"]],
       namespace: false,
-      git: true,
     });
     const claim = (workspaceOrganizationId: string | null | undefined) =>
       world.call("POST", "/api/session/username", {
@@ -279,7 +277,6 @@ describe.skipIf(!configured)("a person's namespace connected to an organisation"
       paid: true,
       members: [[dave, "member"]],
       namespace: false,
-      git: true,
     });
     expect(
       (

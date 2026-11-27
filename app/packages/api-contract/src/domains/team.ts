@@ -124,11 +124,12 @@ export const MeResponse = Schema.Struct({
   role: Schema.NullOr(RoleSummary),
   permissions: Schema.Array(Permission),
   costVisibility: Schema.optionalKey(CostVisibilitySummary),
-  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
+  // Deprecated: Git is on for every organisation since 1.135.0. Always true,
+  // kept so a client generated from an earlier spec still decodes the answer.
   gitEnabled: Schema.optionalKey(
     Schema.Boolean.annotate({
       description:
-        "Whether the organisation has Git (git.infrawrench.com) turned on. While it is false, the `git:` permissions grant nothing and the Git routes answer 404. Absent means on.",
+        "Deprecated: always true. Git (git.infrawrench.com) is available to every organisation; the field will be removed in the next major version.",
     }),
   ),
 }).annotate({ identifier: "MeResponse" });

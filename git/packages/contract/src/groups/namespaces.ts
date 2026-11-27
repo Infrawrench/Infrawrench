@@ -41,7 +41,6 @@ export class NamespacesGroup extends HttpApiGroup.make("namespaces")
       params: { orgId: Uuid.annotate({ description: "Infrawrench organisation id" }) },
       payload: SlugBody,
       success: Namespace,
-      // git-feature-flag: the 403's `git_not_enabled` code goes with the flag.
       error: [BadRequest, PaymentRequired, Forbidden, NotFound, Conflict],
     })
       .annotate(RequiredOrgPermission, "git:admin")
@@ -50,7 +49,7 @@ export class NamespacesGroup extends HttpApiGroup.make("namespaces")
       .annotate(OpenApi.Summary, "Claim an organisation's namespace")
       .annotate(
         OpenApi.Description,
-        "The first claim only (`renameForOrganization` changes it), and from a signed-in browser only. 400 `name_invalid` or `username_reserved` when the rules refuse the name, 402 `plan_required` when the organisation is not on a paid plan, 403 `git_not_enabled` while Git is not turned on for the organisation, 409 `namespace_taken` when the slug is in use, 409 `namespace_already_claimed` when the organisation has one.",
+        "The first claim only (`renameForOrganization` changes it), and from a signed-in browser only. 400 `name_invalid` or `username_reserved` when the rules refuse the name, 402 `plan_required` when the organisation is not on a paid plan, 409 `namespace_taken` when the slug is in use, 409 `namespace_already_claimed` when the organisation has one.",
       )
       .annotate(SuccessDescription, "The namespace"),
     HttpApiEndpoint.put("renameForOrganization", "/orgs/:orgId/namespace", {

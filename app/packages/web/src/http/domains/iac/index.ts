@@ -6,7 +6,6 @@
  * never attribute values. The responses are what the VS Code and Raycast
  * extensions read, sent exactly as the store returns them.
  */
-import { isGitEnabled } from "@infrawrench/server-core/git/feature-flag"; // git-feature-flag
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { IAC_STATE_LIMITS } from "@infrawrench/client-core";
@@ -140,10 +139,9 @@ const IacHandlers = HttpApiBuilder.group(IacApi, "iac", (handlers) =>
         if (!resourceId) return yield* badRequest("Missing resourceId");
         // Which repository manages a resource is the forge's to say: a private
         // one is named only to someone who reads the organisation's repositories.
-        const readsGit =
-          GIT_READ_PERMISSIONS.some((permission) => hasPermission(permissions, permission)) &&
-          // git-feature-flag: no "Managed by" until the organisation has Git.
-          (yield* legacy(() => isGitEnabled(organizationId)));
+        const readsGit = GIT_READ_PERMISSIONS.some((permission) =>
+          hasPermission(permissions, permission),
+        );
         const status = yield* refusalCall(store, inputRefusals, () =>
           getIacResourceStatus(organizationId, resourceId, { readsGit }),
         );

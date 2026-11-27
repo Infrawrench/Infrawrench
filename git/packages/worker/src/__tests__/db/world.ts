@@ -12,7 +12,6 @@ import { inArray } from "drizzle-orm";
 import {
   gitNamespaces,
   gitUsers,
-  gitFeatureAccess,
   organizationMembers,
   organizations,
   users,
@@ -73,8 +72,6 @@ export interface World {
       readonly members: ReadonlyArray<readonly [Person, "owner" | "admin" | "member"]>;
       /** Claim `<name>-<suffix>` as its namespace. Default true. */
       readonly namespace?: boolean;
-      /** git-feature-flag: turn Git on for it, as `/admin` does. Default false. */
-      readonly git?: boolean;
     },
   ): Promise<{ readonly id: string; readonly slug: string }>;
   call<T = any>(method: string, path: string, options?: CallOptions): Promise<Answer<T>>;
@@ -169,10 +166,6 @@ export const makeWorld = (): World => {
       }
       if (options.namespace !== false) {
         await claimOrganizationNamespace(id, slug, options.members[0]![0].id);
-      }
-      // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-      if (options.git === true) {
-        await db.insert(gitFeatureAccess).values({ organizationId: id, enabledBy: null });
       }
       return { id, slug };
     },

@@ -38,7 +38,6 @@ describe.skipIf(!configured)("traces, against a real Postgres", () => {
     )) as [Person, Person, Person];
     organization = await world.organization("acme", {
       paid: true,
-      git: true,
       members: [[alice, "owner"]],
     });
   });

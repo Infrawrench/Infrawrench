@@ -267,7 +267,6 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
         [dave, "member"],
       ],
       namespace: false,
-      git: true,
     });
     const path = `/api/orgs/${unclaimed.id}/namespace`;
     const claim = (who: Person | undefined, slug: string) =>
@@ -290,11 +289,10 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
     // The session says who may: the administrator, in a browser.
     expect(await sessionEntry(erin)).toMatchObject({
       namespace: null,
-      gitEnabled: true,
       namespacePlanRefusal: null,
       canClaimNamespace: true,
     });
-    expect(await sessionEntry(dave)).toMatchObject({ gitEnabled: true, canClaimNamespace: false });
+    expect(await sessionEntry(dave)).toMatchObject({ canClaimNamespace: false });
     expect(await sessionEntry(erin, { scopes: ["repo:write"] })).toMatchObject({
       canClaimNamespace: false,
     });
@@ -380,34 +378,10 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
     });
   });
 
-  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-  it("refuses a claim while Git is not turned on for the organisation", async () => {
-    const off = await world.organization("gitoff", {
-      paid: true,
-      members: [[erin, "owner"]],
-      namespace: false,
-    });
-    const me = await world.call("GET", "/api/session", { as: erin });
-    expect(me.body.organizations.find((o: { id: string }) => o.id === off.id)).toMatchObject({
-      gitEnabled: false,
-      canClaimNamespace: false,
-    });
-    expect(
-      await world.call("POST", `/api/orgs/${off.id}/namespace`, {
-        as: erin,
-        body: { slug: off.slug },
-      }),
-    ).toMatchObject({ status: 403, body: { code: "git_not_enabled" } });
-    expect(
-      await db.select().from(gitNamespaces).where(eq(gitNamespaces.organizationId, off.id)),
-    ).toHaveLength(0);
-  });
-
   it("refuses a claim by an organisation that is not on a paid plan, and keeps a namespace it has", async () => {
     const free = await world.organization("unpaid", {
       members: [[erin, "owner"]],
       namespace: false,
-      git: true,
     });
     const path = `/api/orgs/${free.id}/namespace`;
     const entry = async () => {
@@ -415,7 +389,6 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
       return me.body.organizations.find((o: { id: string }) => o.id === free.id);
     };
     expect(await entry()).toMatchObject({
-      gitEnabled: true,
       namespacePlanRefusal: GIT_FORGE_NAMESPACE_PLAN_REQUIRED,
       canClaimNamespace: false,
     });
@@ -466,7 +439,6 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
         [carol, "owner"],
       ],
       namespace: false,
-      git: true,
     });
     const path = `/api/orgs/${raced.id}/namespace`;
     const answers = await Promise.all([
@@ -502,7 +474,7 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
     const newcomer = await world.person("frank", { username: false });
     const me = await world.call("GET", "/api/session", { as: newcomer });
     expect(me.body.user.username).toBeNull();
-    expect(me.body.onboarding).toMatchObject({ needsUsername: true, signupsOpen: false });
+    expect(me.body.onboarding).toMatchObject({ needsUsername: true });
     expect(typeof me.body.onboarding.suggestedUsername).toBe("string");
     // Reads like a visitor.
     expect(
@@ -514,20 +486,7 @@ describe.skipIf(!configured)("visibility, against a real Postgres", () => {
 
     const claim = (username: string) =>
       world.call("POST", "/api/session/username", { as: newcomer, body: { username } });
-    // git-feature-flag: sign-ups are for members of an organisation that has Git.
-    expect(await claim(newcomer.username)).toMatchObject({
-      status: 403,
-      body: { code: "signups_closed" },
-    });
-    await world.organization("frankco", { members: [[newcomer, "member"]], namespace: false });
-    expect((await claim(newcomer.username)).status).toBe(403);
-    await world.organization("frankgit", {
-      members: [[newcomer, "member"]],
-      namespace: false,
-      git: true,
-    });
-    const opened = await world.call("GET", "/api/session", { as: newcomer });
-    expect(opened.body.onboarding).toMatchObject({ needsUsername: true, signupsOpen: true });
+    // Anyone signed in may claim a username: no organisation is needed.
     expect(await claim("api")).toMatchObject({ status: 400, body: { code: "username_reserved" } });
     expect(await claim("-nope")).toMatchObject({ status: 400, body: { code: "username_invalid" } });
     expect(await claim(alice.username.toUpperCase())).toMatchObject({

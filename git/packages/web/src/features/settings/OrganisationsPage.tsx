@@ -126,8 +126,8 @@ function ClaimForm({ organization }: { organization: SessionOrganization }) {
 }
 
 /**
- * Why nobody is asked for a name: the organisation has no Git, the reader is
- * not its administrator, or its plan does not include a namespace.
+ * Why nobody is asked for a name: the reader is not the organisation's
+ * administrator, or its plan does not include a namespace.
  */
 function Unclaimable({
   organization,
@@ -136,10 +136,6 @@ function Unclaimable({
   organization: SessionOrganization;
   appUrl: string;
 }) {
-  // git-feature-flag: this sentence goes with the flag.
-  if (!organization.gitEnabled) {
-    return <p className="text-xs text-on-surface-muted">Git is not on for {organization.name}</p>;
-  }
   if (!organization.permissions.includes("git:admin")) {
     return (
       <p className="text-xs text-on-surface-muted">

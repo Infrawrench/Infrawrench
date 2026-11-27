@@ -141,7 +141,6 @@ export function session(): Session {
     onboarding: {
       needsUsername: user.username === null,
       suggestedUsername: user.username === null ? "mara" : null,
-      signupsOpen: true, // git-feature-flag
     },
     personal: own ? { ...fits(own), workspace: myWorkspace() } : null,
     organizations: [
@@ -152,7 +151,6 @@ export function session(): Session {
           name: n.displayName ?? n.slug,
           namespace: n.slug,
           permissions: ["git:read", "git:write", "git:admin"] as const,
-          gitEnabled: true, // git-feature-flag
           namespacePlanRefusal: null,
           canClaimNamespace: false,
           ...fits(n),
@@ -163,12 +161,9 @@ export function session(): Session {
         name: organization.name,
         namespace: null,
         permissions: organization.permissions,
-        gitEnabled: organization.gitEnabled, // git-feature-flag
         namespacePlanRefusal: namespaceClaimRefusal(organization.plan),
         canClaimNamespace:
-          organization.gitEnabled &&
-          organization.plan === "paid" &&
-          organization.permissions.includes("git:admin"),
+          organization.plan === "paid" && organization.permissions.includes("git:admin"),
         privateRepositories: true,
         privateRepositoryRefusal: null,
         defaultVisibility: "private" as const,
@@ -260,43 +255,31 @@ export const namespaces: NamespaceRecord[] = [
 
 /**
  * Organisations the signed-in person belongs to that have no namespace yet:
- * one they can claim, one whose administrators must, one on the free plan and
- * one without Git.
+ * one they can claim, one whose administrators must and one on the free plan.
  */
 export const unclaimedOrganizations: Array<{
   readonly id: string;
   readonly name: string;
   readonly permissions: ReadonlyArray<"git:read" | "git:write" | "git:admin">;
-  readonly gitEnabled: boolean; // git-feature-flag
   readonly plan: "free" | "paid";
 }> = [
   {
     id: "org_northwind",
     name: "Northwind Labs",
     permissions: ["git:read", "git:write", "git:admin"],
-    gitEnabled: true,
     plan: "paid",
   },
   {
     id: "org_harbour",
     name: "Harbour Works",
     permissions: ["git:read", "git:write"],
-    gitEnabled: true,
     plan: "paid",
   },
   {
     id: "org_saltmarsh",
     name: "Saltmarsh Studio",
     permissions: ["git:read", "git:write", "git:admin"],
-    gitEnabled: true,
     plan: "free",
-  },
-  {
-    id: "org_lowland",
-    name: "Lowland Freight",
-    permissions: ["git:read", "git:write", "git:admin"],
-    gitEnabled: false,
-    plan: "paid",
   },
 ];
 

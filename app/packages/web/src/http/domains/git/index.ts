@@ -21,7 +21,6 @@ import {
   setGitForgeDefaultVisibility,
   setGitForgeNamespace,
 } from "@infrawrench/server-core/git/forge";
-import { isGitEnabled } from "@infrawrench/server-core/git/feature-flag"; // git-feature-flag
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
 import { isPlatformAdmin } from "../../../auth/platform-admin";
 import { logAudit } from "../../../services/audit";
@@ -43,17 +42,6 @@ const settingsRefusal = (error: unknown) => {
 };
 
 /**
- * git-feature-flag: every route here is a 404 until a platform admin turns
- * Git on for the organisation. Remove with the flag (KNOWLEDGE.md "Git
- * feature flag"): this, its import and the `yield* requireGitFeature` lines.
- */
-const requireGitFeature = Effect.gen(function* () {
-  const { organizationId } = yield* OrgPrincipal;
-  const enabled = yield* legacy(() => isGitEnabled(organizationId));
-  if (!enabled) return yield* notFound("Git is not available for this organization");
-});
-
-/**
  * The reserved names (`infrawrench`, `admin`, ...) keep people from posing as
  * the company or the site. A platform admin, in person and not with a key,
  * may take one for Infrawrench's own organisation.
@@ -65,7 +53,6 @@ const GitForgeHandlers = HttpApiBuilder.group(GitForgeApi, "gitForge", (handlers
   handlers
     .handle("overview", () =>
       Effect.gen(function* () {
-        yield* requireGitFeature; // git-feature-flag
         const { organizationId, session, apiKey } = yield* OrgPrincipal;
         const overview = yield* legacy(() => gitForgeOverview(organizationId));
         return yield* respond(GitForgeOverview)({
@@ -76,7 +63,6 @@ const GitForgeHandlers = HttpApiBuilder.group(GitForgeApi, "gitForge", (handlers
     )
     .handle("setNamespace", ({ payload }) =>
       Effect.gen(function* () {
-        yield* requireGitFeature; // git-feature-flag
         const { organizationId, session, apiKey } = yield* OrgPrincipal;
         const result = yield* legacyTry(
           () =>
@@ -124,7 +110,6 @@ const GitForgeHandlers = HttpApiBuilder.group(GitForgeApi, "gitForge", (handlers
     )
     .handle("setSettings", ({ payload }) =>
       Effect.gen(function* () {
-        yield* requireGitFeature; // git-feature-flag
         const { organizationId, session } = yield* OrgPrincipal;
         const namespace = yield* legacyTry(
           () => setGitForgeDefaultVisibility(organizationId, payload.defaultVisibility),
@@ -145,7 +130,6 @@ const GitForgeHandlers = HttpApiBuilder.group(GitForgeApi, "gitForge", (handlers
     )
     .handle("repositories", () =>
       Effect.gen(function* () {
-        yield* requireGitFeature; // git-feature-flag
         const { organizationId } = yield* OrgPrincipal;
         const repositories = yield* legacy(() => listGitForgeRepositories(organizationId));
         return yield* respond(GitForgeRepositoryList)({ repositories });

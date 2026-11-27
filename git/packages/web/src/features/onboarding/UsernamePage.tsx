@@ -87,14 +87,6 @@ export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
     );
   }
   const current = session.data.user.username;
-  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-  if (current === null && session.data.onboarding?.signupsOpen === false) {
-    return (
-      <Page width="narrow">
-        <EmptyState>Sign-ups are not open yet</EmptyState>
-      </Page>
-    );
-  }
   if (current !== null) {
     return (
       <Page width="narrow">

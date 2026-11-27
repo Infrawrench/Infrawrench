@@ -57,14 +57,13 @@ export class SessionGroup extends HttpApiGroup.make("session")
         }),
       }),
       success: Schema.Struct({ namespace: NamespaceRef }),
-      // git-feature-flag: Forbidden (`signups_closed`) is the flag's; remove with it.
       error: [BadRequest, Conflict, Forbidden],
     })
       .annotate(RequiresUser, true)
       .annotate(OpenApi.Summary, "Claim a username")
       .annotate(
         OpenApi.Description,
-        "Creates the person's namespace. 409 `username_taken` when someone has it, 409 `namespace_already_claimed` when the person already has one (use `renameUsername`). 403 `signups_closed` while sign-ups are not open to this person, 403 `not_a_member` when `workspaceOrganizationId` is not an organisation of theirs (nothing is claimed).",
+        "Creates the person's namespace. 409 `username_taken` when someone has it, 409 `namespace_already_claimed` when the person already has one (use `renameUsername`). 403 `not_a_member` when `workspaceOrganizationId` is not an organisation of theirs (nothing is claimed).",
       )
       .annotate(SuccessDescription, "The namespace"),
     HttpApiEndpoint.put("renameUsername", "/username", {

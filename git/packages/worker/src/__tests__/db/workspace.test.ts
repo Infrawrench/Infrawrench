@@ -97,7 +97,6 @@ describe.skipIf(!configured)("a person's work across repositories, against a rea
     )) as [Person, Person, Person];
     team = await world.organization("team", {
       paid: true,
-      git: true,
       members: [
         [alice, "owner"],
         [bob, "member"],

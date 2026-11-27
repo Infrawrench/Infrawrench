@@ -21,7 +21,6 @@ import {
   systemRolePermissions,
 } from "@infrawrench/server-core/permissions";
 import { summarizeCostVisibility } from "@infrawrench/server-core/cost/visibility-context";
-import { isGitEnabled } from "@infrawrench/server-core/git/feature-flag"; // git-feature-flag
 import {
   BadRequest,
   badRequest,
@@ -188,8 +187,8 @@ const TeamHandlers = HttpApiBuilder.group(TeamApi, "team", (handlers) =>
           elevations: [...elevations],
           // Informational: every cost read enforces it server-side.
           costVisibility: summarizeCostVisibility(costVisibility),
-          // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-          gitEnabled: yield* legacy(() => isGitEnabled(organizationId)),
+          // Deprecated, always true: Git is on for every organisation.
+          gitEnabled: true,
         });
       }),
     )

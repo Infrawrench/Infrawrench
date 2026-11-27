@@ -59,12 +59,6 @@ vi.mock("@infrawrench/server-core/pr-checks/pass", () => ({
   previewPullRequestCheck: (...a: unknown[]) => previewPullRequestCheck(...a),
 }));
 vi.mock("@/services/audit", () => ({ logAudit: vi.fn(async () => undefined) }));
-// git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-const isGitEnabled = vi.fn(async (_orgId: string) => true);
-vi.mock("@infrawrench/server-core/git/feature-flag", () => ({
-  isGitEnabled: (orgId: string) => isGitEnabled(orgId),
-}));
-
 const { iacDomain } = await import("@/http/domains/iac/index");
 const { prChecksDomain } = await import("@/http/domains/pr-checks/index");
 
@@ -153,15 +147,6 @@ describe("iac", () => {
       expect(res.status).toBe(200);
       expect(getIacResourceStatus).toHaveBeenCalledWith("org-1", "r-1", { readsGit });
     }
-  });
-
-  // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-  it("names no repository while the organisation does not have Git", async () => {
-    getIacResourceStatus.mockResolvedValue({ status: null, driftFieldCount: 0 });
-    isGitEnabled.mockResolvedValueOnce(false);
-    const res = await iac(["iac:read", "git:admin"]).request("/resource?resourceId=r-1");
-    expect(res.status).toBe(200);
-    expect(getIacResourceStatus).toHaveBeenCalledWith("org-1", "r-1", { readsGit: false });
   });
 });
 

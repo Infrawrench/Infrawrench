@@ -1,0 +1,1 @@
+DROP TABLE "git_feature_access" CASCADE;

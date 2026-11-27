@@ -12,13 +12,8 @@ import {
   badRequest,
   ComplimentaryResult,
   forbidden,
-  GitFeatureResult,
   notFound,
 } from "@infrawrench/api-contract";
-import {
-  gitEnabledOrganizationIds,
-  setGitEnabled,
-} from "@infrawrench/server-core/git/feature-flag"; // git-feature-flag
 import { isPlatformAdmin } from "../../../auth/platform-admin";
 import { db } from "../../../db/client";
 import { organizationMembers, organizations, subscriptions } from "../../../db/schema";
@@ -59,11 +54,7 @@ const AdminHandlers = HttpApiBuilder.group(AdminApi, "admin", (handlers) =>
             .leftJoin(subscriptions, eq(subscriptions.organizationId, organizations.id))
             .orderBy(organizations.createdAt),
         );
-        // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-        const withGit = yield* legacy(() => gitEnabledOrganizationIds());
-        return yield* respond(Schema.Array(AdminOrganization))(
-          rows.map((row) => ({ ...row, git: withGit.has(row.id) })),
-        );
+        return yield* respond(Schema.Array(AdminOrganization))(rows);
       }),
     )
     .handleRaw("setComplimentary", ({ params, request }) =>
@@ -88,25 +79,6 @@ const AdminHandlers = HttpApiBuilder.group(AdminApi, "admin", (handlers) =>
           `[admin] ${session.email} set complimentary=${updated.complimentary} on org ${updated.id}`,
         );
         return yield* respond(ComplimentaryResult)(updated);
-      }),
-    )
-    // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-    .handle("setGit", ({ params, payload }) =>
-      Effect.gen(function* () {
-        const session = yield* requirePlatformAdmin;
-        const [org] = yield* legacy(() =>
-          db
-            .select({ id: organizations.id })
-            .from(organizations)
-            .where(eq(organizations.id, params.orgId))
-            .limit(1),
-        );
-        if (!org) return yield* notFound("Organization not found");
-        const git = yield* legacy(() =>
-          setGitEnabled(org.id, payload.enabled, session.email ?? null),
-        );
-        console.log(`[admin] ${session.email} set git=${git} on org ${org.id}`);
-        return yield* respond(GitFeatureResult)({ id: org.id, git });
       }),
     ),
 );

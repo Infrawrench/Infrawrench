@@ -51,7 +51,6 @@ import {
 } from "../../db/namespaces";
 import { getOrganization, isMember } from "../../db/organizations";
 import { countVisibleRepositories } from "../../db/repository-lists";
-import { gitEnabledAmong, maySignUp } from "../../db/signups"; // git-feature-flag
 import { getGitUser, getUser } from "../../db/users";
 import { appOrigin, sshEnabled } from "../../env";
 import { type Cx, op } from "../context";
@@ -228,8 +227,6 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
           getNamespaceForUser(user.id),
           cx.viewer(),
         ]);
-        // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-        const gitEnabled = await gitEnabledAmong(viewer.organizations.map(({ id }) => id));
         // A token never claims a name (`claimForOrganization`).
         const inBrowser = cx.principal.kind === "user" && cx.principal.via === "session";
         const organizations = await Promise.all(
@@ -251,14 +248,12 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
               name: organization.name,
               namespace: organization.namespace,
               permissions,
-              gitEnabled: gitEnabled.has(organization.id), // git-feature-flag
               namespacePlanRefusal,
               canClaimNamespace:
                 inBrowser &&
                 organization.namespace === null &&
                 permissions.includes("git:admin") &&
-                namespacePlanRefusal === null &&
-                gitEnabled.has(organization.id), // git-feature-flag
+                namespacePlanRefusal === null,
               privateRepositories: refusal === null,
               privateRepositoryRefusal: refusal,
               defaultVisibility: organization.defaultVisibility ?? "private",
@@ -288,8 +283,6 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
                     user.displayName,
                   ])
                 : null,
-            // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-            signupsOpen: namespace === null ? await maySignUp(user.id) : true,
           },
           personal:
             namespace === null
@@ -342,10 +335,6 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
         requireSession(cx);
         const userId = cx.userId!;
         checkSlug(payload.username, "username_invalid", "username_reserved");
-        // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-        if (!(await maySignUp(userId))) {
-          throw forbidden("Sign-ups are not open yet", "signups_closed");
-        }
         // Asked before anything is claimed: a refusal leaves the person where they were.
         const workspace = payload.workspaceOrganizationId ?? null;
         if (workspace !== null && !(await isMember(userId, workspace))) {
@@ -441,10 +430,6 @@ export const NamespacesHandlers = HttpApiBuilder.group(GitApi, "namespaces", (ha
         const userId = cx.principal.userId;
         const organization = await getOrganization(params.orgId);
         if (!organization) throw notFound("No such organisation");
-        // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-        if (!(await gitEnabledAmong([organization.id])).has(organization.id)) {
-          throw forbidden("Git is not turned on for this organisation", "git_not_enabled");
-        }
         // The app lets a platform admin take a reserved name (`mayUseReservedNames`).
         // Nobody does here: that stays in the app's Settings > Git.
         checkSlug(payload.slug, "name_invalid", "username_reserved");

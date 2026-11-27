@@ -83,7 +83,7 @@ const nameField = (row: ReturnType<typeof within>) =>
 describe("Settings > Organisations", () => {
   it("shows each organisation's name here, or who can give it one", async () => {
     const list = await open();
-    expect(list.getAllByRole("listitem")).toHaveLength(6);
+    expect(list.getAllByRole("listitem")).toHaveLength(5);
 
     const acme = rowOf(list, "Acme");
     expect(acme.getByRole("link", { name: "git.infrawrench.com/acme" }).getAttribute("href")).toBe(
@@ -101,11 +101,6 @@ describe("Settings > Organisations", () => {
     ).toBeTruthy();
     expect(harbour.queryByRole("textbox")).toBeNull();
     expect(harbour.queryByRole("button")).toBeNull();
-
-    // An administrator, but the organisation has no Git.
-    const lowland = rowOf(list, "Lowland Freight");
-    expect(lowland.getByText("Git is not on for Lowland Freight")).toBeTruthy();
-    expect(lowland.queryByRole("textbox")).toBeNull();
 
     // An administrator of an organisation on the free plan: the plan's
     // sentence, and the way to its billing page in the app.

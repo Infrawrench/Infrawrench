@@ -1457,6 +1457,13 @@
       "when": 1795740096024,
       "tag": "0207_personal_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 208,
+      "version": "7",
+      "when": 1795741769239,
+      "tag": "0208_drop_git_feature_access",
+      "breakpoints": true
     }
   ]
 }

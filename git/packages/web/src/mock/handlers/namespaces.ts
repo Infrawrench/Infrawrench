@@ -58,10 +58,6 @@ export default defineMockHandlers({
       if (!organization.permissions.includes("git:admin")) {
         throw mockError(403, "This needs git:admin in the organisation");
       }
-      // git-feature-flag: remove with the flag (KNOWLEDGE.md "Git feature flag").
-      if (!organization.gitEnabled) {
-        throw mockError(403, "Git is not turned on for this organisation", "git_not_enabled");
-      }
       const problem = namespaceSlugProblem(payload.slug);
       if (problem !== null) {
         throw badRequest(

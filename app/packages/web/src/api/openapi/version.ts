@@ -608,7 +608,7 @@
 // private repository only for a caller with `git:read` (or more) in the
 // organization. No shape changes.
 // 1.131.0: Git is behind a per-organization flag a platform admin turns on
-// (temporary, `git-feature-flag`). `GET /org/{orgId}/team/me` answers
+// (temporary). `GET /org/{orgId}/team/me` answers
 // `gitEnabled`, and the `/api/org/:orgId/git` routes answer 404 while it is
 // false. Additive.
 // 1.132.0: `GET /org/{orgId}/git` answers `reservedNamesAllowed`, true for a
@@ -622,4 +622,13 @@
 // `pull`, and `GitForgeRepository.openPullRequests` is `openBranches`. A
 // minor bump by decision: both shipped days ago behind a per-organization
 // flag, and the only client of `gitWork` is the forge's own start link.
-export const API_VERSION = "1.134.0";
+// 1.135.0: Git is on for every organization (the per-organization flag is
+// gone, Git is in beta). The `/api/org/:orgId/git` routes no longer answer 404
+// for an organization without the flag, so `GET /org/{orgId}/git`, `GET
+// /org/{orgId}/git/repositories` and `PUT /org/{orgId}/git/namespace` drop
+// their 404 response. `gitEnabled` on `GET /org/{orgId}/team/me` is deprecated
+// and always true; it stays until the next major version. The platform-admin
+// `PUT /admin/organizations/{orgId}/git` and `AdminOrganization.git` are
+// removed. A minor bump by decision: the admin route was the flag's own
+// switch, usable only by platform admins from the app's `/admin` page.
+export const API_VERSION = "1.135.0";
