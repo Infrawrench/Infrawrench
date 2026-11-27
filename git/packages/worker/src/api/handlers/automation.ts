@@ -22,9 +22,10 @@ import {
   unprocessable,
 } from "@infrawrench/git-contract";
 import {
+  type ConfigurationEstimate,
   type PlanSummary,
-  discoverTerraformRoots,
   isWorkspaceName,
+  rootsTouchedBy,
 } from "@infrawrench/git-terraform";
 import { setCiGitRepository } from "@infrawrench/server-core/ci/git-repositories";
 import type { GitTerraformRunStatus } from "@infrawrench/server-core/db/schema";
@@ -57,18 +58,24 @@ import {
   updateWorkspace,
   workspaceAccounts,
 } from "../../db/automation";
-import { pageKeysByNumber, pageNumberOf } from "../../db/branch-pages";
+import { pageKeysByNumber, pageNumberOf, resolveBranchKey } from "../../db/branch-pages";
 import { combinedState, statusesForCommit, upsertCommitStatus } from "../../db/policy";
 import { runsInOrganization } from "../../db/repositories";
 import { userByUsername } from "../../db/users";
 import { hasAccess } from "../../auth/access";
 import { appOrigin, siteOrigin } from "../../env";
-import { recordRun } from "../../events/terraform";
+import { changedPaths, recordRun } from "../../events/terraform";
 import { RepoReaderError } from "../../repo/reader";
 import { principalName } from "../../terraform/access";
 import { type StateClientFactory, stateClient } from "../../terraform/client";
 import { recordStateHead } from "../../terraform/directory-db";
-import { treeReaderOf } from "../../terraform/tree";
+import { type ScanRow, scanAt, summaryOf } from "../../terraform/scan";
+import {
+  type ScanRowView,
+  rootChangeView,
+  rootsPlannedAtHead,
+  scanView,
+} from "../../terraform/scan-views";
 import { RepoRef, type RepoCx, inScope, repoOp } from "../context";
 import { statusViews } from "../views/branch-pages";
 import { iso, isoOrNull, peopleById, toUserRef } from "../views/repositories";
@@ -753,6 +760,16 @@ export const normalRoot = (rootPath: string): string => {
   return path;
 };
 
+/** A scan row as the views read it. */
+const rowView = (row: ScanRow): ScanRowView => ({
+  commitOid: row.commitOid,
+  summary: summaryOf(row),
+  estimates: row.estimates as unknown as Record<string, ConfigurationEstimate> | null,
+  pricingStatus: row.pricingStatus,
+  pricedAt: row.pricedAt,
+  createdAt: row.createdAt,
+});
+
 const workspacesById = async (cx: RepoCx) =>
   new Map((await listWorkspaces(cx.repo.repository.id)).map((row) => [row.id, row]));
 
@@ -765,22 +782,76 @@ export const TerraformHandlers = HttpApiBuilder.group(GitApi, "terraform", (hand
       })),
     )
     .handle(
-      "listRoots",
+      "scan",
       repoOp(async (cx, { query }) => {
-        // Resolved once, so the walk reads one commit however long it takes.
+        // Resolved once, so the scan reads one commit however long it takes.
         const { commitOid } = await cx.git.resolveRef(query.ref);
-        const [{ roots }, workspaces] = await Promise.all([
-          discoverTerraformRoots(treeReaderOf(cx.git, commitOid)),
+        const [row, workspaces] = await Promise.all([
+          scanAt({ reader: cx.git, repositoryId: cx.repo.repository.id }, commitOid),
           listWorkspaces(cx.repo.repository.id),
         ]);
-        return {
-          roots: roots.map((root) => ({
-            path: root.path,
-            workspaces: workspaces
-              .filter((workspace) => workspace.rootPath === root.path)
-              .map((workspace) => workspace.name),
-            backend: root.backend,
+        return scanView(rowView(row), commitOid, workspaces);
+      }),
+    )
+    .handle(
+      "configurationChange",
+      repoOp(async (cx, { query }) => {
+        const repositoryId = cx.repo.repository.id;
+        const page = await resolveBranchKey(repositoryId, query.page);
+        if (!page) throw notFound("No such branch page");
+        const { pull, thread } = page;
+        const headRepositoryId =
+          pull.headRepositoryId !== null && pull.headRepositoryId !== repositoryId
+            ? pull.headRepositoryId
+            : undefined;
+        const baseOid =
+          pull.mergeBaseOid ??
+          (await cx.git.compare({ base: pull.baseRef, head: pull.headOid, headRepositoryId }))
+            .mergeBaseOid;
+        const scanner = { reader: cx.git, repositoryId };
+        const [head, base, changed, workspaces, runs] = await Promise.all([
+          scanAt(scanner, pull.headOid),
+          baseOid === null ? Promise.resolve(null) : scanAt(scanner, baseOid),
+          changedPaths(cx.git, {
+            base: baseOid ?? pull.baseRef,
+            head: pull.headOid,
+            headRepositoryId,
+          }),
+          listWorkspaces(repositoryId),
+          listTerraformRuns(repositoryId, { pull: thread.number, kind: "plan", limit: 100 }),
+        ]);
+        const headSummary = summaryOf(head);
+        const paths = [
+          ...new Set([
+            ...headSummary.roots.map((root) => root.path),
+            ...(base === null ? [] : summaryOf(base).roots.map((root) => root.path)),
+          ]),
+        ];
+        // When what changed cannot be read, every root is shown: one estimate too
+        // many costs a line, one too few hides a change.
+        const touched =
+          changed === null
+            ? new Set(paths)
+            : rootsTouchedBy(paths, changed, headSummary.directories);
+        const planned = rootsPlannedAtHead(
+          workspaces,
+          runs.items.map((run) => ({
+            workspaceId: run.workspaceId,
+            commitSha: run.commitSha,
+            pullNumber: run.pullNumber,
+            hasPlan: run.planSummary !== null,
           })),
+          { number: thread.number, headOid: pull.headOid },
+        );
+        const headView = rowView(head);
+        const baseView = base === null ? null : rowView(base);
+        return {
+          baseOid,
+          headOid: pull.headOid,
+          roots: paths
+            .filter((path) => touched.has(path) && !planned.has(path))
+            .sort()
+            .map((path) => rootChangeView(path, baseView, headView, workspaces)),
         };
       }),
     )

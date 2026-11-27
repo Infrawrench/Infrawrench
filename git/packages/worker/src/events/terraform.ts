@@ -23,7 +23,7 @@
  * often the event is delivered. A run asked for by hand is always a new one.
  */
 import { and, eq, inArray, isNull, ne } from "drizzle-orm";
-import { discoverTerraformDirectories, rootsTouchedBy } from "@infrawrench/git-terraform";
+import { rootsTouchedBy } from "@infrawrench/git-terraform";
 import {
   type GitTerraformRunStatus,
   gitTerraformRuns,
@@ -31,7 +31,8 @@ import {
 } from "@infrawrench/server-core/db/schema";
 import { db, newId } from "../db/client";
 import { type CompareInput, type RepoReader, RepoReaderError } from "../repo/reader";
-import { treeReaderOf } from "../terraform/tree";
+import { describeError } from "../http/log";
+import { scanAt, summaryOf } from "../terraform/scan";
 
 type Workspace = typeof gitTerraformWorkspaces.$inferSelect;
 
@@ -156,15 +157,14 @@ const workspacesOf = (repositoryId: string): Promise<Workspace[]> =>
 const MAX_CHANGED_FILES = 2000;
 
 /**
- * The roots a comparison touches, or null when that cannot be said (the
- * storage does not answer, or the change is larger than is read): the caller
- * then plans every workspace.
+ * The paths a comparison changes (both sides of a rename), or null when that
+ * cannot be said: the storage does not answer, or the change is larger than
+ * is read.
  */
-export const touchedRoots = async (
+export const changedPaths = async (
   reader: RepoReader,
   comparison: CompareInput,
-  rootPaths: readonly string[],
-): Promise<Set<string> | null> => {
+): Promise<string[] | null> => {
   try {
     const changed: string[] = [];
     let cursor: string | undefined;
@@ -177,14 +177,58 @@ export const touchedRoots = async (
       cursor = page.nextCursor ?? undefined;
       if (changed.length > MAX_CHANGED_FILES) return null;
     } while (cursor !== undefined);
-    const { directories, truncated } = await discoverTerraformDirectories(
-      treeReaderOf(reader, comparison.head),
-    );
-    if (truncated) return null;
-    return rootsTouchedBy(rootPaths, changed, directories);
+    return changed;
   } catch (error) {
     if (error instanceof RepoReaderError) return null;
     throw error;
+  }
+};
+
+/**
+ * The roots a comparison touches, or null when that cannot be said (the
+ * storage does not answer, the change is larger than is read, or the scan of
+ * the head stopped at a limit): the caller then plans every workspace. The
+ * head's directories come from its cached scan, one call however many there
+ * are.
+ */
+export const touchedRoots = async (
+  reader: RepoReader,
+  repositoryId: string,
+  comparison: CompareInput,
+  rootPaths: readonly string[],
+): Promise<Set<string> | null> => {
+  const changed = await changedPaths(reader, comparison);
+  if (changed === null) return null;
+  try {
+    const summary = summaryOf(await scanAt({ reader, repositoryId }, comparison.head));
+    if (summary.truncated) return null;
+    return rootsTouchedBy(rootPaths, changed, summary.directories);
+  } catch (error) {
+    if (error instanceof RepoReaderError) return null;
+    throw error;
+  }
+};
+
+/**
+ * Scans commits ahead of anyone asking, so the gateway's pass has priced
+ * their estimates from configuration by the time a page shows them: the
+ * default branch's new head, a branch page's head and merge base. Scanning
+ * runs nothing, so this is done for every repository, personal namespaces and
+ * pages from forks included. Best effort: a failure is logged and the event
+ * goes on; the page scans on its own when it is asked.
+ */
+export const scanAhead = async (
+  reader: RepoReader,
+  repositoryId: string,
+  commits: ReadonlyArray<string | null | undefined>,
+): Promise<void> => {
+  for (const commit of new Set(commits)) {
+    if (!commit) continue;
+    try {
+      await scanAt({ reader, repositoryId }, commit);
+    } catch (error) {
+      console.warn(`[git] could not scan Terraform at ${commit}: ${describeError(error)}`);
+    }
   }
 };
 
@@ -222,6 +266,7 @@ export const queuePullRequestPlans = async (input: {
     reason === null && input.reader
       ? await touchedRoots(
           input.reader,
+          input.repositoryId,
           { base: input.baseRef, head: input.headOid, headRepositoryId: input.headRepositoryId },
           workspaces.map((workspace) => workspace.rootPath),
         )

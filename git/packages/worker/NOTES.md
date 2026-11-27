@@ -621,7 +621,8 @@ Verified against T3 Code 0.1.11. An environment serves MCP at `<origin>/mcp` wit
 | `terraform/access.ts`       | `decideStateAuth`: who may read, write and administer a state. Pure.                                   |
 | `terraform/route.ts`        | `terraformState` and `terraformPlan`: the two routes, over a `TerraformDirectory`.                     |
 | `terraform/directory-db.ts` | The directory over Postgres, and `recordStateHead`, the mirror.                                        |
-| `terraform/tree.ts`         | A commit's tree as root discovery reads it.                                                            |
+| `terraform/scan.ts`         | `scanAt`: a ref's Terraform scan, cached in `git_terraform_scans` by tree.                             |
+| `terraform/scan-views.ts`   | A scan row as the API shows it, a branch page's change, and the plan-wins rule. Pure.                  |
 | `events/terraform.ts`       | Recording runs: branch page plans, merge applies, runs by hand.                                        |
 
 - **One Durable Object per workspace** (`idFromName(workspaceId)`) holds the lock, the current version and the catalogue; the bytes are R2 objects `terraform/<workspaceId>/<serial>-<versionId>.tfstate`, written once each. `commit` uploads first and moves the head in one synchronous transaction that checks the head is still what the backend decided on, so of two writers one wins and the other's object is deleted again (`test/terraform-state.test.ts` races two).
