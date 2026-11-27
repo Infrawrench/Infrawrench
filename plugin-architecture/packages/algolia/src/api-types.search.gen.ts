@@ -192,6 +192,8 @@ export interface components {
         advancedSyntax: boolean;
         /** @enum {string} */
         advancedSyntaxFeatures: "exactPhrase" | "excludeWords";
+        /** @default false */
+        allowReRankingOnPersonalization: boolean;
         /** @default true */
         allowTyposOnNumericTokens: boolean;
         /** @enum {string} */
@@ -378,7 +380,7 @@ export interface components {
             };
             userData?: Record<string, never>;
         };
-        consequenceParams: components["schemas"]["baseSearchParamsWithoutQuery"] & components["schemas"]["indexSettingsAsSearchParams"] & components["schemas"]["params"];
+        consequenceParams: components["schemas"]["baseSearchParamsWithoutQuery"] & components["schemas"]["indexSettingsAsSearchParams"] & components["schemas"]["params"] & components["schemas"]["searchParamsAllowReRanking"];
         consequenceQuery: components["schemas"]["consequenceQueryObject"] | string;
         consequenceQueryObject: {
             edits?: components["schemas"]["edit"][];
@@ -668,6 +670,9 @@ export interface components {
         ruleContexts: string[];
         ruleID: string;
         scopeType: string;
+        searchParamsAllowReRanking: {
+            allowReRankingOnPersonalization?: components["schemas"]["allowReRankingOnPersonalization"];
+        };
         searchSynonymsResponse: {
             hits: components["schemas"]["synonymHits"];
             nbHits: components["schemas"]["nbHits"];

@@ -144,6 +144,8 @@ export interface components {
         metricMetadata: {
             /** Format: double */
             mean?: number;
+            /** Format: int64 */
+            userCount?: number;
             /** Format: double */
             winsorizedValue?: number;
         };
@@ -170,7 +172,12 @@ export interface components {
             domain: string;
             includes?: boolean;
             name: string;
+            parameters?: components["schemas"]["MetricsFilterParameters"];
             trackEffects?: boolean;
+        };
+        MetricsFilterParameters: {
+            filterAttribute?: string;
+            filterValue?: string;
         };
         MetricsFilters: components["schemas"]["MetricsFilter"][];
         MinimumDetectableEffect: {
@@ -180,7 +187,7 @@ export interface components {
         };
         name: string;
         /** @enum {string} */
-        PrimaryMetric: "add_to_cart_rate" | "click_through_rate" | "conversion_rate" | "purchase_rate" | "revenue_per_search" | "add_to_cart_users_rate" | "clicked_users_rate" | "converted_users_rate" | "purchase_users_rate";
+        PrimaryMetric: "add_to_cart_rate" | "click_through_rate" | "conversion_rate" | "purchase_rate" | "revenue_per_search" | "add_to_cart_users_rate" | "clicked_users_rate" | "converted_users_rate" | "purchase_users_rate" | "users_with_no_results_rate";
         /** @enum {string} */
         Status: "active" | "stopped" | "expired" | "failed";
         stoppedAt: string | null;
