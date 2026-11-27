@@ -288,7 +288,7 @@ Three things decide where it can run:
   earlier boots with the fixed sizes it was baked with.
 
 The fleet is of type `maintain`: when AWS takes an instance back, the fleet
-launches another from the default version of the matching template, whose
+launches another from the version of the matching template it names, whose
 image is a snapshot of a provisioned ci-2 (runner, tunnel token, zram,
 machine image), so the replacement serves CI as soon as it boots, with no
 `terraform apply`. A host change made by hand (as `KillMode=mixed` was on
@@ -311,9 +311,22 @@ from its release channel either way. To bake:
 3. A new version of **both** templates with the new `ImageId`, each made
    the default. The image boots on either vendor: Ubuntu loads `kvm_intel`
    or `kvm_amd` for the CPU it finds, and `size = "auto"` sizes it.
-4. Check it before relying on it: a replacement that boots without the
+4. Point the fleet at the new versions with `aws ec2 modify-fleet`: the
+   same `--launch-template-configs` it has, overrides included, with each
+   template's new version. The fleet names a version of each template by
+   number (`aws ec2 describe-fleets` shows them), so a new default version
+   alone changes nothing it launches.
+5. Check it before relying on it: a replacement that boots without the
    runner leaves CI down until someone looks. `systemctl is-enabled iwci`
    on a host booted from it says `enabled`, never `masked`.
+6. Delete an old image only after `describe-fleets` shows no version that
+   names it. On 2026-11-25 the image with the empty unit files was deleted
+   while the fleet still named the template versions made for it; the host
+   it had launched kept running until AWS took it back on 2026-11-26 at
+   10:46 UTC, every replacement then failed with `InvalidAMIID.NotFound`,
+   and CI was down until someone looked: the fleet stays `active` and
+   `pending_fulfillment`, and the reason is only in
+   `aws ec2 describe-fleet-history`.
 
 A new instance has a new address: put it in the host's `ssh_host` before
 `terraform apply`, and check its SSH host key against the fingerprints
