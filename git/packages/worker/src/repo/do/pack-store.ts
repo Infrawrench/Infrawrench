@@ -7,10 +7,10 @@ import {
   type GitObject,
   type ObjectId,
   PackIndex,
+  RangeBlockCache,
   type ReadRange,
   acquireInflater,
   applyDelta,
-  cachedRangeReader,
   decodeEntryHeader,
   isDeltaType,
   memoryRangeReader,
@@ -29,16 +29,42 @@ export const idxKey = (repoId: string, packId: string): string =>
 /** Anything read whole into memory is at most this: half of what a Durable Object has. */
 export const MAX_OBJECT_BYTES = 64 * 1024 * 1024;
 
+/** Reads of the bucket a repository has made, for the line a fetch logs when it ends. */
+export interface ReadCount {
+  gets: number;
+  bytes: number;
+}
+
 /** Reads a stored object's bytes by range: one R2 request a call. */
-export function rangeFetcher(bucket: Bucket, key: string, size: number): ReadRange {
+export function rangeFetcher(
+  bucket: Bucket,
+  key: string,
+  size: number,
+  count?: ReadCount,
+): ReadRange {
   return async (offset, length) => {
     const available = Math.min(length, size - offset);
     if (available <= 0) return new Uint8Array(0);
+    if (count) {
+      count.gets++;
+      count.bytes += available;
+    }
     const object = await bucket.get(key, { range: { offset, length: available } });
     if (!object) throw new Error(`${key} is missing from storage`);
     return new Uint8Array(await object.arrayBuffer());
   };
 }
+
+/**
+ * The block cache a repository's packs share: 256 KiB a block, 12 MiB in
+ * all, whatever the number of packs. A walk reads trees wherever a push
+ * left them, and git writes a pushed pack in the order it walked: a tree,
+ * then the files in it. So a walk moves through a pack front to back, and
+ * a block missed right after the one before it was used brings the next
+ * two with it.
+ */
+export const newBlockCache = (): RangeBlockCache =>
+  new RangeBlockCache({ blockSize: 256 * 1024, maxBlocks: 48, readAhead: 2 });
 
 /** Enough of an entry for its header and the start of a delta's zlib stream. */
 const SIZE_PROBE_BYTES = [128, 4096] as const;
@@ -76,35 +102,15 @@ export class PackHandle {
     readonly size: number,
     readonly selfContained: boolean,
     readonly index: PackIndex,
-    private readonly bucket: Bucket,
+    bucket: Bucket,
     /** The whole pack, kept for a small one so reading it back costs nothing. */
-    private readonly memory: Uint8Array | null = null,
+    memory: Uint8Array | null = null,
+    /** The repository's block cache. Without one the pack has a small one to itself. */
+    blocks: RangeBlockCache = new RangeBlockCache({ blockSize: 256 * 1024, maxBlocks: 16 }),
+    count?: ReadCount,
   ) {
-    this.fetchRange = memory ? memoryRangeReader(memory) : rangeFetcher(bucket, key, size);
-    this.read = memory
-      ? this.fetchRange
-      : cachedRangeReader(this.fetchRange, { blockSize: 256 * 1024, maxBlocks: 16 });
-  }
-
-  /** A byte range as a stream, for an entry too large to hold. */
-  async streamRange(offset: number, length: number): Promise<ReadableStream<Uint8Array>> {
-    if (this.memory) {
-      const bytes = this.memory.subarray(offset, offset + length);
-      return new ReadableStream({
-        start(controller) {
-          controller.enqueue(bytes);
-          controller.close();
-        },
-      });
-    }
-    const object = await this.bucket.get(this.key, { range: { offset, length } });
-    if (!object) throw new Error(`pack ${this.id} is missing from storage`);
-    return object.body;
-  }
-
-  /** The whole pack file as a stream. */
-  async streamAll(): Promise<ReadableStream<Uint8Array>> {
-    return this.streamRange(0, this.size);
+    this.fetchRange = memory ? memoryRangeReader(memory) : rangeFetcher(bucket, key, size, count);
+    this.read = memory ? this.fetchRange : blocks.reader(id, this.fetchRange, size);
   }
 
   /**
@@ -209,6 +215,18 @@ export class PackStore {
   private generation = 0;
   /** Keyed by pack and offset, so a delta's base is found without knowing its id. */
   private readonly cache = new ObjectCache(16 * 1024 * 1024, 2 * 1024 * 1024);
+  /**
+   * Commits, trees and tags of the live packs, by id. Every fetch that is
+   * not a plain clone reads the trees of the commits it sends and of the
+   * commits the client has, and the next commit's trees are nearly all the
+   * last one's: with them kept, the fetch a CI runner makes after a push
+   * reads the few trees the push changed. They get a cache to themselves
+   * because the other one is soon filled with the files a fetch rebuilds.
+   */
+  private readonly structure = new ObjectCache(6 * 1024 * 1024, 256 * 1024);
+  readonly blocks = newBlockCache();
+  /** Range reads of packs since the object woke. */
+  readonly reads: ReadCount = { gets: 0, bytes: 0 };
 
   constructor(
     readonly bucket: Bucket,
@@ -220,6 +238,27 @@ export class PackStore {
     return this.sql
       .exec<PackRow>("SELECT * FROM packs WHERE state = ? ORDER BY seq, id", state)
       .toArray();
+  }
+
+  /** A handle on one of this repository's packs, reading through its caches. */
+  handle(
+    id: string,
+    size: number,
+    selfContained: boolean,
+    index: PackIndex,
+    memory: Uint8Array | null = null,
+  ): PackHandle {
+    return new PackHandle(
+      id,
+      packKey(this.repoId, id),
+      size,
+      selfContained,
+      index,
+      this.bucket,
+      memory,
+      this.blocks,
+      this.reads,
+    );
   }
 
   /** Registers a pack whose index is already in memory (one just received). */
@@ -256,13 +295,11 @@ export class PackStore {
             if (known) return known;
             const object = await this.bucket.get(idxKey(this.repoId, row.id));
             if (!object) throw new Error(`index of pack ${row.id} is missing from storage`);
-            const handle = new PackHandle(
+            const handle = this.handle(
               row.id,
-              packKey(this.repoId, row.id),
               row.size,
               row.self_contained === 1,
               new PackIndex(new Uint8Array(await object.arrayBuffer())),
-              this.bucket,
             );
             this.handles.set(row.id, handle);
             return handle;
@@ -295,8 +332,20 @@ export class PackStore {
   }
 
   async read(packs: readonly PackHandle[], oid: ObjectId): Promise<GitObject | null> {
+    // Only the repository's own list: a pack still arriving is read by its push alone,
+    // and nothing it holds may be answered to anyone else by id.
+    const shared = packs === this.liveList;
+    if (shared) {
+      const kept = this.structure.get(oid);
+      if (kept) return kept;
+    }
     const located = this.locate(packs, oid);
-    return located ? this.readAt(packs, located.pack, located.offset) : null;
+    if (!located) return null;
+    const object = await this.readAt(packs, located.pack, located.offset);
+    if (shared && object.type !== "blob" && packs === this.liveList) {
+      this.structure.set(oid, object);
+    }
+    return object;
   }
 
   /**
@@ -405,5 +454,7 @@ export class PackStore {
     this.handles.clear();
     this.liveList = null;
     this.cache.clear();
+    this.structure.clear();
+    this.blocks.clear();
   }
 }

@@ -213,7 +213,7 @@ The front Worker authenticates, resolves the repository and its access, and load
 - **SSH needs both bodies open at once**, and gets it from the same `fetch`: the response starts (the ref advertisement) while the request body is still open, and the negotiation goes back and forth on the pair. Cloudflare's documentation does not promise full-duplex for a `fetch` to a Durable Object stub, nor for a stream passed to and returned from one RPC call. It works in workerd (`test/e2e` fetches with haves over SSH in protocol v0, which cannot work otherwise) and has to be confirmed in production before SSH is opened. If it does not hold there, the stub's `connect()` (a raw socket to the object, public beta) is the documented duplex, and `sshConnect` would hand `channel.stdin`/`stdout` to that instead; nothing else changes. Smart HTTP never needs duplex: each request is read, then answered.
 - **The Worker runs beside Postgres, the repositories beside R2.** `placement` pins the Worker to `aws:us-east-2` (Neon), as the app's Workers are; from London every query was its own transatlantic round trip, 650 ms to 1.5 s for a page's list. The UI's hashed files and favicons skip the Worker (`run_worker_first` patterns) and carry the Worker's headers from `web/public/_headers`, which `static-headers.test.ts` holds equal. A repository's Durable Object is created with `locationHint: "enam"` (`REPO_LOCATION`), beside the bucket: an object created near its first visitor waited ~100 ms on every R2 read. A hint only counts when an object is created, so repositories made before it stay where they were. Whether `placement` applies to the `connect` handler (SSH through Spectrum) is to be seen when SSH opens.
 - **A page shows before its history is walked.** The UI asks `tree` with `lastCommits=false` and `blob` with `lastCommit=false`, then `latestCommit` (a path's newest commit, and the count at the root) and `treeLastCommits` once the page is up, and prefetches a folder or file when the pointer rests on its link (`web/src/features/code/requests.ts`).
-- **Smart HTTP carries both bodies through the Worker's own code** (`carried` in `transport/http/routes.ts`). Returning the object's response untouched ends the Worker's request at once, and the upload still flowing into the object then has Cloudflare's 30 seconds after a request ends before it is cancelled: a 32 MiB push the object took 63 seconds to read failed in production with "client disconnected". A body the Worker pipes itself keeps the request open until the answer is complete. `wrangler dev` does not apply the 30 seconds.
+- **Smart HTTP carries both bodies through the Worker's own code** (`carried` in `transport/http/routes.ts`). Returning the object's response untouched ends the Worker's request at once, and the upload still flowing into the object then has Cloudflare's 30 seconds after a request ends before it is cancelled: a 32 MiB push the object took 63 seconds to read failed in production with "client disconnected". A body the Worker pipes itself keeps the request open until the answer is complete. `wrangler dev` does not apply the 30 seconds. **The pipe reads in large pieces** (`bigReads`, `repo/do/big-reads.ts`): read the ordinary way, the runtime hands its own streams to JavaScript 4 096 bytes a read, so a 45 MiB pack crossed the Worker in 11 500 turns of the event loop, which is the 1.4 MiB/s of #1447 ("What a fetch costs", below). A push's upload waits for 256 KiB at a time (`readAtLeast`); an answer is passed on as it arrives, because it carries keep-alive packets.
 - **A push over HTTPS is stored before it is indexed** (`IngestOptions.whole`, `ingest.ts`). Indexing (inflating, hashing with the collision-detecting SHA-1, resolving deltas) runs well below the network's pace, and a client held back by it for about a minute has its connection reset by Cloudflare's edge: an 88 MiB push failed that way (git's `HTTP/2 stream was not closed cleanly: INTERNAL_ERROR`). So the request's bytes go to R2 as fast as they come (three 5 MiB parts in flight), and the indexer then reads the stored pack back. Over SSH the stream stays open after the pack and only parsing finds its end, so SSH still indexes as it receives. Once the pack is in, receive-pack sends git's keepalive (an empty data-band packet, `receive.keepAlive`) every five seconds until it answers (`ServeLimits.keepAliveMs`).
 - **Backpressure is the streams' own** in both directions: a slow client slows the pack writer, a slow R2 upload slows the client's push.
 
@@ -240,9 +240,11 @@ The price is memory: every live pack's index is loaded (28 bytes an object, plus
 
 **Sending** (`pack-stream.ts`):
 
-- A full clone of a repository that is one self-contained pack is that pack, R2 to the client.
+- A full clone of a repository that is one self-contained pack is that pack, read from R2 as 4 MiB ranges with three in flight (`streamWhole`) and sent as it is.
 - A full clone of several packs is every entry of every pack, once, in file order, copied as stored. Nothing is inflated and no history is walked.
 - Anything else (a fetch with haves, a shallow clone, a single branch) walks history in the protocol and sends the chosen objects' stored entries. Only an `ofs-delta` header is rewritten. A delta whose base is not going out and that the client is not known to have is the one case read whole and compressed again.
+- **The bucket is read by a plan, not as it comes** (`generate`). The chosen entries are laid out in file order and read as runs: neighbours less than 64 KiB apart share one range request of at most 4 MiB, up to eight requests (12 MiB) are in flight or waiting for the writer, and nothing that is not going out is read but the gaps between neighbours. An entry over 4 MiB is read a piece at a time with two pieces ahead. The plan is made as it is used, so a clone of half a million objects holds no list of runs.
+- **Deltas that must be rebuilt are found ahead of the writer**: the next 128 entries are looked at as soon as their run has arrived, and those to rebuild are read and compressed while earlier entries go out, within 4 MiB of objects at a time (512 KiB each; a larger one waits its turn). In a repository that grew by pushes, the newest version of a changed file is a delta on an older one, so a shallow fetch rebuilds one object in six.
 - **The stored packs go out only while every stored object is known to be reachable from a branch or a tag** (`meta.unreachable`, `Repository.everythingReachable`). Creating a ref and moving a branch forward keep that true when everything the pack brought hangs off the new tips. A forced update, a deletion, objects the server wrote, an import from a fork and a fork's copy do not, and the next full clone walks history once to find out; the answer is kept until refs or packs change. A repository that does hold leftovers (branch pages from forks, a forced push) is walked by every full clone, as git does. Leftovers stay stored until a pruning repack exists; they are no longer served.
 
 **Repacking** runs from the alarm when there are more than 12 live packs: the newest run of packs under 256 MiB (at most 1 GiB, at most 500 000 objects) is streamed into one new pack through the same ingest path, so the result is indexed and verified like a push. The catalogue switches in one transaction; the old files are deleted after 24 hours, for a clone still streaming them. It merges and does not prune: unreachable objects stay.
@@ -252,6 +254,33 @@ The price is memory: every live pack's index is loaded (28 bytes an object, plus
 **Deleting** (`destroy`): every key under `repos/<repoId>/`, then `deleteAll`. The object is empty and can be reused.
 
 **Size** (`stats().sizeBytes`): bytes of live packs and indexes plus what is waiting to be deleted or still arriving. That is what R2 holds and what `git_repositories.size_bytes` should be set from.
+
+### What a fetch costs (#1447)
+
+A one-commit shallow fetch of a copy of this repository (14 000 objects, 45 MiB) took 40 seconds from production: 8 choosing objects, then 32 for the pack at 1.4 MiB/s. Locally it was two. Nothing was slow that a local run could show; four things were, in production:
+
+1. **The pack crossed the Worker 4 096 bytes at a time.** `carried` was an identity `TransformStream`, and a stream the runtime owns gives JavaScript 4 096 bytes a read however much is waiting (measured in workerd: 10 250 chunks for a 42 MiB pack, 44 with `bigReads`). A turn of the event loop is tens of microseconds here and milliseconds in production. The same was true of the object reading a push's body, and of it reading a stored pack back to index it or to send it.
+2. **Every read of R2 waited for the one before.** The issue's 8 seconds of choosing were 136 block reads, one at a time, 59 ms each. The walk now reads 32 trees at once (`TREES_AT_ONCE` in the protocol) through one block cache the repository's packs share (`newBlockCache`: 256 KiB blocks, 12 MiB, two blocks read ahead when reads march forward), in which reads that miss the same block wait for one fetch.
+3. **A shallow client was sent everything again.** A runner that had the last commit and asked for the next at depth 1 got every file of it, because the walk found no edge (the protocol's notes, `shallowEdges`). That is every pipeline read after a runner's first, and why the issue saw 40 seconds on every new commit and not once.
+4. **Nothing was remembered between fetches.** Commits, trees and tags of the live packs are now kept by id while the object is awake (`PackStore.read`, 6 MiB, apart from the cache that fetches fill with rebuilt files), and a push reads the trees of the branches it moved while it is being answered (`Repository.warm`), so the fetch CI makes a moment later reads none.
+
+`test/pack-bench.test.ts` runs the storage code on Node over a bucket whose reads cost what R2's do (`test/support/slow-bucket.ts`), with a repository object that has just woken. A read costs 55 ms before its first byte, then 60 MiB/s, which is what the issue's own walk works out to. This repository: its newest tree as one commit (14 028 objects, 45 MiB), and the history of one branch (100 011 objects, 81 MiB, one pack as git wrote it).
+
+| Fetch                                                   | Before: to choose, then the pack | After         | Reads, before to after | Sent                |
+| ------------------------------------------------------- | -------------------------------- | ------------- | ---------------------- | ------------------- |
+| One commit, shallow: a runner's first fetch (the issue) | 8.5 s, 1.6 s                     | 2.4 s, 0.5 s  | 149 to 166             | 44 MiB              |
+| History, shallow at the head: a runner's first fetch    | 3.0 s, 14.4 s                    | 2.1 s, 4.0 s  | 242 to 247             | 45 MiB              |
+| History, the next commit into a shallow clone           | 3.0 s, 14.3 s                    | 2.2 s, 0.2 s  | 242 to 76              | 46.9 MiB to 1.4 MiB |
+| The same, from the object that served the commit before | 1.6 s, 14.3 s                    | 0.15 s, 0.2 s | 221 to 26              | 46.9 MiB to 1.4 MiB |
+| History, a clone that has to walk                       | 71 s, 2.9 s                      | 8.8 s, 1.0 s  | 1 174 to 235           | 79 MiB              |
+| History, a fetch of the last 50 commits                 | 3.3 s, 2.5 s                     | 2.5 s, 1.2 s  | 78 to 139              | 6.7 MiB             |
+| One commit, a clone (the stored pack)                   | 0.2 s, 0.8 s                     | 0.25 s, 0.4 s | 3 to 13                | 44 MiB              |
+
+"To choose" ends at the pack's first byte. The pack's time is the bucket's and this code's: nothing in this harness is a network, so the 4 096-byte pipe (the larger part of the issue's 32 seconds) is not in the "before" column. The first shallow fetch of the history rebuilds 2 450 of its 14 028 objects. The clone walks because the mirror it was pushed from holds objects no branch reaches; a clone of a clean repository is the stored pack (the last row).
+
+**What is still slow**: the first fetch from an object that has just woken reads every tree of the commit from the bucket, two to three seconds for this repository, and git wrote those trees between the files they list, so the walk reads most of the pack's blocks to find them. A file beside each pack holding its commits and trees alone would make that a few reads; it is not built.
+
+**In production the object says where the time went**: one line a fetch that sent a pack, `git fetch on <repoId>: <n> objects, <bytes> bytes (<source>), chosen in <ms> ms, sent in <ms> ms, <n> bucket reads of <bytes> bytes`. "Sent" includes the client's own pace.
 
 ### RPC surface
 
@@ -396,6 +425,8 @@ A Durable Object has 128 MB. workerd does not report an isolate's heap and does 
 | Clone assembled from two packs                         | 0.3 s  | under 1 MiB         |
 | Repack of two packs into one                           | 8.5 s  | 92 MiB              |
 
+Measured again for #1447 (99 880 objects, 80.5 MiB): the push peaks 58 MiB above baseline, the fetch of the last 50 commits (2 137 objects, 6.7 MiB) 7 MiB, where the code before it peaked at 75 and 12 on the same history. `memory.test.ts` now pushes a pack of the branch's own objects (`git pack-objects --revs`): the pack a clone leaves can hold objects no branch reaches, and such a repository is cloned by walking.
+
 The push made 13 SQL writes, uploaded 15 parts and read 875 ranges back. The push's steady state is about 55 MiB (the indexer's 16 MiB cache, its table, held deltas, the hash queue, two part buffers); the peak is the indexer's second pass rebuilding objects of several megabytes, base and result together. **That peak is too close to 128 MB to be comfortable**: the table grows by 55 bytes an object, and a pack whose deltas are of objects near core's 32 MiB limit would hold twice that at once. The object limit is set at 500 000 for that reason, and a real measurement under the production limit is still owed.
 
 ### Throughput in workerd
@@ -412,6 +443,18 @@ The push made 13 SQL writes, uploaded 15 parts and read 875 ranges back. The pus
 
 Two or three runs each, with the machine's load average around 6, which is where the ranges come from. The push is two to three times slower than the same code on Node (8 to 9 s). The likeliest cause is the indexer's second pass, about 900 range reads, each a round trip to the local R2 simulator; it was not profiled.
 
+Measured again for #1447 (November 2026, the history now 100 037 objects in an 80.5 MiB pack, load average 5), over HTTPS, before and after its changes:
+
+| Operation                                 | Before           | After             |
+| ----------------------------------------- | ---------------- | ----------------- |
+| Push of the whole history                 | 96.5 s           | 99.3 s            |
+| `git clone`, start to finish              | 11.0 s           | 8.0 s             |
+| The clone's pack, server only (over HTTP) | 1.6 s (49 MiB/s) | 0.5 s (147 MiB/s) |
+| Fetch of the last 50 commits              | 1.2 s            | 1.1 s             |
+| `git clone --depth 1`                     | 4.6 s            | 3.6 s             |
+
+The clone's pack is three times faster locally because it no longer crosses the Worker 4 096 bytes at a time; production is where that mattered ("What a fetch costs"). **The push is three to five times slower than the table above says and nothing here changed it**: the same code on Node takes 21 to 26 seconds for this history today, against 8.3 when that table was made. Why is not known.
+
 A clone's wall time is mostly the client's own `index-pack`; "server only" is the same pack downloaded and thrown away. workerd's resident memory grew by over a gigabyte during a push and came back: locally nothing limits an isolate, so garbage is collected late, and the figure says nothing about the 128 MB limit.
 
 ### Tests
@@ -419,6 +462,9 @@ A clone's wall time is mostly the client's own `index-pack`; "server only" is th
 - `src/repo/do/__tests__/policy.test.ts`, `src/transport/__tests__/transport.test.ts`: protected-branch rules, SSH command parsing, the failure limiter, route matching, and who gets a 401, a 404 or a 403. No database, no workerd.
 - `test/repository.test.ts`: the storage code with the real `git` on the other end, on Node stand-ins for R2 (which enforce R2's multipart rules) and SQLite (`node:sqlite`): a push as one request and as a multipart upload, clones and fetches out of several thin packs, a client without `ofs-delta`, repacking and the grace period, refused pushes leaving nothing behind, server-side objects and ref changes, forks, deletion, the tar archive, init with a README.
 - `test/e2e/git.test.ts` (opt-in, `GIT_WORKER_E2E=1`): the worker under `wrangler dev` with a fixture in place of Postgres (`test/e2e/entry.ts`; access is still decided by `decideRepoAccess`). The real `git` over HTTPS in v0, v1 and v2 and over SSH (the real `ssh`, to the `connect` listener) in v0 and v2: clone, shallow clone, fetch with haves, push, protected branches, the events queue, job tokens on smart HTTP and on the raw and archive routes, deploy keys, the greeting, the failure limit, and init, repack, fork and destroy through RPC.
+- `test/pack-serving.test.ts`: how a fetch reads the bucket, on a bucket that counts its reads and how many overlap, with `git` judging every pack: a shallow fetch out of three packs reads only around what it sends, several ranges at once; a pushed branch's trees are in memory for the fetch that follows; deltas whose bases stay behind go out as whole objects; an entry over 4 MiB goes out in pieces and a stored pack as ranges in order; a bucket that stops answering mid-pack ends the fetch with an error and no rejection left unhandled.
+- `test/big-reads.test.ts`: `bigReads` over a byte stream that fills whatever buffer it is offered, as the runtime's does.
+- `test/pack-bench.test.ts` (opt-in, `GIT_WORKER_BENCH=1`): the table in "What a fetch costs". `GIT_WORKER_BENCH_PROFILES=instant,near,issue,far` picks what a read costs.
 - `test/e2e/monorepo.test.ts` and `test/memory.test.ts` (opt-in, `GIT_WORKER_BENCH=1`): the measurements above.
 - `test/reader.test.ts`: the reader on the Node stand-ins against a history `git` built and pushed, with `git` as the judge: refs, the file table against `git log -1` per entry (in one call, in steps, and read back by a woken object), blobs (text, binary, over the limit), history (whole, by path, following a rename, by author and date, paged) against `git log`, commits and diffs against `git diff --numstat` and its patch text, comparisons across a merge against `git merge-base` and `rev-list --left-right`, blame against `git blame --porcelain`, review anchors, sizes of whole and delta objects against `git cat-file`, branch changes and their events, merge commit, squash and rebase against the trees `git merge`, `git merge --squash` and `git rebase` make, conflicts, a base that moves under a merge, `updateBranch` both ways, a fork's branch page compared, given its ref, brought up to date and merged across two repositories, init with templates, destroy, and the reply that crosses the object's boundary.
 - `test/reader-api.test.ts`: the API's fetch handler over that reader for the content routes that need no database (refs, blob, readme, a commit's diff, a comparison's diff) and their refusals.
@@ -433,6 +479,9 @@ The workerd suites are opt-in because they start `wrangler dev`; nothing in them
 - **Measure under the real 128 MB limit**, and decide the object and delta-size limits from it.
 - **Prune**: repack merges but never drops unreachable objects, so a full clone can carry them.
 - **Index paging** for repositories past a few million objects.
+- **Confirm #1447's fix in production** from the object's fetch line: the pack's rate through the Worker could only be reasoned about here, not measured.
+- **A file of commits and trees beside each pack**, so an object that has just woken chooses a fetch's objects in a few reads ("What a fetch costs").
+- **The other pipes still read 4 096 bytes at a time**: a mirror's pack on its way out, a fork's pack copied between objects, the archive. `bigReads` is the fix for each.
 - **Keepalives** during long indexing, instead of a long SSH idle timeout.
 - **Nothing sweeps objects whose row is gone.** The API's delete handler destroys the storage from `waitUntil` (`RepoReader.destroy`); a row deleted by a cascade in the app, or a `destroy` that failed, leaves objects only a sweep by id can find.
 - **`git_repositories.size_bytes`, `pushed_at` and the counts** are set by the queue consumer from the event and `RepoReader.stats()`, and by `repositories.create` and `fork` when they make the first commit or the copy. A lost event leaves them stale until the next push.
@@ -728,6 +777,7 @@ The unit suites: `src/auth/__tests__/access.test.ts` is the access matrix (publi
 
 ### Logging
 
+- **A fetch that sent a pack logs one line** from the object when it ends (`repo-do.ts`, `onEnd`): the repository's id and numbers, nothing of the request.
 - **Nothing passes an error object to `console`.** `http/log.ts` `describeError` writes the class, the message without a statement's parameters or a schema error's value, a few frames and the causes, with anything shaped like a credential cut to its kind and control characters removed.
 
 ## Push mirrors (`src/mirror/`, `src/jobs/`)

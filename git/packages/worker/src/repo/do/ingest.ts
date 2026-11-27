@@ -31,6 +31,7 @@ import {
   packKey,
   rangeFetcher,
 } from "./pack-store";
+import { bigReads } from "./big-reads";
 import type { MultipartUpload, UploadedPart } from "./platform";
 
 /**
@@ -39,6 +40,8 @@ import type { MultipartUpload, UploadedPart } from "./platform";
  * and still allows a 48 GiB pack in R2's 10 000 parts.
  */
 export const PART_BYTES = 5 * 1024 * 1024;
+/** A stored pack is read back to the indexer in pieces of this, not the runtime's 4 096 bytes. */
+const REPLAY_PIECE_BYTES = 256 * 1024;
 
 export interface IngestOptions {
   /** Objects already in the repository: thin-pack bases, and the other half of the connectivity check. */
@@ -255,7 +258,7 @@ export async function ingestPack(
           ? new Blob([memory as Uint8Array<ArrayBuffer>]).stream()
           : (await bucket.get(key))?.body;
       if (!saved) throw new Error(`${key} is missing from storage`);
-      const replay = saved.getReader();
+      const replay = bigReads(saved, { bytes: REPLAY_PIECE_BYTES }).getReader();
       try {
         while (!indexer.done) {
           const { done, value } = await replay.read();
@@ -337,7 +340,7 @@ export async function ingestPack(
       selfContained ? 1 : 0,
       id,
     );
-    const handle = new PackHandle(id, key, total, selfContained, index, bucket, memory);
+    const handle = store.handle(id, total, selfContained, index, memory);
     store.adopt(handle);
     return { handle, objectCount: result.objectCount, size: total, idxSize: idx.length, roots };
   } catch (error) {

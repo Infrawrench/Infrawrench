@@ -44,7 +44,7 @@ import type { GitEvent, GitEventActor } from "../../env";
 import { type MirrorPlan, type MirrorPlanOptions, planMirror } from "../../mirror/plan";
 import { type Ingested, ingestPack } from "./ingest";
 import { type PackHandle, type PackRow, PackStore, repoPrefix } from "./pack-store";
-import { selectByOid, selectEverything, streamPack } from "./pack-stream";
+import { selectByOid, selectEverything, streamPack, streamWhole } from "./pack-stream";
 import type { Bucket, EventSink, RepoStorage, Sql } from "./platform";
 import { type PushPolicy, checkPush } from "./policy";
 import { getMeta, migrate, setMeta } from "./schema";
@@ -120,6 +120,8 @@ export interface RepositoryObjects extends ObjectReader {
 
 /** Most ref tips offered as "already have" when objects are copied from another repository. */
 const MAX_IMPORT_HAVES = 2000;
+/** Branches of one push whose trees are read ahead of the fetch that follows it. */
+const WARM_BRANCHES = 2;
 
 const isBranchOrTag = (name: string): boolean =>
   name.startsWith("refs/heads/") || name.startsWith("refs/tags/");
@@ -253,6 +255,9 @@ export class Repository {
     this.store = new PackStore(this.deps.bucket, this.sql, repoId);
     return this.store;
   }
+
+  /** The reading of trees a push started, while it runs (`warm`). */
+  private warming: Promise<void> | null = null;
 
   private get packs(): PackStore {
     if (!this.store) throw new Error("repository is not open");
@@ -717,7 +722,7 @@ export class Repository {
         const only = packs.length === 1 ? packs[0]! : null;
         if (only && only.selfContained && ofsDelta) {
           // One pack that stands alone is already the answer: R2 to the client, untouched.
-          return { stream: await only.streamAll(), objectCount: only.index.count };
+          return { stream: streamWhole(only), objectCount: only.index.count };
         }
         const selection = selectEverything(packs);
         return {
@@ -810,8 +815,44 @@ export class Repository {
     return {
       // Without a policy the namespace rule still holds: a push never writes `refs/pull/*`.
       check: async (updates) => checkPush(policy, updates),
-      after: (applied) => this.announce(actor, applied),
+      after: async (applied) => {
+        // Not waited for: the push is answered while the trees are read.
+        this.warm(applied);
+        await this.announce(actor, applied);
+      },
     };
+  }
+
+  /**
+   * Reads the trees of the branches a push just moved, so they are in memory
+   * when the fetch that follows asks (`PackStore.read` keeps them). What
+   * follows a push within seconds is a CI runner fetching the new commit, and
+   * choosing its objects reads every tree of the commit: thousands of them
+   * in a monorepo, and from an object the push has just woken, each from the
+   * bucket (#1447). The push changed a handful; the rest are read here, once,
+   * while the event is still on its way to CI. Nothing depends on it: a walk
+   * that fails or is cut short only leaves the next fetch to read for itself.
+   */
+  private warm(applied: readonly ReceiveUpdate[]): void {
+    const tips = applied
+      .filter((update) => update.kind !== "delete" && update.name.startsWith("refs/heads/"))
+      .slice(0, WARM_BRANCHES)
+      .map((update) => update.newOid);
+    if (tips.length === 0) return;
+    const walk = (async () => {
+      const graph = new CommitGraph(this.reader(await this.packs.live()));
+      const commits: ObjectId[] = [];
+      for (const tip of tips) if (await graph.get(tip)) commits.push(tip);
+      await selectObjects(graph, { commits, edges: [], tags: [], trees: [], blobs: [] });
+    })().catch(() => undefined);
+    const warming = (this.warming = Promise.all([this.warming, walk]).then(() => {
+      if (this.warming === warming) this.warming = null;
+    }));
+  }
+
+  /** Settles when the trees a push asked to have read have been. For tests: nothing waits on it. */
+  async warmed(): Promise<void> {
+    await this.warming;
   }
 
   private async announce(
@@ -1152,6 +1193,11 @@ export class Repository {
   }
 
   // Housekeeping
+
+  /** Range reads of the bucket's packs since this object woke: how many, and their bytes. */
+  bucketReads(): { readonly gets: number; readonly bytes: number } {
+    return { ...this.packs.reads };
+  }
 
   stats(): RepoStats {
     const packs = this.sql.exec<PackRow>("SELECT * FROM packs").toArray();

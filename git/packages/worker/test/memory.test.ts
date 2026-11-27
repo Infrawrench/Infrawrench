@@ -14,7 +14,7 @@
  * test/memory.test.ts`.
  */
 import { spawnSync } from "node:child_process";
-import { appendFileSync, createReadStream, readdirSync } from "node:fs";
+import { appendFileSync, createReadStream } from "node:fs";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { ZERO_OID, encodePktLine } from "@infrawrench/git-core";
@@ -42,11 +42,19 @@ describe.skipIf(!enabled)("memory held by the storage code", () => {
     await git(["clone", "-q", "--bare", "--no-local", "--single-branch", source, mirror]);
     const head = await gitOut(["rev-parse", "HEAD"], { cwd: mirror });
     const old = await gitOut(["rev-parse", "HEAD~50"], { cwd: mirror });
-    const packDir = join(mirror, "objects/pack");
-    const packFile = join(
-      packDir,
-      readdirSync(packDir).find((file) => file.endsWith(".pack"))!,
+    // The branch's own objects as one pack. The pack a clone leaves can hold more (a tag's
+    // object, whatever the source sent along), and a repository that holds an object no
+    // branch reaches is cloned by walking, which is not the clone measured here.
+    const packFile = join(tempDir("history"), "history.pack");
+    const packed = spawnSync(
+      "sh",
+      [
+        "-c",
+        `echo ${head} | git pack-objects --revs --stdout -q --delta-base-offset > "${packFile}"`,
+      ],
+      { cwd: mirror },
     );
+    expect(packed.status).toBe(0);
 
     const bucket = new MemoryBucket();
     const storage = nodeStorage();
@@ -152,7 +160,8 @@ describe.skipIf(!enabled)("memory held by the storage code", () => {
     });
     expect(fetchStats.packSource).toBe("objects");
 
-    // A second pack, so the clone is assembled from two instead of being the stored file.
+    // A second pack holding an object no branch reaches. The stored packs may no longer go out
+    // as they are: the clone walks the whole history, and leaves the object behind.
     await repository.writeObjects([
       { type: "blob", data: new TextEncoder().encode("second pack\n") },
     ]);
@@ -160,7 +169,8 @@ describe.skipIf(!enabled)("memory held by the storage code", () => {
     const assembled = await measured(async () => {
       assembledStats = await fetchPack([]);
     });
-    expect(assembledStats.objectsSent).toBe(stats.objects + 1);
+    expect(assembledStats.packSource).toBe("objects");
+    expect(assembledStats.objectsSent).toBe(stats.objects);
 
     const repacked = await measured(() => repository.repack());
     expect(repository.stats().livePacks).toBe(1);
@@ -179,7 +189,7 @@ describe.skipIf(!enabled)("memory held by the storage code", () => {
         fetched,
         `, ${fetchStats.objectsSent} objects, ${(fetchStats.bytes / MIB).toFixed(1)} MiB`,
       ),
-      line("clone (assembled from 2 packs)", assembled),
+      line("clone (by walking, 2 packs)", assembled),
       line("repack (2 packs into one)", repacked),
     ].join("\n");
     console.log(report);

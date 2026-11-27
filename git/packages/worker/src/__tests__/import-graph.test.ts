@@ -40,9 +40,12 @@ const GATEWAY_ONLY = fileURLToPath(
  * evaluated only by the image route (`og/mount.ts`); its WebAssembly and
  * fonts are modules of their own, outside this file. The room above that is
  * for the forge to grow into, not for server-core: something that adds
- * megabytes at once is a reach worth looking at before it ships.
+ * megabytes at once is a reach worth looking at before it ships. It reached
+ * 6 999 039 bytes of the 7 000 000 it was first held to with push mirrors
+ * and issue import; the pack serving of #1447 added 16 kB of the forge's own
+ * code and the bound moved with it.
  */
-const MAX_BUNDLE_BYTES = 7_000_000;
+const MAX_BUNDLE_BYTES = 7_500_000;
 
 /** Parts of server-core this Worker must never carry, each with what it would bring. */
 const FORBIDDEN_SOURCES: ReadonlyArray<readonly [fragment: string, why: string]> = [
