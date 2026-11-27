@@ -7,10 +7,12 @@
  * another site is never drawn), and it must arrive small and quickly, or
  * the card goes without it and shows initials.
  *
- * A picture of this site's own (a bot's, `/assets/bots/...`) is read from
- * the built UI instead.
+ * A picture of this site's own is read where it is kept instead: a bot's
+ * (`/assets/bots/...`) from the built UI, an organisation's uploaded one
+ * (`/-/avatar/...`) from the bucket.
  */
 import type { Fetcher } from "@cloudflare/workers-types/index";
+import { AVATAR_PATH } from "@infrawrench/git-contract";
 import { imageSource } from "../images/proxy";
 
 export const CARD_IMAGE_LIMITS = {
@@ -31,6 +33,13 @@ export interface CardImageOptions {
   readonly siteHosts: readonly string[];
   /** The built UI, for this site's own pictures. */
   readonly assets?: Pick<Fetcher, "fetch"> | undefined;
+  /**
+   * An organisation's uploaded picture by its path (`images/avatar.ts`
+   * `readStoredAvatar`), or null when there is none.
+   */
+  readonly avatars?:
+    | ((path: string) => Promise<{ readonly bytes: Uint8Array; readonly type: string } | null>)
+    | undefined;
   readonly origin: string;
 }
 
@@ -88,8 +97,17 @@ const asDataUrl = async (
   return bytes === null || bytes.length === 0 ? null : `data:${type};base64,${base64(bytes)}`;
 };
 
-/** One of this site's own pictures (`/assets/...`), from the built UI. */
+/** An organisation's uploaded picture, when it is one the renderer draws (a WebP is not). */
+const uploadedAvatar = async (path: string, options: CardImageOptions): Promise<string | null> => {
+  const found = (await options.avatars?.(path)) ?? null;
+  if (found === null || !REMOTE_TYPES.has(found.type)) return null;
+  if (found.bytes.length === 0 || found.bytes.length > CARD_IMAGE_LIMITS.maxBytes) return null;
+  return `data:${found.type};base64,${base64(found.bytes)}`;
+};
+
+/** One of this site's own pictures: an upload (`/-/avatar/...`), or one from the built UI (`/assets/...`). */
 const ownImage = async (path: string, options: CardImageOptions): Promise<string | null> => {
+  if (path.startsWith(`${AVATAR_PATH}/`)) return uploadedAvatar(path, options);
   if (!/^\/assets\/[A-Za-z0-9/_.-]+$/.test(path) || path.includes("..") || !options.assets) {
     return null;
   }

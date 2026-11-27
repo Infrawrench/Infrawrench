@@ -15,6 +15,7 @@
  * | `/:owner/:repo/archive/:ref.tar.gz` / `.zip` | The tree at a ref as an archive.                 |
  * | `/:owner/:repo/terraform/:workspace/state`   | Terraform's HTTP state backend (`/lock`, `/unlock`). |
  * | `/-/image?url=`                              | An image from another site, fetched by the Worker. |
+ * | `/-/avatar/:namespaceId/:name`                | An organisation's uploaded picture.              |
  * | `/-/og/:version[/page path]`                 | A page's link preview image (Open Graph), 1200x630 PNG. |
  * | `/mcp`                                       | The MCP server (Streamable HTTP): what an agent's client is given. |
  * | `/oauth/authorize`, `/token`, `/register`, `/revoke` | The authorization server an MCP client signs in through. |
@@ -152,6 +153,30 @@ export const IMAGE_PROXY_PATH = "/-/image";
 
 export const imageProxyPath = (url: string): string =>
   `${IMAGE_PROXY_PATH}?url=${encodeURIComponent(url)}`;
+
+/**
+ * An organisation's uploaded picture: `/-/avatar/<namespace id>/<name>`,
+ * where `name` is 32 hex digits of the file's SHA-256 and the extension of
+ * what it is (`profile.ts` `AVATAR_EXTENSIONS`). The name changes with the
+ * picture, so the address is cached for good, and it is on this origin, so
+ * the page's `img-src 'self'` shows it with no proxy. Public, like the
+ * namespace's page: a namespace is never private. A namespace cannot be
+ * called `-`, so the path is never a repository's.
+ */
+export const AVATAR_PATH = "/-/avatar";
+
+const AVATAR_ROUTE = /^\/-\/avatar\/([A-Za-z0-9_-]{1,64})\/([0-9a-f]{32}\.(?:png|jpg|webp))$/;
+
+export const avatarPath = (namespaceId: string, name: string): string =>
+  `${AVATAR_PATH}/${segment(namespaceId)}/${segment(name)}`;
+
+/** The namespace and the file a picture's path names, or null for any other path. */
+export const parseAvatarPath = (
+  pathname: string,
+): { readonly namespaceId: string; readonly name: string } | null => {
+  const match = AVATAR_ROUTE.exec(pathname);
+  return match ? { namespaceId: match[1]!, name: match[2]! } : null;
+};
 
 /**
  * Where a page's link preview image is (`og:image`): `/-/og/<version>` and

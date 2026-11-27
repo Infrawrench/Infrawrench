@@ -48,6 +48,10 @@ describe("routeOf", () => {
     expect(routeOf("/-/image/x")).toEqual({ kind: "not-found" });
     expect(routeOf("/-/og/0123456789abcdef/acme/infra")).toEqual({ kind: "og-image" });
     expect(routeOf("/-/og")).toEqual({ kind: "not-found" });
+    expect(routeOf("/-/avatar/ns-1/0123456789abcdef0123456789abcdef.png")).toEqual({
+      kind: "avatar",
+    });
+    expect(routeOf("/-/avatar")).toEqual({ kind: "not-found" });
     expect(routeOf("/-/anything")).toEqual({ kind: "not-found" });
   });
 

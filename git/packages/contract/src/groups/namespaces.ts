@@ -13,7 +13,7 @@ import {
 import { Authentication } from "../http/auth";
 import { BadRequest, Conflict, Forbidden, NotFound, PaymentRequired } from "../http/errors";
 import { NamespaceSlug, Uuid } from "../schemas/common";
-import { Namespace, NamespaceUpdate, UserRef } from "../schemas/people";
+import { Namespace, NamespaceAvatarUpload, NamespaceUpdate, UserRef } from "../schemas/people";
 
 const NamespaceParams = { namespace: NamespaceSlug } as const;
 const SlugBody = Schema.Struct({ slug: Schema.String });
@@ -31,11 +31,38 @@ export class NamespacesGroup extends HttpApiGroup.make("namespaces")
       params: NamespaceParams,
       payload: NamespaceUpdate,
       success: Namespace,
-      error: [BadRequest, NotFound],
+      error: [BadRequest, Forbidden, NotFound],
     })
       .annotate(RequiresUser, true)
       .annotate(HandlerGate, "The namespace's own user, or `git:admin` in its organisation.")
       .annotate(OpenApi.Summary, "Edit a profile")
+      .annotate(
+        OpenApi.Description,
+        "From a signed-in browser. The bio is plain text of 280 characters at most; the website is an `http:` or `https:` address.",
+      )
+      .annotate(SuccessDescription, "The namespace"),
+    HttpApiEndpoint.put("setAvatar", "/namespaces/:namespace/avatar", {
+      params: NamespaceParams,
+      payload: NamespaceAvatarUpload,
+      success: Namespace,
+      error: [BadRequest, Forbidden, NotFound],
+    })
+      .annotate(RequiresUser, true)
+      .annotate(HandlerGate, "`git:admin` in the namespace's organisation, in a signed-in browser.")
+      .annotate(OpenApi.Summary, "Set an organisation's picture")
+      .annotate(
+        OpenApi.Description,
+        "An organisation's namespace only: a person's picture is the one on their Infrawrench account. 400 when the file is not a still PNG, JPEG or WebP image within the limits.",
+      )
+      .annotate(SuccessDescription, "The namespace"),
+    HttpApiEndpoint.delete("removeAvatar", "/namespaces/:namespace/avatar", {
+      params: NamespaceParams,
+      success: Namespace,
+      error: [BadRequest, Forbidden, NotFound],
+    })
+      .annotate(RequiresUser, true)
+      .annotate(HandlerGate, "`git:admin` in the namespace's organisation, in a signed-in browser.")
+      .annotate(OpenApi.Summary, "Remove an organisation's picture")
       .annotate(SuccessDescription, "The namespace"),
     HttpApiEndpoint.post("claimForOrganization", "/orgs/:orgId/namespace", {
       params: { orgId: Uuid.annotate({ description: "Infrawrench organisation id" }) },

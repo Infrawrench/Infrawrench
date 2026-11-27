@@ -3,6 +3,7 @@
  */
 import { Schema } from "effect";
 import { GIT_PERMISSIONS } from "../http/annotations";
+import { AVATAR_MAX_BASE64_LENGTH, BIO_MAX_LENGTH } from "../profile";
 import { IsoDateTime, Visibility } from "./common";
 
 /**
@@ -62,8 +63,13 @@ export const Namespace = Schema.Struct({
   slug: Schema.String,
   kind: NamespaceKind,
   displayName: Schema.NullOr(Schema.String),
-  description: Schema.NullOr(Schema.String),
-  avatarUrl: Schema.NullOr(Schema.String),
+  description: Schema.NullOr(Schema.String).annotate({
+    description: "The bio: plain text, shown as one paragraph with its web addresses linked.",
+  }),
+  avatarUrl: Schema.NullOr(Schema.String).annotate({
+    description:
+      "An organisation's uploaded picture (a path on this site, `/-/avatar/...`), or a person's from their Infrawrench account.",
+  }),
   websiteUrl: Schema.NullOr(Schema.String),
   location: Schema.NullOr(Schema.String),
   userId: Schema.NullOr(Schema.String).annotate({
@@ -86,11 +92,25 @@ export type Namespace = typeof Namespace.Type;
 
 export const NamespaceUpdate = Schema.Struct({
   displayName: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(100)))),
-  description: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(500)))),
+  description: Schema.optionalKey(
+    Schema.NullOr(Schema.String.check(Schema.isMaxLength(BIO_MAX_LENGTH))),
+  ),
   websiteUrl: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(500)))),
   location: Schema.optionalKey(Schema.NullOr(Schema.String.check(Schema.isMaxLength(100)))),
 }).annotate({ identifier: "NamespaceUpdate" });
 export type NamespaceUpdate = typeof NamespaceUpdate.Type;
+
+/** An organisation's picture, as the bytes of the file in base64. */
+export const NamespaceAvatarUpload = Schema.Struct({
+  image: Schema.String.check(
+    Schema.isMinLength(1),
+    Schema.isMaxLength(AVATAR_MAX_BASE64_LENGTH),
+  ).annotate({
+    description:
+      "A PNG, JPEG or WebP file in base64, 1 MB at most and 16 to 2048 pixels on each side. What it is is read from its bytes.",
+  }),
+}).annotate({ identifier: "NamespaceAvatarUpload" });
+export type NamespaceAvatarUpload = typeof NamespaceAvatarUpload.Type;
 
 /** An Infrawrench organisation the signed-in person belongs to. */
 export const SessionOrganization = Schema.Struct({

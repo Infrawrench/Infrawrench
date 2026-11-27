@@ -212,6 +212,10 @@ const draw: NonNullable<ImageRouteOptions["draw"]> = async (card, env) => {
     fetch: (input, init) => fetch(input, init),
     siteHosts: [new URL(origin).hostname],
     assets: env.ASSETS,
+    avatars: async (path) => {
+      const { readStoredAvatar } = await import("../images/avatar");
+      return readStoredAvatar(env.OBJECTS, path);
+    },
     origin,
   });
   return {

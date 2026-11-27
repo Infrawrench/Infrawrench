@@ -14,6 +14,7 @@
  * | `/:owner/:repo/terraform/:workspace/state..` | `terraform-state` |
  * | `/:owner/:repo/terraform/:workspace/runs/:id/plan` | `terraform-plan` |
  * | `/-/image`                                   | `image-proxy`     |
+ * | `/-/avatar/:namespaceId/:name`               | `avatar`          |
  * | `/-/og/:version[/...]`                       | `og-image`        |
  * | `/mcp`                                       | `mcp`             |
  * | `/oauth/authorize`, `/token`, `/register`, `/revoke` | `oauth`   |
@@ -29,6 +30,7 @@
  */
 import {
   AUTH_PATHS,
+  AVATAR_PATH,
   IMAGE_PROXY_PATH,
   MCP_PATH,
   OAUTH_PATHS,
@@ -63,6 +65,7 @@ export type Route =
       readonly runId: string;
     } & RepoPath)
   | { readonly kind: "image-proxy" }
+  | { readonly kind: "avatar" }
   | { readonly kind: "og-image" }
   | { readonly kind: "mcp" }
   | { readonly kind: "oauth"; readonly action: "authorize" | "token" | "register" | "revoke" }
@@ -85,6 +88,7 @@ export const routeOf = (pathname: string): Route => {
   // A namespace cannot be called `-` (client-core `git-names.ts`).
   if (first === "-") {
     if (pathname === IMAGE_PROXY_PATH) return { kind: "image-proxy" };
+    if (pathname.startsWith(`${AVATAR_PATH}/`)) return { kind: "avatar" };
     if (pathname.startsWith(`${OG_IMAGE_PATH}/`)) return { kind: "og-image" };
     return { kind: "not-found" };
   }
@@ -183,6 +187,8 @@ export interface Routes {
   readonly terraformPlan?: Handler<Extract<Route, { kind: "terraform-plan" }>>;
   /** `/-/image?url=`: an image from another site (`images/proxy.ts`). */
   readonly imageProxy?: Handler<Extract<Route, { kind: "image-proxy" }>>;
+  /** `/-/avatar/<namespace id>/<name>`: an organisation's uploaded picture (`images/avatar.ts`). */
+  readonly avatar?: Handler<Extract<Route, { kind: "avatar" }>>;
   /** `/-/og/<version>/...`: a page's link preview image (`og/mount.ts`). */
   readonly ogImage?: Handler<Extract<Route, { kind: "og-image" }>>;
   /**
@@ -265,6 +271,10 @@ const dispatch = (request: Request, env: Env, ctx: Ctx, routes: Routes): Promise
     case "image-proxy":
       return routes.imageProxy
         ? routes.imageProxy(request, env, ctx, route)
+        : Promise.resolve(text("Not Found\n", 404));
+    case "avatar":
+      return routes.avatar
+        ? routes.avatar(request, env, ctx, route)
         : Promise.resolve(text("Not Found\n", 404));
     case "og-image":
       return routes.ogImage

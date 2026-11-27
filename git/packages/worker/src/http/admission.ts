@@ -27,7 +27,7 @@
  * else in the isolate. Each is best effort in its own way; none fails a
  * request when it cannot count.
  */
-import { IMAGE_PROXY_PATH, OG_IMAGE_PATH } from "@infrawrench/git-contract";
+import { AVATAR_PATH, IMAGE_PROXY_PATH, OG_IMAGE_PATH } from "@infrawrench/git-contract";
 import type { Principal } from "../auth/principal";
 import type { Env } from "../env";
 import {
@@ -88,12 +88,17 @@ export const presentsCredential = (request: Request): boolean =>
 /**
  * Routes that never authenticate, so their caller is counted by address
  * even when a session cookie rides along: the image proxy, which a page
- * with many images asks often, and link preview images (`og/mount.ts`),
- * which are drawn for a signed-out visitor whoever asks.
+ * with many images asks often, an organisation's uploaded picture
+ * (`images/avatar.ts`), which is public, and link preview images
+ * (`og/mount.ts`), which are drawn for a signed-out visitor whoever asks.
  */
 const countedByAddress = (request: Request): boolean => {
   const path = new URL(request.url).pathname;
-  return path === IMAGE_PROXY_PATH || path.startsWith(`${OG_IMAGE_PATH}/`);
+  return (
+    path === IMAGE_PROXY_PATH ||
+    path.startsWith(`${AVATAR_PATH}/`) ||
+    path.startsWith(`${OG_IMAGE_PATH}/`)
+  );
 };
 
 /** The counter of refused credentials is kept apart from SSH's, which has its own limit. */

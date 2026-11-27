@@ -51,6 +51,7 @@ import {
 } from "@infrawrench/server-core/git/workspace";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { signOut } from "../../auth/sign-in";
+import { deleteStoredAvatar, readAvatarUpload, storeAvatar } from "../../images/avatar";
 import { recordAudit } from "../../db/audit";
 import { db } from "../../db/client";
 import {
@@ -573,6 +574,25 @@ const refOf = (namespace: NamespaceRow) => ({
   avatarUrl: namespace.avatarUrl,
 });
 
+/** The namespace a profile edit names, for someone who may make it: its own person or a `git:admin`, in a browser. */
+const editableNamespace = async (cx: Cx, slug: string): Promise<NamespaceRow> => {
+  const namespace = await getNamespaceBySlug(slug);
+  if (!namespace) throw notFound("No such user or organisation");
+  if (!(await namespaceView(cx, namespace)).viewer.canAdminister) {
+    throw forbidden("Only its owner can edit this profile");
+  }
+  return namespace;
+};
+
+/** {@link editableNamespace}, for a picture: only an organisation uploads one. */
+const organisationForPicture = async (cx: Cx, slug: string): Promise<NamespaceRow> => {
+  const namespace = await editableNamespace(cx, slug);
+  if (namespace.kind !== "org") {
+    throw badRequest("A person's picture is the one on their Infrawrench account");
+  }
+  return namespace;
+};
+
 export const NamespacesHandlers = HttpApiBuilder.group(GitApi, "namespaces", (handlers) =>
   handlers
     .handle(
@@ -586,11 +606,7 @@ export const NamespacesHandlers = HttpApiBuilder.group(GitApi, "namespaces", (ha
     .handle(
       "update",
       op(async (cx, { params, payload }) => {
-        const namespace = await getNamespaceBySlug(params.namespace);
-        if (!namespace) throw notFound("No such user or organisation");
-        if (!(await namespaceView(cx, namespace)).viewer.canAdminister) {
-          throw forbidden("Only its owner can edit this profile");
-        }
+        const namespace = await editableNamespace(cx, params.namespace);
         if (
           payload.websiteUrl !== undefined &&
           payload.websiteUrl !== null &&
@@ -599,6 +615,31 @@ export const NamespacesHandlers = HttpApiBuilder.group(GitApi, "namespaces", (ha
           throw badRequest("The website must be an http or https URL");
         }
         const updated = await updateNamespaceProfile(namespace.id, payload);
+        return namespaceView(cx, updated ?? namespace);
+      }),
+    )
+    .handle(
+      "setAvatar",
+      op(async (cx, { params, payload }) => {
+        const namespace = await organisationForPicture(cx, params.namespace);
+        const upload = readAvatarUpload(payload.image);
+        if (!upload.ok) throw badRequest(upload.problem);
+        const path = await storeAvatar(cx.env.OBJECTS, namespace.id, upload);
+        const updated = await updateNamespaceProfile(namespace.id, { avatarUrl: path });
+        // The same file again is the same name: nothing to clear.
+        if (namespace.avatarUrl !== path) {
+          cx.background(deleteStoredAvatar(cx.env.OBJECTS, namespace.id, namespace.avatarUrl));
+        }
+        return namespaceView(cx, updated ?? namespace);
+      }),
+    )
+    .handle(
+      "removeAvatar",
+      op(async (cx, { params }) => {
+        const namespace = await organisationForPicture(cx, params.namespace);
+        if (namespace.avatarUrl === null) return namespaceView(cx, namespace);
+        const updated = await updateNamespaceProfile(namespace.id, { avatarUrl: null });
+        cx.background(deleteStoredAvatar(cx.env.OBJECTS, namespace.id, namespace.avatarUrl));
         return namespaceView(cx, updated ?? namespace);
       }),
     )

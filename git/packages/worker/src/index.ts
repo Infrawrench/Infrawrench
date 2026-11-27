@@ -97,6 +97,12 @@ const routes: Routes = {
     });
   },
 
+  // An organisation's uploaded picture, from the bucket (`images/avatar.ts`).
+  avatar: async (request, env) => {
+    const { serveAvatar } = await import("./images/avatar");
+    return serveAvatar(request, env.OBJECTS);
+  },
+
   // Link previews, as a signed-out visitor sees the page: the tags in a page's
   // shell, and the image they name (`og/mount.ts`).
   page: async (request, env, ctx, shell) => (await og()).pageFetch(request, env, ctx, shell),
