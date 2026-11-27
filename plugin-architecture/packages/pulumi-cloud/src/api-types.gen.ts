@@ -756,7 +756,7 @@ export interface components {
             name: string;
             role?: components["schemas"]["AccessTokenRole"];
             /** @enum {string} */
-            type?: "personal" | "refresh" | "organization" | "team";
+            type?: "personal" | "refresh" | "organization" | "team" | "service-principal";
         };
         AccessTokenRole: {
             /** @enum {string} */
@@ -954,6 +954,14 @@ export interface components {
             removePolicyPack?: components["schemas"]["AppPolicyPackMetadata"];
             removeStack?: components["schemas"]["AppPulumiStackReference"];
         };
+        AssignmentPrincipal: {
+            team?: components["schemas"]["AssignmentTeam"];
+            user?: components["schemas"]["UserInfo"];
+        };
+        AssignmentTeam: {
+            displayName: string;
+            name: string;
+        };
         BaseCreateAccessTokenRequest: {
             description: string;
             /** Format: int64 */
@@ -1084,6 +1092,16 @@ export interface components {
             id?: string;
             name?: string;
         };
+        DeploymentRunsAs: {
+            /** @enum {string} */
+            kind: "service-principal" | "team" | "member" | "requester" | "organization" | "access-token";
+            principal?: components["schemas"]["AssignmentPrincipal"];
+            role?: components["schemas"]["DeploymentRole"];
+        };
+        DeploymentServicePrincipalRequest: {
+            teamName?: string;
+            userId?: string;
+        };
         DeploymentSettings: {
             agentPoolID?: string;
             cacheOptions?: components["schemas"]["CacheOptions"];
@@ -1091,7 +1109,7 @@ export interface components {
             gitHub?: components["schemas"]["DeploymentSettingsGitHub"];
             operationContext?: components["schemas"]["OperationContext"];
             /** @enum {string} */
-            source?: "console" | "api" | "provider" | "github-review-stack" | "azure-devops-review-stack" | "gitlab-review-stack" | "bitbucket-review-stack" | "github-gitops" | "origin-review-stack";
+            source?: "console" | "api" | "provider" | "github-review-stack" | "azure-devops-review-stack" | "gitlab-review-stack" | "bitbucket-review-stack" | "github-gitops" | "origin-review-stack" | "entire-review-stack";
             sourceContext?: components["schemas"]["SourceContext"];
             tag?: string;
             vcs?: components["schemas"]["DeploymentSettingsVCS"];
@@ -1167,6 +1185,13 @@ export interface components {
              * @enum {string}
              */
             provider: "custom";
+        };
+        DeploymentSettingsVCSEntire: Omit<components["schemas"]["DeploymentSettingsVCS"], "provider"> & Record<string, never> & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            provider: "entire";
         };
         DeploymentSettingsVCSGitHub: Omit<components["schemas"]["DeploymentSettingsVCS"], "provider"> & {
             reviewStackLabels?: string[];
@@ -1337,6 +1362,7 @@ export interface components {
             /** @enum {string} */
             pulumiOperation?: "update" | "preview" | "destroy" | "refresh" | "detect-drift" | "remediate-drift";
             requestedBy: components["schemas"]["UserInfo"];
+            runsAs?: components["schemas"]["DeploymentRunsAs"];
             /** @enum {string} */
             status: "not-started" | "accepted" | "running" | "failed" | "succeeded" | "skipped";
             /** Format: int64 */
@@ -1447,6 +1473,7 @@ export interface components {
             options?: components["schemas"]["OperationContextOptions"];
             preRunCommands?: string[];
             role?: components["schemas"]["DeploymentRole"];
+            servicePrincipal?: components["schemas"]["AssignmentPrincipal"];
         };
         OperationContextAWSOIDCConfiguration: {
             duration?: string;
@@ -1520,6 +1547,7 @@ export interface components {
             options?: components["schemas"]["OperationContextOptionsRequest"];
             preRunCommands?: string[];
             role?: components["schemas"]["DeploymentRoleRequest"];
+            servicePrincipal?: components["schemas"]["DeploymentServicePrincipalRequest"];
         };
         OrganizationMember: {
             /** Format: date-time */
@@ -1850,6 +1878,7 @@ export interface components {
             description: string;
             displayName: string;
             environments?: components["schemas"]["TeamEnvironmentSettings"][];
+            everyone?: boolean;
             /** @enum {string} */
             kind: "github" | "pulumi" | "scim";
             listMembersError?: string;
@@ -1894,6 +1923,7 @@ export interface components {
         TokenInfo: {
             name: string;
             organization: string;
+            servicePrincipal: string;
             team: string;
         };
         UpdateEnvironmentResponse: components["schemas"]["EnvironmentDiagnosticsResponse"] & Record<string, never>;
@@ -1943,6 +1973,8 @@ export interface components {
             email?: string;
             githubLogin: string;
             name: string;
+            /** @enum {string} */
+            servicePrincipalKind?: "team" | "user-defined" | "custom-agent-definition" | "delivery";
         };
         Webhook: {
             active: boolean;
@@ -2464,7 +2496,7 @@ export interface operations {
             query?: {
                 continuationToken?: string;
                 includeSuspended?: boolean;
-                type?: "backend" | "frontend";
+                type?: "backend" | "frontend" | "service-principal";
             };
             header?: never;
             path: {
