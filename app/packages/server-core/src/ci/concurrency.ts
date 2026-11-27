@@ -313,6 +313,20 @@ export function runPlatforms(entries: readonly CiConcurrencyEntry[]): string[] {
 }
 
 /**
+ * How long the runners get to read a run's pipelines. This is the one call
+ * that makes a runner fetch a commit: the run's, and its base for `paths:`.
+ * A runner that has an earlier commit of the repository fetches what
+ * changed, in well under a second. One that has none (a new machine, a new
+ * repository) fetches every file of the commit first, and for a large
+ * repository that is tens of megabytes: the 20 seconds every other call to
+ * the proxy gets was less than that took, so the first attempt timed out,
+ * the runner finished the fetch for nobody, and the run started on a retry
+ * 15 seconds or more later (#1447). Inside the dispatcher's claim
+ * (`CLAIM_MS` in `runs.ts`, two minutes) with the dispatch itself to spare.
+ */
+export const PIPELINE_READ_TIMEOUT_MS = 60_000;
+
+/**
  * Asks the runners which pipelines a run triggers and their groups, with the
  * body the run will be dispatched with. `retry` when the pool is busy or
  * unreachable. A runner or proxy from before concurrency answers 404, which
@@ -327,7 +341,11 @@ export async function resolveConcurrency(
 > {
   let res: Response;
   try {
-    res = await proxyFetch("/v1/concurrency", { method: "POST", body: JSON.stringify(body) });
+    res = await proxyFetch("/v1/concurrency", {
+      method: "POST",
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(PIPELINE_READ_TIMEOUT_MS),
+    });
   } catch (err) {
     return { retry: `The CI proxy did not answer: ${String(err)}` };
   }
