@@ -350,7 +350,7 @@ export interface components {
             id: string;
             /** @enum {string} */
             logStreamType: "s3Export";
-            roleExternalId?: string | null;
+            roleExternalId: string;
         };
         CreatePostHogErrorTrackingLogStreamArgs: {
             apiKey: string;
@@ -363,12 +363,10 @@ export interface components {
             topics?: components["schemas"]["LogTopic"][] | null;
         };
         CreateS3ExportLogStreamArgs: {
-            accessKeyId?: string | null;
             bucket: string;
             prefix?: string | null;
             region: string;
-            roleArn?: string | null;
-            secretAccessKey?: string | null;
+            roleArn?: string;
             selection?: null | components["schemas"]["Selection"];
         };
         CreateSentryLogStreamArgs: {
@@ -481,13 +479,12 @@ export interface components {
             logStreamType: "webhook";
         };
         S3ExportLogStreamConfig: {
-            accessKeyId?: string | null;
             bucket: string;
             id: string;
             prefix?: string | null;
             region: string;
-            roleArn?: string | null;
-            roleExternalId?: string | null;
+            roleArn: string;
+            roleExternalId: string;
             selection: components["schemas"]["Selection"];
             status: components["schemas"]["LogStreamStatus"];
         };

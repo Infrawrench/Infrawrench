@@ -536,7 +536,6 @@ export interface components {
     schemas: {
         /** Format: int64 */
         AccessTokenId: number;
-        AdminKey: string;
         CancelInvitationArgs: {
             email: string;
         };
@@ -580,6 +579,7 @@ export interface components {
         DeleteTeamAccessTokenArgs: {
             id: string;
         };
+        DeployKey: string;
         /** @enum {string} */
         DeploymentClass: "s16" | "s256" | "d1024" | "d2048" | "p256";
         DeploymentClassMetadata: {
@@ -641,7 +641,7 @@ export interface components {
             name: string;
         };
         PlatformCreateDeployKeyResponse: {
-            deployKey: components["schemas"]["AdminKey"];
+            deployKey: components["schemas"]["DeployKey"];
         };
         PlatformCreateDeploymentArgs: {
             class?: string | null;
@@ -658,7 +658,7 @@ export interface components {
             name: string;
         };
         PlatformCreatePreviewDeployKeyResponse: {
-            previewDeployKey: components["schemas"]["AdminKey"];
+            previewDeployKey: components["schemas"]["DeployKey"];
         };
         PlatformCreateProjectArgs: {
             deploymentClass?: string | null;
@@ -694,7 +694,7 @@ export interface components {
             id: string;
         };
         PlatformDeployKeyResponse: {
-            allowedActions: ("deployment:deploy" | "deployment:env:view" | "deployment:env:write" | "deployment:pause" | "deployment:unpause" | "deployment:logs:view" | "deployment:metrics:view" | "deployment:integrations:view" | "deployment:integrations:write" | "deployment:data:view" | "deployment:data:write" | "deployment:backups:view" | "deployment:backups:create" | "deployment:backups:download" | "deployment:backups:delete" | "deployment:backups:import" | "deployment:functions:actAsUser" | "deployment:functions:runInternalQueries" | "deployment:functions:runInternalMutations" | "deployment:functions:runInternalActions" | "deployment:functions:runTestQuery" | "deployment:auditLog:view" | "deployment:usageLimits:view" | "deployment:usageLimits:write" | "deployment:usage:view" | "deployment:aiGateway:use")[];
+            allowedActions: ("deployment:deploy" | "deployment:env:view" | "deployment:env:write" | "deployment:pause" | "deployment:unpause" | "deployment:logs:view" | "deployment:metrics:view" | "deployment:integrations:view" | "deployment:integrations:write" | "deployment:data:view" | "deployment:data:write" | "deployment:backups:view" | "deployment:backups:create" | "deployment:backups:download" | "deployment:backups:delete" | "deployment:backups:import" | "deployment:functions:actAsUser" | "deployment:functions:runInternalQueries" | "deployment:functions:runInternalMutations" | "deployment:functions:runInternalActions" | "deployment:functions:runTestQuery" | "deployment:auditLog:view" | "deployment:usageLimits:view" | "deployment:usageLimits:write" | "deployment:usage:view" | "deployment:aiGateway:use" | "deployment:backups:configurePeriodic" | "deployment:backups:disablePeriodic")[];
             /** Format: int64 */
             creationTime: number;
             creator?: null | components["schemas"]["MemberId"];
@@ -806,7 +806,7 @@ export interface components {
             prodDeploymentName?: string | null;
             prodDeploymentReference?: string | null;
             slug: components["schemas"]["ProjectSlug"];
-            tags?: string[] | null;
+            tags: string[];
             teamId: components["schemas"]["TeamId"];
             teamSlug: components["schemas"]["TeamSlug"];
         };
