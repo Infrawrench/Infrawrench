@@ -3,6 +3,7 @@ import { useGT } from "gt-react";
 import {
   GIT_NAME_MAX_LENGTH,
   formatGitForgeBytes,
+  gitNamespaceClaimRefusal,
   gitNamespaceSlugProblem,
   type CiLiveJobStatus,
   type GitForgeNamespace,
@@ -181,6 +182,7 @@ export function GitSection() {
         <NamespaceCard
           overview={overview}
           canAdmin={canAdmin}
+          onUpgrade={() => openSection("billing")}
           onSaved={(saved) => {
             setOverview({ ...overview, namespace: saved });
             // The sidebar's Git entry opens this page.
@@ -209,10 +211,12 @@ function NamespaceCard({
   overview,
   canAdmin,
   onSaved,
+  onUpgrade,
 }: {
   overview: GitForgeOverview;
   canAdmin: boolean;
   onSaved: (namespace: GitForgeNamespace) => void;
+  onUpgrade: () => void;
 }) {
   const gt = useGT();
   const { orgId, api } = useSettingsHost();
@@ -232,6 +236,9 @@ function NamespaceCard({
   // A platform admin may take a reserved name; the shape rules still hold.
   const problem = checked === "reserved" && overview.reservedNamesAllowed === true ? null : checked;
   const host = overview.forgeUrl.replace(/^https?:\/\//, "");
+  // Only a first claim asks the plan: a namespace the organisation has stays,
+  // and stays renamable, whatever its plan becomes.
+  const planRefused = !overview.namespace && gitNamespaceClaimRefusal(overview.plan) !== null;
 
   async function save() {
     setSaving(true);
@@ -248,7 +255,18 @@ function NamespaceCard({
   return (
     <section className={CARD}>
       <h2 className="text-sm font-semibold text-on-surface-secondary mb-3">{gt("Namespace")}</h2>
-      {canAdmin ? (
+      {planRefused ? (
+        // The server's refusal (client-core `GIT_FORGE_NAMESPACE_PLAN_REQUIRED`),
+        // shown where the form would be so nobody types a name it will not take.
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-on-surface-muted">
+            {gt("Organisations on git.infrawrench.com need a paid plan.")}
+          </p>
+          <button type="button" onClick={onUpgrade} className={SECONDARY_BUTTON}>
+            {gt("Upgrade")}
+          </button>
+        </div>
+      ) : canAdmin ? (
         <form
           onSubmit={(e) => {
             e.preventDefault();

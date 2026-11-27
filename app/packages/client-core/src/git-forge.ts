@@ -121,6 +121,20 @@ export interface GitForgeRepositoryList {
 export const GIT_FORGE_UPGRADE = "upgrade under Settings > Billing in the Infrawrench app";
 
 /**
+ * Why an organisation that is not on a paid plan cannot claim its namespace.
+ * A person's own namespace needs no plan; an organisation's does. The forge
+ * sends this as its 402's `error`, the app as its 400's, and both show it
+ * where the claim form would be. A namespace claimed before the rule, or
+ * while the organisation was paying, stays: only the first claim asks.
+ */
+export const GIT_FORGE_NAMESPACE_PLAN_REQUIRED = `Organisations on git.infrawrench.com need a paid plan. To claim a name, ${GIT_FORGE_UPGRADE}`;
+
+/** {@link GIT_FORGE_NAMESPACE_PLAN_REQUIRED} for an organisation on this plan, or null when it may claim. */
+export function gitNamespaceClaimRefusal(plan: Exclude<GitForgePlan, "personal">): string | null {
+  return plan === "paid" ? null : GIT_FORGE_NAMESPACE_PLAN_REQUIRED;
+}
+
+/**
  * Why a namespace may not take one more private repository, or null when it
  * may. A sentence for a person: the forge sends it as the 402's `error` and
  * shows it beside the choice it rules out.

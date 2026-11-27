@@ -26,15 +26,19 @@ import { gitBaseUrl } from "../ci/source.js";
 import { db } from "../db/client.js";
 import { organizations } from "../db/core-schema.js";
 import { ciRuns, gitNamespaces, gitRepositories } from "../db/schema.js";
-import { gitQuota } from "./quota.js";
+import { gitOrganizationClaimRefusal, gitQuota } from "./quota.js";
 
 type NamespaceRow = typeof gitNamespaces.$inferSelect;
 
-/** A refusal the API answers as it is: 400 for a bad name, 409 for one that is taken. */
+/**
+ * A refusal the API answers as it is: 400 for a bad name, 409 for one that is
+ * taken. `plan_required` is 402 here and a 400 on the wire, whose declared
+ * errors have no 402; the sentence is the same either way.
+ */
 export class GitForgeError extends Error {
   constructor(
-    readonly status: 400 | 404 | 409,
-    readonly code: "name_invalid" | "namespace_taken" | "namespace_required",
+    readonly status: 400 | 402 | 404 | 409,
+    readonly code: "name_invalid" | "namespace_taken" | "namespace_required" | "plan_required",
     message: string,
   ) {
     super(message);
@@ -91,6 +95,8 @@ export async function gitForgeOverview(organizationId: string): Promise<GitForge
 /**
  * Give the organisation its namespace, or rename the one it has. A rename
  * moves nothing (repositories are keyed by id) and old URLs stop resolving.
+ * A first claim needs a paid plan (`gitOrganizationClaimRefusal`); a rename
+ * never asks, so an organisation whose plan lapsed keeps managing its name.
  * Returns what changed so the caller can audit it.
  */
 export async function setGitForgeNamespace(
@@ -125,6 +131,8 @@ export async function setGitForgeNamespace(
       if (!row) throw new GitForgeError(404, "namespace_required", "The namespace is gone");
       return { namespace: namespaceView(row), change: "renamed", from: current.slug };
     }
+    const planRefusal = await gitOrganizationClaimRefusal(organizationId);
+    if (planRefusal !== null) throw new GitForgeError(402, "plan_required", planRefusal);
     const [org] = await db
       .select({ displayName: organizations.displayName })
       .from(organizations)

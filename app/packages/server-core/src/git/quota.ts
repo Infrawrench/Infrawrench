@@ -19,6 +19,7 @@ import {
   GIT_FORGE_LIMITS,
   GIT_FORGE_UPGRADE as UPGRADE,
   formatGitForgeBytes,
+  gitNamespaceClaimRefusal,
   gitPrivateRepositoryLimitMessage,
   type GitForgeLimits,
   type GitForgePlan,
@@ -84,6 +85,17 @@ export async function gitQuota(organizationId: string): Promise<GitQuota> {
   ]);
   const plan: GitForgePlan = access.paid ? "paid" : "free";
   return { plan, limits: GIT_FORGE_LIMITS[plan], usage };
+}
+
+/**
+ * Why the organisation may not claim a namespace, or null when it may: an
+ * organisation's namespace needs a paid plan (complimentary and an unexpired
+ * trial count, as everywhere {@link planAccess} is asked). The app's Settings >
+ * Git and the forge's Settings > Organisations both ask here before a first
+ * claim, and never for a rename.
+ */
+export async function gitOrganizationClaimRefusal(organizationId: string): Promise<string | null> {
+  return gitNamespaceClaimRefusal((await planAccess(organizationId)).paid ? "paid" : "free");
 }
 
 /** A person's own namespace: the fixed allowance, whatever organisations they belong to. */

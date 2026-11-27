@@ -153,8 +153,9 @@ export class GitForgeGroup extends HttpApiGroup.make("gitForge")
       .annotate(
         OpenApi.Description,
         "Claims the namespace when the organisation has none, renames it otherwise. A rename " +
-          "moves no repository, and URLs under the old name stop resolving. 400 when the name " +
-          "breaks the forge's rules or is reserved, 409 when someone has it.",
+          "moves no repository, and URLs under the old name stop resolving. A first claim needs " +
+          "a paid plan. 400 when the name breaks the forge's rules or is reserved, or when an " +
+          "organisation that is not on a paid plan claims one; 409 when someone has it.",
       )
       .annotate(SuccessDescription, "The namespace")
       .annotate(InvalidRequestMessage, "Invalid namespace"),

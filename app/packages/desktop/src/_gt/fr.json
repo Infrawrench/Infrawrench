@@ -23910,5 +23910,6 @@
   "fe878c98b0edb6e7": "Page de la branche {branch}",
   "841a1e8baa49bf07": "Cette branche provient d'un fork. La CI ne s'exécute qu'une fois ce commit approuvé par un mainteneur, et sans vos secrets.",
   "795c16e01f8abc54": "Déclenché par : page de la branche {branch}",
-  "04dbb16d9b692feb": "Branches ouvertes"
+  "04dbb16d9b692feb": "Branches ouvertes",
+  "6dba06121f9a9447": "Les organisations sur git.infrawrench.com nécessitent une offre payante."
 }

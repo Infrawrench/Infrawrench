@@ -23911,5 +23911,6 @@
   "fe878c98b0edb6e7": "Página de la rama {branch}",
   "841a1e8baa49bf07": "Esta rama viene de un fork. La CI solo se ejecuta cuando un mantenedor aprueba este commit, y se ejecuta sin tus secretos.",
   "795c16e01f8abc54": "Activado por: página de la rama {branch}",
-  "04dbb16d9b692feb": "Ramas abiertas"
+  "04dbb16d9b692feb": "Ramas abiertas",
+  "6dba06121f9a9447": "Las organizaciones en git.infrawrench.com necesitan un plan de pago."
 }

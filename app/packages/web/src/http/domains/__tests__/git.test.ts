@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { GIT_FORGE_NAMESPACE_PLAN_REQUIRED } from "@infrawrench/client-core";
 import { buildTestApi } from "@/http/testing";
 
 // The queries reach server-core's db client at import time: stub them at the
@@ -13,7 +14,7 @@ const mockEnsurePrice = vi.fn<(orgId: string) => Promise<string[]>>();
 
 class GitForgeError extends Error {
   constructor(
-    readonly status: 400 | 404 | 409,
+    readonly status: 400 | 402 | 404 | 409,
     readonly code: string,
     message: string,
   ) {
@@ -204,6 +205,17 @@ describe("PUT /git/namespace", () => {
     const reserved = await buildApp(["git:admin"]).request("/namespace", put({ slug: "api" }));
     expect(reserved.status).toBe(400);
     expect(await reserved.json()).toEqual({ error: "That name is reserved" });
+  });
+
+  it("answers a first claim by an organisation that is not on a paid plan 400, in the shared sentence", async () => {
+    mockSetNamespace.mockRejectedValueOnce(
+      new GitForgeError(402, "plan_required", GIT_FORGE_NAMESPACE_PLAN_REQUIRED),
+    );
+    const res = await buildApp(["git:admin"]).request("/namespace", put({ slug: "acme" }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: GIT_FORGE_NAMESPACE_PLAN_REQUIRED });
+    expect(mockLogAudit).not.toHaveBeenCalled();
+    expect(mockEnsurePrice).not.toHaveBeenCalled();
   });
 
   it("refuses an empty or over-long name before the store is asked", async () => {
