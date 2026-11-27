@@ -1,6 +1,6 @@
 ---
 title: Get started on git.infrawrench.com
-description: Sign in to git.infrawrench.com, choose a username, add an SSH key or an access token, create a repository and clone it over HTTPS or SSH.
+description: Sign in to git.infrawrench.com, choose a username and the organization your own repositories run CI in, add an SSH key or an access token, create a repository and clone it over HTTPS or SSH.
 sidebar_order: 7
 ---
 
@@ -11,11 +11,28 @@ sidebar_order: 7
 1. Open [git.infrawrench.com](https://git.infrawrench.com) and click **Sign in**. You sign in with your Infrawrench account, the same one as the app.
 2. The first time, you are asked to **Choose a username**. It becomes your personal namespace: your own repositories live at `git.infrawrench.com/<username>/<repository>`. While Git is in early access, choosing a username needs membership of an organization that has Git turned on; otherwise the page says sign-ups are not open yet, and you can still browse public repositories.
 
+3. Under **Run CI and review agents in**, pick one of your organizations, or **None**. Your own repositories then run [CI](./ci.md) and [review agents](./git-branches.md#review-agents) in that organization; see [Where your own repositories run](#where-your-own-repositories-run). When exactly one of your organizations is on a paid plan it is already selected; otherwise you choose.
+
 Usernames use letters, digits, dots, dashes and underscores, are at most 39 characters, and cannot end in `.git`. The field tells you whether a name is available as you type.
 
 You can change your username later under **Settings > Profile**. Addresses of your repositories change with it and the old ones stop working, so update your remotes afterwards.
 
-<insert [The Choose a username page on git.infrawrench.com after the first sign-in: the Username field filled in with "Available" under it and the Continue button] here>
+<insert [The Choose a username page on git.infrawrench.com after the first sign-in: the Username field filled in with "Available" under it, the "Run CI and review agents in" menu set to an organisation, and the Continue button] here>
+
+### Where your own repositories run
+
+A repository in your own namespace belongs to you, not to an organization, so on its own it has no plan to run CI on and no AI budget for review agents. Connecting your namespace to an organization you belong to gives it both:
+
+- **CI** runs for your repositories on that organization's plan, which must be a paid one. The runs count toward its [CI usage](./ci.md#usage-and-billing) and appear in its **CI** tab in the app, where members who can see CI there can read them and their logs, including those of your private repositories.
+- **Review agents** can be turned on in your repositories, and what they use counts toward that organization's [AI usage](../team-and-billing/billing-and-plans.md#ai-usage).
+- **Secrets and variables** are your namespace's and your repositories' own. The organization's secrets never reach your repositories. They are edited in the organization's **CI** tab in the app, which the repository's **Settings > CI** links to.
+- **Connections, SSH keys and resources** the organization lends to CI for every repository are not lent to yours. An administrator there can lend one to a repository of yours by adding it by name, `git.infrawrench.com/<username>/<repository>`, under [CI access](./ci.md#ci-access).
+
+Nothing else changes: the repositories stay yours, members of the organization get no access to them, and your [private repository and storage allowance](./git.md#usage-and-plan-limits) is the same.
+
+Change it at any time under **Settings > Profile**, in the **Infrawrench account** section: pick another organization, or **None** to stop. If you leave the organization, or are removed from it, your repositories stop running there at once.
+
+<insert [Settings > Profile on git.infrawrench.com: the Infrawrench account section with the "Run CI and review agents in" row and its menu open, listing the person's organisations and None] here>
 
 ## Namespaces
 

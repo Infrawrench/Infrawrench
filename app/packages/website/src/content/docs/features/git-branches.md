@@ -108,7 +108,7 @@ A reviewer leaves findings on the lines they are about, each **must fix**, **sho
 - When an agent is named as the branch's author, a must-fix finding is sent back to it as an instruction.
 - A branch proposed from a fork is not reviewed on its own: someone with write access asks for the review.
 
-Review agents run for repositories an organization owns, and what they use counts toward that organization's [AI usage](../team-and-billing/billing-and-plans.md#ai-usage). When the organization has reached its AI budget for the month, a review is skipped and says so. A reviewer of your own can report findings through the API under its own name, in any repository: its findings are listed on the branch's page whether or not review agents are turned on.
+Review agents run for repositories an organization owns, and what they use counts toward that organization's [AI usage](../team-and-billing/billing-and-plans.md#ai-usage). A repository in a personal namespace gets them once its owner [connects the namespace to an organization](./git-getting-started.md#where-your-own-repositories-run), and they count toward that organization's usage in the same way. When the organization has reached its AI budget for the month, a review is skipped and says so. A reviewer of your own can report findings through the API under its own name, in any repository: its findings are listed on the branch's page whether or not review agents are turned on.
 
 ### Merge
 
@@ -181,5 +181,5 @@ A fork of a private repository stays private and within the reach of the same ow
 
 ## CI and Terraform on branches
 
-- Repositories of an organization on a paid plan run [Infrawrench CI](./ci.md) on every push from the pipelines in `.infrawrench/ci/`. Results show on a branch's **Checks** tab, beside each commit, and under the repository's **CI** tab. Repositories in a personal namespace do not run CI.
+- Repositories of an organization on a paid plan run [Infrawrench CI](./ci.md) on every push from the pipelines in `.infrawrench/ci/`. Results show on a branch's **Checks** tab, beside each commit, and under the repository's **CI** tab. Repositories in a personal namespace run CI once their owner [connects the namespace to an organization](./git-getting-started.md#where-your-own-repositories-run) on a paid plan.
 - A repository with [Terraform workspaces](./git-terraform.md) plans each branch that touches one and shows the plan on the branch's page.

@@ -74,7 +74,7 @@ Nothing is ever deleted or hidden when you go over, including after a plan ends.
 
 <insert [Settings > Git on the free plan: the Usage card showing 3 of 3 private repositories with a full red bar, 622 MiB of 1 GiB private storage, and the Upgrade button] here>
 
-A personal namespace (your own username on git.infrawrench.com) is not part of any organization's plan. It includes 5 private repositories and 1 GiB of private storage.
+A personal namespace (your own username on git.infrawrench.com) is not part of any organization's plan. It includes 5 private repositories and 1 GiB of private storage. A member can [connect their own namespace to your organization](./git-getting-started.md#where-your-own-repositories-run) so their repositories run CI and review agents here: that uses your organization's CI and AI usage, and changes nothing about these limits or about who can read their repositories.
 
 ## Repositories
 

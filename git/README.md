@@ -91,6 +91,8 @@ Review is what the forge is for, and a branch is the unit of it: a versioned rec
 
 Repositories here run Infrawrench CI the same way GitHub ones do: `.infrawrench/ci/*.yml`, on push and on a branch page's updates (a pipeline's `pull-request` event), through `server-core/src/ci/`. A run's source is either a GitHub installation or a git.infrawrench.com repository; the runner fetches the commit over smart HTTP with a job token. Results show as commit statuses and checks in the repository UI (a CI tab per repository, a status on every commit and branch page) and in the app's CI tab, which links to the commit here. Billing is CI's existing outbox.
 
+A run is an organisation's: the one that owns the namespace. A person's own namespace has none, so its repositories run CI, and review agents, in the organisation its owner connected it to, chosen with the username and changed under Settings > Profile. The connection lasts only while they are a member there. Such a repository keeps its own secrets and variables, is lent only what an administrator of the organisation lends it by name, and is otherwise untouched: it is still the person's, and the organisation's members get nothing in it (`packages/worker/NOTES.md`, `NOTES-ci.md`).
+
 ## Terraform
 
 A repository with Terraform roots gets an Infrastructure tab.

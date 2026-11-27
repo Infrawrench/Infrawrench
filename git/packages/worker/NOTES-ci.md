@@ -16,7 +16,13 @@ import { handleGitEvent } from "@infrawrench/server-core/ci/git-events";
 
 Call it once per branch a push moved, and once per pull request that got new code. It records the run and starts it (dispatch, or for a fork the "waiting for a maintainer" status); it returns `null` when the event starts nothing, and it never throws for a dispatch that did not go through (the `ci` poller pass retries those). An error it does throw (the database is away) should retry the message: the dedupe key makes a second delivery harmless.
 
-It decides everything itself, so pass every event and do not filter first: tags, deleted branches, a person's own namespace (no organization), an organization without a paid plan, a repository with CI switched off and redeliveries all return `null`.
+It decides everything itself, so pass every event and do not filter first: tags, deleted branches, a person's own namespace that is connected to no organization, an organization without a paid plan, a repository with CI switched off and redeliveries all return `null`.
+
+**Which organization a run is.** `acceptGitEvent` is the one place that decides it. A repository of an organization's namespace runs as that organization, which the event names. A person's own repository is passed with `organizationId: null`, and CI reads the organization itself: the one the person connected their namespace to, while they are still a member of it (`server-core/src/git/workspace.ts` `gitCiHome`). Never resolve it in the Worker and pass it as the owner's. From there the run is that organization's exactly as one of its own repositories' would be: its plan gates it, its usage is billed (`runUsage`), its concurrency and runner limits apply, and its CI tab lists it. Three things stay the person's:
+
+- **Secrets, variables and caches are the namespace's.** The owner key is `git.infrawrench.com-<the person's username>`, so nothing stored for the organization's own namespace or its GitHub accounts is under it. The organization's CI tab edits them (the namespace appears there once CI has heard of one of its repositories).
+- **Nothing lent to "every repository" is lent to it.** `dispatchRun` and `startCloudJob` read `gitCiHome` again and mark the run `personal`; `grantCoversRepo` (`ci/source.ts`), which every check of a repository list goes through, then takes only a list that names `git.infrawrench.com/<username>/<repository>`. The person alone decides what their branches hold, so "every repository of ours" would hand every member the organization's lent connections.
+- **Leaving ends it.** `dispatchRun` refuses a forge run whose repository no longer runs in the run's organization (`GIT_HOME_MOVED`), whatever queued it (a push, a schedule, a retry, a run started by hand), and disconnecting deletes the namespace's `ci_git_repositories` and `ci_schedules` rows for the organization it left, which is what the schedule firer and the secrets scope read.
 
 A push, one call per ref in `updates`:
 
@@ -64,7 +70,7 @@ await handleGitEvent({
   namespace, // the namespace's slug, as spelled
   name,
   defaultBranch,
-  organizationId, // git_namespaces' owning organization, or null for a user's namespace
+  organizationId, // git_namespaces' owning organization, or null for a user's namespace (never its connected one)
 }
 ```
 
@@ -151,7 +157,7 @@ import {
 import { deleteCiValue, listCiValues, setCiValue } from "@infrawrench/server-core/ci/values";
 ```
 
-- **The CI switch.** `setCiGitRepository(repository, enabled, userId)` with the same `repository` as above (its `organizationId` not null). `ciGitRepository(orgId, repoId)` reads it; no row means on. Gate it on `git:admin` (or the repository's `admin`).
+- **The CI switch.** `setCiGitRepository(repository, enabled, userId)` with the same `repository` as above, its `organizationId` the one the repository runs in (`runsInOrganization`: the owner's, or a person's connected one). `ciGitRepository(orgId, repoId)` reads it; no row means on. Gate it on `git:admin` (or the repository's `admin`).
 - **Secrets and variables** are per namespace and per repository: `listCiValues(orgId, { gitNamespace }, repoNameOrNull)`, `setCiValue(orgId, { gitNamespace }, repo, "secrets" | "variables", name, value)`, `deleteCiValue(…)`. Secret values are write-only. The namespace must be one the organization has a repository in that CI has heard of (a push, or a use of the switch), or the call answers 404.
 
 ## 6. Left for integration
@@ -160,7 +166,7 @@ import { deleteCiValue, listCiValues, setCiValue } from "@infrawrench/server-cor
 - **Smart HTTP and the two routes of section 3** are the storage's: `src/http/router.ts` has their insertion points.
 - **The CI switch of section 5** is `ci.settings` and `ci.updateSettings` (`GET` and `PUT /api/repos/:owner/:repo/ci/settings`, `admin` on the repository), which the repository's Settings > CI page uses. **Secrets and variables** have no endpoints here: that page links to the app, where they are edited.
 - **Renames and transfers.** `ci_git_repositories` follows the repository's id and takes its names from each event, so it corrects itself on the next push. `ci_schedules` is keyed by name: after a rename the old row stops being readable and is dropped within a day, and the new name's row appears with the next push. Call `noteRepository` from `ci/schedules` on rename if that day matters.
-- **CI prices on the subscription.** Ticking **Run CI** for a GitHub account calls web's `ensureCiPrices`, which adds the metered CI prices to a subscription that predates them. Nothing does that for an organization whose only CI is here, so its usage is recorded but an old subscription has no item to bill it to. Move `ensureCiPrices` where the forge can reach it, or call it when the namespace is claimed.
+- **CI prices on the subscription.** Ticking **Run CI** for a GitHub account calls web's `ensureCiPrices`, which adds the metered CI prices to a subscription that predates them. Nothing does that for an organization whose only CI is here (its own namespace's, or a member's connected one), so its usage is recorded but an old subscription has no item to bill it to. The storage price has a poller pass that reconciles it (`git/billing.ts` `ensureGitStoragePrices`); the CI prices want the same.
 - **Lending to a repository by name.** A list of repositories something is lent to names ours as `git.infrawrench.com/<namespace>/<name>`; a plain `owner/name` means GitHub's. The app's pickers only offer GitHub repositories so far, so until they list ours a connection is lent to a repository here by "every repository".
 - **`github-token:`** in a pipeline is refused for a repository here, by name, in the job's log. A job that pushes back needs a `write` job token lent the same way; the format has room for it and nothing mints one yet.
 - **Caches in the app's CI tab** list GitHub accounts only; a namespace's caches are stored and billed, but not listed or clearable from the app yet.
