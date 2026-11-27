@@ -227,7 +227,8 @@ export function AllBranches({ lead }: { lead: ReactNode }) {
                     <span className="flex items-center gap-2">
                       <AppLink
                         href={paths.tree(repo, branch.name)}
-                        className="rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-on-surface hover:underline"
+                        title={branch.name}
+                        className="max-w-72 truncate rounded bg-surface-sunken px-1.5 py-0.5 font-mono text-on-surface hover:underline"
                       >
                         {branch.name}
                       </AppLink>

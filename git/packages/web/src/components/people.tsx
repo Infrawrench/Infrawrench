@@ -17,10 +17,15 @@ function useMinuteTick(): number {
 }
 
 /** `3 hours ago`, with the exact time as the tooltip and the machine-readable instant. */
-export function RelativeTime({ iso, className }: { iso: string; className?: string }) {
+export function RelativeTime({ iso, className = "" }: { iso: string; className?: string }) {
   const now = useMinuteTick();
   return (
-    <time dateTime={iso} title={formatDateTime(iso)} className={className}>
+    // "47 minutes ago" is one thing to read: it never breaks across lines.
+    <time
+      dateTime={iso}
+      title={formatDateTime(iso)}
+      className={`whitespace-nowrap ${className}`.trim()}
+    >
       {relativeTime(iso, now)}
     </time>
   );

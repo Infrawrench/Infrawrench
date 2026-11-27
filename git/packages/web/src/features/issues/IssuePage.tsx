@@ -73,7 +73,7 @@ function IssueView({ issue }: { issue: Issue }) {
   const open = issue.state === "open";
 
   return (
-    <Page>
+    <Page width="reading">
       <ThreadHeader
         title={issue.title}
         number={number}

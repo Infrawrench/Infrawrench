@@ -16,7 +16,7 @@ export function SideNav({ items, label }: { items: ReadonlyArray<SideNavItem>; l
   const pathname = useLocation({ select: (location) => location.pathname });
   return (
     <nav aria-label={label}>
-      <ul className="flex gap-0.5 overflow-x-auto md:flex-col">
+      <ul className="no-scrollbar flex gap-0.5 overflow-x-auto md:flex-col">
         {items.map((item) => {
           const active =
             pathname === item.href || (item.exact !== true && pathname.startsWith(`${item.href}/`));
@@ -42,12 +42,18 @@ export function SideNav({ items, label }: { items: ReadonlyArray<SideNavItem>; l
   );
 }
 
-/** A settings area: its sections on the left, the section's page on the right. */
+/**
+ * A settings area: its sections on the left, the section's page on the right.
+ * The page is a form's width however wide the window, so a row's control
+ * stays beside what it sets.
+ */
 export function SettingsFrame({ nav, children }: { nav: ReactNode; children: ReactNode }) {
   return (
-    <div className={`${pageColumn()} grid gap-x-8 gap-y-4 md:grid-cols-[13rem_minmax(0,1fr)]`}>
+    <div
+      className={`${pageColumn()} grid grid-cols-[minmax(0,1fr)] gap-x-8 gap-y-4 md:grid-cols-[13rem_minmax(0,1fr)]`}
+    >
       <div>{nav}</div>
-      <div className="min-w-0 space-y-6">{children}</div>
+      <div className="min-w-0 max-w-3xl space-y-6">{children}</div>
     </div>
   );
 }

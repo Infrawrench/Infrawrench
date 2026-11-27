@@ -233,7 +233,7 @@ export function ProfilePage() {
   return (
     <>
       <SettingsSection title="Profile">
-        <div className="flex max-w-2xl flex-col gap-4 sm:flex-row-reverse sm:items-start">
+        <div className="flex flex-col gap-4 sm:flex-row-reverse sm:items-start">
           <div className="flex shrink-0 flex-col items-center gap-1">
             <Avatar name={user.displayName ?? username} src={user.avatarUrl} size={72} />
           </div>
@@ -246,7 +246,7 @@ export function ProfilePage() {
         </div>
       </SettingsSection>
       <SettingsSection title="Infrawrench account">
-        <Panel className="max-w-2xl divide-y divide-border">
+        <Panel className="divide-y divide-border">
           {session.data && session.data.organizations.length > 0 ? (
             <RunsInRow session={session.data} />
           ) : null}

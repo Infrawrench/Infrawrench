@@ -517,7 +517,7 @@ export function GeneralPage() {
   return (
     <>
       <SettingsSection title="General">
-        <div className="max-w-2xl space-y-4">
+        <div className="space-y-4">
           <NameForm key={repository.name} repository={repository} />
           <DetailsForm repository={repository} />
         </div>

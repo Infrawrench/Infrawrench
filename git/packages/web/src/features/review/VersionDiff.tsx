@@ -177,7 +177,9 @@ export function DiffBar({ lead, children }: { lead: ReactNode; children?: ReactN
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-3 text-xs text-on-surface-muted">
       {lead}
-      <span className="flex flex-1 flex-wrap items-center justify-end gap-3">{children}</span>
+      <span className="flex flex-1 basis-full flex-wrap items-center gap-3 sm:basis-auto sm:justify-end">
+        {children}
+      </span>
     </div>
   );
 }

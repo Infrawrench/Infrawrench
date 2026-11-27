@@ -9,7 +9,7 @@ import type {
   TdHTMLAttributes,
   ThHTMLAttributes,
 } from "react";
-import { pageColumn } from "../lib/shell";
+import { pageColumn, type PageWidth } from "../lib/shell";
 
 export function Panel({ className = "", ...rest }: HTMLAttributes<HTMLDivElement>) {
   return (
@@ -47,10 +47,14 @@ export interface TableProps extends TableHTMLAttributes<HTMLTableElement> {
 
 export function Table({ caption, className = "", children, ...rest }: TableProps) {
   return (
-    <table {...rest} className={`w-full border-collapse text-xs ${className}`}>
-      <caption className="sr-only">{caption}</caption>
-      {children}
-    </table>
+    // A table wider than its panel (a phone, a long branch name) scrolls
+    // inside it; the panel clips, so without this its last columns are lost.
+    <div className="overflow-x-auto">
+      <table {...rest} className={`w-full border-collapse text-xs ${className}`}>
+        <caption className="sr-only">{caption}</caption>
+        {children}
+      </table>
+    </div>
   );
 }
 
@@ -100,15 +104,9 @@ export function PageHeader({
 }
 
 /**
- * The column every page sits in: the width of the window beside the sidebar.
- * `narrow` is for forms.
+ * The column every page sits in (`pageColumn`): the width of the window beside
+ * the sidebar, `reading` for a conversation, `narrow` for a form.
  */
-export function Page({
-  children,
-  width = "wide",
-}: {
-  children: ReactNode;
-  width?: "wide" | "narrow";
-}) {
+export function Page({ children, width = "wide" }: { children: ReactNode; width?: PageWidth }) {
   return <div className={pageColumn(width)}>{children}</div>;
 }
