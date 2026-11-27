@@ -154,12 +154,57 @@ git push -u origin main
 
 - **Code** lists files with the last commit that touched each one, and renders the README. Open a file for syntax highlighting, **Raw**, **Blame** and its **History**.
 - The branch picker switches between branches and tags. **Branches** lists each branch by its [page](./git-branches.md#branches), and **Tags** lists the tags.
-- **Commits** shows history. A commit's page shows its diff, unified or split.
+- **Commits** shows history, with each commit's [author and co-authors](#who-a-commit-is-by). A commit's page shows its diff, unified or split.
 - **Compare** shows what one branch or tag has that another does not.
 - **Clone > Download ZIP** or **TAR.GZ** downloads the files at the branch or tag you are looking at.
 - **Star** keeps a repository in your stars, under your name at the foot of the sidebar. **Explore** and the sidebar's search find public repositories and the private ones you can read.
 
 <insert [A file's page on the Code tab: the path, the last commit, line numbers with syntax highlighting, and the Raw, Blame and History buttons] here>
+
+## Who a commit is by
+
+A commit carries a name and an email address, written by whoever made it. The forge shows the person behind the address instead of the written name, with their picture and a link to their page, wherever a commit is listed: the **Commits** tab, a commit's page, **Blame**, a file's last commit and a branch page. It reads the author, the committer and every `Co-authored-by:` line at the end of the message, and shows co-authors beside the author.
+
+An address is matched in this order:
+
+1. **A bot account.** Commits made with a coding tool carry the tool's own address, and are shown as that tool's account whatever name the commit wrote:
+
+   | Account    | Address                  |
+   | ---------- | ------------------------ |
+   | **Claude** | `noreply@anthropic.com`  |
+   | **Cursor** | `cursoragent@cursor.com` |
+
+   A bot account has a page (`git.infrawrench.com/claude`, `git.infrawrench.com/cursor`) with a **Bot** badge and nothing else. Nobody can sign in as one, take its username, add it as a collaborator or mention it.
+
+2. **The address on your Infrawrench account**, everywhere on the forge, once you have a username.
+3. **A commit email you verified in the repository's organization**, described below.
+
+An address that matches none of these is shown with the name the commit wrote.
+
+<insert [A repository's Commits tab on git.infrawrench.com: one commit by a person with Claude as co-author showing both pictures and "jonas and Claude", one by Cursor alone, and one with two co-authors reading "mara and 2 others"] here>
+
+<insert [The Claude bot account's page on git.infrawrench.com: the Claude icon, the name with a Bot badge, the username under it, and the line "Commits made with Claude are attributed to this account."] here>
+
+### Commit emails in an organization
+
+If some of your commits in an organization's repositories were made with another address, such as an old work address or the one on a laptop you no longer use, add it as a commit email in that organization:
+
+1. Open the account menu and go to **Settings > Organisations**.
+2. Under the organization, in **Commit emails in _organization_**, type the address and click **Add**. It is listed as **Pending**.
+3. A message with a code is sent to the address, usually within a minute. It names you and the organization.
+4. Type the code beside the address and click **Verify**. It is now **Verified**.
+
+From then on, commits with that address are shown as yours in that organization's repositories. A few rules:
+
+- **It applies in that organization only.** The same address in another organization's repositories, in your own namespace or in anyone else's is unaffected, and someone else can verify the same address in a different organization. A repository in your own namespace that [runs in the organization](#where-your-own-repositories-run) does not count as the organization's.
+- **Nothing changes until the code is entered**, and only you can enter it, signed in. The code works once, for 24 hours, and for five wrong tries. **Send again** sends a new one, at most once a minute.
+- **One member per address.** An address that is on another member's account, or that another member has verified, is refused. A bot account's address is refused too.
+- **It stops when you leave.** If you leave the organization or are removed from it, your commit emails there stop applying at once.
+- You can have up to 10 in each organization. **Remove** takes one away, verified or not.
+
+Commit emails need an organization with a [namespace](#namespaces). They are set from a signed-in browser, not with an access token.
+
+<insert [Settings > Organisations on git.infrawrench.com: an organisation's row with "Commit emails in Acme" under it, one address marked Verified, one marked Pending with its code field, Verify and Send again buttons, and the field to add another address] here>
 
 ## Repository settings
 

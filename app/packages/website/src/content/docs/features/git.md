@@ -29,7 +29,7 @@ A namespace is the first part of every repository address: `git.infrawrench.com/
 
 You can also claim it on git.infrawrench.com itself, without opening the app: open the account menu there and go to **Settings > Organisations**, which lists every organization you belong to, and click **Claim** beside yours. Both places follow the same rules and write the same [audit log](../team-and-billing/audit-log.md) entry.
 
-Names use letters, digits, dots, dashes and underscores, start with a letter, digit or underscore, are at most 39 characters, and cannot end in `.git`. Some names are reserved (`api`, `settings`, `explore` and similar). The page tells you which rule a name breaks as you type, and tells you when someone else already has it.
+Names use letters, digits, dots, dashes and underscores, start with a letter, digit or underscore, are at most 39 characters, and cannot end in `.git`. Some names are reserved (`api`, `settings`, `explore` and similar), and `claude` and `cursor` belong to the forge's [bot accounts](./git-getting-started.md#who-a-commit-is-by). The page tells you which rule a name breaks as you type, and tells you when someone else already has it.
 
 You need the `git:admin` permission. Admins and owners have it by default.
 

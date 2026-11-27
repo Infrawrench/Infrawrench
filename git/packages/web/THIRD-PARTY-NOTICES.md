@@ -43,3 +43,25 @@ published, without changes.
 > LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 > SOFTWARE.
+
+## Bot account pictures
+
+The pictures of the forge's bot accounts (`public/assets/bots/`) are the
+vendors' own files, used unchanged to identify the tool a commit was made
+with. They are trademarks of their owners and are not covered by this
+repository's licence; neither company sponsors or endorses the forge.
+
+- `claude-icon.svg`: the Claude icon (`ClaudeIcon-Square.svg`) from
+  Anthropic's press kit, <https://www.anthropic.com/press-kit>, fetched
+  2026-11-27. Claude is a trademark of Anthropic, PBC. Anthropic's trademark
+  guidelines (<https://www.anthropic.com/legal/trademark-guidelines>) ask that
+  the marks are not altered and are not used in a way that implies
+  sponsorship or endorsement.
+- `cursor-avatar.png`: the square 2D avatar (`AVATAR_SQUARE_2D_DARK.png`) from
+  Cursor's brand assets, <https://cursor.com/brand>, fetched 2026-11-27.
+  Cursor is a trademark of Anysphere, Inc. The brand page asks that the
+  product is called Cursor.
+
+Replace a file with the vendor's newer one under a new file name (the
+`/assets/*` path is cached for a year), and remove both the file and its
+account if a vendor asks.

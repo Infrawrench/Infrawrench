@@ -71,7 +71,7 @@ Six are required: `wrangler deploy` refuses without them (`secrets.required`), a
 
 Nothing else the app has is given to this Worker: the deploy passes on those keys of the edge-env secret and no others. `CI_ARTIFACT_SIGNING_KEY` and the `GITHUB_APP_*` variables are read by server-core modules the bundle includes but this Worker never reaches (a run's downloads and GitHub repositories are the app's).
 
-The six required ones are the whole of a working forge; of the optional ones three are CI's and three the review agents'. The Worker has no Stripe key: what review agents use is written to the organisation's AI spend and sent to the meter by the app's poller. To rotate one of the app's, change `app_env`, `terraform apply`, and run `git-deploy` again (a deploy adds to a Worker's secrets and never removes one). To set one by hand: `pnpm --filter @infrawrench/git-worker exec wrangler secret put <NAME>`.
+The six required ones are the whole of a working forge; of the optional ones three are CI's and three the review agents'. The Worker has no mail key either: a commit email's code is made and sent by the app's poller (`git-commit-emails` pass), which needs the app's `MAILGUN_*` and `EMAIL_FROM`. The Worker has no Stripe key: what review agents use is written to the organisation's AI spend and sent to the meter by the app's poller. To rotate one of the app's, change `app_env`, `terraform apply`, and run `git-deploy` again (a deploy adds to a Worker's secrets and never removes one). To set one by hand: `pnpm --filter @infrawrench/git-worker exec wrangler secret put <NAME>`.
 
 ## The bundle
 
