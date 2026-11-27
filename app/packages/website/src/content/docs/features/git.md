@@ -10,7 +10,7 @@ Using the forge itself is covered in [Get started on git.infrawrench.com](./git-
 
 > **Cloud only.** A namespace belongs to a cloud organization. The desktop app shows Git when it is signed in to one.
 
-> **Early access.** Git is turned on per organization by Infrawrench. Until it is on for yours, the app shows no Git entry, no **Settings > Git** and no **Managed by** on resources, and your members cannot sign up on git.infrawrench.com. Ask your Infrawrench contact to turn it on.
+> **Beta.** Git is in beta: it is open to every organization, and parts of it are still changing.
 
 ## Open your repositories
 

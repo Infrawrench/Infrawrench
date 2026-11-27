@@ -6,10 +6,12 @@ sidebar_order: 7
 
 [git.infrawrench.com](https://git.infrawrench.com) hosts Git repositories with issues, a page for every branch, [CI](./ci.md) and [Terraform state](./git-terraform.md). This page takes you from signing in to your first push. For what an organization sets in the app (its namespace, default visibility and plan limits), see [Git in the app](./git.md).
 
+> **Beta.** git.infrawrench.com is in beta: anyone with an Infrawrench account can sign up, and parts of it are still changing.
+
 ## Sign in and choose a username
 
 1. Open [git.infrawrench.com](https://git.infrawrench.com) and click **Sign in**. You sign in with your Infrawrench account, the same one as the app.
-2. The first time, you are asked to **Choose a username**. It becomes your personal namespace: your own repositories live at `git.infrawrench.com/<username>/<repository>`. While Git is in early access, choosing a username needs membership of an organization that has Git turned on; otherwise the page says sign-ups are not open yet, and you can still browse public repositories.
+2. The first time, you are asked to **Choose a username**. It becomes your personal namespace: your own repositories live at `git.infrawrench.com/<username>/<repository>`.
 
 3. Under **Run CI and review agents in**, pick one of your organizations, or **None**. Your own repositories then run [CI](./ci.md) and [review agents](./git-branches.md#review-agents) in that organization; see [Where your own repositories run](#where-your-own-repositories-run). When exactly one of your organizations is on a paid plan it is already selected; otherwise you choose.
 

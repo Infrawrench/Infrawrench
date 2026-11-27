@@ -6406,22 +6406,9 @@ There is one UI for everyone, in one sidebar shell. Someone signed in gets the w
 - **The SDK is `@modelcontextprotocol/server`, the version `app/packages/web` uses.** Bump them together. Both protocol eras answer in JSON, complete when returned, because the exchange runs inside one `withDb`.
 - **Not the app's MCP server.** `app.infrawrench.com/api/mcp` (above, "MCP server") signs in through WorkOS AuthKit and drives an organisation's resources; this one signs in through the forge and drives review. They share the SDK and nothing else.
 
-### Git feature flag (temporary)
+### Git feature flag (removed)
 
-Git is off for every organisation until a platform admin turns it on in the app's `/admin` (the **Git** column, `PUT /api/admin/organizations/:orgId/git`). One switch per organisation, a row in `git_feature_access` (migration `0202`), does two things:
-
-- **In the app** (web, desktop, mobile, CLI): the `/api/org/:orgId/git` routes answer 404, "Managed by" on a resource names no repository, and `/team/me` answers `gitEnabled: false`. Each client's permission check (`gitFeatureHides`, client-core `git-feature-flag.ts`) then says no to every `git:` permission, so Settings > Git, the command palette entry and the mobile row hide through the checks they already had; the sidebar's Git entry hides because the overview 404s, and shows only once it has answered. The role and API key editors still list the three `git:` permissions: hiding them would drop them from a role saved while Git is off. The forge's Worker does not read the flag for an organisation that has a namespace, so turning Git off never locks anyone out of code already there.
-- **On git.infrawrench.com**: claiming a username, which is signing up, needs membership of an organisation with Git on (`worker/src/db/signups.ts`, which restates server-core `git/feature-flag.ts`'s query). The session says `onboarding.signupsOpen`, the root route only sends someone to the username page when it is true, the page says sign-ups are not open otherwise, and `claimUsername` answers 403 `signups_closed`. People who already have a username are unaffected. Claiming an organisation's namespace on the forge (Settings > Organisations, `namespaces.claimForOrganization`) reads the flag too, as the app's `setNamespace` does: `gitEnabledAmong` in the same `signups.ts`, 403 `git_not_enabled`, and the session's `gitEnabled` per organisation, which the page turns into "Git is not on for <organisation>" and which `canClaimNamespace` includes.
-
-The app caches the answer per process for 15 seconds (`isGitEnabled`), so a change in `/admin` takes up to that long to show.
-
-**Removing it.** Every line that reads the flag says `git-feature-flag`: `grep -rn git-feature-flag --exclude-dir=node_modules .` lists them, and each either goes or, where a comment says so, goes back to what it names (the sidebar entries' `!== "ready"` was `=== "unavailable"`). Then:
-
-1. Delete `server-core/src/git/feature-flag.ts`, `server-core/src/db/git-feature-flag-schema.ts` (and its `export *` in `db/schema.ts`), the `./git/feature-flag` entry in server-core's `package.json` (JSON has no comments, so the grep misses it), client-core `git-feature-flag.ts` and its test, and `git/packages/worker/src/db/signups.ts`.
-2. Generate a migration that drops `git_feature_access` with `drizzle-kit generate`.
-3. Remove `gitEnabled` from `MeResponse` and `OrgMembership`, the `NotFound` the flag added to the Git routes, and `setGit` with `AdminOrganization.git` from the admin contract; bump `API_VERSION` (removing a response field is a major change for the public spec, so consider leaving `gitEnabled` answering `true` for a release instead) and run `generate:openapi` and `generate:domain-routes`.
-4. On the forge, remove `signupsOpen`, the session organisation's `gitEnabled` and the `signups_closed` and `git_not_enabled` codes from its contract; the code list only grows, so leaving the codes there is harmless.
-5. Remove this section, the CLAUDE.md line that points here, and the sentences in the website's `features/git.md` and `features/git-getting-started.md` that say an organisation needs Git turned on.
+Git was behind a per-organisation flag set in `/admin` (table `git_feature_access`, added by migration `0202` and dropped by `0208`) from 2026-11-26 to 2026-11-27. It is gone: Git is on for every organisation, anyone signed in may claim a username on git.infrawrench.com, and both sites mark Git as Beta (`BetaBadge` in `@infrawrench/ui`, `beta: true` on the Git entry of each platform's `useOrgTools`; the forge's sidebar brand and signed-out page). `gitEnabled` on `/team/me` still answers, always `true`, until the next major API version.
 
 ### Security decisions
 
