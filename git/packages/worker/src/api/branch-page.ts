@@ -13,6 +13,7 @@ import { resolveBranchKey } from "../db/branch-pages";
 import type { PullRequestWithThread } from "../db/pulls";
 import { openDraftPage, opensBranchPages, titleOf } from "../events/versions";
 import { RepoReaderError } from "../repo/reader";
+import { ownPageOnly } from "./agent-token";
 import type { RepoCx } from "./context";
 
 const NO_SUCH_PAGE = "No such branch page";
@@ -21,6 +22,8 @@ const NO_SUCH_PAGE = "No such branch page";
 export const pageOr404 = async (cx: RepoCx, key: string): Promise<PullRequestWithThread> => {
   const found = await resolveBranchKey(cx.repo.repository.id, key);
   if (!found) throw notFound(NO_SUCH_PAGE);
+  // An agent's token for one branch reaches that branch's page and no other.
+  ownPageOnly(cx, found);
   return found;
 };
 

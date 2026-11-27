@@ -2,7 +2,7 @@ import { signGitJobToken } from "@infrawrench/client-core";
 import { ACCESS_TOKEN_PREFIX as CONTRACT_PREFIX } from "@infrawrench/git-contract";
 import { describe, expect, it } from "vitest";
 import type { Env } from "../../env";
-import { apiAcceptsRefTokens, authenticateRequest } from "../authenticate";
+import { apiAcceptsAgentTokens, apiAcceptsRefTokens, authenticateRequest } from "../authenticate";
 import {
   ACCESS_TOKEN_PREFIX,
   parseAuthorization,
@@ -216,6 +216,7 @@ describe("CI job tokens", () => {
       expiresAt: NOW + 3600,
       workspaceId: null,
       ref: null,
+      agentRef: null,
     });
   });
 
@@ -455,6 +456,96 @@ describe("authenticateRequest before any credential is looked up", () => {
       refused: false,
       principal: { kind: "job", repositoryId: "repo_1", write: true, workspaceId: "ws_1" },
     });
+  });
+
+  it("takes an agent's marker token on the MCP server and its API paths, and never over Git", async () => {
+    const agent = "refs/heads/work/fix";
+    const minted = await mintJobToken(env.GIT_JOB_TOKEN_KEY, {
+      repositoryId: "repo_1",
+      write: true,
+      runId: "agent:user_1",
+      ttlSeconds: JOB_TOKEN_MAX_TTL_SECONDS,
+      agent,
+    });
+    const basic = { authorization: `Basic ${toBase64(utf8(`x-access-token:${minted}`))}` };
+    const bearer = { authorization: `Bearer ${minted}` };
+    // Smart HTTP (`refTokens`), the archive and raw files (nothing), Terraform: a refused credential.
+    for (const options of [{}, { refTokens: true }, { workspaceTokens: true }]) {
+      for (const headers of [basic, bearer]) {
+        const result = await authenticateRequest(
+          request({ ...headers, "git-protocol": "version=2" }),
+          env,
+          options,
+        );
+        expect(result, JSON.stringify(options)).toMatchObject({
+          refused: true,
+          principal: { kind: "anonymous" },
+        });
+      }
+    }
+    const taken = await authenticateRequest(
+      new Request("https://git.example.test/mcp", { method: "POST", headers: bearer }),
+      env,
+      { agentTokens: true },
+    );
+    expect(taken).toMatchObject({
+      refused: false,
+      principal: {
+        kind: "job",
+        repositoryId: "repo_1",
+        write: true,
+        runId: "agent:user_1",
+        agentRef: agent,
+        ref: null,
+        workspaceId: null,
+      },
+    });
+
+    // Six hours and no longer, to the second.
+    const now = Math.floor(Date.now() / 1000);
+    expect(
+      await verifyJobToken(env.GIT_JOB_TOKEN_KEY, minted, now + JOB_TOKEN_MAX_TTL_SECONDS - 5, {
+        agent: true,
+      }),
+    ).toMatchObject({ agentRef: agent });
+    expect(
+      await verifyJobToken(env.GIT_JOB_TOKEN_KEY, minted, now + JOB_TOKEN_MAX_TTL_SECONDS + 5, {
+        agent: true,
+      }),
+    ).toBeNull();
+    // A branch's push token is not an agent's marker token, and the other way round.
+    expect(await verifyJobToken(env.GIT_JOB_TOKEN_KEY, minted, now, { ref: true })).toBeNull();
+    await expect(
+      mintJobToken(env.GIT_JOB_TOKEN_KEY, {
+        repositoryId: "repo_1",
+        write: true,
+        agent,
+        ref: agent,
+      }),
+    ).rejects.toThrow();
+
+    // The API takes it where markers are served, and nowhere else.
+    for (const path of [
+      "/api/repos/acme/infra/traces",
+      "/api/repos/acme/infra/branches/work%2Fa/instructions",
+      "/api/repos/acme/infra/branches/work%2Fa/instructions/i_1/answered",
+      "/api/repos/acme/infra/branches/work%2Fa/findings",
+    ]) {
+      expect(apiAcceptsAgentTokens(path), path).toBe(true);
+    }
+    for (const path of [
+      `/api/repos/acme/infra/statuses/${"c".repeat(40)}`,
+      "/api/repos/acme/infra/branches/work%2Fa/findings/f_1/dismiss",
+      "/api/repos/acme/infra/branches/work%2Fa/findings/override",
+      "/api/repos/acme/infra/branches/work%2Fa/review-runs",
+      "/api/repos/acme/infra/branches/work%2Fa/agent/token",
+      "/api/repos/acme/infra/branches/work%2Fa/merge",
+      "/api/repos/acme/infra/branches/work%2Fa",
+      "/api/repos/acme/infra",
+      "/api/session",
+    ]) {
+      expect(apiAcceptsAgentTokens(path), path).toBe(false);
+    }
   });
 
   it("takes an agent's branch token on smart HTTP and its API paths, and nowhere else", async () => {

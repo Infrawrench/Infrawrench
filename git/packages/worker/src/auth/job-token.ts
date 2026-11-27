@@ -5,6 +5,7 @@
  * module only maps those claims onto the shape the forge's principals use.
  */
 import {
+  ANY_GIT_JOB_TOKEN_AGENT,
   ANY_GIT_JOB_TOKEN_REF,
   ANY_GIT_JOB_TOKEN_WORKSPACE,
   GIT_JOB_TOKEN_MAX_TTL_SECONDS,
@@ -33,6 +34,13 @@ export interface JobTokenClaims {
    * what it writes to creating or updating that branch.
    */
   readonly ref: string | null;
+  /**
+   * The one branch (a full ref name) whose markers the token writes, or
+   * null. Such a token is an agent's, working outside the app: it records
+   * the branch's trace, answers its instructions and reports findings on
+   * it (`api/agent-token.ts`), and nothing over Git authenticates it.
+   */
+  readonly agentRef: string | null;
 }
 
 export interface MintJobTokenOptions {
@@ -46,6 +54,8 @@ export interface MintJobTokenOptions {
   readonly workspaceId?: string;
   /** Binds the token to one branch (its full ref name). */
   readonly ref?: string;
+  /** Makes it an agent's token for one branch's markers (its full ref name). */
+  readonly agent?: string;
 }
 
 export interface VerifyJobTokenOptions {
@@ -65,6 +75,14 @@ export interface VerifyJobTokenOptions {
    * token is then refused: no archive, no raw file, no Terraform state.
    */
   readonly ref?: boolean;
+  /**
+   * The caller serves a branch's markers and keeps an agent's token to its
+   * own branch (the API's trace, instructions and findings paths, and the
+   * MCP server, whose tools are those paths). Everything else leaves this
+   * out, and an agent's token is then refused: no clone, no push, no
+   * archive, no raw file, no Terraform state.
+   */
+  readonly agent?: boolean;
 }
 
 /** Mint a token. The app mints the ones runs use; this exists for tests and forge-side jobs. */
@@ -83,6 +101,7 @@ export const mintJobToken = async (key: string, options: MintJobTokenOptions): P
       expiresAt: now + ttl,
       ...(options.workspaceId !== undefined ? { workspace: options.workspaceId } : {}),
       ...(options.ref !== undefined ? { ref: options.ref } : {}),
+      ...(options.agent !== undefined ? { agent: options.agent } : {}),
     },
     now * 1000,
   );
@@ -108,6 +127,7 @@ export const verifyJobToken = async (
       ...(expect.commit ? { commit: expect.commit } : {}),
       ...(expect.workspace ? { workspace: ANY_GIT_JOB_TOKEN_WORKSPACE } : {}),
       ...(expect.ref ? { ref: ANY_GIT_JOB_TOKEN_REF } : {}),
+      ...(expect.agent ? { agent: ANY_GIT_JOB_TOKEN_AGENT } : {}),
     },
     now * 1000,
   );
@@ -123,5 +143,6 @@ export const verifyJobToken = async (
     expiresAt: claims.expiresAt,
     workspaceId: claims.workspace ?? null,
     ref: claims.ref ?? null,
+    agentRef: claims.agent ?? null,
   };
 };

@@ -37,6 +37,7 @@ import {
 import { connectAgent, prepareAgent } from "../../review/agent-connect";
 import { threadState } from "../../t3/work";
 import { RepoReaderError } from "../../repo/reader";
+import { mintAgentToken } from "../agent-token";
 import { pageOr404 } from "../branch-page";
 import { repoOp } from "../context";
 import { mayPush } from "../protection";
@@ -106,6 +107,10 @@ export const AgentsHandlers = HttpApiBuilder.group(GitApi, "agents", (handlers) 
         await removeAgentLink(found.pull.issueId);
         return ok;
       }),
+    )
+    .handle(
+      "token",
+      repoOp(async (cx, { params }) => mintAgentToken(cx, await pageOr404(cx, params.branch))),
     )
     .handle(
       "startWork",
