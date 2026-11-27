@@ -6,11 +6,13 @@ import { Effect } from "effect";
 import { HttpServerResponse } from "effect/http";
 import { HttpApiBuilder } from "effect/http-api";
 import {
+  type CiBlockedCode,
   type CiRun,
   type TerraformRun,
   type TerraformRunStatus,
   type TerraformWorkspace,
   GitApi,
+  PaymentRequired,
   accessAtLeast,
   badRequest,
   conflict,
@@ -236,15 +238,37 @@ const pipelinesOf = async (cx: RepoCx): Promise<Array<{ file: string; name: stri
 const CI_NEEDS_ORGANISATION =
   "CI runs in an organisation. Choose one for your own repositories in Settings > Profile";
 
+const CI_NEEDS_PLAN = "Infrawrench CI is part of Pro";
+
 /**
- * CI in the app for the organisation the repository runs in, for a caller
- * who is a member of it: where its secrets, variables and approvals are.
+ * A page of the app for the organisation the repository runs in, for a
+ * caller who is a member of it. Nobody else is told which organisation.
  */
-const ciAppUrl = async (cx: RepoCx): Promise<string | null> => {
+const orgAppUrl = async (cx: RepoCx, page: string): Promise<string | null> => {
   const organizationId = runsInOrganization(cx.repo.owner);
   if (organizationId === null || cx.principal.kind !== "user") return null;
   const member = (await cx.viewer()).organizations.some(({ id }) => id === organizationId);
-  return member ? `${appOrigin(cx.env)}/org/${organizationId}/ci` : null;
+  return member ? `${appOrigin(cx.env)}/org/${organizationId}/${page}` : null;
+};
+
+/** CI in the app: where the organisation's secrets, variables and approvals are. */
+const ciAppUrl = (cx: RepoCx): Promise<string | null> => orgAppUrl(cx, "ci");
+
+/**
+ * Why CI does not run for the repository, or null when it does. The plan is
+ * asked before the switch: on the free plan the switch decides nothing.
+ */
+const ciBlocked = async (cx: RepoCx): Promise<CiBlockedCode | null> => {
+  const organizationId = runsInOrganization(cx.repo.owner);
+  if (organizationId === null) return "needs_organisation";
+  if (!(await planAccess(organizationId)).paid) return "plan_required";
+  return (await ciSwitchedOff(cx.repo.repository.id)) ? "switched_off" : null;
+};
+
+const CI_BLOCKED_REASONS: Readonly<Record<CiBlockedCode, string>> = {
+  needs_organisation: CI_NEEDS_ORGANISATION,
+  plan_required: CI_NEEDS_PLAN,
+  switched_off: "CI is switched off for this repository",
 };
 
 export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
@@ -252,17 +276,14 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
     .handle(
       "status",
       repoOp(async (cx) => {
-        const { repository, owner } = cx.repo;
-        const organizationId = runsInOrganization(owner);
-        const reason =
-          organizationId === null
-            ? CI_NEEDS_ORGANISATION
-            : (await ciSwitchedOff(repository.id))
-              ? "CI is switched off for this repository"
-              : !(await planAccess(organizationId)).paid
-                ? "CI needs a paid plan"
-                : null;
-        return { enabled: reason === null, pipelines: await pipelinesOf(cx), reason };
+        const code = await ciBlocked(cx);
+        return {
+          enabled: code === null,
+          pipelines: await pipelinesOf(cx),
+          reason: code === null ? null : CI_BLOCKED_REASONS[code],
+          code,
+          upgradeUrl: code === "plan_required" ? await orgAppUrl(cx, "settings/billing") : null,
+        };
       }),
     )
     .handle(
@@ -280,6 +301,10 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
         const organizationId = runsInOrganization(owner);
         if (organizationId === null) {
           throw unprocessable(CI_NEEDS_ORGANISATION, "ci_unavailable");
+        }
+        // Switching it off never asks: an organisation whose plan ended can still stop.
+        if (payload.enabled && !(await planAccess(organizationId)).paid) {
+          throw new PaymentRequired({ error: CI_NEEDS_PLAN, code: "plan_required" });
         }
         const saved = await setCiGitRepository(
           {

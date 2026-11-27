@@ -19,6 +19,7 @@ sidebar_order: 3
 | Custom graphs                      | No                     | Yes                        |
 | API keys                           | No                     | Yes                        |
 | AI chat                            | $5 usage / mo included | Metered, pay-as-you-go     |
+| [Review agents](#ai-usage)         | From the AI allowance  | Metered, with AI usage     |
 | [CI](#ci)                          | No                     | Metered, by usage          |
 | [Git](#git) organization namespace | No                     | Yes                        |
 | [Git](#git) public repositories    | Unlimited              | Unlimited                  |
@@ -44,9 +45,9 @@ Paid organizations are billed for AI usage with no built-in limit. There's no se
 
 You're on the paid plan as soon as the payment is confirmed.
 
-The Billing page shows your current plan (with a status badge and, on a paid plan, your seats), the upgrade button, a **Manage subscription** button that opens the Stripe portal, and the **Prepaid capacity** card. On the free plan it also lists what Pro includes.
+The Billing page shows your current plan (with a status badge and, on a paid plan, your seats), the upgrade button, a **Manage subscription** button that opens the Stripe portal, and the **Prepaid capacity** card. On the free plan it also lists what Pro includes, Infrawrench CI and an organization's name on git.infrawrench.com among them.
 
-You also get the choice right after creating an organization, where Free and Pro are shown side by side. **Continue with Free** costs nothing and you can upgrade later from Settings. **Upgrade to Pro** takes you straight to checkout.
+You also get the choice right after creating an organization, where Free and Pro are shown side by side, including what each gets on git.infrawrench.com and that Infrawrench CI is part of Pro. **Continue with Free** costs nothing and you can upgrade later from Settings. **Upgrade to Pro** takes you straight to checkout.
 
 ![Onboarding plan-choice step showing the Free and Pro cards side by side after creating an organization](https://agent-assets.infrawrench.com/docs-screenshots/team-and-billing/billing-and-plans/onboarding-plan-choice.png)
 
@@ -105,7 +106,7 @@ If your subscription includes a trial period (for example a promotional offer), 
 
 ## CI
 
-[CI](../features/ci.md) is part of paid plans and is billed by what your pipelines use, on the same invoice as your seats:
+[CI](../features/ci.md) is part of paid plans. On the free plan nothing runs: the **CI** tab in the app, and a repository's **CI** tab on git.infrawrench.com, say **Infrawrench CI is part of Pro** and offer **Upgrade to Pro**. On a paid plan it is billed by what your pipelines use, on the same invoice as your seats:
 
 | Unit      | Price                                              | What counts                                                                                                                                            |
 | --------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |

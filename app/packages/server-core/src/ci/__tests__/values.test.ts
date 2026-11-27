@@ -9,6 +9,8 @@ vi.mock("../../db/client.js", () => {
   const from = () => ({ where });
   return { db: { select: () => ({ from }) } };
 });
+// Setting a value asks the plan first; these tests are about what comes after.
+vi.mock("../plan.js", () => ({ requireCiPlan: async () => {} }));
 const mockProxy = vi.fn();
 vi.mock("../proxy.js", async (orig) => ({
   ...(await orig<typeof import("../proxy.js")>()),

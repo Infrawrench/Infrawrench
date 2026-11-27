@@ -960,7 +960,9 @@ jobs:
 
 ## Usage and billing
 
-CI is part of paid plans (from $20 per seat per month). The usage card shows this month's runs, compute and storage. It is billed on your plan's invoice, by what you use:
+CI is part of paid plans (from $20 per seat per month). On the free plan the **CI** tab says **Infrawrench CI is part of Pro** in place of its setup, with an **Upgrade to Pro** button that opens the same checkout as [**Settings > Billing**](../team-and-billing/billing-and-plans.md#upgrade) for anyone who manages billing; everyone else is told that someone who manages billing can upgrade. Nothing runs until then: an account can't be turned on, a pipeline can't be started by hand, a run can't be retried or approved and a secret or variable can't be set (the API answers 402 with the same sentence), and schedules pass without firing. If a plan ends while CI is set up, runs from before stay readable, a push to a GitHub repository is marked **Not run** on the commit instead of failing it, and you can still turn accounts off and delete secrets.
+
+The usage card shows this month's runs, compute and storage. It is billed on your plan's invoice, by what you use:
 
 - **vCPU time**, $0.00008 per vCPU-second ($0.0048 per vCPU-minute): each job's running time, at its share of a vCPU. Four jobs share a vCPU on the runners, so a job is charged a quarter of a vCPU for as long as it runs. A job with [`cpus:`](#whole-vcpus-for-a-job) is charged the whole vCPUs it holds instead.
 - **Memory**, $0.000008 per GiB-second: the memory each job reserves (its `memory:`, 2 GiB unless it says), for as long as it runs.

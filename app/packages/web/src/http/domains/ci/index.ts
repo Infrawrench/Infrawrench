@@ -61,16 +61,24 @@ import {
 import { listCiManualPipelines, listCiSchedules } from "@infrawrench/server-core/ci/schedules";
 import { deleteCiValue, listCiValues, setCiValue } from "@infrawrench/server-core/ci/values";
 import { keepAlive } from "@infrawrench/server-core/runtime/request-scope";
+import { PlanRequiredError } from "../../../services/entitlements";
 import { logAudit } from "../../../services/audit";
 import { ensureCiPrices } from "../billing/operations";
 import { makeDomain } from "../../domain";
 import { fireAndForget, legacy, legacyTry } from "../../legacy";
 import { OrgPrincipal } from "../../principal";
-import { inputRefusal } from "../../refusals";
+import { inputRefusal, refuse } from "../../refusals";
 import { respond } from "../../response";
 
 const refusal = (error: unknown) =>
   error instanceof CiInputError ? inputRefusal(error) : undefined;
+
+/**
+ * The same, for the endpoints that start CI or set it up: on the free plan
+ * they answer 402 with the sentence that says so (`requirePaidPlan`).
+ */
+const planRefusal = (error: unknown) =>
+  error instanceof PlanRequiredError ? refuse[402](error.message) : refusal(error);
 
 /** A grant as the audit log records it: what was granted, never a value. */
 const grantAudit = (grant: {
@@ -180,7 +188,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
               payload.enabled,
               session.userId ?? "",
             ),
-          refusal,
+          planRefusal,
         );
         yield* fireAndForget(() =>
           logAudit({
@@ -268,7 +276,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
         const { organizationId, session } = yield* OrgPrincipal;
         yield* legacyTry(
           () => approveRun(organizationId, params.runId, session.userId ?? ""),
-          refusal,
+          planRefusal,
         );
         // `keepAlive`: on the edge the dispatch outlives the response.
         yield* fireAndForget(() => keepAlive(dispatchRun(params.runId)));
@@ -315,7 +323,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
               ...(payload.branch !== undefined ? { branch: payload.branch } : {}),
               ...(payload.inputs !== undefined ? { inputs: { ...payload.inputs } } : {}),
             }),
-          refusal,
+          planRefusal,
         );
         // `keepAlive`: on the edge the dispatch outlives the response.
         yield* fireAndForget(() => keepAlive(dispatchRun(run.id)));
@@ -353,7 +361,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
         const noTaskCache = payload.noTaskCache === true;
         const run = yield* legacyTry(
           () => retryRun(organizationId, params.runId, session.userId ?? "", { noTaskCache }),
-          refusal,
+          planRefusal,
         );
         // `keepAlive`: on the edge the dispatch outlives the response.
         yield* fireAndForget(() => keepAlive(dispatchRun(run.id)));
@@ -451,7 +459,7 @@ const CiHandlers = HttpApiBuilder.group(CiApi, "ci", (handlers) =>
               params.name,
               payload.value,
             ),
-          refusal,
+          planRefusal,
         );
         // The name and scope only: a secret's value never reaches the log.
         yield* fireAndForget(() =>

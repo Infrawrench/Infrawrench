@@ -631,4 +631,12 @@
 // `PUT /admin/organizations/{orgId}/git` and `AdminOrganization.git` are
 // removed. A minor bump by decision: the admin route was the flag's own
 // switch, usable only by platform admins from the app's `/admin` page.
-export const API_VERSION = "1.135.0";
+// 1.136.0: Infrawrench CI's plan gate answers on the API. On the free plan,
+// `PUT /org/{orgId}/ci/accounts/{installationId}` with `enabled: true`, `POST
+// /org/{orgId}/ci/runs`, `POST /org/{orgId}/ci/runs/{runId}/retry`, `POST
+// /org/{orgId}/ci/runs/{runId}/approve` and `PUT
+// /org/{orgId}/ci/values/{kind}/{name}` answer 402 with the plan's sentence
+// (they used to record what would never run). Turning an account off,
+// cancelling, rejecting and deleting a value are unchanged. Additive: a new
+// declared error on five endpoints.
+export const API_VERSION = "1.136.0";

@@ -97,6 +97,17 @@ export const CiRunDetail = Schema.Struct({
 }).annotate({ identifier: "CiRunDetail" });
 export type CiRunDetail = typeof CiRunDetail.Type;
 
+/**
+ * Why CI does not run for a repository. `needs_organisation`: a personal
+ * namespace that is connected to none. `plan_required`: the organisation it
+ * runs in is on the free plan. `switched_off`: the repository's own switch.
+ */
+export const CI_BLOCKED_CODES = ["needs_organisation", "plan_required", "switched_off"] as const;
+export const CiBlockedCode = Schema.Literals(CI_BLOCKED_CODES).annotate({
+  identifier: "CiBlockedCode",
+});
+export type CiBlockedCode = typeof CiBlockedCode.Type;
+
 /** Whether CI runs for the repository at all, for the CI tab's empty state. */
 export const CiRepositoryStatus = Schema.Struct({
   enabled: Schema.Boolean.annotate({
@@ -107,6 +118,13 @@ export const CiRepositoryStatus = Schema.Struct({
   }),
   reason: Schema.NullOr(Schema.String).annotate({
     description: "Why not, when `enabled` is false.",
+  }),
+  code: Schema.NullOr(CiBlockedCode).annotate({
+    description: "Why not, as a code a client can act on. Null when `enabled` is true.",
+  }),
+  upgradeUrl: Schema.NullOr(Schema.String).annotate({
+    description:
+      "Billing in the app for the organisation the repository runs in, when `code` is `plan_required`. Null otherwise, and for a caller who is not a member of it.",
   }),
 }).annotate({ identifier: "CiRepositoryStatus" });
 export type CiRepositoryStatus = typeof CiRepositoryStatus.Type;

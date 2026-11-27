@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useGT } from "gt-react";
 import type { BillingStatus, CapacitySlot } from "../api-types.js";
+import { startProCheckout } from "./checkout.js";
+import { usePlanFeatureLines } from "./plan-features.js";
 import { useSettingsHost } from "./host.js";
 
 /**
@@ -34,6 +36,7 @@ export function BillingSection() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [slotQuantity, setSlotQuantity] = useState(1);
+  const planLines = usePlanFeatureLines();
 
   useEffect(() => {
     api.get<BillingStatus>(`/api/org/${orgId}/billing/status`).then(setStatus);
@@ -44,12 +47,12 @@ export function BillingSection() {
     setLoading(true);
     setError(null);
     try {
-      const measurement = readCheckoutMeasurement?.();
-      const { url } = await api.post<{ url: string }>(
-        `/api/org/${orgId}/billing/checkout`,
-        measurement ? { measurement } : undefined,
-      );
-      openExternal(url, { sameTab: true });
+      await startProCheckout({
+        orgId,
+        post: (path, body) => api.post(path, body),
+        openExternal,
+        readCheckoutMeasurement,
+      });
       setLoading(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : gt("Failed to start checkout"));
@@ -334,6 +337,9 @@ export function BillingSection() {
             <li>{gt("API key management")}</li>
             <li>{gt("Desktop cloud sync")}</li>
             <li>{gt("Team management & invitations")}</li>
+            {planLines.pro.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
           </ul>
         </div>
       )}

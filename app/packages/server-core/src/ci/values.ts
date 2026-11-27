@@ -14,6 +14,7 @@ import { ciAccounts, ciGitRepositories } from "../db/schema.js";
 import { accountOwnerKey } from "./events.js";
 import { GIT_SOURCE_INSTALLATION_ID, gitOwnerKey } from "./source.js";
 import { CiProxyError, proxyJson } from "./proxy.js";
+import { requireCiPlan } from "./plan.js";
 import { CiInputError } from "./runs.js";
 
 export type CiValueKind = "secrets" | "variables";
@@ -148,6 +149,7 @@ export async function setCiValue(
   name: string,
   value: string,
 ): Promise<void> {
+  await requireCiPlan(organizationId);
   checkName(name);
   const base = await scopePath(organizationId, owner, repo);
   try {

@@ -19,7 +19,7 @@ import {
 } from "@infrawrench/client-core";
 import { RequiredPermission, SuccessDescription } from "../http/annotations";
 import { withApiDefaults } from "../http/api-defaults";
-import { BadRequest, Conflict, NotFound } from "../http/errors";
+import { BadRequest, Conflict, NotFound, PaymentRequired } from "../http/errors";
 import { OrgAuth } from "../http/middleware-tags";
 import { IsoDateTime, Ok, OrgId, OrgParams, Uuid } from "../http/schemas/common";
 import { documentedAs } from "../http/schemas/documented";
@@ -635,10 +635,14 @@ export class CiGroup extends HttpApiGroup.make("ci")
       params: { orgId: OrgId, installationId: Schema.NumberFromString.check(Schema.isInt()) },
       payload: Schema.Struct({ enabled: Schema.Boolean }),
       success: CiAccountSchema,
-      error: [BadRequest, NotFound],
+      error: [BadRequest, PaymentRequired, NotFound],
     })
       .annotate(RequiredPermission, "ci:write")
       .annotate(OpenApi.Summary, "Run CI, or stop running it, for a connected GitHub account")
+      .annotate(
+        OpenApi.Description,
+        "Turning CI on takes a paid plan (402 otherwise). Turning it off never does.",
+      )
       .annotate(SuccessDescription, "The account"),
     HttpApiEndpoint.get("listRuns", "/runs", {
       params: OrgParams,
@@ -695,10 +699,10 @@ export class CiGroup extends HttpApiGroup.make("ci")
     HttpApiEndpoint.post("approveRun", "/runs/:runId/approve", {
       params: RunParams,
       success: Ok,
-      error: [NotFound, Conflict],
+      error: [PaymentRequired, NotFound, Conflict],
     })
       .annotate(RequiredPermission, "ci:approve")
-      .annotate(OpenApi.Summary, "Approve a fork's pull request commit")
+      .annotate(OpenApi.Summary, "Approve a fork's pull request commit (paid plan required)")
       .annotate(
         OpenApi.Description,
         "Runs CI for this one commit of a pull request from a fork, without the organization's or repository's secrets. A later commit needs approving again.",
@@ -716,10 +720,10 @@ export class CiGroup extends HttpApiGroup.make("ci")
       params: OrgParams,
       payload: CiStartRunSchema,
       success: CiRunSchema,
-      error: [BadRequest, NotFound, Conflict],
+      error: [BadRequest, PaymentRequired, NotFound, Conflict],
     })
       .annotate(RequiredPermission, "ci:approve")
-      .annotate(OpenApi.Summary, "Start a pipeline by hand")
+      .annotate(OpenApi.Summary, "Start a pipeline by hand (paid plan required)")
       .annotate(
         OpenApi.Description,
         "Queues a run of one pipeline with `on.manual`, at the head of a branch of the repository itself, with the inputs given. The pipeline must be listed by `GET /ci/manual`, and the inputs are checked against its declaration there; the runner checks them again against the branch's own file. The run is trusted like a push to that branch: it gets the repository's secrets and only what is lent to that branch.",
@@ -748,10 +752,10 @@ export class CiGroup extends HttpApiGroup.make("ci")
         ),
       }),
       success: CiRunSchema,
-      error: [NotFound, Conflict],
+      error: [PaymentRequired, NotFound, Conflict],
     })
       .annotate(RequiredPermission, "ci:approve")
-      .annotate(OpenApi.Summary, "Run a finished CI run again")
+      .annotate(OpenApi.Summary, "Run a finished CI run again (paid plan required)")
       .annotate(
         OpenApi.Description,
         "Queues a new run of the same repository, commit, branch and event, linked to this one. A run waiting for approval is approved instead, and a fork's pull request still runs without secrets.",
@@ -823,10 +827,10 @@ export class CiGroup extends HttpApiGroup.make("ci")
       query: ValueScopeQuery,
       payload: Schema.Struct({ value: Schema.String }),
       success: Ok,
-      error: [BadRequest, NotFound, Conflict],
+      error: [BadRequest, PaymentRequired, NotFound, Conflict],
     })
       .annotate(RequiredPermission, "ci:write")
-      .annotate(OpenApi.Summary, "Set a CI secret or variable")
+      .annotate(OpenApi.Summary, "Set a CI secret or variable (paid plan required)")
       .annotate(SuccessDescription, "Set"),
     HttpApiEndpoint.delete("deleteValue", "/values/:kind/:name", {
       params: ValueParams,

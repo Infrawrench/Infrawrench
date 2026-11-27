@@ -716,6 +716,120 @@ describe("CI access without ci-access:write", () => {
   });
 });
 
+describe("CiPanel on the free plan", () => {
+  const free: CiStatus = { ...status, planIncludesCi: false };
+  const freeClient = (runs: CiRun[] = []) => {
+    const c = client();
+    c.status.mockResolvedValue(free);
+    c.listRuns.mockResolvedValue(runs);
+    return c;
+  };
+
+  it("says CI is part of Pro and starts the upgrade, with none of CI's setup", async () => {
+    const c = freeClient();
+    const onUpgrade = vi.fn(async () => {});
+    render(
+      <CiPanel
+        client={c}
+        selectedRunId={null}
+        onSelectRun={() => {}}
+        canWrite
+        canManageAccess
+        canApprove
+        onUpgrade={onUpgrade}
+      />,
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Infrawrench CI is part of Pro" }),
+    ).toBeTruthy();
+    // No account switch, secrets, access, manual start, schedules or caches.
+    expect(screen.queryByText("NPM_TOKEN")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Runs" })).toBeNull();
+    expect(c.listValues).not.toHaveBeenCalled();
+    expect(c.listManual).not.toHaveBeenCalled();
+    expect(c.listSchedules).not.toHaveBeenCalled();
+    expect(c.listCaches).not.toHaveBeenCalled();
+    expect(c.setAccount).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Upgrade to Pro" }));
+    await waitFor(() => expect(onUpgrade).toHaveBeenCalledTimes(1));
+  });
+
+  it("says who can upgrade, with no button, to a member who cannot", async () => {
+    render(
+      <CiPanel
+        client={freeClient()}
+        selectedRunId={null}
+        onSelectRun={() => {}}
+        canWrite
+        canApprove
+      />,
+    );
+    expect(
+      await screen.findByText("Someone who manages billing for this organization can upgrade."),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Upgrade to Pro" })).toBeNull();
+  });
+
+  it("shows why the checkout did not start", async () => {
+    render(
+      <CiPanel
+        client={freeClient()}
+        selectedRunId={null}
+        onSelectRun={() => {}}
+        canWrite
+        canApprove
+        onUpgrade={async () => {
+          throw new Error("Billing is not configured");
+        }}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Upgrade to Pro" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Billing is not configured");
+  });
+
+  it("keeps the runs from before the plan ended readable, without retry or approval", async () => {
+    const failed: CiRun = { ...run, status: "failed" };
+    const waiting: CiRun = {
+      ...run,
+      id: "22222222-2222-4222-8222-222222222222",
+      status: "awaiting_approval",
+      fromFork: true,
+    };
+    render(
+      <CiPanel
+        client={freeClient([failed, waiting])}
+        selectedRunId={null}
+        onSelectRun={() => {}}
+        canWrite
+        canApprove
+        onUpgrade={async () => {}}
+      />,
+    );
+    const table = await screen.findByRole("table", { name: "CI runs" });
+    expect(within(table).getAllByText("acme/web")).toHaveLength(2);
+    expect(within(table).queryByRole("button", { name: /Retry|Run again/ })).toBeNull();
+    expect(within(table).queryByRole("button", { name: /Approve/ })).toBeNull();
+  });
+
+  it("shows no gate on a paid plan", async () => {
+    const c = client();
+    render(
+      <CiPanel
+        client={c}
+        selectedRunId={null}
+        onSelectRun={() => {}}
+        canWrite
+        canApprove
+        onUpgrade={async () => {}}
+      />,
+    );
+    expect(await screen.findByRole("heading", { name: "Runs" })).toBeTruthy();
+    expect(screen.queryByText("Infrawrench CI is part of Pro")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Upgrade to Pro" })).toBeNull();
+  });
+});
+
 describe("CiPanel", () => {
   it("shows the runs and the secrets, fetching each once", async () => {
     const c = client();

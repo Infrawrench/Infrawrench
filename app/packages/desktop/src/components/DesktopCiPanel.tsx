@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useGT } from "gt-react";
 import { useUIStore } from "@infrawrench/ui";
-import { CiPanel } from "@infrawrench/ui/ci";
+import { CiPanel, startProCheckout } from "@infrawrench/ui/ci";
 import { hasPermission, type OrgMembership } from "@infrawrench/client-core";
 import { createDesktopCiClient } from "@/lib/ci-client";
 import { createDesktopSettingsApi } from "@/lib/settings-client";
@@ -61,6 +61,17 @@ export function DesktopCiPanel({ runId }: { runId?: string | undefined }) {
         canApprove={hasPermission(permissions, "ci:approve")}
         onOpenUrl={(url) => void openExternalUrl(url)}
         onDownloadUrl={(url) => void openExternalUrl(url)}
+        // The same checkout Settings > Billing starts, in the system browser.
+        onUpgrade={
+          hasPermission(permissions, "billing:write")
+            ? () =>
+                startProCheckout({
+                  orgId: activeCloudOrgId,
+                  post: (path, body) => api.post(path, body),
+                  openExternal: (url) => void openExternalUrl(url),
+                })
+            : undefined
+        }
       />
     </div>
   );

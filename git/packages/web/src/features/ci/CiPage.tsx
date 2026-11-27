@@ -12,6 +12,7 @@ import { EmptyState, ErrorState, Loading, LoadMore, QueryView } from "../../comp
 import { CiStatusIcon, ciStatusLabel } from "../../components/StatusIcons";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { paths } from "../../lib/paths";
+import { CiBlocked } from "./CiBlocked";
 import { RunRow, isActive } from "./RunRow";
 import { cursorQuery } from "../../lib/cursor";
 
@@ -64,7 +65,10 @@ export function CiPage({
         {(state) =>
           !state.enabled ? (
             <Panel>
-              <EmptyState>{state.reason ?? "CI is not available for this repository"}</EmptyState>
+              <CiBlocked
+                state={state}
+                ownNamespace={repository.owner.kind === "user" && repository.viewer.canAdminister}
+              />
             </Panel>
           ) : (
             <div className="space-y-3">

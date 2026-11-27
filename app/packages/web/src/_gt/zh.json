@@ -24090,5 +24090,13 @@
   "04dbb16d9b692feb": "未关闭的分支",
   "6dba06121f9a9447": "git.infrawrench.com 上的组织需要付费方案。",
   "45fa271ea0e1ac8e": "测试版",
-  "5a31cc0d7c9d21df": "该名称属于机器人账户"
+  "5a31cc0d7c9d21df": "该名称属于机器人账户",
+  "134428ee7e702b42": "Infrawrench CI 包含在 Pro 中",
+  "70cea643b845d422": "管理此组织账单的成员可以升级。",
+  "6445175d80466b43": "git.infrawrench.com：公开仓库，另有 {count} 个私有仓库（最多 {size} GiB）",
+  "2c681723ad0dfa8d": "审查代理，使用同一份 AI 额度",
+  "1aa62082c8dc0d57": "Infrawrench CI，按用量计费",
+  "d6f7b298954a9ce7": "git.infrawrench.com：您组织的名称，私有仓库数量不限，含 {size} GiB",
+  "facb5f1820ff3c7b": "git.infrawrench.com：您组织的名称，{count} 个私有仓库，含 {size} GiB",
+  "d9c187d5910c16d4": "审查代理，随 AI 用量一并计费"
 }
