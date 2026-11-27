@@ -13,7 +13,8 @@
  * The contexts are the check names, so a protected branch requires the same
  * thing on either forge: `Infrawrench CI / push`, `Infrawrench CI / pull
  * request`, and `<pipeline> / <job> (<event>)` for each job. A status links
- * to the run's page in the app.
+ * to the run's page in the app and names the run (`ciRunId`), which the forge
+ * links its own run page by.
  *
  * Best-effort, like a check: a status that cannot be written is logged and
  * the run goes on.
@@ -48,6 +49,11 @@ export interface GitCommitStatus {
   description: string;
   /** The run's page in the app, or null on a server without `APP_URL`. */
   targetUrl: string | null;
+  /**
+   * The `ci_runs.id` that reports it, which the forge links its own run page
+   * by. Absent for a status no CI run stands behind (a Terraform workspace's).
+   */
+  ciRunId?: string | null | undefined;
 }
 
 /**
@@ -58,17 +64,27 @@ export type GitStatusWriter = (status: GitCommitStatus) => Promise<void>;
 
 /**
  * The writer: an upsert on `git_commit_statuses`' unique index (repository,
- * commit, context). The row keeps its id and `createdAt`; `ciRunId` is not
- * set here, since the status's link already names the run.
+ * commit, context). The row keeps its id and `createdAt`; `ciRunId` follows
+ * the newest report, so a rerun's status names the rerun.
  */
 export const writeGitCommitStatus: GitStatusWriter = async (status) => {
   const { repositoryId, sha, context, state, description, targetUrl } = status;
+  const ciRunId = status.ciRunId ?? null;
   await db
     .insert(gitCommitStatuses)
-    .values({ id: crypto.randomUUID(), repositoryId, sha, context, state, description, targetUrl })
+    .values({
+      id: crypto.randomUUID(),
+      repositoryId,
+      sha,
+      context,
+      state,
+      description,
+      targetUrl,
+      ciRunId,
+    })
     .onConflictDoUpdate({
       target: [gitCommitStatuses.repositoryId, gitCommitStatuses.sha, gitCommitStatuses.context],
-      set: { state, description, targetUrl, updatedAt: new Date() },
+      set: { state, description, targetUrl, ciRunId, updatedAt: new Date() },
     });
 };
 
@@ -161,6 +177,7 @@ async function write(
     repositoryId: target.gitRepositoryId,
     sha: target.sha,
     targetUrl: orgAppUrl(target.organizationId, `ci/${target.id}`),
+    ciRunId: target.id,
     ...status,
   });
 }

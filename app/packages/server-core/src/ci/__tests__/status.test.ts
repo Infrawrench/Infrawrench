@@ -92,6 +92,7 @@ describe("a run on git.infrawrench.com", () => {
         state: "pending",
         description: "Running",
         targetUrl: "https://app.example.test/org/org-1/ci/run-1",
+        ciRunId: "run-1",
       },
     ]);
     expect(githubFetch).not.toHaveBeenCalled();
