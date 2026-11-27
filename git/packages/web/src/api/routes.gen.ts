@@ -214,7 +214,8 @@ export const API_ROUTES = {
   },
   terraform: {
     listWorkspaces: ["GET", "/api/repos/:owner/:repo/terraform/workspaces"],
-    listRoots: ["GET", "/api/repos/:owner/:repo/terraform/roots"],
+    scan: ["GET", "/api/repos/:owner/:repo/terraform/scan"],
+    configurationChange: ["GET", "/api/repos/:owner/:repo/terraform/configuration-change"],
     listAccounts: ["GET", "/api/repos/:owner/:repo/terraform/accounts"],
     createWorkspace: ["POST", "/api/repos/:owner/:repo/terraform/workspaces"],
     getWorkspace: ["GET", "/api/repos/:owner/:repo/terraform/workspaces/:workspace"],

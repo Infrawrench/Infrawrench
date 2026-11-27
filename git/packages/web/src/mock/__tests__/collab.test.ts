@@ -617,14 +617,34 @@ describe("Terraform", () => {
     expect(first.get("production")).toMatchObject({ status: "no_changes" });
   });
 
-  it("finds the roots that have no workspace", async () => {
-    const taken = await T.listRoots!({ params: repo, query: {} });
-    expect(taken.roots).toEqual([
-      { path: "environments/production", backend: "http", workspaces: ["production"] },
-      { path: "environments/staging", backend: "http", workspaces: ["staging"] },
+  it("scans every root, with the workspaces on each and an estimate", async () => {
+    const scan = await T.scan!({ params: repo, query: {} });
+    expect(scan.roots.map((root) => [root.path, root.workspaces])).toEqual([
+      ["bootstrap", []],
+      ["environments/production", ["production"]],
+      ["environments/staging", ["staging"]],
     ]);
-    const fork = await T.listRoots!({ params: { owner: "mara", repo: "infra" }, query: {} });
-    expect(fork.roots.map((root) => root.workspaces)).toEqual([[], []]);
+    expect(scan.roots.every((root) => root.estimate.status === "priced")).toBe(true);
+    const monorepo = await T.scan!({ params: { owner: "mara", repo: "repo-testing" }, query: {} });
+    expect(monorepo.roots.map((root) => root.path)).toEqual([
+      "infra/ci-runners",
+      "infra/terraform",
+    ]);
+    const terraform = monorepo.roots.find((root) => root.path === "infra/terraform")!;
+    expect(terraform).toMatchObject({ backend: null, workspaces: [], lockFile: true });
+    expect(terraform.inactiveAddresses).toContain("aws_nat_gateway.lambda");
+    expect(terraform.inactiveResources).toBe(terraform.inactiveAddresses.length);
+    const none = await T.scan!({ params: { owner: "acme", repo: "edge-router" }, query: {} });
+    expect(none.roots).toEqual([]);
+  });
+
+  it("estimates a branch page's change from configuration, only where no plan priced it", async () => {
+    const change = await T.configurationChange!({
+      params: repo,
+      query: { page: "feature/vpc-peering" },
+    });
+    expect(change.roots.map((root) => root.path)).toEqual(["bootstrap"]);
+    expect(change.roots[0]!.monthlyDelta).toBeGreaterThan(0);
   });
 
   it("approves a waiting apply, which writes a state version", async () => {

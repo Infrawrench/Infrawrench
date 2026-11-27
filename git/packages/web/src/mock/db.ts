@@ -455,6 +455,16 @@ const seeds: Seed[] = [
     stars: 7,
   },
   {
+    // Shaped like a monorepo with Terraform roots and no workspaces (`terraform-scan-data.ts`).
+    owner: "mara",
+    name: "repo-testing",
+    description: "A copy of the monorepo",
+    visibility: "private",
+    fixture: "edge-router",
+    language: "TypeScript",
+    hasTerraform: true,
+  },
+  {
     owner: "mara",
     name: "infra",
     description: "Terraform for Acme's cloud accounts",

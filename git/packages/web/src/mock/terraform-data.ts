@@ -13,7 +13,6 @@ import type {
   TerraformManagedResource,
   TerraformPlanSummary,
   TerraformResourceChange,
-  TerraformRoot,
   TerraformRun,
   TerraformStateVersion,
   TerraformWorkspace,
@@ -608,35 +607,6 @@ export function toWorkspace(
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
   };
-}
-
-/** Directories of the default branch that hold a root module: a `terraform {}` block with a backend. */
-export function rootsOf(repo: RepositoryRecord, ref?: string): TerraformRoot[] {
-  if (repo.fixture === null) return [];
-  const fx = gitOf(repo);
-  const oid = fx.branches[ref ?? repo.defaultBranch] ?? fx.branches[fx.defaultBranch]!;
-  const found = new Map<string, string | null>();
-  for (const [path, [, blobOid]] of flatten(fx, oid)) {
-    if (!path.endsWith(".tf")) continue;
-    const blob = fx.blobs[blobOid];
-    if (!blob || blob.binary) continue;
-    const backend = /backend\s+"([a-z0-9_]+)"/.exec(blob.text);
-    if (!/^\s*terraform\s*\{/m.test(blob.text) || !/provider\s+"|backend\s+"/.test(blob.text)) {
-      continue;
-    }
-    const dir = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-    found.set(dir, backend?.[1] ?? found.get(dir) ?? null);
-  }
-  const store = terraformOf(repo);
-  return [...found]
-    .map(([path, backend]) => ({
-      path,
-      backend,
-      workspaces: store.workspaces
-        .filter((item) => item.rootPath === path)
-        .map((item) => item.name),
-    }))
-    .sort((a, b) => a.path.localeCompare(b.path));
 }
 
 /**

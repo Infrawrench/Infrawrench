@@ -947,6 +947,29 @@ function seedEdgeRouter(repo: RepositoryRecord, store: RepoThreads): void {
   store.nextNumber = 7;
 }
 
+/** `mara/repo-testing`: one page, which turns on what the Terraform defaults leave off. */
+function seedRepoTesting(store: RepoThreads): void {
+  store.threads.push(
+    build(store, {
+      number: 1,
+      title: "Turn on the session gateway",
+      by: "mara",
+      hours: 2,
+      body: "",
+      labels: [],
+      page: {
+        draft: false,
+        baseRef: "main",
+        headRef: "feature/health-checks",
+        frozenHeadOid: null,
+        frozenBaseOid: null,
+        merged: null,
+      },
+    }),
+  );
+  store.nextNumber = 2;
+}
+
 const GENERIC_TITLES = [
   "Retry the ledger write when the connection drops",
   "Events older than a day are counted twice",
@@ -1000,6 +1023,7 @@ export function threadsOf(repo: RepositoryRecord): RepoThreads {
   const key = `${repo.owner.slug}/${repo.name}`;
   if (key === "acme/infra") seedInfra(repo, store);
   else if (key === "acme/edge-router") seedEdgeRouter(repo, store);
+  else if (key === "mara/repo-testing") seedRepoTesting(store);
   else seedGeneric(repo, store);
   syncCounts(repo);
   return store;
