@@ -1168,6 +1168,7 @@ export interface components {
             region?: string;
         };
         v1ProjectAccess: {
+            customRoles?: string[];
             role?: components["schemas"]["ProjectAccessProjectRole"];
         };
         v1ProjectScopedAccess: {
@@ -1273,6 +1274,7 @@ export interface components {
             asyncOperationId?: string;
             /** Format: date-time */
             createdTime?: string;
+            groupMemberships?: components["schemas"]["v1UserGroupMembership"][];
             id?: string;
             invitation?: components["schemas"]["v1Invitation"];
             /** Format: date-time */
@@ -1280,6 +1282,10 @@ export interface components {
             resourceVersion?: string;
             spec?: components["schemas"]["v1UserSpec"];
             state?: components["schemas"]["v1ResourceState"];
+        };
+        v1UserGroupMembership: {
+            displayName?: string;
+            groupId?: string;
         };
         v1UserSpec: {
             access?: components["schemas"]["v1Access"];
@@ -2279,6 +2285,7 @@ export interface operations {
         parameters: {
             query?: {
                 email?: string;
+                includeGroupMemberships?: boolean;
                 namespace?: string;
                 pageSize?: number;
                 pageToken?: string;
@@ -2324,7 +2331,9 @@ export interface operations {
     };
     GetUser: {
         parameters: {
-            query?: never;
+            query?: {
+                includeGroupMemberships?: boolean;
+            };
             header?: never;
             path: {
                 userId: string;
