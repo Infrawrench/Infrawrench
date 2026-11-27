@@ -370,15 +370,46 @@ export interface components {
         };
         /** @enum {string} */
         CatalogInclude: "AVAILABILITY";
+        /** @enum {string} */
+        CatalogOrderBy: "RELEVANCE" | "POPULAR" | "UPDATED" | "HEALTH" | "NAME";
+        /** @enum {string} */
+        CatalogOrderDirection: "ASC" | "DESC";
         CatalogResourceAvailability: {
             availability: components["schemas"]["AvailabilityLevel"];
             id: string;
             name: string;
         };
+        CatalogTemplate: components["schemas"]["Template"] & components["schemas"]["CatalogTemplateHubFields"];
+        CatalogTemplateHubFields: {
+            /** Format: date-time */
+            createdAt: string;
+            currentVersion: string | null;
+            gpuCompatibility: components["schemas"]["HubGpuCompatibility"];
+            health: components["schemas"]["HubHealth"];
+            official: boolean;
+            products: components["schemas"]["HubProduct"][];
+            stats: components["schemas"]["CatalogTemplateStats"];
+            type: components["schemas"]["CatalogTemplateType"];
+            /** Format: date-time */
+            updatedAt: string;
+            verified: boolean;
+            versionedTemplateId: string | null;
+        };
+        CatalogTemplateStats: {
+            deployers: number;
+            deployersLast30Days: number;
+        };
+        /** @enum {string} */
+        CatalogTemplateType: "SINGLE" | "VERSIONED";
         /** @enum {string} */
         Cloud: "SECURE" | "COMMUNITY";
         /** @enum {string} */
         Compliance: "GDPR" | "ISO_IEC_27001" | "ISO_14001" | "PCI_DSS" | "HITRUST" | "SOC_1_TYPE_2" | "SOC_2_TYPE_2" | "SOC_3_TYPE_2" | "ITAR" | "FISMA_HIGH" | "HIPAA" | "RENEWABLE";
+        /** @enum {string} */
+        ConflictCode: "GPU_CONCURRENCY_EXCEEDED" | "HIGH_PERFORMANCE_GPU_CONCURRENCY_EXCEEDED" | "CPU_CONCURRENCY_EXCEEDED" | "INSTANT_CLUSTER_NODE_LIMIT_EXCEEDED" | "FLASHBOOT_ENDPOINT_LIMIT_EXCEEDED" | "NETWORK_VOLUME_SIZE_EXCEEDED";
+        ConflictResponse: components["schemas"]["ErrorResponse"] & {
+            code?: components["schemas"]["ConflictCode"];
+        };
         ContainerConfig: components["schemas"]["BaseContainerConfig"] & {
             registry?: string | null;
         };
@@ -461,6 +492,7 @@ export interface components {
             gpu?: components["schemas"]["CreateGpuConfig"];
             mounts?: components["schemas"]["Mounts"];
             name: string;
+            queue?: components["schemas"]["PodQueueOptions"];
             /** @default false */
             startJupyter?: boolean;
             /** @default false */
@@ -528,7 +560,9 @@ export interface components {
             tags?: components["schemas"]["ResourceTags"];
             timeout: number;
             type?: components["schemas"]["EndpointType"];
-            workers: WithRequired<components["schemas"]["EndpointWorkers"], "min" | "max">;
+            userId?: string | null;
+            version?: number | null;
+            workers: WithRequired<components["schemas"]["EndpointWorkers"], "min" | "max" | "initTimeout">;
         };
         EndpointGpuConfig: components["schemas"]["BaseEndpointGpuConfig"] & {
             allowedCudaVersions: string[];
@@ -551,10 +585,12 @@ export interface components {
         EndpointType: "QUEUE" | "LOAD_BALANCER";
         EndpointWorkers: {
             idleTimeout?: number;
+            initTimeout?: number | null;
             max?: number;
             min?: number;
         };
         ErrorResponse: {
+            code?: string;
             detail: string;
             errors?: string[];
             status: number;
@@ -606,6 +642,26 @@ export interface components {
                 serverless?: number;
             };
             secure: boolean;
+        };
+        HubGpuCompatibility: {
+            allowedCudaVersions: string[];
+            incompatibleGpuTypeIds: string[];
+            minCudaVersion: string | null;
+            minVramInGb: number | null;
+            recommendedGpuTypeIds: string[];
+        };
+        HubHealth: {
+            /** Format: date-time */
+            computedAt: string | null;
+            /** Format: double */
+            reliability: number | null;
+            tier: components["schemas"]["ReliabilityTier"];
+        };
+        /** @enum {string} */
+        HubProduct: "POD" | "SERVERLESS";
+        ListCatalogTemplatesResponse: {
+            pagination: components["schemas"]["Pagination"];
+            templates: components["schemas"]["CatalogTemplate"][];
         };
         ListCpuTypesResponse: {
             cpus: components["schemas"]["CpuType"][];
@@ -778,6 +834,25 @@ export interface components {
         PodList: {
             pods: components["schemas"]["Pod"][];
         };
+        PodQueueAllowedHours: {
+            friday?: components["schemas"]["PodQueueHours"];
+            monday?: components["schemas"]["PodQueueHours"];
+            saturday?: components["schemas"]["PodQueueHours"];
+            sunday?: components["schemas"]["PodQueueHours"];
+            thursday?: components["schemas"]["PodQueueHours"];
+            tuesday?: components["schemas"]["PodQueueHours"];
+            wednesday?: components["schemas"]["PodQueueHours"];
+        };
+        PodQueueHours: number[];
+        PodQueueOptions: {
+            allowedHours?: components["schemas"]["PodQueueAllowedHours"];
+            /** Format: date-time */
+            expiresAt?: string;
+            /** Format: email */
+            notifyEmail?: string;
+            /** Format: date-time */
+            startsAt?: string;
+        };
         PodRuntime: {
             cpu?: components["schemas"]["Utilization"];
             gpus?: components["schemas"]["PodGpuUtilization"][];
@@ -832,12 +907,44 @@ export interface components {
              */
             type: "QUEUE_DELAY";
         };
+        QueuedPod: {
+            cloud: components["schemas"]["Cloud"];
+            /** Format: date-time */
+            createdAt: string;
+            dataCenterIds: string[];
+            failureReason: components["schemas"]["QueuedPodFailureReason"] | null;
+            gpu: components["schemas"]["BaseGpuConfig"];
+            id: string;
+            image: string | null;
+            name: string;
+            podId: string | null;
+            queue: components["schemas"]["QueuedPodSchedule"];
+            /** Format: date-time */
+            resolvedAt: string | null;
+            status: components["schemas"]["QueuedPodStatus"];
+            templateId: string | null;
+        };
+        /** @enum {string} */
+        QueuedPodFailureReason: "INSUFFICIENT_BALANCE" | "SPENDING_LIMIT" | "GPU_QUOTA_EXCEEDED" | "GPU_CONCURRENCY_EXCEEDED" | "ORG_RESTRICTED" | "UNKNOWN";
+        QueuedPodSchedule: {
+            allowedHours: components["schemas"]["PodQueueAllowedHours"] | null;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: email */
+            notifyEmail: string | null;
+            /** Format: date-time */
+            startsAt: string | null;
+        };
+        /** @enum {string} */
+        QueuedPodStatus: "QUEUED" | "DEPLOYED" | "FAILED" | "EXPIRED" | "CANCELLED";
         RateLimitHeader: string;
         RateLimitPolicyHeader: string;
         Registry: {
             id: string;
             name: string;
         };
+        /** @enum {string} */
+        ReliabilityTier: "VERIFIED" | "UNVERIFIED" | "UNSTABLE";
         RequestCountScaling: {
             requestCount: number;
             /**
@@ -882,10 +989,10 @@ export interface components {
             keys: string[];
         };
         TagCondition: {
-            key: components["schemas"]["TagFilterKey"];
+            key: components["schemas"]["TagKey"];
             values?: string[];
         };
-        TagFilterKey: string;
+        TagKey: string;
         TagReference: {
             id: string;
             key: string;
@@ -1050,6 +1157,10 @@ export interface components {
         BillingLastN: number;
         BillingStartTime: string;
         CatalogIncludeParam: components["schemas"]["CatalogInclude"][];
+        CatalogMinReliability: number;
+        CatalogOrderDirection: components["schemas"]["CatalogOrderDirection"];
+        CatalogProducts: components["schemas"]["HubProduct"][];
+        CatalogSearchQuery: string;
         CountryCodesFilter: string[];
         CpuProductFilter: components["schemas"]["CpuProduct"][];
         CpuVCPUCountFilter: number;
@@ -1058,6 +1169,8 @@ export interface components {
         GpuCountFilter: number;
         GpuProductFilter: components["schemas"]["Product"][];
         MinCudaVersionFilter: string;
+        MinRamPerGpuFilter: number;
+        MinVcpuCountPerGpuFilter: number;
         PaginationCursor: string;
         PaginationLimit: number;
         ResourceFilters: string;
@@ -1259,6 +1372,8 @@ export interface operations {
                 cudaVersions?: components["parameters"]["CudaVersionsFilter"];
                 include?: components["parameters"]["CatalogIncludeParam"];
                 minCudaVersion?: components["parameters"]["MinCudaVersionFilter"];
+                minRamPerGpu?: components["parameters"]["MinRamPerGpuFilter"];
+                minVcpuCountPerGpu?: components["parameters"]["MinVcpuCountPerGpuFilter"];
                 product?: components["parameters"]["GpuProductFilter"];
             };
             header?: never;
@@ -1282,7 +1397,16 @@ export interface operations {
     listPublicTemplates: {
         parameters: {
             query?: {
+                category?: components["schemas"]["TemplateCategory"];
+                cursor?: components["parameters"]["PaginationCursor"];
+                limit?: components["parameters"]["PaginationLimit"];
+                minReliability?: components["parameters"]["CatalogMinReliability"];
+                orderBy?: components["schemas"]["CatalogOrderBy"];
+                orderDirection?: components["parameters"]["CatalogOrderDirection"];
+                product?: components["parameters"]["CatalogProducts"];
+                search?: components["parameters"]["CatalogSearchQuery"];
                 source?: "official" | "verified" | "community";
+                type?: components["schemas"]["CatalogTemplateType"];
             };
             header?: never;
             path?: never;
@@ -1297,7 +1421,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["TemplateList"];
+                    "application/json": components["schemas"]["ListCatalogTemplatesResponse"];
                 };
             };
         };
@@ -1450,6 +1574,17 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Pod"];
+                };
+            };
+            202: {
+                headers: {
+                    Location?: string;
+                    RateLimit: components["headers"]["RateLimit"];
+                    "RateLimit-Policy": components["headers"]["RateLimit-Policy"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueuedPod"];
                 };
             };
         };
