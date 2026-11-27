@@ -1,6 +1,7 @@
 /**
  * What an agent recorded about a version: the ask, its steps, decisions,
- * evidence and doubts. An entry is drawn the same above the lines it
+ * evidence and doubts. A CI job's note commands are entries too, marked with
+ * the job that printed them. An entry is drawn the same above the lines it
  * explains, above its file, and in the list of what is about the whole
  * change.
  */
@@ -14,7 +15,7 @@ import { Markdown } from "../../components/Markdown";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { showBidi } from "../../lib/bidi";
 import { paths } from "../../lib/paths";
-import { describeLines } from "./branch";
+import { type CiSource, describeLines, traceCiSource } from "./branch";
 
 const KIND: Record<TraceKind, { icon: IconName; label: string; tone: string }> = {
   ask: { icon: "messageSquare", label: "Ask", tone: "text-on-surface-secondary" },
@@ -24,6 +25,35 @@ const KIND: Record<TraceKind, { icon: IconName; label: string; tone: string }> =
   doubt: { icon: "alertCircle", label: "Doubt", tone: "text-warning" },
   note: { icon: "pencil", label: "Note", tone: "text-on-surface-secondary" },
 };
+
+/**
+ * "CI" and the job a note came from, linking to the line of the run's log
+ * that printed it. The same on a finding's card and on a trace entry.
+ */
+export function CiSourceLabel({ source }: { source: CiSource }) {
+  const label = (
+    <>
+      <Icon name="terminal" size={11} />
+      <span className="font-medium">CI</span>
+      <span className="min-w-0 truncate font-mono text-[11px]">{showBidi(source.job)}</span>
+    </>
+  );
+  const look = "inline-flex min-w-0 items-center gap-1 text-on-surface-muted";
+  return source.href === null ? (
+    <span className={look} aria-label={`From CI: ${source.job}`}>
+      {label}
+    </span>
+  ) : (
+    <AppLink
+      href={source.href}
+      className={`${look} hover:underline`}
+      aria-label={`From CI: ${source.job}`}
+      title="Open the job's log at the line that printed this"
+    >
+      {label}
+    </AppLink>
+  );
+}
 
 function Evidence({ evidence }: { evidence: NonNullable<TraceEntry["evidence"]> }) {
   const repo = useRepoRef();
@@ -90,12 +120,14 @@ export function TraceEntryView({
   children?: ReactNode;
 }) {
   const look = KIND[entry.kind];
+  const ci = traceCiSource(entry);
   return (
     <div className="flex gap-2 px-3 py-2 text-xs">
       <Icon name={look.icon} size={13} className={`mt-0.5 ${look.tone}`} />
       <div className="min-w-0 flex-1 space-y-1">
         <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="font-semibold text-on-surface">{look.label}</span>
+          {ci !== null ? <CiSourceLabel source={ci} /> : null}
           {where
             ? entry.anchors.map((anchor) => {
                 if (renderWhere !== undefined) {
@@ -120,7 +152,8 @@ export function TraceEntryView({
             : null}
         </p>
         <Markdown source={entry.body} />
-        {entry.evidence !== null ? <Evidence evidence={entry.evidence} /> : null}
+        {/* A CI entry's evidence is its run and line, which its label already links to. */}
+        {entry.evidence !== null && ci === null ? <Evidence evidence={entry.evidence} /> : null}
         {children}
       </div>
     </div>

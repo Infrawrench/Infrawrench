@@ -65,7 +65,27 @@ const INIT = [
 
 type JobSeed = Omit<JobRecord, "startsAt"> & { startsAt?: number };
 
-function terraformJobs(outcome: "passed" | "fmt" | "validate"): JobSeed[] {
+/**
+ * The note commands the peering branch's lint job prints: what the branch
+ * page shows as a finding and a doubt from CI (`review-data.ts` has the two
+ * as the app would have written them, pointing back at these lines).
+ */
+export const LINT_NOTES = {
+  job: "terraform/lint",
+  finding: {
+    line: 6,
+    text: "::should-fix file=modules/network/main.tf,line=165,end_line=174,title=DNS is allowed over UDP only::Answers over 512 bytes are retried over TCP, and no rule lets port 53 in over TCP.",
+  },
+  doubt: {
+    line: 7,
+    text: "::doubt file=modules/network/main.tf,line=176::tflint has no rules for aws_vpc_security_group_egress_rule, so peer_all was not checked.",
+  },
+} as const;
+
+function terraformJobs(
+  outcome: "passed" | "fmt" | "validate",
+  options: { notes?: boolean } = {},
+): JobSeed[] {
   const pipeline = "terraform";
   const fmt: JobSeed =
     outcome === "fmt"
@@ -145,6 +165,7 @@ function terraformJobs(outcome: "passed" | "fmt" | "validate"): JobSeed[] {
             `${green("ok")}   modules/database pins hashicorp/aws ~> 5.60`,
             `${green("ok")}   modules/network pins hashicorp/aws ~> 5.60`,
             `${yellow("warn")} modules/vendor/terraform-aws-tags is a submodule, skipped`,
+            ...(options.notes === true ? [LINT_NOTES.finding.text, LINT_NOTES.doubt.text] : []),
             "3 modules checked, 0 failures",
           ),
   };
@@ -319,7 +340,7 @@ function seedRuns(repo: RepositoryRecord): RunRecord[] {
         actor: person("jonas"),
         status: "passed",
         minutesAgo: 60 * 30,
-        jobs: terraformJobs("passed"),
+        jobs: terraformJobs("passed", { notes: true }),
       },
       {
         event: "pull-request",

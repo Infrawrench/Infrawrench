@@ -28,6 +28,7 @@ import type {
   UserRef,
 } from "@infrawrench/git-contract";
 import { REVIEWER_KINDS } from "@infrawrench/git-contract";
+import { LINT_NOTES, runsOf } from "./ci-data";
 import type { Mutable } from "./define";
 import { accessTo, currentUser, gitOf, type RepositoryRecord } from "./db";
 import type { GitFixture } from "./git";
@@ -194,7 +195,7 @@ function run(
 }
 
 /** `acme/infra` #12: `feature/vpc-peering`, three versions by an Infrawrench agent. */
-function seedPeering(fx: GitFixture): ReviewState {
+function seedPeering(fx: GitFixture, repo: RepositoryRecord): ReviewState {
   const branch = "feature/vpc-peering";
   const [v1, v2, v3] = [oidOf(fx, "cce1b1a"), oidOf(fx, "a825307"), oidOf(fx, "2c26b50")];
   const version = (
@@ -331,6 +332,31 @@ function seedPeering(fx: GitFixture): ReviewState {
       },
     }),
   ];
+  // What the lint job of the newest version's CI run printed as note commands
+  // (`ci-data.ts` `LINT_NOTES`), as the app writes them: a doubt by the agent
+  // `ci`, and below a finding by the reviewer `ci:<pipeline>/<job>`.
+  const ciRun = runsOf(repo).find(
+    (record) => record.run.sha === v3 && record.run.status === "passed",
+  );
+  const logLine = (line: number): string | null =>
+    ciRun === undefined
+      ? null
+      : `/${repo.owner.slug}/${repo.name}/ci/runs/${ciRun.run.id}?job=${encodeURIComponent(LINT_NOTES.job)}#L${line}`;
+  state.traces.push({
+    ...entry(
+      "doubt",
+      3,
+      30,
+      "tflint has no rules for aws_vpc_security_group_egress_rule, so peer_all was not checked.",
+      {
+        branch,
+        agent: { kind: "ci", name: LINT_NOTES.job, sessionRef: ciRun?.run.id ?? null },
+        anchors: [{ path: "modules/network/main.tf", startLine: 176 }],
+        evidence: { ciRunId: ciRun?.run.id ?? null, url: logLine(LINT_NOTES.doubt.line) },
+      },
+    ),
+    author: null,
+  });
   const accepter = finding(
     {
       reviewerKind: "terraform",
@@ -364,6 +390,27 @@ function seedPeering(fx: GitFixture): ReviewState {
   );
   state.findings = [
     accepter,
+    finding(
+      {
+        reviewerKind: `ci:${LINT_NOTES.job}`,
+        severity: "should_fix",
+        title: "DNS is allowed over UDP only",
+        body: "Answers over 512 bytes are retried over TCP, and no rule lets port 53 in over TCP.",
+        version: 3,
+        path: "modules/network/main.tf",
+        startLine: 165,
+        endLine: 174,
+        evidence: [
+          {
+            kind: "ci",
+            text: `Reported by the job lint of the pipeline terraform, on line ${LINT_NOTES.finding.line} of its log.`,
+            url: logLine(LINT_NOTES.finding.line),
+          },
+        ],
+      },
+      v3,
+      30,
+    ),
     finding(
       {
         reviewerKind: "general",
@@ -762,7 +809,7 @@ function seedFor(repo: RepositoryRecord, number: number): ReviewState | null {
   if (name === "acme/edge-router" && number === 4) return seedHealthChecks(gitOf(repo));
   if (name !== "acme/infra") return null;
   if (number === 7) return seedFlowLogs(gitOf(repo));
-  if (number === 12) return seedPeering(gitOf(repo));
+  if (number === 12) return seedPeering(gitOf(repo), repo);
   if (number === 14) return seedBackups(gitOf(repo));
   return null;
 }

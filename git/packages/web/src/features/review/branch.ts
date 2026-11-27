@@ -15,6 +15,7 @@ import type {
   TraceEntry,
   VersionDiff,
 } from "@infrawrench/git-contract";
+import { CI_AGENT_KIND, ciReviewerJob } from "@infrawrench/git-contract";
 import { plural } from "../../lib/format";
 
 export type DiffMode = "whole" | "step" | "since";
@@ -376,3 +377,31 @@ export function branchNameFor(ask: string): string {
   }
   return name === "" ? "" : `work/${name}`;
 }
+
+/**
+ * Where a note came from when Infrawrench CI wrote it from a job's note
+ * command: the job, as `<pipeline>/<job>`, and the line of the run's log it
+ * was printed on (the run's page, at that line), when the note carries one.
+ */
+export interface CiSource {
+  readonly job: string;
+  readonly href: string | null;
+}
+
+/** A finding's, by its reviewer (`ci:<pipeline>/<job>`). Null for any other reviewer's. */
+export const findingCiSource = (
+  finding: Pick<ReviewFinding, "reviewerKind" | "evidence">,
+): CiSource | null => {
+  const job = ciReviewerJob(finding.reviewerKind);
+  if (job === null) return null;
+  const from = finding.evidence.find(
+    (item) => item.kind === "ci" && item.url !== undefined && item.url !== null,
+  );
+  return { job, href: from?.url ?? null };
+};
+
+/** A trace entry's, by its agent (kind `ci`). Null for an entry an agent or a person recorded. */
+export const traceCiSource = (entry: Pick<TraceEntry, "agent" | "evidence">): CiSource | null => {
+  if (entry.agent === null || entry.agent.kind !== CI_AGENT_KIND) return null;
+  return { job: entry.agent.name, href: entry.evidence?.url ?? null };
+};

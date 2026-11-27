@@ -24,11 +24,13 @@ import { showBidi } from "../../lib/bidi";
 import {
   SEVERITY_LABEL,
   describeLines,
+  findingCiSource,
   instructionFor,
   openBySeverity,
   sortFindings,
 } from "./branch";
 import { InstructionBadge, SendToAgentButton, useInstructions } from "./Instructions";
+import { CiSourceLabel } from "./Trace";
 
 const SEVERITY_TONE: Record<FindingSeverity, BadgeTone> = {
   must_fix: "danger",
@@ -141,6 +143,7 @@ export function FindingCard({
       : instructionFor(sent.instructions, { findingId: finding.id });
   const lines = describeLines(finding.startLine, finding.endLine);
   const settled = finding.status !== "open";
+  const ci = findingCiSource(finding);
   return (
     <div className="bg-surface-raised text-xs">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5">
@@ -161,7 +164,11 @@ export function FindingCard({
         >
           {finding.title}
         </span>
-        <span className="text-on-surface-muted">{finding.reviewerKind}</span>
+        {ci !== null ? (
+          <CiSourceLabel source={ci} />
+        ) : (
+          <span className="text-on-surface-muted">{finding.reviewerKind}</span>
+        )}
         {whereLink !== undefined ? (
           whereLink
         ) : where && finding.path !== null ? (

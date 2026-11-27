@@ -571,6 +571,7 @@ describe("a version's notes and its files", () => {
       "doubt",
       "doubt",
       "doubt",
+      "doubt",
       "decision",
     ]);
     // Each names its file and lines. The first says the code is not needed: text alone.
@@ -579,7 +580,7 @@ describe("a version's notes and its files", () => {
       within(cards[1]!).getByRole("link", { name: "environments/staging/main.tf:31" }),
     ).toBeTruthy();
     await waitFor(() => expect(cards[1]!.querySelector(".code-surface")).not.toBeNull(), wait);
-    await waitFor(() => expect(cards[3]!.querySelector(".code-surface")).not.toBeNull(), wait);
+    await waitFor(() => expect(cards[4]!.querySelector(".code-surface")).not.toBeNull(), wait);
     expect(cards[0]!.querySelector(".code-surface")).toBeNull();
     // Findings, what people said on its lines, then the rest of the trace in its order.
     expect(
@@ -611,7 +612,7 @@ describe("a version's notes and its files", () => {
     expect(toggles().every((button) => button.getAttribute("aria-expanded") === "false")).toBe(
       true,
     );
-    expect(screen.getByRole("region", { name: MAIN }).textContent).toContain("8 notes");
+    expect(screen.getByRole("region", { name: MAIN }).textContent).toContain("10 notes");
 
     fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
     expect(toggles().every((button) => button.getAttribute("aria-expanded") === "true")).toBe(true);
@@ -633,18 +634,18 @@ describe("a version's notes and its files", () => {
     fireEvent.click(within(notes).getByRole("link", { name: `${MAIN}:181` }));
     const file = within(await screen.findByRole("region", { name: MAIN }, wait));
     expect(file.getByRole("button", { name: `Hide ${MAIN}` })).toBeTruthy();
-    expect(await file.findByText("Showing 37 of 77 changed lines", {}, wait)).toBeTruthy();
+    expect(await file.findByText("Showing 52 of 77 changed lines", {}, wait)).toBeTruthy();
     // Every note hangs on its lines, the doubt that does not need the code on its card included.
     expect(await file.findByText("A security group per peer", { exact: false }, wait)).toBeTruthy();
     expect(file.getByText("Nothing here accepts the connection", { exact: false })).toBeTruthy();
-    const gap = file.getByRole("button", { name: "Show 40 more changed lines" });
+    const gap = file.getByRole("button", { name: "Show 25 more changed lines" });
 
     // The whole diff, and back to the lines in focus.
     fireEvent.click(file.getByRole("button", { name: "Show full diff" }));
     expect(file.getByText("All 77 changed lines")).toBeTruthy();
     expect(file.queryByRole("button", { name: /more changed lines/ })).toBeNull();
     fireEvent.click(file.getByRole("button", { name: "Show less" }));
-    expect(file.getByText("Showing 37 of 77 changed lines")).toBeTruthy();
+    expect(file.getByText("Showing 52 of 77 changed lines")).toBeTruthy();
 
     // Showing the gap leaves nothing left out: the file is whole.
     fireEvent.click(
@@ -660,6 +661,56 @@ describe("a version's notes and its files", () => {
     await waitFor(() => expect(router.state.location.search).toMatchObject({ diff: "step" }), wait);
     expect(await screen.findByRole("button", { name: `Hide ${MAIN}` }, wait)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Unified" }));
+  });
+
+  it("says which CI job a note came from, and links to the line of its log", async () => {
+    serve();
+    open(WHOLE);
+    const notes = await screen.findByRole("region", { name: "Review notes" }, wait);
+    const run = (
+      await api.ci.listRuns({ params: { owner: "acme", repo: "infra" }, query: {} })
+    ).items.find((item) => item.headRef === "feature/vpc-peering" && item.status === "passed")!;
+    const at = (line: number) => `/acme/infra/ci/runs/${run.id}?job=terraform%2Flint#L${line}`;
+
+    // A doubt a job printed: a card like the agent's, marked with the job.
+    const doubts = within(notes).getByRole("region", { name: "Doubts and decisions" });
+    const doubt = within(doubts)
+      .getAllByRole("listitem")
+      .find((card) => card.textContent?.includes("tflint has no rules"))!;
+    expect(doubt.getAttribute("data-kind")).toBe("doubt");
+    expect(
+      within(doubt).getByRole("link", { name: "From CI: terraform/lint" }).getAttribute("href"),
+    ).toBe(at(7));
+    expect(within(doubt).getByRole("link", { name: `${MAIN}:176` })).toBeTruthy();
+    // Its run and line are the label's link, not a second row under the text.
+    expect(within(doubt).queryByRole("link", { name: "CI run" })).toBeNull();
+    // The agent's own entries carry no such mark.
+    expect(
+      within(doubts)
+        .getAllByRole("listitem")
+        .filter((card) => within(card).queryByRole("link", { name: /^From CI/ }) !== null),
+    ).toHaveLength(1);
+
+    // A finding a job printed: the same card as a reviewer's, the job where the reviewer's name is.
+    const findings = within(notes).getByRole("region", { name: "Findings" });
+    const finding = within(findings)
+      .getAllByRole("listitem")
+      .find((card) => card.textContent?.includes("DNS is allowed over UDP only"))!;
+    expect(
+      within(finding).getByRole("link", { name: "From CI: terraform/lint" }).getAttribute("href"),
+    ).toBe(at(6));
+    expect(finding.textContent).not.toContain("ci:terraform/lint");
+    expect(within(finding).getByRole("link", { name: `${MAIN}:165-174` })).toBeTruthy();
+
+    // The line it links to is the command, in the job's log.
+    const detail = await api.ci.getRun({
+      params: { owner: "acme", repo: "infra", runId: run.id },
+    });
+    const lint = detail.jobs!.find((job) => job.pipeline === "terraform" && job.id === "lint")!;
+    expect(lint.stdout.split("\n")[5]).toMatch(/^::should-fix file=modules\/network\/main\.tf,/);
+    expect(lint.stdout.split("\n")[6]).toMatch(
+      /^::doubt file=modules\/network\/main\.tf,line=176::/,
+    );
   });
 
   it("opens the file an address names", async () => {
