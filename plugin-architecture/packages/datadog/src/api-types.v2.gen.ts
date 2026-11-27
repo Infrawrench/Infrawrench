@@ -798,11 +798,11 @@ export interface components {
         };
         MetricIngestedIndexedVolumeAttributes: {
             /** Format: int64 */
-            indexed_volume?: number;
+            indexed_volume?: number | null;
             /** Format: int64 */
             indexed_volume_delta?: number;
             /** Format: int64 */
-            ingested_volume?: number;
+            ingested_volume?: number | null;
             /** Format: int64 */
             ingested_volume_delta?: number;
         };
@@ -878,7 +878,7 @@ export interface components {
          * @default gauge
          * @enum {string}
          */
-        MetricTagConfigurationMetricTypes: "gauge" | "count" | "rate" | "distribution";
+        MetricTagConfigurationMetricTypes: "gauge" | "count" | "rate" | "distribution" | "exponential_histogram" | "explicit_histogram";
         /**
          * @default manage_tags
          * @enum {string}
@@ -1279,6 +1279,10 @@ export interface components {
         };
         TooManyRequestsResponse: {
             headers: {
+                "X-RateLimit-Limit"?: number;
+                "X-RateLimit-Period"?: number;
+                "X-RateLimit-Remaining"?: number;
+                "X-RateLimit-Reset"?: number;
                 [name: string]: unknown;
             };
             content: {

@@ -624,14 +624,21 @@ export interface components {
             name: string;
             query: string;
         };
+        MonitorFormulaAndFunctionDataJobsMonitorOptions: {
+            alert_on_every_failure?: boolean;
+        };
         MonitorFormulaAndFunctionDataJobsQueryDefinition: {
             job_type: string;
             jobs_query: string;
+            monitor_options?: components["schemas"]["MonitorFormulaAndFunctionDataJobsMonitorOptions"];
             name: string;
             query_dialect: string;
+            run_filter?: string;
         };
         /** @enum {string} */
         MonitorFormulaAndFunctionDataQualityDataSource: "data_quality_metrics";
+        /** @enum {string} */
+        MonitorFormulaAndFunctionDataQualityDetectionType: "static" | "anomaly";
         /** @enum {string} */
         MonitorFormulaAndFunctionDataQualityDiffFunction: "DIFF" | "DIFF_PERCENT";
         /** @enum {string} */
@@ -660,15 +667,22 @@ export interface components {
         /** @enum {string} */
         MonitorFormulaAndFunctionDataQualityModelTypeOverride: "freshness" | "percentage" | "any";
         MonitorFormulaAndFunctionDataQualityMonitorOptions: {
+            /** Format: int64 */
+            consecutive_runs?: number;
             crontab_override?: string;
             custom_sql?: string;
             custom_where?: string;
+            detection_type?: components["schemas"]["MonitorFormulaAndFunctionDataQualityDetectionType"];
             group_by_columns?: string[];
             model_configuration?: components["schemas"]["MonitorFormulaAndFunctionDataQualityModelConfiguration"];
             model_type_override?: components["schemas"]["MonitorFormulaAndFunctionDataQualityModelTypeOverride"];
+            platform_settings?: components["schemas"]["MonitorFormulaAndFunctionDataQualityPlatformSettings"];
             /** Format: double */
             sensitivity?: number;
             source_to_target_config?: components["schemas"]["MonitorFormulaAndFunctionDataQualitySourceToTargetConfig"];
+        };
+        MonitorFormulaAndFunctionDataQualityPlatformSettings: {
+            snowflake?: components["schemas"]["MonitorFormulaAndFunctionDataQualitySnowflakeSettings"];
         };
         MonitorFormulaAndFunctionDataQualityQueryDefinition: {
             data_source: components["schemas"]["MonitorFormulaAndFunctionDataQualityDataSource"];
@@ -677,8 +691,12 @@ export interface components {
             measure: components["schemas"]["MonitorFormulaAndFunctionDataQualityMeasure"];
             monitor_options?: components["schemas"]["MonitorFormulaAndFunctionDataQualityMonitorOptions"];
             name: string;
+            run_filter?: string;
             schema_version?: string;
             scope?: string;
+        };
+        MonitorFormulaAndFunctionDataQualitySnowflakeSettings: {
+            warehouse?: string;
         };
         MonitorFormulaAndFunctionDataQualitySourceToTargetConfig: {
             diff_type: components["schemas"]["MonitorFormulaAndFunctionDataQualityDiffType"];
@@ -720,7 +738,7 @@ export interface components {
             order?: components["schemas"]["QuerySortOrder"];
         };
         /** @enum {string} */
-        MonitorFormulaAndFunctionEventsDataSource: "rum" | "ci_pipelines" | "ci_tests" | "audit" | "events" | "logs" | "spans" | "database_queries" | "network" | "network_path";
+        MonitorFormulaAndFunctionEventsDataSource: "rum" | "ci_pipelines" | "ci_tests" | "audit" | "events" | "logs" | "spans" | "database_queries" | "network" | "network_path" | "llm_observability";
         /** @enum {string} */
         MonitorFormulaAndFunctionMetricQueryDataSource: "metrics";
         MonitorFormulaAndFunctionMetricQueryDefinition: {
@@ -1775,6 +1793,10 @@ export interface components {
     responses: {
         TooManyRequestsResponse: {
             headers: {
+                "X-RateLimit-Limit"?: number;
+                "X-RateLimit-Period"?: number;
+                "X-RateLimit-Remaining"?: number;
+                "X-RateLimit-Reset"?: number;
                 [name: string]: unknown;
             };
             content: {
