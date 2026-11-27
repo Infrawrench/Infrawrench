@@ -330,6 +330,7 @@ export interface paths {
                             _id: string;
                             accessTokens?: {
                                 _id: string;
+                                canReadGatedRepos?: boolean;
                                 /** Format: date-time */
                                 createdAt: string;
                                 displayName: string;
@@ -342,10 +343,13 @@ export interface paths {
                                 permissions: (Shared_1433ae9d)[];
                                 repoIds: string[];
                                 repoPermissions: ("repo.content.read" | "repo.write")[];
+                                resourceGroupIds: string[];
+                                resourceGroupPermissions: ("repo.content.read" | "repo.write")[];
                                 /** @enum {string} */
                                 role: "read" | "write" | "fineGrained";
                                 s3AccessKey?: string;
                                 skipNetworkSecurity?: boolean;
+                                userPermissions: "user.gated-repos-requests.write"[];
                             }[];
                             /** Format: date-time */
                             createdAt: string;
@@ -409,6 +413,8 @@ export interface paths {
             requestBody?: {
                 content: {
                     "application/json": {
+                        /** @default false */
+                        canReadGatedRepos?: boolean;
                         /** @default API Token */
                         displayName?: string;
                         /** @default [] */
@@ -418,8 +424,13 @@ export interface paths {
                         repoIds?: string[];
                         /** @default [] */
                         repoPermissions?: ("repo.content.read" | "repo.write")[];
+                        resourceGroupIds?: string[];
+                        /** @default [] */
+                        resourceGroupPermissions?: ("repo.content.read" | "repo.write")[];
                         /** @default false */
                         skipNetworkSecurity?: boolean;
+                        /** @default [] */
+                        userPermissions?: "user.gated-repos-requests.write"[];
                     };
                 };
             };
@@ -433,13 +444,17 @@ export interface paths {
                             token: string;
                             tokenInfo: {
                                 _id: string;
+                                canReadGatedRepos: boolean;
                                 createdAt: string;
                                 displayName: string;
                                 endpointPatterns: string[];
                                 permissions?: string[];
                                 repoIds: string[];
                                 repoPermissions: string[];
+                                resourceGroupIds: string[];
+                                resourceGroupPermissions: string[];
                                 skipNetworkSecurity: boolean;
+                                userPermissions: string[];
                             };
                         };
                     };

@@ -204,28 +204,6 @@ export interface components {
             port?: number | null;
             url: string;
         };
-        BaseTgiContainer: {
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            maxBatchPrefillTokens?: number | null;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            maxBatchTotalTokens?: number | null;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            maxInputLength?: number | null;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            maxTotalTokens?: number | null;
-        };
         Compute: {
             accelerator: components["schemas"]["Accelerator"];
             architecture: string;
@@ -515,27 +493,9 @@ export interface components {
         GraphStatusCode: components["schemas"]["TimeWindow"] & {
             series: components["schemas"]["SeriesStatusCode"][];
         };
-        /**
-         * @deprecated
-         * @enum {string}
-         */
-        HFAutoCastType: "bf16" | "fp16";
         HfServeContainer: components["schemas"]["BaseContainer"];
         HuggingfaceContainer: Record<string, never>;
-        HuggingfaceNeuronContainer: {
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            batchSize?: number | null;
-            /** @deprecated */
-            neuronCache?: string | null;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            sequenceLength?: number | null;
-        };
+        HuggingfaceNeuronContainer: Record<string, never>;
         InferenceLoadMeasure: {
             /** Format: double */
             kvCacheUsage?: number | null;
@@ -543,43 +503,11 @@ export interface components {
             requestsWaiting?: number | null;
         };
         LlamacppContainer: components["schemas"]["BaseContainer"] & {
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            ctxSize?: number | null;
             mmprojModelPath?: string | null;
-            mode?: null | components["schemas"]["LlamacppMode"];
             modelPath: string;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            nGpuLayers?: number | null;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            nParallel?: number | null;
-            pooling?: null | components["schemas"]["LlamacppPooling"];
             specModelPath?: string | null;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            threadsHttp?: number | null;
             variant?: string | null;
         };
-        /**
-         * @deprecated
-         * @enum {string}
-         */
-        LlamacppMode: "embeddings" | "reranking";
-        /**
-         * @deprecated
-         * @enum {string}
-         */
-        LlamacppPooling: "mean" | "cls" | "last" | "rank";
         LogEntry: {
             level?: string | null;
             line: string;
@@ -604,11 +532,6 @@ export interface components {
         };
         /** @enum {string} */
         PrivateLinkRegion: "us-east-1" | "eu-west-1";
-        /**
-         * @deprecated
-         * @enum {string}
-         */
-        Quantize: "awq" | "bitsandbytes" | "eetq" | "gptq";
         RegionComputeQuota: {
             architecture: string;
             instanceType: string;
@@ -694,67 +617,12 @@ export interface components {
             /** Format: float */
             sum: number;
         };
-        SGLangContainer: components["schemas"]["BaseContainer"] & {
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            chunkedPrefillSize?: number | null;
-            kvCacheDtype?: null | components["schemas"]["SGLangKvCacheDtype"];
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            maxPrefillTokens?: number | null;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            maxRunningRequests?: number | null;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            tensorParallelSize?: number | null;
-        };
-        /**
-         * @deprecated
-         * @enum {string}
-         */
-        SGLangKvCacheDtype: "fp8-e4-m3" | "fp8-e5-m2";
+        SGLangContainer: components["schemas"]["BaseContainer"];
         /** @enum {string} */
         Status: "available" | "not_available";
-        TeiContainer: components["schemas"]["BaseContainer"] & {
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            maxBatchTokens?: number | null;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            maxConcurrentRequests?: number | null;
-            pooling?: null | components["schemas"]["TEIPooling"];
-        };
-        /**
-         * @deprecated
-         * @enum {string}
-         */
-        TEIPooling: "mean" | "cls";
-        TgiContainer: components["schemas"]["BaseContainer"] & components["schemas"]["BaseTgiContainer"] & {
-            /** @deprecated */
-            disableCustomKernels?: boolean | null;
-            quantize?: null | components["schemas"]["Quantize"];
-        };
-        TgiNeuronContainer: components["schemas"]["BaseContainer"] & components["schemas"]["BaseTgiContainer"] & {
-            hfAutoCastType?: null | components["schemas"]["HFAutoCastType"];
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            hfNumCores?: number | null;
-        };
+        TeiContainer: components["schemas"]["BaseContainer"];
+        TgiContainer: components["schemas"]["BaseContainer"];
+        TgiNeuronContainer: components["schemas"]["BaseContainer"];
         TimeWindow: {
             /** Format: date-time */
             start: string;
@@ -784,44 +652,9 @@ export interface components {
         Vendors: {
             vendors: components["schemas"]["Vendor"][];
         };
-        VLLMContainer: components["schemas"]["BaseContainer"] & {
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            dataParallelSize?: number | null;
-            kvCacheDtype?: null | components["schemas"]["VllmKvCacheDtype"];
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            maxNumBatchedTokens?: number | null;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            maxNumSeqs?: number | null;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            tensorParallelSize?: number | null;
-        };
-        /**
-         * @deprecated
-         * @enum {string}
-         */
-        VllmKvCacheDtype: "fp8" | "fp8-e4-m3" | "fp8-e5-m2";
+        VLLMContainer: components["schemas"]["BaseContainer"];
         VLLMNeuronContainer: components["schemas"]["BaseContainer"];
-        VLLMOmniContainer: components["schemas"]["BaseContainer"] & {
-            /** @deprecated */
-            deployConfig?: string | null;
-            /**
-             * Format: int32
-             * @deprecated
-             */
-            maxNumSeqs?: number | null;
-        };
+        VLLMOmniContainer: components["schemas"]["BaseContainer"];
     };
     responses: never;
     parameters: never;
