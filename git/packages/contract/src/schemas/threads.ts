@@ -8,6 +8,7 @@
 import { Schema } from "effect";
 import { BranchKey, IsoDateTime, Oid } from "./common";
 import { CommitStatus, CommitSummary, DiffHunk, DiffStats, StatusState } from "./git";
+import { ImportedFrom } from "./imports";
 import { UserRef } from "./people";
 import { MergeMethod, RepositoryRef } from "./repository";
 
@@ -129,6 +130,12 @@ export const IssueSummary = Schema.Struct({
   ...threadFields,
   state: IssueState,
   stateReason: Schema.NullOr(IssueStateReason),
+  imported: Schema.optionalKey(
+    Schema.NullOr(ImportedFrom).annotate({
+      description:
+        "Where the issue was imported from. Null for one written here. When `author` is null, `imported.author` is who wrote it there.",
+    }),
+  ),
 }).annotate({ identifier: "IssueSummary" });
 export type IssueSummary = typeof IssueSummary.Type;
 
@@ -198,6 +205,11 @@ export const ThreadComment = Schema.Struct({
   }),
   viewerCanEdit: Schema.Boolean,
   viewerCanDelete: Schema.Boolean,
+  imported: Schema.optionalKey(
+    Schema.NullOr(ImportedFrom).annotate({
+      description: "Where the comment was imported from. Null for one written here.",
+    }),
+  ),
 }).annotate({ identifier: "ThreadComment" });
 export type ThreadComment = typeof ThreadComment.Type;
 

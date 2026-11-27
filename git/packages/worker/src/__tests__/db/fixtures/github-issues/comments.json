@@ -1,0 +1,75 @@
+[
+  {
+    "url": "https://api.github.com/repos/acme-example/widgets/issues/comments/9100000001",
+    "html_url": "https://github.com/acme-example/widgets/issues/1#issuecomment-9100000001",
+    "issue_url": "https://api.github.com/repos/acme-example/widgets/issues/1",
+    "id": 9100000001,
+    "node_id": "IC_kwDOexample0001",
+    "user": { "login": "hubot-example", "id": 5300002, "type": "User", "site_admin": false },
+    "created_at": "2023-01-06T08:00:00Z",
+    "updated_at": "2023-01-06T08:00:00Z",
+    "author_association": "CONTRIBUTOR",
+    "body": "I can reproduce this.",
+    "reactions": { "total_count": 0 }
+  },
+  {
+    "url": "https://api.github.com/repos/acme-example/widgets/issues/comments/9100000002",
+    "html_url": "https://github.com/acme-example/widgets/pull/2#issuecomment-9100000002",
+    "issue_url": "https://api.github.com/repos/acme-example/widgets/issues/2",
+    "id": 9100000002,
+    "node_id": "IC_kwDOexample0002",
+    "user": { "login": "mona-example", "id": 5300001, "type": "User", "site_admin": false },
+    "created_at": "2023-01-11T08:00:00Z",
+    "updated_at": "2023-01-11T08:00:00Z",
+    "author_association": "OWNER",
+    "body": "A comment on a pull request, which is not imported."
+  },
+  {
+    "url": "https://api.github.com/repos/acme-example/widgets/issues/comments/9100000003",
+    "html_url": "https://github.com/acme-example/widgets/issues/1#issuecomment-9100000003",
+    "issue_url": "https://api.github.com/repos/acme-example/widgets/issues/1",
+    "id": 9100000003,
+    "node_id": "IC_kwDOexample0003",
+    "user": null,
+    "created_at": "2023-01-12T08:00:00Z",
+    "updated_at": "2023-01-12T08:00:00Z",
+    "author_association": "NONE",
+    "body": "Same here."
+  },
+  {
+    "url": "https://api.github.com/repos/acme-example/widgets/issues/comments/9100000004",
+    "html_url": "https://github.com/acme-example/widgets/issues/6#issuecomment-9100000004",
+    "issue_url": "https://api.github.com/repos/acme-example/widgets/issues/6",
+    "id": 9100000004,
+    "node_id": "IC_kwDOexample0004",
+    "user": { "login": "mona-example", "id": 5300001, "type": "User", "site_admin": false },
+    "created_at": "2023-03-06T07:10:00Z",
+    "updated_at": "2023-03-06T07:25:00Z",
+    "author_association": "OWNER",
+    "body": "Dark first, please."
+  },
+  {
+    "url": "https://api.github.com/repos/acme-example/widgets/issues/comments/9100000005",
+    "html_url": "https://github.com/acme-example/widgets/issues/3#issuecomment-9100000005",
+    "issue_url": "https://api.github.com/repos/acme-example/widgets/issues/3",
+    "id": 9100000005,
+    "node_id": "IC_kwDOexample0005",
+    "user": { "login": "casey-example", "id": 5300003, "type": "User", "site_admin": false },
+    "created_at": "2023-03-07T10:00:00Z",
+    "updated_at": "2023-03-07T10:00:00Z",
+    "author_association": "COLLABORATOR",
+    "body": "I will take this."
+  },
+  {
+    "url": "https://api.github.com/repos/acme-example/widgets/issues/comments/9100000006",
+    "html_url": "https://github.com/acme-example/widgets/issues/7#issuecomment-9100000006",
+    "issue_url": "https://api.github.com/repos/acme-example/widgets/issues/7",
+    "id": 9100000006,
+    "node_id": "IC_kwDOexample0006",
+    "user": { "login": "tidy-example[bot]", "id": 5300009, "type": "Bot", "site_admin": false },
+    "created_at": "2023-03-10T09:05:00Z",
+    "updated_at": "2023-03-10T09:05:00Z",
+    "author_association": "NONE",
+    "body": "Closed as a duplicate of #1."
+  }
+]

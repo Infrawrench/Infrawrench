@@ -17,6 +17,7 @@ import { plural } from "../../lib/format";
 import { paths } from "../../lib/paths";
 import { CommentCard } from "./CommentCard";
 import { CommentForm } from "./CommentForm";
+import { ImportedAuthor, ImportedNote } from "./ImportedFrom";
 import { ThreadHeader } from "./ThreadHeader";
 import { LockControl, TriageFields } from "./ThreadSidebar";
 import { Timeline } from "./Timeline";
@@ -82,9 +83,16 @@ function IssueView({ issue }: { issue: Issue }) {
         onRename={(title) => update.mutateAsync({ title })}
       >
         <span>
-          {issue.author !== null ? <UserLink user={issue.author} /> : "Someone"} opened this{" "}
-          <RelativeTime iso={issue.createdAt} />
+          {issue.author !== null ? (
+            <UserLink user={issue.author} />
+          ) : issue.imported?.author ? (
+            <ImportedAuthor imported={issue.imported} />
+          ) : (
+            "Someone"
+          )}{" "}
+          opened this <RelativeTime iso={issue.createdAt} />
         </span>
+        {issue.imported ? <ImportedNote imported={issue.imported} number={number} /> : null}
         <span>· {plural(issue.commentCount, "comment")}</span>
         {issue.locked ? (
           <span className="inline-flex items-center gap-1">
@@ -98,6 +106,7 @@ function IssueView({ issue }: { issue: Issue }) {
         <div className="min-w-0 space-y-3">
           <CommentCard
             author={issue.author}
+            imported={issue.imported}
             createdAt={issue.createdAt}
             body={issue.body}
             edited={issue.bodyEditedAt !== null}

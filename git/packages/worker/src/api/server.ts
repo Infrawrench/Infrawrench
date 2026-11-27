@@ -32,8 +32,10 @@ import { AgentsHandlers, ReviewSettingsHandlers } from "./handlers/agents";
 import { CiHandlers, StatusesHandlers, TerraformHandlers } from "./handlers/automation";
 import { ContentsHandlers } from "./handlers/contents";
 import { FindingsHandlers } from "./handlers/findings";
+import { IssueImportsHandlers } from "./handlers/imports";
 import { InstructionsHandlers } from "./handlers/instructions";
 import { IssuesHandlers, LabelsHandlers, MilestonesHandlers } from "./handlers/issues";
+import { MirrorsHandlers } from "./handlers/mirrors";
 import { BranchesHandlers } from "./handlers/branches";
 import { RepositoriesHandlers, RepositoryListsHandlers } from "./handlers/repositories";
 import { NamespacesHandlers, SessionHandlers } from "./handlers/session";
@@ -72,6 +74,8 @@ export const HandlersLive = Layer.mergeAll(
   CollaboratorsHandlers,
   ProtectedBranchesHandlers,
   DeployKeysHandlers,
+  MirrorsHandlers,
+  IssueImportsHandlers,
   AccountHandlers,
   StatusesHandlers,
   CiHandlers,

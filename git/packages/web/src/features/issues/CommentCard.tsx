@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import type { UserRef } from "@infrawrench/git-contract";
+import type { ImportedFrom, UserRef } from "@infrawrench/git-contract";
 import { Badge } from "../../components/Badge";
 import { Button } from "../../components/Button";
 import { ConfirmDialog } from "../../components/controls";
@@ -9,6 +9,7 @@ import { MarkdownEditor } from "../../components/MarkdownEditor";
 import { Menu, type MenuItem } from "../../components/Menu";
 import { Avatar, RelativeTime, UserLink } from "../../components/people";
 import { InlineError } from "../../components/states";
+import { ImportedAuthor, importedAuthorName } from "./ImportedFrom";
 
 const ACCESS_LABEL: Record<string, string> = {
   owner: "Owner",
@@ -19,6 +20,8 @@ const ACCESS_LABEL: Record<string, string> = {
 
 export interface CommentCardProps {
   readonly author: UserRef | null;
+  /** Where it was imported from: names its author there when no account here is theirs. */
+  readonly imported?: ImportedFrom | null | undefined;
   readonly createdAt: string;
   readonly body: string;
   readonly edited?: boolean;
@@ -43,6 +46,7 @@ export interface CommentCardProps {
 /** A comment: who, when, the Markdown, and editing it in place. */
 export function CommentCard({
   author,
+  imported = null,
   createdAt,
   body,
   edited = false,
@@ -62,7 +66,8 @@ export function CommentCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [confirming, setConfirming] = useState(false);
-  const name = author?.displayName ?? author?.username ?? "Deleted user";
+  const name =
+    author?.displayName ?? author?.username ?? importedAuthorName(imported) ?? "Deleted user";
 
   const save = () => {
     if (!onSave) return;
@@ -102,7 +107,13 @@ export function CommentCard({
       }`}
     >
       {compact ? <Avatar name={name} src={author?.avatarUrl} size={18} /> : null}
-      {author !== null ? <UserLink user={author} /> : <span>Deleted user</span>}
+      {author !== null ? (
+        <UserLink user={author} />
+      ) : imported?.author ? (
+        <ImportedAuthor imported={imported} />
+      ) : (
+        <span>Deleted user</span>
+      )}
       <span>
         {verb} <RelativeTime iso={createdAt} />
       </span>

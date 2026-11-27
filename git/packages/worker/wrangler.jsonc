@@ -169,6 +169,7 @@
     "producers": [
       { "binding": "EVENTS", "queue": "infrawrench-git-events" },
       { "binding": "REVIEWS", "queue": "infrawrench-git-reviews" },
+      { "binding": "JOBS", "queue": "infrawrench-git-jobs" },
     ],
     "consumers": [
       {
@@ -184,6 +185,19 @@
         "max_batch_timeout": 1,
         "max_concurrency": 8,
         "max_retries": 4,
+        "dead_letter_queue": "infrawrench-git-events-dlq",
+      },
+      // Push mirrors and issue imports (`src/jobs/consumer.ts`): one a batch,
+      // since a mirror's first run can push for minutes. The row a message
+      // names carries the state and the retry schedule, and the sweep sends
+      // what is owed again, so a message is never retried by the queue for
+      // the work's own failure and a lost one costs two minutes.
+      {
+        "queue": "infrawrench-git-jobs",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_concurrency": 4,
+        "max_retries": 2,
         "dead_letter_queue": "infrawrench-git-events-dlq",
       },
     ],

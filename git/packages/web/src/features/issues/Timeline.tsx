@@ -353,6 +353,7 @@ export function Timeline({
               key={item.id}
               id={`comment-${comment.id}`}
               author={comment.author}
+              imported={comment.imported}
               createdAt={comment.createdAt}
               body={comment.body}
               edited={comment.edited}

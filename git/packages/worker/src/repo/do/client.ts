@@ -7,6 +7,7 @@ import type { GitObject, ObjectId, ObjectType, Ref, RefUpdate } from "@infrawren
 import type { RefUpdateResult } from "@infrawrench/git-protocol";
 import type { Env } from "../../env";
 import { ARCHIVE_URL, type ArchiveCall, CALL_HEADER, type GitCall, SERVE_URL } from "./call";
+import type { MirrorPlan, MirrorPlanOptions } from "../../mirror/plan";
 import type { ReaderReply } from "../queries";
 import type { PathEntry, RepoDO } from "./repo-do";
 import type { InitOptions, RepoStats, UpdateRefsOptions } from "./repository";
@@ -34,6 +35,14 @@ export interface RepoClient {
   writeObjects(
     objects: ReadonlyArray<{ readonly type: ObjectType; readonly data: Uint8Array }>,
   ): Promise<ObjectId[]>;
+  /** What a push mirror's run has to do against a target whose refs are `options.remote`. */
+  mirrorPlan(options: MirrorPlanOptions): Promise<MirrorPlan>;
+  /** The pack of one push of a mirror: what `wants` reach and `haves` do not. Null when a want is gone. */
+  mirrorPack(
+    wants: readonly ObjectId[],
+    haves: readonly ObjectId[],
+    options: { readonly ofsDelta: boolean },
+  ): Promise<ReadableStream<Uint8Array> | null>;
   /**
    * One `RepoReader` method, run in the object beside the data. `locator` is
    * the owner and name, for URLs. Go through `durableRepoReader`
@@ -98,6 +107,9 @@ export function repoClient(env: Pick<Env, "REPO">, repoId: string): RepoClient {
     resolvePrefix: (prefix) => rpc.resolvePrefix(repoId, prefix),
     readPath: (commit, path) => rpc.readPath(repoId, commit, path),
     writeObjects: (objects) => rpc.writeObjects(repoId, objects),
+    mirrorPlan: (options) => rpc.mirrorPlan(repoId, options),
+    mirrorPack: (wants, haves, options) =>
+      rpc.mirrorPack(repoId, wants, haves, options) as Promise<ReadableStream<Uint8Array> | null>,
     reader: (locator, method, args) => rpc.reader(repoId, locator, method, args),
     serve: (call, input, signal) =>
       send(SERVE_URL, { ...call, repoId } satisfies GitCall, {

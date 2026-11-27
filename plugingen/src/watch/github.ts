@@ -3,20 +3,12 @@ import { run, type RunResult } from "../process.js";
 import { oneLine } from "../text.js";
 import type { OpenIssue, OpenPullRequest } from "./decide.js";
 import { ISSUE_SEARCH, pluginOfBranch, pluginOfIssueTitle } from "./render.js";
+import type { TrackerPort } from "./tracker.js";
 
 const BASE_BRANCH = "main";
 
-/** Everything the watcher does on GitHub, so that the logic above it can be tested. */
-export interface GitHubPort {
-  listPullRequests(): Promise<OpenPullRequest[]>;
-  listIssues(): Promise<OpenIssue[]>;
-  createPullRequest(branch: string, title: string, body: string): Promise<string>;
-  editPullRequest(number: number, body: string): Promise<void>;
-  closePullRequest(number: number, comment: string): Promise<void>;
-  createIssue(title: string, body: string): Promise<string>;
-  editIssue(number: number, body: string): Promise<void>;
-  closeIssue(number: number, comment: string): Promise<void>;
-}
+/** The tracker's interface under the name it had while GitHub was the only one. */
+export type GitHubPort = TrackerPort;
 
 const APP_HINT =
   "Check that the plugingen watcher's GitHub App is installed on this repository with contents, pull requests and issues write access.";

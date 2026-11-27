@@ -49,6 +49,37 @@ export type GitStatusState = "pending" | "success" | "failure" | "error";
 export type GitMilestoneState = "open" | "closed";
 /** How a person reads a branch: the versioned branch page (`agent`) or the pull request as it was (`classic`). */
 export type GitReviewMode = "agent" | "classic";
+/** Where issues can be imported from. */
+export type GitImportSource = "github";
+export type GitIssueImportStatus = "queued" | "running" | "done" | "failed" | "cancelled";
+/** What an import is reading: labels, then milestones, then issues, then their comments. */
+export type GitIssueImportPhase = "labels" | "milestones" | "issues" | "comments" | "finish";
+export type GitMirrorStatus = "ok" | "error";
+
+/** What the last run of a push mirror did, as Settings > Mirrors shows it. */
+export interface GitMirrorResult {
+  readonly created: number;
+  readonly updated: number;
+  readonly deleted: number;
+  /** Refs the target refused or that were left alone, with why. At most fifty. */
+  readonly refused: ReadonlyArray<{ readonly ref: string; readonly reason: string }>;
+  /** The refs that moved, at most fifty of them. */
+  readonly refs: readonly string[];
+}
+
+/** Where an issue import has got to, and what it has written. */
+export interface GitIssueImportProgress {
+  /** The next page of the current phase. */
+  readonly page: number;
+  /** Only what changed since this instant (ISO): set on a run after the first. */
+  readonly since: string | null;
+  readonly labels: number;
+  readonly milestones: number;
+  readonly issues: number;
+  readonly comments: number;
+  /** GitHub logins already looked up: the account here, or null for none. */
+  readonly authors: Readonly<Record<string, string | null>>;
+}
 
 /**
  * A username or an organisation's name: the first path segment of every
@@ -593,12 +624,28 @@ export const gitIssues = pgTable(
       onDelete: "set null",
     }),
     closedAt: timestamp("closed_at"),
+    /**
+     * Where an imported issue came from (`github`), with the columns below;
+     * all null for an issue written here. `importId` is the source's own id
+     * for it, which is what makes an import safe to run again.
+     */
+    importSource: text("import_source").$type<GitImportSource>(),
+    importId: text("import_id"),
+    /** Who wrote it there (a GitHub login), shown when no account here is theirs. */
+    importAuthor: text("import_author"),
+    /** Its page at the source. */
+    importUrl: text("import_url"),
+    /** Its number at the source, which is `number` unless that was taken here. */
+    importNumber: integer("import_number"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     /** Bumped by anything a reader would call activity: an edit, a comment, a label, a push. */
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({
     numberIdx: uniqueIndex("git_issues_repo_number_idx").on(t.repositoryId, t.number),
+    importIdx: uniqueIndex("git_issues_import_idx")
+      .on(t.repositoryId, t.importSource, t.importId)
+      .where(sql`${t.importId} IS NOT NULL`),
     // The list pages: one kind, one state, newest or most recently active first.
     listCreatedIdx: index("git_issues_list_created_idx").on(
       t.repositoryId,
@@ -726,11 +773,19 @@ export const gitComments = pgTable(
     authorUserId: text("author_user_id").references(() => users.id, { onDelete: "set null" }),
     body: text("body").notNull(),
     editedAt: timestamp("edited_at"),
+    /** An imported comment's source, its id there, its author there and its address (as on `git_issues`). */
+    importSource: text("import_source").$type<GitImportSource>(),
+    importId: text("import_id"),
+    importAuthor: text("import_author"),
+    importUrl: text("import_url"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({
     issueIdx: index("git_comments_issue_idx").on(t.issueId, t.createdAt),
+    importIdx: uniqueIndex("git_comments_import_idx")
+      .on(t.repositoryId, t.importSource, t.importId)
+      .where(sql`${t.importId} IS NOT NULL`),
   }),
 );
 
@@ -1017,5 +1072,103 @@ export const gitTimelineEvents = pgTable(
   },
   (t) => ({
     issueIdx: index("git_timeline_events_issue_idx").on(t.issueId, t.createdAt),
+  }),
+);
+
+/**
+ * A push mirror: another Git host that is kept equal to a repository here.
+ *
+ * After every push the queue consumer raises `pendingGeneration` and a job
+ * pushes the repository's branches and tags to `url` over smart HTTP
+ * (worker `mirror/`). One job at a time holds the lease, reads the refs only
+ * once it has it, and records the generation it started from, so a slow run
+ * of an older push can never land after a newer one.
+ *
+ * The credential is sealed with the app's master key, bound to this row
+ * (`gitMirror:<id>:credential`); the URL never carries one.
+ */
+export const gitPushMirrors = pgTable(
+  "git_push_mirrors",
+  {
+    id: text("id").primaryKey(),
+    repositoryId: text("repository_id")
+      .notNull()
+      .references(() => gitRepositories.id, { onDelete: "cascade" }),
+    /** `https://host/path.git`: no user, password, query or fragment. */
+    url: text("url").notNull(),
+    /** The Basic auth user the credential goes with (`x-access-token` for a GitHub token). */
+    username: text("username").notNull(),
+    credentialEncrypted: text("credential_encrypted").notNull(),
+    credentialIv: text("credential_iv").notNull(),
+    /** Ref patterns left alone on both sides (`*` within a segment, `**` across). */
+    exclude: jsonb("exclude").$type<string[]>().notNull().default([]),
+    /** Overwrite and delete on the target so it equals this repository. Off: only create and fast-forward. */
+    force: boolean("force").notNull().default(true),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Raised by every push; a run is owed while it is ahead of `syncedGeneration`. */
+    pendingGeneration: bigint("pending_generation", { mode: "number" }).notNull().default(1),
+    syncedGeneration: bigint("synced_generation", { mode: "number" }).notNull().default(0),
+    /** The job that is running: its token and when its claim lapses. */
+    leaseToken: text("lease_token"),
+    leaseUntil: timestamp("lease_until"),
+    /** Failures since the last run that worked, and when the next try is due. */
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at").notNull().defaultNow(),
+    lastStatus: text("last_status").$type<GitMirrorStatus>(),
+    /** Why the last run failed, in words with no address or credential in them. */
+    lastError: text("last_error"),
+    lastResult: jsonb("last_result").$type<GitMirrorResult>(),
+    lastAttemptAt: timestamp("last_attempt_at"),
+    /** The last run that left the target equal to this repository. */
+    lastSyncedAt: timestamp("last_synced_at"),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    repoUrlIdx: uniqueIndex("git_push_mirrors_repo_url_idx").on(t.repositoryId, t.url),
+    // The sweep: mirrors owed a run whose next try is due.
+    dueIdx: index("git_push_mirrors_due_idx").on(t.enabled, t.nextAttemptAt),
+  }),
+);
+
+/**
+ * One import of a repository's issues from another host (worker
+ * `import/`). A job reads a page at a time and writes where it has got to
+ * here, so it carries on after a restart or a rate limit. The token is
+ * sealed (`gitIssueImport:<id>:token`) and removed when the import ends.
+ */
+export const gitIssueImports = pgTable(
+  "git_issue_imports",
+  {
+    id: text("id").primaryKey(),
+    repositoryId: text("repository_id")
+      .notNull()
+      .references(() => gitRepositories.id, { onDelete: "cascade" }),
+    source: text("source").$type<GitImportSource>().notNull(),
+    /** `owner/name` at the source. */
+    sourceRepository: text("source_repository").notNull(),
+    tokenEncrypted: text("token_encrypted"),
+    tokenIv: text("token_iv"),
+    status: text("status").$type<GitIssueImportStatus>().notNull().default("queued"),
+    phase: text("phase").$type<GitIssueImportPhase>().notNull().default("labels"),
+    progress: jsonb("progress").$type<GitIssueImportProgress>().notNull(),
+    /** Why it failed, in words with no token in them. */
+    error: text("error"),
+    /** Not before this: the source's rate limit resets then. */
+    resumeAt: timestamp("resume_at"),
+    startedByUserId: text("started_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+    finishedAt: timestamp("finished_at"),
+  },
+  (t) => ({
+    repoIdx: index("git_issue_imports_repo_idx").on(t.repositoryId, t.createdAt),
+    // The sweep: imports still running that nothing has touched for a while.
+    statusIdx: index("git_issue_imports_status_idx").on(t.status, t.updatedAt),
   }),
 );

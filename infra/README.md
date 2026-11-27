@@ -243,7 +243,8 @@ and Hyperdrive (read) on the account; Zone (read) and Zone Settings (edit) on
    - R2 bucket `infrawrench-git` (`--location` picks the hint; `enam` by
      default, next to the database).
    - Queues `infrawrench-git-events`, `infrawrench-git-reviews` (review
-     agents' runs) and `infrawrench-git-events-dlq`: every queue
+     agents' runs), `infrawrench-git-jobs` (push mirrors and issue imports)
+     and `infrawrench-git-events-dlq`: every queue
      `wrangler.jsonc` names. The consumers' settings are the Worker's
      `wrangler.jsonc` and arrive with the deploy. A queue added there later
      is made by running the script again (`--only queues`) before the deploy

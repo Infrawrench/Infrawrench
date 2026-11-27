@@ -13,11 +13,20 @@ import type {
   ScheduledController,
   Socket,
 } from "@cloudflare/workers-types/index";
-import { type Env, type GitEvent, type GitReviewMessage, siteOrigin, sshEnabled } from "./env";
+import {
+  type Env,
+  type GitEvent,
+  type GitJobMessage,
+  type GitReviewMessage,
+  siteOrigin,
+  sshEnabled,
+} from "./env";
 import { type Ctx, type Routes, serve } from "./http/router";
 
 /** The review queue's name (`wrangler.jsonc`). Spelled here so nothing is imported to route a batch. */
 const REVIEW_QUEUE = "infrawrench-git-reviews";
+/** The queue of push mirrors and issue imports (`wrangler.jsonc`), spelled here for the same reason. */
+const JOBS_QUEUE = "infrawrench-git-jobs";
 
 const lazy = <T>(load: () => Promise<T>): (() => Promise<T>) => {
   let loaded: Promise<T> | undefined;
@@ -117,12 +126,18 @@ export default {
   /**
    * `infrawrench-git-events`: what a push leaves behind (`events/consumer.ts`).
    * `infrawrench-git-reviews`: a review run (`review/queue.ts`).
+   * `infrawrench-git-jobs`: a push mirror's run or a step of an issue import (`jobs/consumer.ts`).
    */
   async queue(
-    batch: MessageBatch<GitEvent | GitReviewMessage>,
+    batch: MessageBatch<GitEvent | GitReviewMessage | GitJobMessage>,
     env: Env,
     ctx: ExecutionContext,
   ): Promise<void> {
+    if (batch.queue === JOBS_QUEUE) {
+      const { consumeJobs } = await import("./jobs/consumer");
+      await consumeJobs(batch as MessageBatch<GitJobMessage>, env, ctx);
+      return;
+    }
     if (batch.queue === REVIEW_QUEUE) {
       const { consumeReviewRuns } = await import("./review/queue");
       await consumeReviewRuns(batch as MessageBatch<GitReviewMessage>, env, ctx);
@@ -135,15 +150,19 @@ export default {
   /**
    * The cron triggers (`wrangler.jsonc`). Hourly: the refs of versions whose thirty days
    * are up and traces no push claimed (`review/prune.ts`), and review runs nothing finished
-   * (`review/queue.ts`). Every two minutes: instructions still waiting for an
-   * agent the forge can tell itself (`review/instructions.ts`).
+   * (`review/queue.ts`), and every push mirror is checked against its target
+   * (`jobs/sweep.ts`). Every two minutes: instructions still waiting for an
+   * agent the forge can tell itself (`review/instructions.ts`), and the
+   * mirrors and issue imports that are owed a run (`jobs/sweep.ts`).
    */
   async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     const { withDb } = await database();
     if (event.cron === INSTRUCTIONS_CRON) {
       const { sweepInstructions } = await import("./review/instructions");
+      const { sweepJobs } = await import("./jobs/sweep");
       await withDb(env, ctx, async () => {
         await sweepInstructions(env);
+        await sweepJobs(env, { reconcile: false });
       });
       return;
     }
@@ -155,6 +174,7 @@ export default {
       await pruneVersions(env);
       await sweepReviewRuns(env);
       await pruneStaleTraces();
+      await (await import("./jobs/sweep")).sweepJobs(env, { reconcile: true });
     });
   },
 

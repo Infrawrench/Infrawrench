@@ -41,6 +41,7 @@ import {
   selectObjects,
 } from "@infrawrench/git-protocol";
 import type { GitEvent, GitEventActor } from "../../env";
+import { type MirrorPlan, type MirrorPlanOptions, planMirror } from "../../mirror/plan";
 import { type Ingested, ingestPack } from "./ingest";
 import { type PackHandle, type PackRow, PackStore, repoPrefix } from "./pack-store";
 import { selectByOid, selectEverything, streamPack } from "./pack-stream";
@@ -970,6 +971,93 @@ export class Repository {
     return streamPack(store, packs, selectByOid(store, packs, objects), {
       thinBases: null,
       ofsDelta: true,
+    });
+  }
+
+  // Push mirrors
+
+  /**
+   * What a push mirror's run has to do against a target whose refs are
+   * `options.remote` (`mirror/plan.ts`): read here because only here is the
+   * commit graph at hand.
+   */
+  async mirrorPlan(options: MirrorPlanOptions): Promise<MirrorPlan> {
+    const store = this.packs;
+    const packs = await store.live();
+    return planMirror(
+      {
+        graph: new CommitGraph(this.reader(packs)),
+        refs: this.listRefs(),
+        head: this.head(),
+        has: (oid) => isObjectId(oid) && store.has(packs, oid),
+      },
+      options,
+    );
+  }
+
+  /**
+   * A pack for one push of a mirror: everything `wants` reach that `haves`
+   * do not. A want is a ref's value (so an annotated tag brings its tag
+   * object) or a commit on the way to a branch's head. The pack stands on
+   * its own, like `exportPack`'s, because nothing is known of how the
+   * target stores a base.
+   *
+   * Null when a want is not something this repository's branches and tags
+   * reach any more: a branch that was forced away while the mirror ran is
+   * not sent, and the run that follows the force sends what replaced it.
+   */
+  async mirrorPack(
+    wants: readonly ObjectId[],
+    haves: readonly ObjectId[],
+    options: { readonly ofsDelta: boolean },
+  ): Promise<ReadableStream<Uint8Array> | null> {
+    const store = this.packs;
+    const packs = await store.live();
+    const reader = this.reader(packs);
+    const graph = new CommitGraph(reader);
+    const refs = this.listRefs().filter((ref) => isBranchOrTag(ref.name));
+    const refValues = new Set(refs.map((ref) => ref.oid));
+    const commits: ObjectId[] = [];
+    const tags: ObjectId[] = [];
+    const trees: ObjectId[] = [];
+    const blobs: ObjectId[] = [];
+    for (const want of wants) {
+      if (!isObjectId(want)) return null;
+      const peeled = await peelWant(reader, want);
+      if (peeled === null) return null;
+      // A tag object, a tree or a blob leaves only as the value of a ref.
+      if ((peeled.tags.length > 0 || peeled.type !== "commit") && !refValues.has(want)) return null;
+      tags.push(...peeled.tags);
+      if (peeled.type === "commit") commits.push(peeled.oid);
+      else if (peeled.type === "tree") trees.push(peeled.oid);
+      else blobs.push(peeled.oid);
+    }
+    const tips = refs.map((ref) => ref.peeled ?? ref.oid);
+    const reachable = await reachableAmong(graph, tips, commits);
+    if (!commits.every((commit) => reachable.has(commit))) return null;
+
+    const known = new Set<ObjectId>();
+    const knownCommits: ObjectId[] = [];
+    for (const have of haves) {
+      if (!isObjectId(have) || known.has(have) || !store.has(packs, have)) continue;
+      known.add(have);
+      const peeled = await peelWant(reader, have);
+      if (peeled === null) continue;
+      for (const tag of peeled.tags) known.add(tag);
+      if (peeled.type === "commit") knownCommits.push(peeled.oid);
+    }
+    const none = new Set<ObjectId>();
+    const selected = await selectCommits(graph, commits, knownCommits, none, none);
+    const { objects } = await selectObjects(graph, {
+      commits: selected.commits,
+      edges: selected.edges,
+      tags: tags.filter((tag) => !known.has(tag)),
+      trees,
+      blobs,
+    });
+    return streamPack(store, packs, selectByOid(store, packs, objects), {
+      thinBases: null,
+      ofsDelta: options.ofsDelta,
     });
   }
 
