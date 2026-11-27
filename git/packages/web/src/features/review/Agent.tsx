@@ -32,27 +32,72 @@ export const AGENT_KIND_LABEL: Record<AgentKind, string> = {
 /** The forge's MCP server, which any agent can be pointed at. */
 export const MCP_URL = `${SITE_ORIGIN}/mcp`;
 
-export const MCP_COMMANDS: ReadonlyArray<{ client: string; command: string }> = [
+export interface McpClientSetup {
+  readonly client: string;
+  /** The file a snippet goes in, for a client set up by a file. */
+  readonly file?: string;
+  /** What to run or paste, in order. Each has a copy button. */
+  readonly snippets: ReadonlyArray<string>;
+}
+
+export const MCP_CLIENTS: ReadonlyArray<McpClientSetup> = [
   {
     client: "Claude Code",
-    command: `claude mcp add --transport http infrawrench-git ${MCP_URL}`,
+    snippets: [`claude mcp add --transport http infrawrench-git ${MCP_URL}`],
   },
-  { client: "Codex", command: `codex mcp add infrawrench-git --url ${MCP_URL}` },
+  {
+    client: "Codex",
+    snippets: [`codex mcp add infrawrench-git --url ${MCP_URL}`, "codex mcp login infrawrench-git"],
+  },
+  {
+    client: "Cursor",
+    file: "~/.cursor/mcp.json",
+    snippets: [JSON.stringify({ mcpServers: { "infrawrench-git": { url: MCP_URL } } }, null, 2)],
+  },
 ];
 
-/** The command that connects an agent to the forge, one per client, each with a copy button. */
+/** How each client installs the forge's MCP server: every command or file with a copy button. */
 export function McpSetup() {
   return (
     <ul className="space-y-2">
-      {MCP_COMMANDS.map(({ client, command }) => (
+      {MCP_CLIENTS.map(({ client, file, snippets }) => (
         <li key={client} className="space-y-1">
-          <p className="text-xs font-medium text-on-surface-secondary">{client}</p>
-          <div className="flex items-center gap-1 rounded border border-border bg-surface-inset py-1 pr-1 pl-2">
-            <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[11px] whitespace-nowrap text-on-surface">
-              {command}
-            </code>
-            <CopyButton text={command} label={`Copy the ${client} command`} />
-          </div>
+          <p className="flex flex-wrap items-baseline gap-x-2 text-xs font-medium text-on-surface-secondary">
+            {client}
+            {file !== undefined ? (
+              <code className="font-mono text-[11px] font-normal text-on-surface-muted">
+                {file}
+              </code>
+            ) : null}
+          </p>
+          {snippets.map((snippet, index) => {
+            const block = snippet.includes("\n");
+            const label =
+              file !== undefined
+                ? `Copy the ${client} configuration`
+                : snippets.length === 1
+                  ? `Copy the ${client} command`
+                  : `Copy ${client} command ${index + 1}`;
+            return (
+              <div
+                key={snippet}
+                className={`flex gap-1 rounded border border-border bg-surface-inset py-1 pr-1 pl-2 ${
+                  block ? "items-start" : "items-center"
+                }`}
+              >
+                {block ? (
+                  <pre className="min-w-0 flex-1 overflow-x-auto py-0.5 font-mono text-[11px] leading-4 text-on-surface">
+                    {snippet}
+                  </pre>
+                ) : (
+                  <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[11px] whitespace-nowrap text-on-surface">
+                    {snippet}
+                  </code>
+                )}
+                <CopyButton text={snippet} label={label} />
+              </div>
+            );
+          })}
         </li>
       ))}
     </ul>

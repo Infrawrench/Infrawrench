@@ -1,7 +1,14 @@
 /**
- * Starting work from an ask: what is wanted, the branch to start from, the
- * new branch's name and the agent that will write it. It makes the branch
- * and its page, and goes there.
+ * Starting work: the agent that will write the branch, then what the forge
+ * needs to start it. For T3 Code that is the ask, the branch to start from
+ * and the new branch's name: the forge makes the branch and its page, starts
+ * the thread and goes to the page. Another agent starts work itself, with
+ * the MCP server's `start_work`, so that choice shows how to install the
+ * server and nothing to submit.
+ *
+ * The app's own agent sessions are not offered here. A page one of them
+ * already writes still names it (`Agent.tsx`), and the app still starts a
+ * session from `/agents?git=&branch=`.
  */
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -23,7 +30,7 @@ import { McpSetup } from "./Agent";
 import { branchNameFor } from "./branch";
 import { isUnavailable, optional } from "./optional";
 
-type Choice = "infrawrench" | "t3" | "mcp";
+type Choice = "t3" | "mcp";
 
 const NEW_THREAD = "";
 
@@ -38,12 +45,15 @@ export function StartWorkPage() {
   const [base, setBase] = useState(repository.defaultBranch);
   const [branch, setBranch] = useState("");
   const [named, setNamed] = useState(false);
-  const [choice, setChoice] = useState<Choice>("infrawrench");
+  const [picked, setPicked] = useState<Choice | null>(null);
   const [environmentId, setEnvironmentId] = useState<string | null>(null);
   const [threadId, setThreadId] = useState(NEW_THREAD);
   const [projectId, setProjectId] = useState("");
 
   const environments = useQuery({ ...optional(queries.t3.list()), enabled: signedIn });
+  // T3 Code first; a server without it leaves the one choice.
+  const t3Offered = !isUnavailable(environments.error);
+  const choice: Choice = t3Offered ? (picked ?? "t3") : "mcp";
   const connected = (environments.data?.environments ?? []).filter(
     (item) => item.status === "connected",
   );
@@ -65,7 +75,6 @@ export function StartWorkPage() {
   const name = named ? branch : branchNameFor(ask);
 
   const agentOf = (): AgentLinkSet | undefined => {
-    if (choice === "infrawrench") return { kind: "infrawrench", displayName: "Infrawrench agent" };
     if (choice === "t3" && environment !== null) {
       const project = thread?.projectId ?? (projectId === "" ? projects[0]?.[0] : projectId);
       return {
@@ -78,7 +87,6 @@ export function StartWorkPage() {
         },
       };
     }
-    // Another agent names itself when it connects.
     return undefined;
   };
 
@@ -132,164 +140,165 @@ export function StartWorkPage() {
     );
   }
 
-  const t3Ready = choice !== "t3" || environment !== null;
+  const ready = choice === "t3" && environment !== null && ask.trim() !== "";
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (ask.trim() !== "" && t3Ready) start.mutate();
+    if (ready) start.mutate();
   };
 
   return (
     <Page width="narrow">
       <PageHeader title="Start work" />
       <form onSubmit={submit} className="space-y-4">
-        <MarkdownEditor
-          label="Ask"
-          placeholder="What should change"
-          value={ask}
-          onChange={setAsk}
-          rows={7}
-          autoFocus
-          onSubmit={() => ask.trim() !== "" && t3Ready && start.mutate()}
-        />
-        <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
-          <div className="space-y-1">
-            <span className="block text-xs font-medium text-on-surface">Start from</span>
-            <RefPicker
-              repo={repo}
-              value={base}
-              branchesOnly
-              label="base"
-              onSelect={(picked) => setBase(picked)}
-            />
-          </div>
-          <Field
-            label="Branch"
-            error={
-              start.error !== null && isRefExists(start.error) ? start.error.message : undefined
-            }
-          >
-            {(control) => (
-              <Input
-                {...control}
-                value={name}
-                maxLength={255}
-                spellCheck={false}
-                autoComplete="off"
-                className="font-mono"
-                onChange={(event) => {
-                  setNamed(true);
-                  setBranch(event.target.value);
-                }}
-              />
-            )}
-          </Field>
-        </div>
-
         <RadioCards<Choice>
           legend="Agent"
           name="agent"
           value={choice}
-          onChange={setChoice}
+          onChange={setPicked}
           options={[
-            { value: "infrawrench", label: "Infrawrench", icon: <Icon name="bot" size={13} /> },
-            ...(isUnavailable(environments.error)
-              ? []
-              : [{ value: "t3" as const, label: "T3 Code", icon: <Icon name="code" size={13} /> }]),
+            ...(t3Offered
+              ? [{ value: "t3" as const, label: "T3 Code", icon: <Icon name="code" size={13} /> }]
+              : []),
             { value: "mcp", label: "Another agent", icon: <Icon name="terminal" size={13} /> },
           ]}
         />
 
-        {choice === "t3" ? (
-          environments.data === undefined ? (
-            <Loading shape="rows" count={2} />
-          ) : environment === null ? (
-            <p className="flex flex-wrap items-center gap-x-2 text-xs text-on-surface-muted">
-              No T3 Code environment connected
-              <AppLink
-                href={paths.settings("t3")}
-                className="font-medium text-on-surface hover:underline"
-              >
-                Connect one
-              </AppLink>
+        {choice === "mcp" ? (
+          <div className="space-y-3">
+            <McpSetup />
+            <p className="text-xs text-on-surface-muted">
+              The agent starts work itself with its <code className="font-mono">start_work</code>{" "}
+              tool.
             </p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Environment">
+          </div>
+        ) : (
+          <>
+            {environments.data === undefined ? (
+              <Loading shape="rows" count={2} />
+            ) : environment === null ? (
+              <p className="flex flex-wrap items-center gap-x-2 text-xs text-on-surface-muted">
+                No T3 Code environment connected
+                <AppLink
+                  href={paths.settings("t3")}
+                  className="font-medium text-on-surface hover:underline"
+                >
+                  Connect one
+                </AppLink>
+              </p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Environment">
+                  {(control) => (
+                    <Select
+                      {...control}
+                      value={environment.id}
+                      onChange={(event) => {
+                        setEnvironmentId(event.target.value);
+                        setThreadId(NEW_THREAD);
+                        setProjectId("");
+                      }}
+                    >
+                      {connected.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+                {threads.data !== undefined ? (
+                  <Field label="Thread">
+                    {(control) => (
+                      <Select
+                        {...control}
+                        value={threadId}
+                        onChange={(event) => setThreadId(event.target.value)}
+                      >
+                        <option value={NEW_THREAD}>New thread</option>
+                        {threads.data.threads.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.projectName === null
+                              ? item.title
+                              : `${item.projectName}: ${item.title}`}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                ) : null}
+                {threads.data !== undefined && thread === null && projects.length > 0 ? (
+                  <Field label="Project">
+                    {(control) => (
+                      <Select
+                        {...control}
+                        value={projectId === "" ? projects[0]![0] : projectId}
+                        onChange={(event) => setProjectId(event.target.value)}
+                      >
+                        {projects.map(([id, label]) => (
+                          <option key={id} value={id}>
+                            {label}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                ) : null}
+              </div>
+            )}
+            <MarkdownEditor
+              label="Ask"
+              placeholder="What should change"
+              value={ask}
+              onChange={setAsk}
+              rows={7}
+              autoFocus
+              onSubmit={() => ready && start.mutate()}
+            />
+            <div className="grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)]">
+              <div className="space-y-1">
+                <span className="block text-xs font-medium text-on-surface">Start from</span>
+                <RefPicker
+                  repo={repo}
+                  value={base}
+                  branchesOnly
+                  label="base"
+                  onSelect={(picked) => setBase(picked)}
+                />
+              </div>
+              <Field
+                label="Branch"
+                error={
+                  start.error !== null && isRefExists(start.error) ? start.error.message : undefined
+                }
+              >
                 {(control) => (
-                  <Select
+                  <Input
                     {...control}
-                    value={environment.id}
+                    value={name}
+                    maxLength={255}
+                    spellCheck={false}
+                    autoComplete="off"
+                    className="font-mono"
                     onChange={(event) => {
-                      setEnvironmentId(event.target.value);
-                      setThreadId(NEW_THREAD);
-                      setProjectId("");
+                      setNamed(true);
+                      setBranch(event.target.value);
                     }}
-                  >
-                    {connected.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </Select>
+                  />
                 )}
               </Field>
-              {threads.data !== undefined ? (
-                <Field label="Thread">
-                  {(control) => (
-                    <Select
-                      {...control}
-                      value={threadId}
-                      onChange={(event) => setThreadId(event.target.value)}
-                    >
-                      <option value={NEW_THREAD}>New thread</option>
-                      {threads.data.threads.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.projectName === null
-                            ? item.title
-                            : `${item.projectName}: ${item.title}`}
-                        </option>
-                      ))}
-                    </Select>
-                  )}
-                </Field>
-              ) : null}
-              {threads.data !== undefined && thread === null && projects.length > 0 ? (
-                <Field label="Project">
-                  {(control) => (
-                    <Select
-                      {...control}
-                      value={projectId === "" ? projects[0]![0] : projectId}
-                      onChange={(event) => setProjectId(event.target.value)}
-                    >
-                      {projects.map(([id, label]) => (
-                        <option key={id} value={id}>
-                          {label}
-                        </option>
-                      ))}
-                    </Select>
-                  )}
-                </Field>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="submit" variant="primary" busy={start.isPending} disabled={!ready}>
+                Start work
+              </Button>
+              <ButtonLink href={paths.branches(repo)}>Cancel</ButtonLink>
+              {start.error !== null && !isRefExists(start.error) ? (
+                <InlineError error={start.error} />
               ) : null}
             </div>
-          )
-        ) : null}
-
-        {choice === "mcp" ? <McpSetup /> : null}
-
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="submit"
-            variant="primary"
-            busy={start.isPending}
-            disabled={ask.trim() === "" || !t3Ready}
-          >
-            Start work
-          </Button>
-          <ButtonLink href={paths.branches(repo)}>Cancel</ButtonLink>
-          {start.error !== null && !isRefExists(start.error) ? (
-            <InlineError error={start.error} />
-          ) : null}
-        </div>
+          </>
+        )}
       </form>
     </Page>
   );

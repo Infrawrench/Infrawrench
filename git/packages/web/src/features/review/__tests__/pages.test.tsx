@@ -473,23 +473,32 @@ describe("start work", () => {
   it("names the branch from the ask, offers the agents, and goes to the new branch's page", async () => {
     serve();
     const router = open("/acme/infra/start");
-    const ask = await screen.findByPlaceholderText("What should change", {}, wait);
+    await screen.findByPlaceholderText("What should change", {}, wait);
     const agents = screen.getAllByRole("radio").map((radio) => (radio as HTMLInputElement).value);
-    expect(agents).toEqual(["infrawrench", "t3", "mcp"]);
+    expect(agents).toEqual(["t3", "mcp"]);
     expect((screen.getAllByRole("radio")[0] as HTMLInputElement).checked).toBe(true);
-
-    fireEvent.click(screen.getByRole("radio", { name: /Another agent/ }));
-    expect(
-      screen.getByText(
-        "claude mcp add --transport http infrawrench-git https://git.infrawrench.com/mcp",
-      ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText("codex mcp add infrawrench-git --url https://git.infrawrench.com/mcp"),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole("radio", { name: /T3 Code/ }));
     expect(await screen.findByLabelText("Environment", {}, wait)).toBeTruthy();
-    fireEvent.click(screen.getByRole("radio", { name: /Infrawrench/ }));
+
+    // Another agent starts work itself: how to install the server, and nothing to submit.
+    fireEvent.click(screen.getByRole("radio", { name: /Another agent/ }));
+    for (const snippet of [
+      "claude mcp add --transport http infrawrench-git https://git.infrawrench.com/mcp",
+      "codex mcp add infrawrench-git --url https://git.infrawrench.com/mcp",
+      "codex mcp login infrawrench-git",
+    ]) {
+      expect(screen.getByText(snippet)).toBeTruthy();
+    }
+    expect(screen.getByText(/"url": "https:\/\/git\.infrawrench\.com\/mcp"/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy the Cursor configuration" })).toBeTruthy();
+    expect(screen.getByText("start_work")).toBeTruthy();
+    expect(screen.queryByPlaceholderText("What should change")).toBeNull();
+    expect(screen.queryByLabelText("Branch")).toBeNull();
+    expect(screen.queryByLabelText("Environment")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start work" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("radio", { name: /T3 Code/ }));
+    const ask = await screen.findByPlaceholderText("What should change", {}, wait);
+    expect(await screen.findByLabelText("Environment", {}, wait)).toBeTruthy();
 
     fireEvent.change(ask, { target: { value: "Tag every subnet with its tier" } });
     const branch = screen.getByLabelText("Branch") as HTMLInputElement;
