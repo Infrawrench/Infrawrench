@@ -32,7 +32,10 @@ export default defineMockHandlers({
     addCommitEmail: ({ payload }) => {
       const me = requireUser();
       const email = payload.email.trim().toLowerCase();
-      if (!session().organizations.some((org) => org.id === payload.organizationId)) {
+      if (
+        payload.organizationId !== null &&
+        !session().organizations.some((org) => org.id === payload.organizationId)
+      ) {
         throw mockError(403, "You are not a member of that organisation", "not_a_member");
       }
       if (!/^[^\s@,;]+@[^\s@,;.]+(\.[^\s@,;.]+)+$/.test(email)) {
@@ -46,7 +49,12 @@ export default defineMockHandlers({
         throw badRequest("That is the address on your account already", "email_invalid");
       }
       if (account !== undefined) {
-        throw conflict("That address belongs to another member of the organisation", "email_taken");
+        throw conflict(
+          payload.organizationId === null
+            ? "That address is on another person's account"
+            : "That address belongs to another member of the organisation",
+          "email_taken",
+        );
       }
       if (
         commitEmails.some(

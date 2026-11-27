@@ -1,19 +1,34 @@
 /**
- * The extra addresses the reader's commits carry in one organisation: a
- * commit with one is shown as theirs in that organisation's repositories,
- * once they have typed back the code mailed to it.
+ * The extra addresses the reader's commits carry in one place: an
+ * organisation (Settings > Organisations) or their own repositories
+ * (Settings > Profile). A commit with one is shown as theirs in that place's
+ * repositories, once they have typed back the code mailed to it.
  */
 import { useState, type FormEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { CommitEmail, SessionOrganization } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
-import { invalidate } from "../../api/queries";
+import { invalidate, queries } from "../../api/queries";
 import { Badge } from "../../components/Badge";
 import { Button } from "../../components/Button";
 import { Field, Input } from "../../components/forms";
 import { InlineError } from "../../components/states";
 
 const changed = () => invalidate("account", "listCommitEmails");
+
+/** The reader's commit emails, everywhere: each page keeps the ones of the place it shows. */
+export const useCommitEmails = (enabled: boolean) =>
+  useQuery({
+    ...queries.account.listCommitEmails(),
+    enabled,
+    // A code is mailed by the app a few seconds after it is asked for: look again until it has left.
+    refetchInterval: (query) =>
+      (query.state.data?.emails ?? []).some(
+        (email) => email.verifiedAt === null && email.codeSentAt === null,
+      )
+        ? 5_000
+        : false,
+  });
 
 function PendingEmail({ email }: { email: CommitEmail }) {
   const [code, setCode] = useState("");
@@ -97,28 +112,33 @@ export function CommitEmails({
   organization,
   emails,
 }: {
-  organization: SessionOrganization;
+  /** Null: the reader's own repositories. */
+  organization: SessionOrganization | null;
   emails: ReadonlyArray<CommitEmail>;
 }) {
   const [address, setAddress] = useState("");
   const add = useMutation({
     mutationFn: () =>
       api.account.addCommitEmail({
-        payload: { organizationId: organization.id, email: address.trim() },
+        payload: { organizationId: organization?.id ?? null, email: address.trim() },
       }),
     onSuccess: () => {
       setAddress("");
       return changed();
     },
   });
-  const title = `Commit emails in ${organization.name}`;
+  const place = organization?.name ?? "your own repositories";
+  const title = `Commit emails in ${place}`;
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (address.trim() !== "") add.mutate();
   };
   return (
     <section aria-label={title} className="space-y-1">
-      <h3 className="text-xs font-medium text-on-surface">{title}</h3>
+      {/* Profile's section is headed "Commit emails" already: under it, only where they count. */}
+      <h3 className="text-xs font-medium text-on-surface">
+        {organization === null ? "Your own repositories" : title}
+      </h3>
       {emails.length > 0 ? (
         <ul aria-label={title} className="divide-y divide-border">
           {emails.map((email) => (
@@ -127,7 +147,11 @@ export function CommitEmails({
         </ul>
       ) : null}
       <form onSubmit={submit} noValidate className="space-y-1 pt-1">
-        <Field label={`Add an address in ${organization.name}`}>
+        <Field
+          label={
+            organization === null ? `Add an address for ${place}` : `Add an address in ${place}`
+          }
+        >
           {(control) => (
             <div className="flex flex-wrap items-center gap-2">
               <Input

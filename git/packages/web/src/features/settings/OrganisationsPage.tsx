@@ -28,7 +28,7 @@ import { EmptyState, InlineError, Loading } from "../../components/states";
 import { useDebounced } from "../../lib/name-availability";
 import { paths } from "../../lib/paths";
 import { useSession } from "../../lib/session";
-import { CommitEmails } from "./CommitEmails";
+import { CommitEmails, useCommitEmails } from "./CommitEmails";
 
 const SITE_HOST = SITE_ORIGIN.replace(/^https?:\/\//, "");
 
@@ -219,17 +219,7 @@ function OrganisationRow({
 export function OrganisationsPage() {
   const session = useSession();
   const signedIn = session.data !== undefined && session.data.user !== null;
-  const commitEmails = useQuery({
-    ...queries.account.listCommitEmails(),
-    enabled: signedIn,
-    // A code is mailed by the app a few seconds after it is asked for: look again until it has left.
-    refetchInterval: (query) =>
-      (query.state.data?.emails ?? []).some(
-        (email) => email.verifiedAt === null && email.codeSentAt === null,
-      )
-        ? 5_000
-        : false,
-  });
+  const commitEmails = useCommitEmails(signedIn);
   if (session.data === undefined) return <Loading shape="rows" count={3} />;
   if (session.data.user === null) return null;
   const organizations = session.data.organizations;

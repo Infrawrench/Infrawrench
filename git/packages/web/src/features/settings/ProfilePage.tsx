@@ -16,6 +16,7 @@ import { RUNS_IN_NONE, runsInHint, runsInOrganizationId } from "../../lib/runs-i
 import { type SessionData, useSession } from "../../lib/session";
 import { UsernameCheckoutNotice, priceLabel } from "../onboarding/username-checkout";
 import { useGo } from "../../components/AppLink";
+import { CommitEmails, useCommitEmails } from "./CommitEmails";
 
 function UsernameForm({ current }: { current: string }) {
   const [username, setUsername] = useState(current);
@@ -235,6 +236,8 @@ export function ProfilePage({ returned }: { returned?: string | undefined } = {}
     ...queries.namespaces.get({ params: { namespace: username ?? "" } }),
     enabled: username !== null,
   });
+  // The ones for the reader's own repositories: an organisation's are on its row of Organisations.
+  const commitEmails = useCommitEmails(username !== null);
   if (user === null) return null;
   if (username === null) {
     return (
@@ -267,6 +270,16 @@ export function ProfilePage({ returned }: { returned?: string | undefined } = {}
           </div>
         </div>
       </SettingsSection>
+      {commitEmails.data === undefined ? null : (
+        <SettingsSection title="Commit emails">
+          <Panel className="px-3 py-3">
+            <CommitEmails
+              organization={null}
+              emails={commitEmails.data.emails.filter((email) => email.organizationId === null)}
+            />
+          </Panel>
+        </SettingsSection>
+      )}
       <SettingsSection title="Infrawrench account">
         <Panel className="divide-y divide-border">
           {session.data && session.data.organizations.length > 0 ? (
