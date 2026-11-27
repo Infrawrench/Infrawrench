@@ -479,6 +479,7 @@ export interface components {
         AlertDefCaseAutoResolveMode: "ALERT_DEF_CASE_AUTO_RESOLVE_MODE_UNSPECIFIED" | "ALERT_DEF_CASE_AUTO_RESOLVE_MODE_ENABLED" | "ALERT_DEF_CASE_AUTO_RESOLVE_MODE_DISABLED";
         AlertDefCaseDestination: {
             condition: string;
+            connectorConfigOverrides?: components["schemas"]["v3.ConnectorConfigField"][];
             connectorId: string;
             presetId?: string;
         };
@@ -488,10 +489,37 @@ export interface components {
         };
         /** @enum {string} */
         AlertDefCaseEnrichmentQueryType: "ALERT_DEF_CASE_ENRICHMENT_QUERY_TYPE_UNSPECIFIED" | "ALERT_DEF_CASE_ENRICHMENT_QUERY_TYPE_DATAPRIME";
+        AlertDefCaseKpis: {
+            thresholds?: components["schemas"]["AlertDefCaseKpiThreshold"][];
+        };
+        AlertDefCaseKpiThreshold: {
+            enabled?: boolean;
+            priority: components["schemas"]["AlertDefCasePriority"];
+            threshold: string;
+            type: components["schemas"]["AlertDefCaseKpiType"];
+        };
+        /** @enum {string} */
+        AlertDefCaseKpiType: "ALERT_DEF_CASE_KPI_TYPE_UNSPECIFIED" | "ALERT_DEF_CASE_KPI_TYPE_TIME_TO_ACKNOWLEDGE" | "ALERT_DEF_CASE_KPI_TYPE_TIME_TO_RESOLVE" | "ALERT_DEF_CASE_KPI_TYPE_TIME_TO_UPDATE";
+        /** @enum {string} */
+        AlertDefCasePriority: "ALERT_DEF_CASE_PRIORITY_UNSPECIFIED" | "ALERT_DEF_CASE_PRIORITY_P1" | "ALERT_DEF_CASE_PRIORITY_P2" | "ALERT_DEF_CASE_PRIORITY_P3" | "ALERT_DEF_CASE_PRIORITY_P4" | "ALERT_DEF_CASE_PRIORITY_P5";
+        AlertDefCasePriorityEscalation: {
+            enabled: boolean;
+            rules?: components["schemas"]["AlertDefCasePriorityEscalationRule"][];
+        };
+        AlertDefCasePriorityEscalationRule: {
+            fromPriority: components["schemas"]["AlertDefCasePriority"];
+            period: string;
+            toPriority: components["schemas"]["AlertDefCasePriority"];
+        };
         AlertDefCaseSettings: {
             autoResolveMode?: components["schemas"]["AlertDefCaseAutoResolveMode"];
             destinations?: components["schemas"]["AlertDefCaseDestination"][];
             enrichmentQueries?: components["schemas"]["AlertDefCaseEnrichmentQuery"][];
+            overrides?: components["schemas"]["AlertDefCaseSettingsOverrides"];
+        };
+        AlertDefCaseSettingsOverrides: {
+            kpi?: components["schemas"]["AlertDefCaseKpis"];
+            priorityEscalation?: components["schemas"]["AlertDefCasePriorityEscalation"];
         };
         AlertDefDataSource: {
             dataSet?: string;
@@ -554,7 +582,7 @@ export interface components {
         };
         AlertDefProperties: {
             activeOn?: components["schemas"]["ActivitySchedule"];
-            analyticsImmediate?: components["schemas"]["AnalyticsImmediateType"];
+            analyticsResultCount?: components["schemas"]["AnalyticsResultCountType"];
             analyticsThreshold?: components["schemas"]["AnalyticsThresholdType"];
             caseSettings?: components["schemas"]["AlertDefCaseSettings"];
             dataSources?: components["schemas"]["AlertDefDataSource"][];
@@ -601,7 +629,7 @@ export interface components {
             status?: components["schemas"]["AlertDefStatus"][];
         };
         /** @enum {string} */
-        AlertDefType: "ALERT_DEF_TYPE_LOGS_IMMEDIATE_OR_UNSPECIFIED" | "ALERT_DEF_TYPE_LOGS_THRESHOLD" | "ALERT_DEF_TYPE_LOGS_ANOMALY" | "ALERT_DEF_TYPE_LOGS_RATIO_THRESHOLD" | "ALERT_DEF_TYPE_LOGS_NEW_VALUE" | "ALERT_DEF_TYPE_LOGS_UNIQUE_COUNT" | "ALERT_DEF_TYPE_LOGS_TIME_RELATIVE_THRESHOLD" | "ALERT_DEF_TYPE_METRIC_THRESHOLD" | "ALERT_DEF_TYPE_METRIC_ANOMALY" | "ALERT_DEF_TYPE_TRACING_IMMEDIATE" | "ALERT_DEF_TYPE_TRACING_THRESHOLD" | "ALERT_DEF_TYPE_FLOW" | "ALERT_DEF_TYPE_SLO_THRESHOLD" | "ALERT_DEF_TYPE_ANALYTICS_IMMEDIATE" | "ALERT_DEF_TYPE_ANALYTICS_THRESHOLD";
+        AlertDefType: "ALERT_DEF_TYPE_LOGS_IMMEDIATE_OR_UNSPECIFIED" | "ALERT_DEF_TYPE_LOGS_THRESHOLD" | "ALERT_DEF_TYPE_LOGS_ANOMALY" | "ALERT_DEF_TYPE_LOGS_RATIO_THRESHOLD" | "ALERT_DEF_TYPE_LOGS_NEW_VALUE" | "ALERT_DEF_TYPE_LOGS_UNIQUE_COUNT" | "ALERT_DEF_TYPE_LOGS_TIME_RELATIVE_THRESHOLD" | "ALERT_DEF_TYPE_METRIC_THRESHOLD" | "ALERT_DEF_TYPE_METRIC_ANOMALY" | "ALERT_DEF_TYPE_TRACING_IMMEDIATE" | "ALERT_DEF_TYPE_TRACING_THRESHOLD" | "ALERT_DEF_TYPE_FLOW" | "ALERT_DEF_TYPE_SLO_THRESHOLD" | "ALERT_DEF_TYPE_ANALYTICS_RESULT_COUNT" | "ALERT_DEF_TYPE_ANALYTICS_THRESHOLD";
         AlertDefTypeFilter: {
             matcher?: components["schemas"]["alerts.v3.FilterMatcher"];
             type?: components["schemas"]["AlertDefType"][];
@@ -628,14 +656,26 @@ export interface components {
             keepBlockedLogs: boolean;
             rule: string;
         };
-        AnalyticsImmediateType: {
+        AnalyticsResultCountRule: {
+            condition?: components["schemas"]["AnalyticsResultCountRuleCondition"];
+            override: components["schemas"]["AlertDefOverride"];
+        };
+        AnalyticsResultCountRuleCondition: {
+            /** Format: int64 */
+            countThreshold?: number;
+            expression?: string;
+        };
+        AnalyticsResultCountType: {
             dataprimeQuery?: components["schemas"]["DataprimeAlertQuery"];
             /** Format: int32 */
             evaluationDelayMs?: number;
+            /** Format: int32 */
+            evaluationPeriodMinutes?: number;
             noDataPolicy?: components["schemas"]["NoDataPolicy"];
+            operator?: components["schemas"]["AnalyticsThresholdOperator"];
+            rules?: components["schemas"]["AnalyticsResultCountRule"][];
             /** Format: int32 */
             timeframeMinutes?: number;
-            useRowsAsPermutations?: boolean;
         };
         /** @enum {string} */
         AnalyticsThresholdOperator: "ANALYTICS_THRESHOLD_OPERATOR_MORE_THAN_OR_UNSPECIFIED" | "ANALYTICS_THRESHOLD_OPERATOR_LESS_THAN" | "ANALYTICS_THRESHOLD_OPERATOR_MORE_THAN_OR_EQUALS" | "ANALYTICS_THRESHOLD_OPERATOR_LESS_THAN_OR_EQUALS" | "ANALYTICS_THRESHOLD_OPERATOR_EQUALS" | "ANALYTICS_THRESHOLD_OPERATOR_NOT_EQUALS";
@@ -651,6 +691,8 @@ export interface components {
             dataprimeQuery?: components["schemas"]["DataprimeAlertQuery"];
             /** Format: int32 */
             evaluationDelayMs?: number;
+            /** Format: int32 */
+            evaluationPeriodMinutes?: number;
             noDataPolicy?: components["schemas"]["NoDataPolicy"];
             operator?: components["schemas"]["AnalyticsThresholdOperator"];
             rules?: components["schemas"]["AnalyticsThresholdRule"][];
@@ -1724,7 +1766,7 @@ export interface components {
     responses: never;
     parameters: {
         dashboard_id: string;
-        id_4: string;
+        id_5: string;
     };
     requestBodies: never;
     headers: never;
@@ -2476,7 +2518,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: components["parameters"]["id_4"];
+                id: components["parameters"]["id_5"];
             };
             cookie?: never;
         };
@@ -2497,7 +2539,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                id: components["parameters"]["id_4"];
+                id: components["parameters"]["id_5"];
             };
             cookie?: never;
         };
