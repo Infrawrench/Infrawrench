@@ -893,6 +893,7 @@ export interface components {
             hostname: string;
             id: string;
             is_multi_version: boolean;
+            kuberay_source?: components["schemas"]["WorkloadSource"] | null;
             name: string;
             primary_version: components["schemas"]["DecoratedProductionServiceV2VersionAPIModel"];
             project_id: string;
@@ -917,6 +918,8 @@ export interface components {
             creator: components["schemas"]["MiniUser"];
             creator_id: string;
             description?: string | null;
+            /** @default false */
+            has_verified_submitter?: boolean;
             healthcheck_url?: string | null;
             id: string;
             integration_details?: components["schemas"]["IntegrationDetails"] | null;
@@ -939,6 +942,7 @@ export interface components {
             /** @default false */
             secrets_masked?: boolean;
             source_job_id?: string | null;
+            source_workspace_id?: string | null;
             state: components["schemas"]["DecoratedProductionJobStateTransition"];
             status_updated_at?: string | null;
             token?: string | null;
@@ -976,6 +980,7 @@ export interface components {
             hostname: string;
             id: string;
             is_multi_version: boolean;
+            kuberay_source?: components["schemas"]["WorkloadSource"] | null;
             name: string;
             primary_version: components["schemas"]["DecoratedProductionServiceV2VersionAPIModel"];
             project_id: string;
@@ -996,6 +1001,7 @@ export interface components {
             current_weight?: number | null;
             global_target_capacity?: number | null;
             id: string;
+            last_updated_in_place_at?: string | null;
             placements?: components["schemas"]["ServiceVersionPlacement"][];
             production_job_ids: string[];
             ray_gcs_external_storage_config?: components["schemas"]["RayGCSExternalStorageConfig"] | null;
@@ -1116,6 +1122,8 @@ export interface components {
             restart_on_env_var_change?: boolean;
             snapshot_error_at?: string | null;
             snapshot_state?: components["schemas"]["WorkspaceSnapshotStates"] | null;
+            source_job_id?: string | null;
+            source_workspace_id?: string | null;
             state?: components["schemas"]["SessionState"] | null;
             template_url?: string | null;
             vscode_url?: string | null;
@@ -1189,6 +1197,8 @@ export interface components {
             created_at: string;
             creator_id: string;
             description?: string | null;
+            /** @default false */
+            has_verified_submitter?: boolean;
             healthcheck_url?: string | null;
             id: string;
             /** @default false */
@@ -1202,6 +1212,7 @@ export interface components {
             project_id: string;
             schedule_id?: string | null;
             source_job_id?: string | null;
+            source_workspace_id?: string | null;
             state: components["schemas"]["ProductionJobStateTransition"];
             status_updated_at?: string | null;
             token?: string | null;
@@ -1433,6 +1444,7 @@ export interface components {
             webhook_urls: string[];
         };
         Organization: {
+            created_at?: string | null;
             default_cloud_id?: string | null;
             endpoints_is_free_credit_used_up?: boolean | null;
             endpoints_metronome_customer_id?: string | null;
@@ -1846,6 +1858,8 @@ export interface components {
             /** @default false */
             use_spot?: boolean;
         };
+        /** @enum {string} */
+        WorkloadSource: "EXTERNAL" | "PLATFORM";
         /** @enum {string} */
         WorkspaceSnapshotStates: "SUCCESS" | "WARNING" | "ERROR" | "ERROR_SNAPSHOT_TIMEOUT" | "ERROR_SNAPSHOT_OVERSIZED" | "ERROR_OUT_OF_DISK_SPACE" | "ERROR_NFS_OUT_OF_DISK_SPACE" | "ERROR_WORKING_DIR_NOT_FOUND" | "ERROR_FILE_PERMISSION" | "ERROR_NFS_NOT_MOUNTED";
         WriteProject: {
