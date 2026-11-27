@@ -6,13 +6,14 @@ import type { UserRef } from "@infrawrench/git-contract";
 import type {
   AccessToken,
   Collaborator,
+  CommitEmail,
   DeployKey,
   OrganizationAccess,
   ProtectedBranch,
   UserKey,
 } from "@infrawrench/git-contract";
 import type { Mutable } from "./define";
-import { users, type RepositoryRecord } from "./db";
+import { ACME_ORG_ID, users, type RepositoryRecord } from "./db";
 
 export const hoursAgo = (hours: number): string =>
   new Date(Date.now() - hours * 3_600_000).toISOString();
@@ -241,3 +242,26 @@ const usedFingerprints = (): Set<string> => {
 };
 
 export const keyInUse = (fingerprint: string): boolean => usedFingerprints().has(fingerprint);
+
+/** The code the mock "mails": there is no mailbox to read one from. */
+export const MOCK_COMMIT_EMAIL_CODE = "ABCD-2345";
+
+/** The signed-in person's commit emails, by organisation. */
+export const commitEmails: Mutable<CommitEmail>[] = [
+  {
+    id: "cem_1",
+    organizationId: ACME_ORG_ID,
+    email: "mara@lindqvist.example",
+    verifiedAt: daysAgo(30),
+    codeSentAt: daysAgo(30),
+    createdAt: daysAgo(30),
+  },
+  {
+    id: "cem_2",
+    organizationId: ACME_ORG_ID,
+    email: "mara.lindqvist@harbour.example",
+    verifiedAt: null,
+    codeSentAt: hoursAgo(2),
+    createdAt: hoursAgo(2),
+  },
+];

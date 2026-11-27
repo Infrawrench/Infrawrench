@@ -2,6 +2,7 @@
  * The Infrawrench organisations the signed-in person belongs to, and the name
  * each has here. An administrator (`git:admin`) of one without a name claims
  * it on this page; the app's Settings > Git does the same and also renames.
+ * Under an organisation with a name, the reader's commit emails there.
  */
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -11,6 +12,7 @@ import {
   nameProblemMessage,
   namespaceSlugProblem,
   suggestSlug,
+  type CommitEmail,
   type SessionOrganization,
 } from "@infrawrench/git-contract";
 import { ApiError, api } from "../../api/client";
@@ -26,6 +28,7 @@ import { EmptyState, InlineError, Loading } from "../../components/states";
 import { useDebounced } from "../../lib/name-availability";
 import { paths } from "../../lib/paths";
 import { useSession } from "../../lib/session";
+import { CommitEmails } from "./CommitEmails";
 
 const SITE_HOST = SITE_ORIGIN.replace(/^https?:\/\//, "");
 
@@ -170,9 +173,12 @@ function Unclaimable({
 function OrganisationRow({
   organization,
   appUrl,
+  emails,
 }: {
   organization: SessionOrganization;
   appUrl: string;
+  /** The reader's commit emails there; undefined until they are known. */
+  emails: ReadonlyArray<CommitEmail> | undefined;
 }) {
   const slug = organization.namespace;
   return (
@@ -202,12 +208,28 @@ function OrganisationRow({
         ) : null}
       </div>
       {organization.canClaimNamespace ? <ClaimForm organization={organization} /> : null}
+      {/* An address counts in the organisation's repositories: one with no name has none. */}
+      {slug !== null && emails !== undefined ? (
+        <CommitEmails organization={organization} emails={emails} />
+      ) : null}
     </li>
   );
 }
 
 export function OrganisationsPage() {
   const session = useSession();
+  const signedIn = session.data !== undefined && session.data.user !== null;
+  const commitEmails = useQuery({
+    ...queries.account.listCommitEmails(),
+    enabled: signedIn,
+    // A code is mailed by the app a few seconds after it is asked for: look again until it has left.
+    refetchInterval: (query) =>
+      (query.state.data?.emails ?? []).some(
+        (email) => email.verifiedAt === null && email.codeSentAt === null,
+      )
+        ? 5_000
+        : false,
+  });
   if (session.data === undefined) return <Loading shape="rows" count={3} />;
   if (session.data.user === null) return null;
   const organizations = session.data.organizations;
@@ -237,6 +259,9 @@ export function OrganisationsPage() {
                 key={organization.id}
                 organization={organization}
                 appUrl={session.data.appUrl}
+                emails={commitEmails.data?.emails.filter(
+                  (email) => email.organizationId === organization.id,
+                )}
               />
             ))}
           </ul>

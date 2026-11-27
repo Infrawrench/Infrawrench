@@ -12,7 +12,7 @@ import {
   SuccessDescription,
 } from "../http/annotations";
 import { Authentication, RepositoryAccess } from "../http/auth";
-import { BadRequest, Conflict, NotFound, UnprocessableEntity } from "../http/errors";
+import { BadRequest, Conflict, Forbidden, NotFound, UnprocessableEntity } from "../http/errors";
 import { Ok, RepoParams } from "../schemas/common";
 import { UserRef } from "../schemas/people";
 import { CollaboratorRole } from "../schemas/repository";
@@ -21,6 +21,9 @@ import {
   AccessTokenCreate,
   AccessTokenCreated,
   Collaborator,
+  CommitEmail,
+  CommitEmailCreate,
+  CommitEmailVerify,
   DeployKey,
   DeployKeyCreate,
   OrganizationAccess,
@@ -172,8 +175,9 @@ export class DeployKeysGroup extends HttpApiGroup.make("deployKeys")
   .annotate(OpenApi.Title, "Deploy keys") {}
 
 /**
- * A person's own SSH keys and access tokens. Session only: a token cannot
- * mint or revoke credentials, its own included.
+ * A person's own SSH keys, access tokens and commit emails. Session only: a
+ * token cannot mint or revoke credentials, its own included, nor say which
+ * addresses are its person's.
  */
 export class AccountGroup extends HttpApiGroup.make("account")
   .add(
@@ -224,6 +228,58 @@ export class AccountGroup extends HttpApiGroup.make("account")
       .annotate(RequiresUser, true)
       .annotate(OpenApi.Summary, "Revoke an access token")
       .annotate(SuccessDescription, "Revoked"),
+    HttpApiEndpoint.get("listCommitEmails", "/commit-emails", {
+      success: Schema.Struct({ emails: Schema.Array(CommitEmail) }),
+    })
+      .annotate(RequiresUser, true)
+      .annotate(OpenApi.Summary, "The caller's commit emails")
+      .annotate(
+        OpenApi.Description,
+        "The extra addresses the caller's commits carry, in each organisation they are a member of. An address counts only in its organisation's repositories, and only once verified.",
+      )
+      .annotate(SuccessDescription, "Commit emails, the oldest first"),
+    HttpApiEndpoint.post("addCommitEmail", "/commit-emails", {
+      payload: CommitEmailCreate,
+      success: CommitEmail,
+      error: [BadRequest, Forbidden, Conflict],
+    })
+      .annotate(RequiresUser, true)
+      .annotate(OpenApi.Summary, "Add a commit email in an organisation")
+      .annotate(
+        OpenApi.Description,
+        "Mails a code to the address. 400 `email_invalid`; 403 `not_a_member`; 409 `email_taken` when it is another member's account address or one they have verified.",
+      )
+      .annotate(SuccessDescription, "The address, not yet verified"),
+    HttpApiEndpoint.post("sendCommitEmailCode", "/commit-emails/:emailId/send", {
+      params: { emailId: Schema.String },
+      success: CommitEmail,
+      error: [NotFound, Forbidden, Conflict],
+    })
+      .annotate(RequiresUser, true)
+      .annotate(OpenApi.Summary, "Mail another code")
+      .annotate(OpenApi.Description, "409 when one was asked for less than a minute ago.")
+      .annotate(SuccessDescription, "The address"),
+    HttpApiEndpoint.post("verifyCommitEmail", "/commit-emails/:emailId/verify", {
+      params: { emailId: Schema.String },
+      payload: CommitEmailVerify,
+      success: CommitEmail,
+      error: [BadRequest, NotFound, Forbidden, Conflict],
+    })
+      .annotate(RequiresUser, true)
+      .annotate(OpenApi.Summary, "Verify a commit email with its code")
+      .annotate(
+        OpenApi.Description,
+        "400 `code_invalid` for a wrong, expired or used code; a code works once, for a day and for five wrong tries.",
+      )
+      .annotate(SuccessDescription, "The address, verified"),
+    HttpApiEndpoint.delete("removeCommitEmail", "/commit-emails/:emailId", {
+      params: { emailId: Schema.String },
+      success: Ok,
+      error: NotFound,
+    })
+      .annotate(RequiresUser, true)
+      .annotate(OpenApi.Summary, "Remove a commit email")
+      .annotate(SuccessDescription, "Removed"),
   )
   .prefix("/api/user")
   .middleware(Authentication)

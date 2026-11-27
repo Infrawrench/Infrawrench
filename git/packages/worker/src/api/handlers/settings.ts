@@ -6,6 +6,7 @@
 import { eq } from "drizzle-orm";
 import { HttpApiBuilder } from "effect/http-api";
 import {
+  type CommitEmail,
   type ProtectedBranch,
   type ProtectedBranchCreate,
   type ProtectedBranchUpdate,
@@ -14,11 +15,21 @@ import {
   accessAtLeast,
   badRequest,
   conflict,
+  forbidden,
   notFound,
   ok,
   unprocessable,
 } from "@infrawrench/git-contract";
 import { organizationMembers, roles } from "@infrawrench/server-core/db/schema";
+import {
+  type GitCommitEmail,
+  type GitCommitEmailResult,
+  addGitCommitEmail,
+  listGitCommitEmails,
+  removeGitCommitEmail,
+  resendGitCommitEmail,
+  verifyGitCommitEmail,
+} from "@infrawrench/server-core/git/commit-emails";
 import { accessFromPermissions } from "../../auth/access";
 import { parsePublicKey, publicKeyProblemMessage } from "../../auth/ssh-keys";
 import { mintAccessToken, normalizeScopes } from "../../auth/tokens";
@@ -434,6 +445,26 @@ const tokenView = (row: AccessTokenRow) => ({
   lastUsedAt: isoOrNull(row.lastUsedAt),
 });
 
+const commitEmailView = (row: GitCommitEmail): CommitEmail => ({
+  id: row.id,
+  organizationId: row.organizationId,
+  email: row.email,
+  verifiedAt: isoOrNull(row.verifiedAt),
+  codeSentAt: isoOrNull(row.sentAt),
+  createdAt: iso(row.createdAt),
+});
+
+/** Server-core's answer as the API's: the address, or the refusal under its status. */
+const commitEmailOf = (result: GitCommitEmailResult): CommitEmail => {
+  if (result.ok) return commitEmailView(result.email);
+  const { status, code, message } = result.refusal;
+  const known = code === "not_found" || code === "too_soon" ? undefined : code;
+  if (status === 404) throw notFound(message);
+  if (status === 403) throw forbidden(message, known);
+  if (status === 409) throw conflict(message, known);
+  throw badRequest(message, known);
+};
+
 export const AccountHandlers = HttpApiBuilder.group(GitApi, "account", (handlers) =>
   handlers
     .handle(
@@ -481,6 +512,62 @@ export const AccountHandlers = HttpApiBuilder.group(GitApi, "account", (handlers
       "revokeToken",
       op(async (cx, { params }) => {
         if (!(await revokeAccessToken(cx.userId!, params.tokenId))) throw notFound("No such token");
+        return ok;
+      }),
+    )
+    .handle(
+      "listCommitEmails",
+      op(async (cx) => {
+        // Only the organisations the session lists: an address kept where the
+        // person is no longer a member is not shown, and counts for nothing.
+        const organizations = (await cx.viewer()).organizations.map(
+          (organization) => organization.id,
+        );
+        return {
+          emails: (await listGitCommitEmails(cx.userId!, organizations)).map(commitEmailView),
+        };
+      }),
+    )
+    .handle(
+      "addCommitEmail",
+      op(async (cx, { payload }) => {
+        const member = (await cx.viewer()).organizations.some(
+          (organization) => organization.id === payload.organizationId,
+        );
+        if (!member) throw forbidden("You are not a member of that organisation", "not_a_member");
+        return commitEmailOf(
+          await addGitCommitEmail({
+            organizationId: payload.organizationId,
+            userId: cx.userId!,
+            email: payload.email,
+          }),
+        );
+      }),
+    )
+    .handle(
+      "sendCommitEmailCode",
+      op(async (cx, { params }) =>
+        commitEmailOf(await resendGitCommitEmail({ id: params.emailId, userId: cx.userId! })),
+      ),
+    )
+    .handle(
+      "verifyCommitEmail",
+      op(async (cx, { params, payload }) =>
+        commitEmailOf(
+          await verifyGitCommitEmail({
+            id: params.emailId,
+            userId: cx.userId!,
+            code: payload.code,
+          }),
+        ),
+      ),
+    )
+    .handle(
+      "removeCommitEmail",
+      op(async (cx, { params }) => {
+        if (!(await removeGitCommitEmail({ id: params.emailId, userId: cx.userId! }))) {
+          throw notFound("No such address");
+        }
         return ok;
       }),
     ),

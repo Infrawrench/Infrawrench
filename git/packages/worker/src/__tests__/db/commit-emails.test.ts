@@ -1,0 +1,513 @@
+/**
+ * Who a commit's addresses are, against a real Postgres: the bot accounts,
+ * then the person whose account has the address, then the member who
+ * verified it in the repository's organisation (and nowhere else). And the
+ * way an address gets verified: asked for on the forge, mailed by the app's
+ * pass (server-core's `runGitCommitEmailPass`, called here as the poller
+ * calls it), typed back once, in time, by the person who asked.
+ */
+import { and, eq, inArray } from "drizzle-orm";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { CommitSummary } from "@infrawrench/git-contract";
+import { gitCommitEmails, organizationMembers } from "@infrawrench/server-core/db/schema";
+import {
+  GIT_COMMIT_EMAIL_CODE_ATTEMPTS,
+  GIT_COMMIT_EMAIL_CODE_TTL_MS,
+  GIT_COMMIT_EMAIL_LIMIT,
+  runGitCommitEmailPass,
+} from "@infrawrench/server-core/git/commit-emails";
+import type { EmailMessage } from "@infrawrench/server-core/email";
+import { commitDecorator } from "../../api/views/commits";
+import { db } from "../../db/client";
+import { type Person, type World, configured, makeWorld } from "./world";
+
+const commit = (
+  oid: string,
+  authorEmail: string,
+  options: { committer?: string; coAuthors?: Array<[string, string]> } = {},
+): CommitSummary => {
+  const signature = (name: string, email: string) => ({
+    name,
+    email,
+    when: "2026-11-27T00:00:00.000Z",
+    timezoneOffset: 0,
+  });
+  return {
+    oid: oid.repeat(40).slice(0, 40),
+    summary: "A change",
+    hasBody: false,
+    author: signature("As written", authorEmail),
+    committer: signature("As written", options.committer ?? authorEmail),
+    authorUser: null,
+    coAuthors: (options.coAuthors ?? []).map(([name, email]) => ({ name, email, user: null })),
+    parents: [],
+    status: null,
+  };
+};
+
+describe.skipIf(!configured)("commit emails", () => {
+  let world: World;
+  let ada: Person, ben: Person, cy: Person;
+  /** Signed in, no username: named nowhere, as with an account address. */
+  let nameless: Person;
+  let acme: { id: string; slug: string };
+  let other: { id: string; slug: string };
+  let inAcme: { id: string; path: string };
+  let inOther: { id: string; path: string };
+  let adasOwn: { id: string; path: string };
+  const address = (name: string) => `${name}-${world.suffix}@old.example.test`;
+
+  /** What the app's pass mailed, newest last. */
+  const outbox: EmailMessage[] = [];
+  const pass = (now?: Date) =>
+    runGitCommitEmailPass({
+      ...(now ? { now } : {}),
+      // This run's rows only: the database may hold another suite's.
+      send: async (message) => {
+        if (!message.to.includes(world.suffix)) return false;
+        outbox.push(message);
+        return true;
+      },
+    });
+  const codeFor = (email: string): string => {
+    const message = [...outbox].reverse().find((sent) => sent.to === email);
+    const code = /The code is ([A-Z0-9]{4}-[A-Z0-9]{4})/.exec(message?.text ?? "")?.[1];
+    if (!code) throw new Error(`No code was mailed to ${email}`);
+    return code;
+  };
+  const add = (as: Person, organizationId: string, email: string) =>
+    world.call("POST", "/api/user/commit-emails", { as, body: { organizationId, email } });
+  const verify = (as: Person, id: string, code: string) =>
+    world.call("POST", `/api/user/commit-emails/${id}/verify`, { as, body: { code } });
+  const list = async (as: Person): Promise<Array<Record<string, any>>> =>
+    (await world.call("GET", "/api/user/commit-emails", { as })).body.emails;
+  /** Add and verify in one go. */
+  const proved = async (as: Person, organizationId: string, email: string) => {
+    const added = await add(as, organizationId, email);
+    expect(added.status, JSON.stringify(added.body)).toBe(200);
+    await pass();
+    const done = await verify(as, added.body.id, codeFor(email));
+    expect(done.status, JSON.stringify(done.body)).toBe(200);
+    return added.body.id as string;
+  };
+  const who = async (repositoryId: string, email: string) =>
+    (await commitDecorator(repositoryId, [commit("a", email)], { statuses: false }))(
+      commit("a", email),
+    ).authorUser;
+
+  beforeAll(async () => {
+    world = makeWorld();
+    [ada, ben, cy] = (await Promise.all(
+      ["ada", "ben", "cy"].map((name) => world.person(name)),
+    )) as [Person, Person, Person];
+    nameless = await world.person("nameless", { username: false });
+    acme = await world.organization("acme", {
+      paid: true,
+      members: [
+        [ada, "owner"],
+        [ben, "member"],
+        [nameless, "member"],
+      ],
+    });
+    other = await world.organization("other", {
+      paid: true,
+      members: [
+        [ada, "owner"],
+        [cy, "member"],
+      ],
+    });
+    inAcme = await world.repository(ada, acme.slug, "infra");
+    inOther = await world.repository(ada, other.slug, "infra");
+    adasOwn = await world.repository(ada, ada.username, "notes");
+  });
+  afterAll(async () => {
+    if (!world) return;
+    await world.cleanup();
+  });
+
+  it("names the bot accounts whatever the commit wrote, with no person looked for", async () => {
+    const commits = [
+      commit("b", "NoReply@Anthropic.com", {
+        coAuthors: [
+          ["Cursor", "cursoragent@cursor.com"],
+          ["Ada", ada.email],
+        ],
+      }),
+      commit("c", ada.email, {
+        committer: "cursoragent@cursor.com",
+        coAuthors: [["Claude Opus 5.5", "noreply@anthropic.com"]],
+      }),
+    ];
+    const decorate = await commitDecorator(inAcme.id, commits, { statuses: false });
+    const first = decorate(commits[0]!);
+    expect(first.authorUser).toEqual({
+      id: "bot:claude",
+      username: "claude",
+      displayName: "Claude",
+      avatarUrl: "/assets/bots/claude-icon.svg",
+      kind: "bot",
+    });
+    expect(first.coAuthors.map((person) => person.user?.username)).toEqual([
+      "cursor",
+      ada.username,
+    ]);
+    expect(first.coAuthors[0]!.user?.kind).toBe("bot");
+    expect(decorate(commits[1]!).coAuthors[0]!.user?.displayName).toBe("Claude");
+    expect(decorate.user("CURSORAGENT@cursor.com")?.id).toBe("bot:cursor");
+    // The same in a person's own repository: a bot is sitewide.
+    expect((await who(adasOwn.id, "noreply@anthropic.com"))?.username).toBe("claude");
+  });
+
+  it("keeps the bots' usernames from a person and from an organisation", async () => {
+    const fresh = await world.person("fresh", { username: false });
+    for (const username of ["claude", "Cursor"]) {
+      const asked = await world.call(
+        "GET",
+        `/api/session/username-availability?username=${username}`,
+        { as: fresh },
+      );
+      expect(asked.body.available).toBe(false);
+      expect(asked.body.message).toBe("That name belongs to a bot account");
+      const claimed = await world.call("POST", "/api/session/username", {
+        as: fresh,
+        body: { username },
+      });
+      expect(claimed.status).toBe(400);
+    }
+    const unnamed = await world.organization("unnamed", {
+      paid: true,
+      members: [[ada, "owner"]],
+      namespace: false,
+    });
+    // A platform admin is let past `reserved`, never past a bot's name.
+    (
+      world.env as { INFRAWRENCH_PLATFORM_ADMIN_EMAILS?: string }
+    ).INFRAWRENCH_PLATFORM_ADMIN_EMAILS = ada.email;
+    const taken = await world.call("POST", `/api/orgs/${unnamed.id}/namespace`, {
+      as: ada,
+      body: { slug: "claude" },
+    });
+    delete (world.env as { INFRAWRENCH_PLATFORM_ADMIN_EMAILS?: string })
+      .INFRAWRENCH_PLATFORM_ADMIN_EMAILS;
+    expect(taken.status).toBe(400);
+    expect(taken.body.error).toBe("That name belongs to a bot account");
+  });
+
+  it("counts an address for nothing until its code is typed back", async () => {
+    const email = address("ada-pending");
+    const added = await add(ada, acme.id, ` ${email.toUpperCase()} `);
+    expect(added.status).toBe(200);
+    expect(added.body).toMatchObject({
+      organizationId: acme.id,
+      email,
+      verifiedAt: null,
+      codeSentAt: null,
+    });
+    expect(await who(inAcme.id, email)).toBeNull();
+    expect(await pass()).toBe(1);
+    // Mailed, and still nobody's.
+    expect(
+      (await list(ada)).find((row) => row["id"] === added.body.id)?.["codeSentAt"],
+    ).not.toBeNull();
+    expect(await who(inAcme.id, email)).toBeNull();
+    const message = outbox.at(-1)!;
+    expect(message.to).toBe(email);
+    expect(message.text).toContain(ada.email);
+    expect(message.text).toContain("acme");
+    // The pass does not mail the same request twice.
+    expect(await pass()).toBe(0);
+
+    const done = await verify(ada, added.body.id, codeFor(email).toLowerCase().replace("-", " "));
+    expect(done.status).toBe(200);
+    expect(done.body.verifiedAt).not.toBeNull();
+    expect((await who(inAcme.id, email.toUpperCase()))?.username).toBe(ada.username);
+  });
+
+  it("resolves an address in its organisation's repositories and nowhere else", async () => {
+    const email = address("ada-scoped");
+    await proved(ada, acme.id, email);
+    expect((await who(inAcme.id, email))?.username).toBe(ada.username);
+    // Ada is in the other organisation too, and owns the third repository: not there.
+    expect(await who(inOther.id, email)).toBeNull();
+    expect(await who(adasOwn.id, email)).toBeNull();
+
+    // Author, committer and co-author alike, and beside an account address.
+    const one = commit("d", ben.email, { committer: email, coAuthors: [["Old Ada", email]] });
+    const decorate = await commitDecorator(inAcme.id, [one], { statuses: false });
+    const seen = decorate({ ...one, committerUser: null } as CommitSummary) as CommitSummary & {
+      committerUser: { username: string } | null;
+    };
+    expect(seen.authorUser?.username).toBe(ben.username);
+    expect(seen.committerUser?.username).toBe(ada.username);
+    expect(seen.coAuthors[0]!.user?.username).toBe(ada.username);
+  });
+
+  it("lets the same address be someone else's in another organisation", async () => {
+    const email = address("shared");
+    await proved(ben, acme.id, email);
+    await proved(cy, other.id, email);
+    expect((await who(inAcme.id, email))?.username).toBe(ben.username);
+    expect((await who(inOther.id, email))?.username).toBe(cy.username);
+  });
+
+  it("puts the account's address before an alias", async () => {
+    // Cy is no member of Acme, so Ben may add Cy's address there and prove it.
+    const stolen = await add(ben, acme.id, cy.email);
+    expect(stolen.status).toBe(200);
+    await db
+      .update(gitCommitEmails)
+      .set({ verifiedAt: new Date() })
+      .where(eq(gitCommitEmails.id, stolen.body.id));
+    // The address is on Cy's account: it is Cy everywhere.
+    expect((await who(inAcme.id, cy.email))?.username).toBe(cy.username);
+    await world.call("DELETE", `/api/user/commit-emails/${stolen.body.id}`, { as: ben });
+  });
+
+  it("refuses an address that is another member's, a bot's or not an address", async () => {
+    const refused = async (as: Person, email: string) => {
+      const answer = await add(as, acme.id, email);
+      return [answer.status, answer.body.code, answer.body.error];
+    };
+    expect(await refused(ben, ada.email)).toEqual([
+      409,
+      "email_taken",
+      "That address belongs to another member of the organisation",
+    ]);
+    // Whatever its case, and a member with no username counts.
+    expect((await refused(ben, nameless.email.toUpperCase()))[0]).toBe(409);
+    const email = address("ada-held");
+    await proved(ada, acme.id, email);
+    expect((await refused(ben, email))[1]).toBe("email_taken");
+    expect(await refused(ada, email)).toEqual([
+      409,
+      "email_taken",
+      "You have added that address already",
+    ]);
+    expect(await refused(ben, ben.email)).toEqual([
+      400,
+      "email_invalid",
+      "That is the address on your account already",
+    ]);
+    for (const bot of ["noreply@anthropic.com", "CursorAgent@cursor.com"]) {
+      expect(await refused(ben, bot)).toEqual([
+        400,
+        "email_invalid",
+        "That address belongs to a bot account",
+      ]);
+    }
+    expect((await refused(ben, "not an address"))[1]).toBe("email_invalid");
+    // Not a member: nothing is added, whatever the address.
+    expect((await add(cy, acme.id, address("cy")))?.status).toBe(403);
+    // Signed out, and with a token: an account's addresses are set from a signed-in browser.
+    expect((await world.call("GET", "/api/user/commit-emails")).status).toBe(401);
+    expect(
+      (await world.call("GET", "/api/user/commit-emails", { as: ada, scopes: ["repo:write"] }))
+        .status,
+    ).toBe(403);
+  });
+
+  it("gives the address to whoever proves it first when two members ask", async () => {
+    const email = address("raced");
+    const [first, second] = [await add(ada, acme.id, email), await add(ben, acme.id, email)];
+    expect([first.status, second.status]).toEqual([200, 200]);
+    await pass();
+    // One message each, each with its own code.
+    const codes = outbox.filter((sent) => sent.to === email).map((sent) => sent.text);
+    expect(codes).toHaveLength(2);
+    expect((await verify(ben, second.body.id, codeFor(email))).status).toBe(200);
+    // Ada's code is whichever of the two is not Ben's: try both, neither gets her in.
+    for (const text of codes) {
+      const code = /The code is (\S+)/.exec(text)![1]!;
+      const answer = await verify(ada, first.body.id, code);
+      expect([400, 409]).toContain(answer.status);
+    }
+    expect((await who(inAcme.id, email))?.username).toBe(ben.username);
+  });
+
+  it("takes a code once, in time, for a few tries, from the person who asked", async () => {
+    const email = address("ben-code");
+    const added = await add(ben, acme.id, email);
+    const sentAt = new Date();
+    await pass(sentAt);
+    const code = codeFor(email);
+    // Somebody else with the code and the id: not theirs to verify.
+    expect((await verify(ada, added.body.id, code)).status).toBe(404);
+
+    // A wrong code says so, and is counted.
+    const wrong = await verify(ben, added.body.id, "AAAA-AAAA");
+    expect([wrong.status, wrong.body.code, wrong.body.error]).toEqual([
+      400,
+      "code_invalid",
+      "That code is not right",
+    ]);
+    for (let tries = 1; tries < GIT_COMMIT_EMAIL_CODE_ATTEMPTS; tries++) {
+      await verify(ben, added.body.id, "AAAA-AAAA");
+    }
+    // Now even the right one is refused: another must be sent.
+    const spent = await verify(ben, added.body.id, code);
+    expect([spent.status, spent.body.error]).toEqual([400, "Too many wrong codes. Send another"]);
+
+    // Asking again too soon is refused; a minute later another is mailed, and the old one is dead.
+    const soon = await world.call("POST", `/api/user/commit-emails/${added.body.id}/send`, {
+      as: ben,
+    });
+    expect(soon.status).toBe(409);
+    await db
+      .update(gitCommitEmails)
+      .set({
+        sendRequestedAt: new Date(Date.now() - 5 * 60_000),
+        sentAt: new Date(Date.now() - 5 * 60_000),
+      })
+      .where(eq(gitCommitEmails.id, added.body.id));
+    const again = await world.call("POST", `/api/user/commit-emails/${added.body.id}/send`, {
+      as: ben,
+    });
+    expect(again.status).toBe(200);
+    expect(await pass()).toBe(1);
+    const fresh = codeFor(email);
+    expect(fresh).not.toBe(code);
+    expect((await verify(ben, added.body.id, code)).status).toBe(400);
+
+    // Past its day, the fresh one is refused too.
+    await db
+      .update(gitCommitEmails)
+      .set({ codeExpiresAt: new Date(Date.now() - 1000) })
+      .where(eq(gitCommitEmails.id, added.body.id));
+    const late = await verify(ben, added.body.id, fresh);
+    expect([late.status, late.body.error]).toEqual([400, "That code has expired. Send another"]);
+    await db
+      .update(gitCommitEmails)
+      .set({ codeExpiresAt: new Date(Date.now() + GIT_COMMIT_EMAIL_CODE_TTL_MS) })
+      .where(eq(gitCommitEmails.id, added.body.id));
+
+    // In time it works, once: nothing of the code is kept, and using it again changes nothing.
+    expect((await verify(ben, added.body.id, fresh)).status).toBe(200);
+    const [row] = await db
+      .select()
+      .from(gitCommitEmails)
+      .where(eq(gitCommitEmails.id, added.body.id));
+    expect(row).toMatchObject({ codeHash: null, codeExpiresAt: null });
+    // The code was never stored, only its hash.
+    expect(JSON.stringify(row)).not.toContain(fresh.replace("-", ""));
+    const verifiedAt = row!.verifiedAt;
+    expect((await verify(ben, added.body.id, fresh)).status).toBe(200);
+    const [after] = await db
+      .select()
+      .from(gitCommitEmails)
+      .where(eq(gitCommitEmails.id, added.body.id));
+    expect(after!.verifiedAt).toEqual(verifiedAt);
+  });
+
+  it("gives a row back when the message does not leave, and stops trying after a while", async () => {
+    const email = address("ada-bounce");
+    const added = await add(ada, acme.id, email);
+    const failing = () =>
+      runGitCommitEmailPass({
+        send: async (message) => {
+          if (message.to !== email) return false;
+          throw new Error("the mail provider is down");
+        },
+      });
+    expect(await failing()).toBe(0);
+    const [row] = await db
+      .select()
+      .from(gitCommitEmails)
+      .where(eq(gitCommitEmails.id, added.body.id));
+    // Owed still, and no code that nobody received is good.
+    expect(row).toMatchObject({ sentAt: null, codeHash: null });
+    expect(await pass()).toBe(1);
+    expect(outbox.at(-1)!.to).toBe(email);
+
+    // A request the app could not send for a quarter of an hour is left for the person to repeat.
+    const stale = address("ada-stale");
+    const old = await add(ada, acme.id, stale);
+    await db
+      .update(gitCommitEmails)
+      .set({ sendRequestedAt: new Date(Date.now() - 20 * 60_000) })
+      .where(eq(gitCommitEmails.id, old.body.id));
+    expect(await pass()).toBe(0);
+  });
+
+  it("holds a member to a few addresses an organisation", async () => {
+    const before = (await list(cy)).length;
+    for (let n = before; n < GIT_COMMIT_EMAIL_LIMIT; n++) {
+      expect((await add(cy, other.id, address(`cy-${n}`))).status).toBe(200);
+    }
+    const over = await add(cy, other.id, address("cy-over"));
+    expect([over.status, over.body.error]).toEqual([
+      400,
+      `An organisation takes at most ${GIT_COMMIT_EMAIL_LIMIT} commit emails per member`,
+    ]);
+    // Removing one makes room, and only its owner removes it.
+    const mine = await list(cy);
+    expect(
+      (await world.call("DELETE", `/api/user/commit-emails/${mine[0]!["id"]}`, { as: ada })).status,
+    ).toBe(404);
+    expect(
+      (await world.call("DELETE", `/api/user/commit-emails/${mine[0]!["id"]}`, { as: cy })).status,
+    ).toBe(200);
+    expect((await add(cy, other.id, address("cy-over"))).status).toBe(200);
+  });
+
+  it("stops counting an address when its person leaves the organisation", async () => {
+    const leaver = await world.person("leaver");
+    await db.insert(organizationMembers).values({
+      id: `m-${world.suffix}`,
+      userId: leaver.id,
+      organizationId: acme.id,
+      role: "member",
+    });
+    const email = address("leaver");
+    const id = await proved(leaver, acme.id, email);
+    expect((await who(inAcme.id, email))?.username).toBe(leaver.username);
+
+    await db
+      .delete(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.userId, leaver.id),
+          eq(organizationMembers.organizationId, acme.id),
+        ),
+      );
+    // At once, with the row still there.
+    expect(await who(inAcme.id, email)).toBeNull();
+    expect(await list(leaver)).toEqual([]);
+    expect((await db.select().from(gitCommitEmails).where(eq(gitCommitEmails.id, id))).length).toBe(
+      1,
+    );
+    // And the address is free for a member: the row they left holds it for nobody.
+    await proved(ben, acme.id, email);
+    expect((await who(inAcme.id, email))?.username).toBe(ben.username);
+    // The pass removes what people who left kept.
+    const kept = await add(ada, acme.id, address("sweep-me"));
+    await db
+      .update(gitCommitEmails)
+      .set({ userId: leaver.id })
+      .where(eq(gitCommitEmails.id, kept.body.id));
+    await pass();
+    expect(
+      (
+        await db
+          .select()
+          .from(gitCommitEmails)
+          .where(inArray(gitCommitEmails.id, [id, kept.body.id]))
+      ).length,
+    ).toBe(0);
+  });
+
+  it("looks people up once a page, whatever its length", async () => {
+    const email = address("ada-page");
+    await proved(ada, acme.id, email);
+    const page = Array.from({ length: 50 }, (_, n) =>
+      commit(n.toString(16).padStart(2, "0"), n % 2 === 0 ? email : ben.email, {
+        coAuthors: [["Claude", "noreply@anthropic.com"]],
+      }),
+    );
+    const decorate = await commitDecorator(inAcme.id, page, { statuses: false });
+    const seen = page.map((one) => decorate(one));
+    expect(new Set(seen.map((one) => one.authorUser?.username))).toEqual(
+      new Set([ada.username, ben.username]),
+    );
+    expect(seen.every((one) => one.coAuthors[0]!.user?.kind === "bot")).toBe(true);
+  });
+});

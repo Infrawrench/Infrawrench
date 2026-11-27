@@ -83,7 +83,16 @@ const nameField = (row: ReturnType<typeof within>) =>
 describe("Settings > Organisations", () => {
   it("shows each organisation's name here, or who can give it one", async () => {
     const list = await open();
-    expect(list.getAllByRole("listitem")).toHaveLength(5);
+    // Its own rows: an organisation's commit emails are a list inside one.
+    expect(
+      list
+        .getAllByRole("listitem")
+        .filter(
+          (item) =>
+            item.parentElement?.parentElement === null ||
+            item.parentElement?.getAttribute("aria-label") === "Organisations",
+        ),
+    ).toHaveLength(5);
 
     const acme = rowOf(list, "Acme");
     expect(acme.getByRole("link", { name: "git.infrawrench.com/acme" }).getAttribute("href")).toBe(
@@ -92,7 +101,7 @@ describe("Settings > Organisations", () => {
     expect(acme.getByRole("link", { name: "Create a repository" }).getAttribute("href")).toBe(
       "/new?owner=acme",
     );
-    expect(acme.queryByRole("textbox")).toBeNull();
+    expect(acme.queryByRole("textbox", { name: /^Name for/ })).toBeNull();
 
     // Not an administrator there: nothing to fill in.
     const harbour = rowOf(list, "Harbour Works");
@@ -205,7 +214,9 @@ describe("Settings > Organisations", () => {
     const link = await list.findByRole("link", { name: "git.infrawrench.com/northwind" }, wait);
     expect(link.getAttribute("href")).toBe("/northwind");
     const claimed = rowOf(list, "Northwind Labs");
-    expect(claimed.queryByRole("textbox")).toBeNull();
+    expect(claimed.queryByRole("textbox", { name: /^Name for/ })).toBeNull();
+    // With a name it has repositories, so the reader's commit emails there are asked for.
+    expect(claimed.getByRole("region", { name: "Commit emails in Northwind Labs" })).toBeTruthy();
     expect(claimed.getByRole("link", { name: "Create a repository" }).getAttribute("href")).toBe(
       "/new?owner=northwind",
     );
@@ -214,5 +225,88 @@ describe("Settings > Organisations", () => {
     fireEvent.click(screen.getByRole("button", { name: /^Workspace: / }));
     expect(await screen.findByRole("menuitemradio", { name: "Northwind Labs" }, wait)).toBeTruthy();
     expect(screen.queryByRole("menuitem", { name: "Add an organisation" })).toBeNull();
+  });
+
+  it("lists the reader's commit emails under each organisation with a name", async () => {
+    const list = await open();
+    const acme = within(await list.findByRole("region", { name: "Commit emails in Acme" }, wait));
+    const rows = within(acme.getByRole("list", { name: "Commit emails in Acme" }));
+    const [verified, pending] = rows.getAllByRole("listitem");
+    expect(verified!.textContent).toContain("mara@lindqvist.example");
+    expect(within(verified!).getByText("Verified")).toBeTruthy();
+    expect(within(verified!).queryByRole("textbox")).toBeNull();
+    expect(pending!.textContent).toContain("mara.lindqvist@harbour.example");
+    expect(within(pending!).getByText("Pending")).toBeTruthy();
+    expect(
+      within(pending!).getByRole("textbox", {
+        name: "Code sent to mara.lindqvist@harbour.example",
+      }),
+    ).toBeTruthy();
+    // Tidewater has a name and none yet; one without a name is not asked.
+    const tidewater = within(list.getByRole("region", { name: "Commit emails in Tidewater" }));
+    expect(tidewater.queryByRole("list")).toBeNull();
+    expect(tidewater.getByRole("textbox", { name: "Add an address in Tidewater" })).toBeTruthy();
+    expect(list.queryByRole("region", { name: "Commit emails in Harbour Works" })).toBeNull();
+    expect(list.queryByRole("region", { name: "Commit emails in Saltmarsh Studio" })).toBeNull();
+  });
+
+  it("verifies a pending address with its code, and says when the code is wrong", async () => {
+    const list = await open();
+    const acme = within(await list.findByRole("region", { name: "Commit emails in Acme" }, wait));
+    const field = () =>
+      acme.getByRole("textbox", { name: "Code sent to mara.lindqvist@harbour.example" });
+    fireEvent.change(field(), { target: { value: "WXYZ-9999" } });
+    fireEvent.click(acme.getByRole("button", { name: "Verify" }));
+    expect((await acme.findByRole("alert", undefined, wait)).textContent).toBe(
+      "That code is not right",
+    );
+    // As the message shows it or not: any case, with or without the dash.
+    fireEvent.change(field(), { target: { value: "abcd2345" } });
+    fireEvent.click(acme.getByRole("button", { name: "Verify" }));
+    await waitFor(() => expect(acme.getAllByText("Verified")).toHaveLength(2), wait);
+    expect(acme.queryByText("Pending")).toBeNull();
+    expect(acme.queryByRole("button", { name: "Verify" })).toBeNull();
+  });
+
+  it("adds an address, which waits for its code, and removes one", async () => {
+    const list = await open();
+    const tidewater = within(
+      await list.findByRole("region", { name: "Commit emails in Tidewater" }, wait),
+    );
+    const input = tidewater.getByRole("textbox", { name: "Add an address in Tidewater" });
+    const addButton = tidewater.getByRole("button", { name: "Add" }) as HTMLButtonElement;
+    expect(addButton.disabled).toBe(true);
+
+    // Another member's address, and a bot's, are refused in a sentence.
+    fireEvent.change(input, { target: { value: "jonas@acme.example" } });
+    fireEvent.click(addButton);
+    expect((await tidewater.findByRole("alert", undefined, wait)).textContent).toBe(
+      "That address belongs to another member of the organisation",
+    );
+    fireEvent.change(input, { target: { value: "noreply@anthropic.com" } });
+    fireEvent.click(addButton);
+    expect(
+      await tidewater.findByText("That address belongs to a bot account", undefined, wait),
+    ).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "Mara@Old.Example" } });
+    fireEvent.click(addButton);
+    const added = await tidewater.findByRole(
+      "textbox",
+      { name: "Code sent to mara@old.example" },
+      wait,
+    );
+    expect(added).toBeTruthy();
+    expect(tidewater.getByText("Pending")).toBeTruthy();
+    expect((input as HTMLInputElement).value).toBe("");
+    // The same address is its own in another organisation: Acme's list is as it was.
+    expect(
+      within(list.getByRole("region", { name: "Commit emails in Acme" })).queryByText(
+        "mara@old.example",
+      ),
+    ).toBeNull();
+
+    fireEvent.click(tidewater.getByRole("button", { name: "Remove mara@old.example" }));
+    await waitFor(() => expect(tidewater.queryByText("mara@old.example")).toBeNull(), wait);
   });
 });

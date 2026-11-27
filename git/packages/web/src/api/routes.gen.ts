@@ -194,6 +194,11 @@ export const API_ROUTES = {
     listTokens: ["GET", "/api/user/tokens"],
     createToken: ["POST", "/api/user/tokens"],
     revokeToken: ["DELETE", "/api/user/tokens/:tokenId"],
+    listCommitEmails: ["GET", "/api/user/commit-emails"],
+    addCommitEmail: ["POST", "/api/user/commit-emails"],
+    sendCommitEmailCode: ["POST", "/api/user/commit-emails/:emailId/send"],
+    verifyCommitEmail: ["POST", "/api/user/commit-emails/:emailId/verify"],
+    removeCommitEmail: ["DELETE", "/api/user/commit-emails/:emailId"],
   },
   statuses: {
     forRef: ["GET", "/api/repos/:owner/:repo/statuses"],

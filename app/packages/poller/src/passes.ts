@@ -23,6 +23,7 @@
 import { runCiStatusPass, runCiUpkeepPass } from "@infrawrench/server-core/ci/pass";
 import { runCiCloudPass } from "@infrawrench/server-core/ci/cloud-jobs";
 import { runGitStoragePass } from "@infrawrench/server-core/git/billing";
+import { runGitCommitEmailPass } from "@infrawrench/server-core/git/commit-emails";
 import { runGitTerraformPass } from "@infrawrench/server-core/git-terraform/pass";
 import { eq } from "drizzle-orm";
 import { nextCronOccurrence } from "@infrawrench/client-core";
@@ -655,6 +656,18 @@ export const PASSES: readonly Pass[] = [
     name: "git-storage",
     runtime: "edge",
     run: guarded("[git] storage metering failed:", () => runGitStoragePass()),
+  },
+  // git.infrawrench.com's commit emails: mail the code for each address a
+  // member asked to add (the forge's Worker holds no mail key, so it only
+  // asks), and drop the addresses of people who have left their
+  // organisation. Postgres and Mailgun only.
+  {
+    kind: "periodic",
+    name: "git-commit-emails",
+    runtime: "edge",
+    run: guarded("[git] commit email codes failed:", async () => {
+      await runGitCommitEmailPass();
+    }),
   },
 
   // Retention: idempotent prunes, at most hourly.

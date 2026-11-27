@@ -95,6 +95,13 @@ vi.mock("@infrawrench/server-core/trials/pass", () => ({
   runTrialExpiryPass: () => Promise.resolve({ due: 0, destroyed: 0, failed: 0 }),
 }));
 
+// The forge's commit emails read their columns at module scope, which the
+// schema mock above does not carry; the pass is driven against a real
+// database by the forge's own suite (`git/packages/worker`, `commit-emails`).
+vi.mock("@infrawrench/server-core/git/commit-emails", () => ({
+  runGitCommitEmailPass: () => Promise.resolve(0),
+}));
+
 // The analytics prune issues DELETEs this suite has no database for.
 const pruneAnalytics = vi.fn();
 vi.mock("@infrawrench/server-core/analytics/retention", () => ({

@@ -190,3 +190,37 @@ export const AccessTokenCreated = Schema.Struct({
   }),
 }).annotate({ identifier: "AccessTokenCreated" });
 export type AccessTokenCreated = typeof AccessTokenCreated.Type;
+
+/**
+ * An extra address a member's commits carry in one organisation: in that
+ * organisation's repositories a commit with it is shown as theirs, once they
+ * have proved the address with the code mailed to it.
+ */
+export const CommitEmail = Schema.Struct({
+  id: Schema.String,
+  organizationId: Schema.String,
+  email: Schema.String.annotate({ description: "Lowercased." }),
+  verifiedAt: Schema.NullOr(IsoDateTime).annotate({
+    description: "Null until the code is entered: the address counts for nothing before.",
+  }),
+  codeSentAt: Schema.NullOr(IsoDateTime).annotate({
+    description: "When a code was last mailed. Null while the first is on its way.",
+  }),
+  createdAt: IsoDateTime,
+}).annotate({ identifier: "CommitEmail" });
+export type CommitEmail = typeof CommitEmail.Type;
+
+export const CommitEmailCreate = Schema.Struct({
+  organizationId: Schema.String.annotate({
+    description: "An organisation the caller is a member of.",
+  }),
+  email: Schema.String.check(Schema.isMaxLength(320)),
+}).annotate({ identifier: "CommitEmailCreate" });
+export type CommitEmailCreate = typeof CommitEmailCreate.Type;
+
+export const CommitEmailVerify = Schema.Struct({
+  code: Schema.String.check(Schema.isMaxLength(32)).annotate({
+    description: "The code from the message, in any case, with or without its dash.",
+  }),
+}).annotate({ identifier: "CommitEmailVerify" });
+export type CommitEmailVerify = typeof CommitEmailVerify.Type;

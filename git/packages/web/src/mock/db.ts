@@ -62,7 +62,7 @@ export function setScenario(next: MockScenario): void {
 }
 
 export const APP_URL = "https://app.infrawrench.com";
-const ACME_ORG_ID = "org_acme";
+export const ACME_ORG_ID = "org_acme";
 const TIDEWATER_ORG_ID = "org_tidewater";
 
 const me = FIXTURE_PEOPLE["mara@acme.example"]!;

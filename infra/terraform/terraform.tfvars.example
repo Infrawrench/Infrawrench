@@ -192,8 +192,10 @@ app_env = {
   # PROVIDER_OAUTH_VERCEL_CLIENT_SECRET = "..."
 
   # Optional: transactional email via Mailgun — the weekly digest's email
-  # recipients, scheduled report deliveries, and sending a managed account's
-  # invoice to the customer with its CSV attached. The first three are required
+  # recipients, scheduled report deliveries, sending a managed account's
+  # invoice to the customer with its CSV attached, and the code that verifies
+  # a commit email on git.infrawrench.com (the poller sends it; without these
+  # keys a commit email stays Pending for ever). The first three are required
   # together — with any missing, email delivery is a logged no-op: the digest
   # still reaches Slack and Teams, and sending an invoice still records who
   # released it but reports a failed delivery rather than claiming the customer

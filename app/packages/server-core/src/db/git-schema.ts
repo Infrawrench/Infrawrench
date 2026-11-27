@@ -145,6 +145,57 @@ export const gitUsers = pgTable("git_users", {
 });
 
 /**
+ * An extra address a member's commits carry in one organisation
+ * (`git/commit-emails.ts`): in that organisation's repositories a commit
+ * with it is shown as theirs. Never sitewide, and it counts only while
+ * `verifiedAt` is set and the person is still a member.
+ *
+ * The person proves the address is theirs with a code mailed to it. The
+ * forge only asks (`sendRequestedAt`); the app's poller makes the code, keeps
+ * its hash here and sends it (`sentAt`), because the forge's Worker holds no
+ * mail key. The code is good until `codeExpiresAt`, for a few tries
+ * (`codeAttempts`), once.
+ */
+export const gitCommitEmails = pgTable(
+  "git_commit_emails",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Lowercased. */
+    email: text("email").notNull(),
+    verifiedAt: timestamp("verified_at"),
+    /** SHA-256 of the row's id and the code, hex. Null until one is sent and once it is used. */
+    codeHash: text("code_hash"),
+    codeExpiresAt: timestamp("code_expires_at"),
+    /** Wrong codes tried against the current one. */
+    codeAttempts: integer("code_attempts").notNull().default(0),
+    /** When the person last asked for a code. */
+    sendRequestedAt: timestamp("send_requested_at"),
+    /** When the app last took the request to send; before `sendRequestedAt` means one is owed. */
+    sentAt: timestamp("sent_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    /** One row per person and address in an organisation. */
+    ownIdx: uniqueIndex("git_commit_emails_own_idx").on(t.organizationId, t.userId, t.email),
+    /** An address is one member's in an organisation, once it is proved. */
+    verifiedIdx: uniqueIndex("git_commit_emails_verified_idx")
+      .on(t.organizationId, t.email)
+      .where(sql`${t.verifiedAt} IS NOT NULL`),
+    /** The poller's question: which rows are owed a code. */
+    owedIdx: index("git_commit_emails_owed_idx")
+      .on(t.sendRequestedAt)
+      .where(sql`${t.verifiedAt} IS NULL AND ${t.sendRequestedAt} IS NOT NULL`),
+    userIdx: index("git_commit_emails_user_idx").on(t.userId),
+  }),
+);
+
+/**
  * A short username kept for the person who is paying for it
  * (`git/short-usernames.ts`). One per person and one per name. It counts only
  * until `expiresAt`: nothing sweeps it, an expired row is simply not a hold,
