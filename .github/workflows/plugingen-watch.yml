@@ -14,6 +14,14 @@
 #     or unreadable): one `bug` issue, closed once the check passes again.
 #   - network failure: a warning in the job summary and nothing else.
 #
+# Where it writes is the repository variable PLUGINGEN_TARGET: `github` (the default,
+# as above) or `forge`, for when git.infrawrench.com holds the repository and this one
+# is its push mirror. On the forge a branch needs no pull request: its first push opens
+# its page, so the watcher pushes `plugingen/<plugin>` there, gives the page its title
+# and description, and deletes the branch where it would have closed a pull request.
+# Issues are opened and closed there too. The job stays here either way, because the
+# mirror carries this file and the schedule with it.
+#
 # Vendor documents are untrusted input. Nothing in this file interpolates anything
 # from them, and the token below only reaches the step that needs it, after the
 # install has run. KNOWLEDGE.md ("plugingen") has what the code does about the rest.
@@ -29,10 +37,14 @@ concurrency:
   group: plugingen-watch
   cancel-in-progress: false
 
-# Everything written goes through the App token below, because a pull request
-# opened with GITHUB_TOKEN does not trigger CI.
+# Everything written on GitHub goes through the App token below, because a pull
+# request opened with GITHUB_TOKEN does not trigger CI. With the forge as the target
+# nothing is written here at all: no App token is made, and this is all the job holds.
 permissions:
   contents: read
+
+env:
+  PLUGINGEN_TARGET: ${{ vars.PLUGINGEN_TARGET || 'github' }}
 
 jobs:
   watch:
@@ -41,10 +53,20 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # Where the SDK_PUBLISHER_APP_* secrets live. It has no protection rules, so a
+    # Where the SDK_PUBLISHER_APP_* secrets live, and PLUGINGEN_FORGE_TOKEN if it is
+    # kept there rather than on the repository. It has no protection rules, so a
     # scheduled run does not wait for anyone.
     environment: release
     steps:
+      # With the forge as the target this is still the checkout to use. This
+      # repository is then the forge's mirror: its `main` is the forge's `main`
+      # seconds after every push there, and every commit here came from there, so
+      # the forge has the parent of anything pushed from this checkout. The one gap
+      # is a run that starts inside those seconds, right after a watcher branch was
+      # merged: it would compare against the `main` before the merge and push the
+      # same change again, which the next run closes. Pushes go to the forge by its
+      # address and never to `origin`: the mirror overwrites this repository, so a
+      # branch that existed only here would be deleted by the next sync.
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # plugingen pushes with its own credential helper, so that nothing the
@@ -63,6 +85,7 @@ jobs:
       # App lacks one. With no owner or repositories, it is scoped to this repository.
       - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
         id: app-token
+        if: env.PLUGINGEN_TARGET != 'forge'
         continue-on-error: true
         with:
           app-id: ${{ secrets.SDK_PUBLISHER_APP_ID }}
@@ -72,15 +95,25 @@ jobs:
           permission-issues: write
 
       - name: Explain a missing token
-        if: steps.app-token.outcome != 'success'
+        if: env.PLUGINGEN_TARGET != 'forge' && steps.app-token.outcome != 'success'
         run: |
           echo "::error::Could not get a token from the SDK publisher GitHub App. The watcher needs that App installed on this repository with Contents, Pull requests and Issues write access, and SDK_PUBLISHER_APP_ID and SDK_PUBLISHER_APP_PRIVATE_KEY set in the release environment. The step above has the API's own message."
           exit 1
 
       # Called directly rather than through `pnpm plugingen`, which would also check
-      # the install. The summary and annotations come from plugingen itself.
+      # the install. The summary and annotations come from plugingen itself, and so
+      # does the error for a target it does not know or a forge token that is not set.
+      #
+      # The forge's token is a personal access token (`iwg_`, scope `repo:write`) of
+      # an account that can write to the repository there. It only reaches this step,
+      # and only when the forge is the target; plugingen hands it to `git` through a
+      # credential helper that reads this variable, so it is never on a command line
+      # or in .git/config. GH_TOKEN is empty when the forge is the target.
       - name: Watch
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
+          PLUGINGEN_FORGE_URL: ${{ vars.PLUGINGEN_FORGE_URL || 'https://git.infrawrench.com' }}
+          PLUGINGEN_FORGE_REPOSITORY: ${{ vars.PLUGINGEN_FORGE_REPOSITORY || 'Infrawrench/Infrawrench' }}
+          PLUGINGEN_FORGE_TOKEN: ${{ vars.PLUGINGEN_TARGET == 'forge' && secrets.PLUGINGEN_FORGE_TOKEN || '' }}
         run: node plugingen/bin/plugingen.mjs watch --apply

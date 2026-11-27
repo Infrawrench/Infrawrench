@@ -27,6 +27,21 @@ export function pluginOfIssueTitle(title: string): string | undefined {
 
 export const ISSUE_SEARCH = `"${ISSUE_TITLE_SUFFIX}" in:title`;
 
+/** The same search as plain words, for a tracker that matches each word on its own. */
+export const ISSUE_SEARCH_WORDS = "plugingen checked vendor document";
+
+/**
+ * Where a plugin's change is shown. On GitHub that is a pull request the watcher opens.
+ * On the forge every branch has a page from its first push, so there is nothing to open:
+ * the branch is the change, and deleting it is what withdraws it.
+ */
+export type ChangeForm = "pull-request" | "branch-page";
+
+/** What a plan, a log line and a body call it. */
+export function changeNoun(form: ChangeForm): string {
+  return form === "branch-page" ? "branch page" : "pull request";
+}
+
 export function pullRequestTitle(plugin: string): string {
   return `chore(${plugin}): update generated API types`;
 }
@@ -43,19 +58,33 @@ function listOperations(operations: readonly string[]): string {
   return shown.join("\n");
 }
 
-function renderTypecheck(plugin: string, typecheck: TypecheckResult): string {
+function renderTypecheck(plugin: string, typecheck: TypecheckResult, form: ChangeForm): string {
   switch (typecheck.state) {
     case "passed":
       return `The plugin compiles against these types.`;
     case "failed":
-      return `**The plugin does not compile against these types.** This is the case this pull request exists for: the vendor changed something ${codeSpan(plugin)} depends on, so the plugin needs a fix on this branch before it can merge.\n\n${fenced(typecheck.output)}`;
+      return `**The plugin does not compile against these types.** This is the case this ${changeNoun(form)} exists for: the vendor changed something ${codeSpan(plugin)} depends on, so the plugin needs a fix on this branch before it can merge.\n\n${fenced(typecheck.output)}`;
     case "not-run":
       return `The typecheck did not run: ${oneLine(typecheck.reason)}`;
   }
 }
 
-/** The body is data: vendor-derived text only appears inside code spans and fences. */
-export function renderPullRequestBody(report: CheckReport, typecheck: TypecheckResult): string {
+const FOOTER: Record<ChangeForm, string> = {
+  "pull-request":
+    "Opened by `plugingen watch`, which keeps one pull request per plugin. It rewrites this description and, when the vendor's output moves again, force-pushes this branch, dropping any commits on it. It closes the pull request if the output matches `main` again. Closing it by hand only lasts until the next run, since the difference is still there; to accept the vendor's change, merge it.",
+  "branch-page":
+    "Written by `plugingen watch`, which keeps one branch per plugin. It rewrites this description and, when the vendor's output moves again, force-pushes this branch, dropping any commits on it. It closes this page and deletes the branch if the output matches `main` again. Closing the page by hand only lasts until the next run, since the difference is still there; to accept the vendor's change, merge it.",
+};
+
+/**
+ * The body is data: vendor-derived text only appears inside code spans and fences. One
+ * function for both forms, so a guard added here holds wherever the body is posted.
+ */
+export function renderPullRequestBody(
+  report: CheckReport,
+  typecheck: TypecheckResult,
+  form: ChangeForm = "pull-request",
+): string {
   return `The generated API types for ${codeSpan(report.plugin)} no longer match the vendor's document. They only cover the operations this plugin lists, so this is something the plugin actually uses.
 
 ## Vendor documents
@@ -68,11 +97,11 @@ ${listOperations(report.operations ?? [])}
 
 ## Typecheck
 
-${renderTypecheck(report.plugin, typecheck)}
+${renderTypecheck(report.plugin, typecheck, form)}
 
 ---
 
-Opened by \`plugingen watch\`, which keeps one pull request per plugin. It rewrites this description and, when the vendor's output moves again, force-pushes this branch, dropping any commits on it. It closes the pull request if the output matches \`main\` again. Closing it by hand only lasts until the next run, since the difference is still there; to accept the vendor's change, merge it.`;
+${FOOTER[form]}`;
 }
 
 export function renderIssueBody(report: CheckReport): string {

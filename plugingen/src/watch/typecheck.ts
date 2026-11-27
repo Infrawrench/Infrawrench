@@ -39,14 +39,19 @@ function packageName(root: string, plugin: string): string | undefined {
 
 /**
  * Compiles the plugin against the fresh types and puts the committed files back. Turbo
- * builds what the plugin depends on first. The child gets no GitHub token: nothing here
+ * builds what the plugin depends on first. The child gets no token, GitHub's or the forge's: nothing here
  * runs a vendor's text, but it also has no reason to hold one.
  */
 export function createTypecheck(root: string): Typecheck {
   return async (plugin, files) => {
     const name = packageName(root, plugin);
     if (!name) return { state: "not-run", reason: "the plugin's package.json has no name" };
-    const { GH_TOKEN: _gh, GITHUB_TOKEN: _github, ...env } = process.env;
+    const {
+      GH_TOKEN: _gh,
+      GITHUB_TOKEN: _github,
+      PLUGINGEN_FORGE_TOKEN: _forge,
+      ...env
+    } = process.env;
     const originals = files.map((file) => ({
       fileName: file.fileName,
       text: readCommitted(root, plugin, file.fileName),

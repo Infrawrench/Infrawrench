@@ -10,9 +10,9 @@ import { generatePlugin } from "./generate.js";
 import { writeGenerated } from "./output.js";
 import { mapLimit } from "./pool.js";
 import { oneLine } from "./text.js";
-import { createGitPort } from "./watch/git.js";
-import { gitHubCli } from "./watch/github.js";
 import { renderSummary, runWatch, type WatchEntry } from "./watch/index.js";
+import { FORGE_TOKEN_ENV } from "./watch/forge.js";
+import { createTarget, isTargetName, TARGET_ENV, TARGETS, targetName } from "./watch/target.js";
 import { createTypecheck } from "./watch/typecheck.js";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
@@ -23,10 +23,13 @@ const USAGE = `Usage: plugingen <command>
   generate <plugin>... | --all     Regenerate src/api-types*.gen.ts from each plugin's plugingen.json.
   check [<plugin>...] [--json]     Regenerate in memory and compare with what is committed. No writes.
                                    Exit 0: up to date. 1: the vendor changed the types. 2: could not check.
-  watch [--apply]                  Decide what to do about each plugin and print it. With --apply, do it:
-                                   open or update pull requests and issues on GitHub.
+  watch [--apply] [--target <t>]   Decide what to do about each plugin and print it. With --apply, do it:
+                                   open or update pull requests and issues on GitHub, or with
+                                   --target forge (or ${TARGET_ENV}=forge) push branches and open
+                                   issues on the forge, which needs ${FORGE_TOKEN_ENV}.
+                                   Without --apply it only reads from the target.
 
-Options: --all, --json, --concurrency <n> (default ${DEFAULT_CONCURRENCY}), --apply
+Options: --all, --json, --concurrency <n> (default ${DEFAULT_CONCURRENCY}), --apply, --target <${TARGETS.join("|")}>
 `;
 
 function printCheck(report: CheckReport): void {
@@ -114,13 +117,20 @@ function printEntry(entry: WatchEntry): void {
   for (const line of lines.length > 0 ? lines : ["nothing to do"]) console.log(`  ${line}`);
 }
 
-async function runWatchCommand(apply: boolean, concurrency: number): Promise<number> {
+async function runWatchCommand(
+  apply: boolean,
+  concurrency: number,
+  targetFlag: string | undefined,
+): Promise<number> {
+  // First, so that a missing token is said before eighty documents are fetched.
+  const target = createTarget(targetName(targetFlag, process.env), ROOT);
   const entries = await withoutWorkflowCommands(async () => {
-    console.log(apply ? "plugingen watch" : "plugingen watch: dry run, nothing will be changed");
+    const where = target.name === "github" ? "" : ` on the ${target.name}`;
+    console.log(`plugingen watch${where}${apply ? "" : ": dry run, nothing will be changed"}`);
     const outcomes = await checkPlugins(ROOT, discoverPlugins(ROOT), createFetcher(), concurrency);
     return runWatch(
       outcomes,
-      { github: gitHubCli, git: createGitPort(ROOT), typecheck: createTypecheck(ROOT) },
+      { github: target.tracker, git: target.git, typecheck: createTypecheck(ROOT) },
       { apply },
     );
   });
@@ -146,6 +156,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         json: { type: "boolean", default: false },
         apply: { type: "boolean", default: false },
         concurrency: { type: "string" },
+        target: { type: "string" },
         help: { type: "boolean", short: "h", default: false },
       },
     });
@@ -162,6 +173,10 @@ export async function main(argv: readonly string[]): Promise<number> {
   const concurrency = Number(values.concurrency ?? DEFAULT_CONCURRENCY);
   if (!Number.isInteger(concurrency) || concurrency < 1) {
     console.error(`--concurrency must be a positive integer\n\n${USAGE}`);
+    return EXIT_USAGE;
+  }
+  if (values.target !== undefined && !isTargetName(values.target)) {
+    console.error(`--target must be ${TARGETS.join(" or ")}\n\n${USAGE}`);
     return EXIT_USAGE;
   }
   const plugins = values.all ? discoverPlugins(ROOT) : names;
@@ -181,7 +196,7 @@ export async function main(argv: readonly string[]): Promise<number> {
           values.json,
         );
       case "watch":
-        return await runWatchCommand(values.apply, concurrency);
+        return await runWatchCommand(values.apply, concurrency, values.target);
       default:
         console.error(USAGE);
         return EXIT_USAGE;

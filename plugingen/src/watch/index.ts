@@ -4,9 +4,10 @@ import { generatedPath } from "../output.js";
 import { oneLine } from "../text.js";
 import { decide, decideRefresh, type Plan } from "./decide.js";
 import type { GitPort } from "./git.js";
-import type { GitHubPort } from "./github.js";
 import {
   branchFor,
+  type ChangeForm,
+  changeNoun,
   CLOSE_ISSUE_COMMENT,
   CLOSE_PULL_REQUEST_COMMENT,
   COMMIT_MESSAGE,
@@ -15,10 +16,12 @@ import {
   renderIssueBody,
   renderPullRequestBody,
 } from "./render.js";
+import type { TrackerPort } from "./tracker.js";
 import type { Typecheck } from "./typecheck.js";
 
 export interface WatchPorts {
-  github: GitHubPort;
+  /** Where changes and issues are tracked: GitHub, or the forge. Named for the first. */
+  github: TrackerPort;
   git: GitPort;
   typecheck: Typecheck;
 }
@@ -32,7 +35,8 @@ export interface WatchEntry {
   error?: string;
 }
 
-function describePlan(plan: Plan, outcome: CheckOutcome): string[] {
+function describePlan(plan: Plan, outcome: CheckOutcome, form: ChangeForm): string[] {
+  const noun = changeNoun(form);
   const actions: string[] = [];
   const branch = branchFor(plan.plugin);
   const operations = outcome.report.operations ?? [];
@@ -40,16 +44,16 @@ function describePlan(plan: Plan, outcome: CheckOutcome): string[] {
     operations.length > 0 ? `, ${operations.length} operation(s): ${operations.join(", ")}` : "";
   switch (plan.pullRequest.kind) {
     case "open":
-      actions.push(`open a pull request from ${branch}${affecting}`);
+      actions.push(`open a ${noun} from ${branch}${affecting}`);
       break;
     case "refresh":
       actions.push(
-        `update pull request #${plan.pullRequest.pullRequest.number} on ${branch} if its output or description differ${affecting}`,
+        `update ${noun} #${plan.pullRequest.pullRequest.number} on ${branch} if its output or description differ${affecting}`,
       );
       break;
     case "close":
       actions.push(
-        `close pull request #${plan.pullRequest.pullRequest.number} and delete ${branch}: the output matches main`,
+        `close ${noun} #${plan.pullRequest.pullRequest.number} and delete ${branch}: the output matches main`,
       );
       break;
     case "none":
@@ -76,6 +80,7 @@ async function applyPlan(plan: Plan, outcome: CheckOutcome, ports: WatchPorts): 
   const { plugin } = plan;
   const branch = branchFor(plugin);
   const done: string[] = [];
+  const form = ports.github.changeForm ?? "pull-request";
   const files = new Map(
     changedFiles.map((file) => [generatedPath(plugin, file.fileName), file.text]),
   );
@@ -86,13 +91,13 @@ async function applyPlan(plan: Plan, outcome: CheckOutcome, ports: WatchPorts): 
     const url = await ports.github.createPullRequest(
       branch,
       pullRequestTitle(plugin),
-      renderPullRequestBody(report, typecheck),
+      renderPullRequestBody(report, typecheck, form),
     );
     done.push(`opened ${url} (typecheck ${typecheck.state})`);
   } else if (plan.pullRequest.kind === "refresh") {
     const { pullRequest } = plan.pullRequest;
     const typecheck = await ports.typecheck(plugin, changedFiles);
-    const body = renderPullRequestBody(report, typecheck);
+    const body = renderPullRequestBody(report, typecheck, form);
     const branchFiles = await ports.git.readBranchFiles(branch, [...files.keys()]);
     const refresh = decideRefresh(branchFiles, files, pullRequest.body, body);
     if (refresh.push) await ports.git.pushBranch(branch, files, COMMIT_MESSAGE(plugin));
@@ -135,6 +140,7 @@ export async function runWatch(
     ports.github.listIssues(),
   ]);
   const entries: WatchEntry[] = [];
+  const form = ports.github.changeForm ?? "pull-request";
   for (const outcome of outcomes) {
     const { report } = outcome;
     const pullRequest = pullRequests.find((candidate) => candidate.plugin === report.plugin);
@@ -145,7 +151,7 @@ export async function runWatch(
     const entry: WatchEntry = {
       plugin: report.plugin,
       status: report.status,
-      actions: options.apply ? [] : describePlan(plan, outcome),
+      actions: options.apply ? [] : describePlan(plan, outcome, form),
       ...(plan.warning ? { warning: oneLine(plan.warning) } : {}),
     };
     if (options.apply) {
