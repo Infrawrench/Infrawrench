@@ -489,25 +489,7 @@ export interface components {
             /** Format: date */
             report_start_day: string;
         };
-        "create-budget": {
-            budget: {
-                budget_alerting?: {
-                    alert_recipients?: string[];
-                    will_alert?: boolean;
-                };
-                budget_amount?: number;
-                budget_entity_name?: string;
-                budget_product_sku?: string;
-                /** @enum {string} */
-                budget_scope?: "enterprise" | "organization" | "repository" | "cost_center" | "multi_user_customer" | "multi_user_cost_center" | "user";
-                budget_type?: "ProductPricing" | "SkuPricing";
-                /** Format: date */
-                expires_at?: string;
-                id?: string;
-                prevent_further_usage?: boolean;
-            };
-            message: string;
-        };
+        "create-budget": Shared_f214fa53;
         "cvss-severities": {
             cvss_v3?: {
                 readonly score: number | null;
@@ -873,27 +855,7 @@ export interface components {
             /** Format: uri */
             url: string;
         };
-        "update-budget": {
-            budget: {
-                budget_alerting?: {
-                    alert_recipients?: string[];
-                    will_alert?: boolean;
-                };
-                budget_amount?: number;
-                budget_entity_name?: string;
-                budget_product_sku?: string;
-                /** @enum {string} */
-                budget_scope?: "enterprise" | "organization" | "repository" | "cost_center" | "multi_user_customer" | "multi_user_cost_center" | "user";
-                budget_type?: "ProductPricing" | "SkuPricing";
-                consumed_amount?: number;
-                /** Format: date */
-                expires_at?: string;
-                id?: string;
-                prevent_further_usage?: boolean;
-                user?: string;
-            };
-            message: string;
-        };
+        "update-budget": Shared_f214fa53;
         "update-cost-center": Shared_301afe7e;
         "validation-error": {
             documentation_url: string;
@@ -1920,6 +1882,27 @@ type Shared_c8afe5f1 = {
             };
         };
     };
+};
+type Shared_f214fa53 = {
+    budget: {
+        budget_alerting?: {
+            alert_recipients?: string[];
+            will_alert?: boolean;
+        };
+        budget_amount?: number;
+        budget_entity_name?: string;
+        budget_product_sku?: string;
+        /** @enum {string} */
+        budget_scope?: "enterprise" | "organization" | "repository" | "cost_center" | "multi_user_customer" | "multi_user_cost_center" | "user";
+        budget_type?: "ProductPricing" | "SkuPricing";
+        consumed_amount?: number;
+        /** Format: date */
+        expires_at?: string;
+        id?: string;
+        prevent_further_usage?: boolean;
+        user?: string;
+    };
+    message: string;
 };
 type Shared_f5fa0824 = {
     /** Format: uri */
