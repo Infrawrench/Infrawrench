@@ -953,7 +953,7 @@ export interface components {
             advice_code?: string;
             charge?: string;
             /** @enum {string} */
-            code?: "account_closed" | "account_country_invalid_address" | "account_error_country_change_requires_additional_steps" | "account_information_mismatch" | "account_invalid" | "account_number_invalid" | "account_token_required_for_v2_account" | "acss_debit_session_incomplete" | "action_blocked" | "alipay_upgrade_required" | "amount_too_large" | "amount_too_small" | "anomalous_money_movement_request" | "api_key_expired" | "application_fees_not_allowed" | "approval_required" | "authentication_failure" | "authentication_required" | "balance_insufficient" | "balance_invalid_parameter" | "bank_account_bad_routing_numbers" | "bank_account_declined" | "bank_account_exists" | "bank_account_restricted" | "bank_account_unusable" | "bank_account_unverified" | "bank_account_verification_failed" | "billing_invalid_mandate" | "bitcoin_upgrade_required" | "capability_not_active" | "capture_charge_authorization_expired" | "capture_unauthorized_payment" | "card_decline_rate_limit_exceeded" | "card_declined" | "cardholder_phone_number_required" | "charge_already_captured" | "charge_already_refunded" | "charge_disputed" | "charge_exceeds_source_limit" | "charge_exceeds_transaction_limit" | "charge_expired_for_capture" | "charge_invalid_parameter" | "charge_not_refundable" | "clearing_code_unsupported" | "country_code_invalid" | "country_unsupported" | "coupon_expired" | "customer_max_payment_methods" | "customer_max_subscriptions" | "customer_session_expired" | "customer_tax_location_invalid" | "debit_not_authorized" | "dispute_evidence_page_limit_exceeded" | "email_invalid" | "expired_card" | "expired_payment_method" | "failed_tax_calculation" | "financial_account_balance_does_not_support_currency" | "financial_account_capability_not_enabled" | "financial_account_capability_restricted" | "financial_connections_account_inactive" | "financial_connections_account_pending_account_numbers" | "financial_connections_account_unavailable_account_numbers" | "financial_connections_consent_locale_invalid" | "financial_connections_consent_locale_unsupported" | "financial_connections_no_successful_transaction_refresh" | "forwarding_api_inactive" | "forwarding_api_invalid_parameter" | "forwarding_api_retryable_upstream_error" | "forwarding_api_upstream_connection_error" | "forwarding_api_upstream_connection_timeout" | "forwarding_api_upstream_error" | "idempotency_key_in_use" | "incorrect_address" | "incorrect_cvc" | "incorrect_number" | "incorrect_postal_code" | "incorrect_zip" | "india_recurring_payment_mandate_canceled" | "instant_payouts_config_disabled" | "instant_payouts_currency_disabled" | "instant_payouts_limit_exceeded" | "instant_payouts_unsupported" | "insufficient_funds" | "intent_invalid_state" | "intent_verification_method_missing" | "invalid_canceled_subscription_fields" | "invalid_card_type" | "invalid_characters" | "invalid_charge_amount" | "invalid_cvc" | "invalid_expiry_month" | "invalid_expiry_year" | "invalid_mandate_reference_prefix_format" | "invalid_number" | "invalid_source_usage" | "invalid_tax_location" | "invoice_no_customer_line_items" | "invoice_no_payment_method_types" | "invoice_no_subscription_line_items" | "invoice_not_editable" | "invoice_on_behalf_of_not_editable" | "invoice_payment_intent_requires_action" | "invoice_upcoming_none" | "livemode_mismatch" | "lock_timeout" | "missing" | "no_account" | "not_allowed_on_standard_account" | "out_of_inventory" | "ownership_declaration_not_allowed" | "parameter_invalid_empty" | "parameter_invalid_integer" | "parameter_invalid_string_blank" | "parameter_invalid_string_empty" | "parameter_missing" | "parameter_unknown" | "parameters_exclusive" | "payment_evaluation_on_api_version_not_supported" | "payment_intent_action_required" | "payment_intent_authentication_failure" | "payment_intent_incompatible_payment_method" | "payment_intent_invalid_parameter" | "payment_intent_konbini_rejected_confirmation_number" | "payment_intent_mandate_invalid" | "payment_intent_payment_attempt_expired" | "payment_intent_payment_attempt_failed" | "payment_intent_rate_limit_exceeded" | "payment_intent_unexpected_state" | "payment_method_bank_account_already_verified" | "payment_method_bank_account_blocked" | "payment_method_billing_details_address_missing" | "payment_method_configuration_failures" | "payment_method_currency_mismatch" | "payment_method_customer_decline" | "payment_method_invalid_parameter" | "payment_method_invalid_parameter_testmode" | "payment_method_microdeposit_failed" | "payment_method_microdeposit_processing_error" | "payment_method_microdeposit_verification_amounts_invalid" | "payment_method_microdeposit_verification_amounts_mismatch" | "payment_method_microdeposit_verification_attempts_exceeded" | "payment_method_microdeposit_verification_descriptor_code_mismatch" | "payment_method_microdeposit_verification_timeout" | "payment_method_not_available" | "payment_method_provider_decline" | "payment_method_provider_timeout" | "payment_method_restricted" | "payment_method_unactivated" | "payment_method_unexpected_state" | "payment_method_unsupported_type" | "payout_reconciliation_not_ready" | "payouts_limit_exceeded" | "payouts_not_allowed" | "platform_account_required" | "platform_api_key_expired" | "postal_code_invalid" | "processing_error" | "product_inactive" | "progressive_onboarding_limit_exceeded" | "rate_limit" | "refer_to_customer" | "refund_disputed_payment" | "request_blocked" | "resource_already_exists" | "resource_missing" | "return_intent_already_processed" | "routing_number_invalid" | "secret_key_required" | "sepa_unsupported_account" | "service_period_coupon_with_metered_tiered_item_unsupported" | "setup_attempt_failed" | "setup_intent_authentication_failure" | "setup_intent_invalid_parameter" | "setup_intent_mandate_invalid" | "setup_intent_mobile_wallet_unsupported" | "setup_intent_setup_attempt_expired" | "setup_intent_unexpected_state" | "shipping_address_invalid" | "shipping_calculation_failed" | "siret_invalid" | "sku_inactive" | "smart_disputes_not_available" | "state_unsupported" | "status_transition_invalid" | "storer_capability_missing" | "storer_capability_not_active" | "stripe_tax_inactive" | "subscription_update_trial_after_billing_cycle_anchor" | "tax_id_invalid" | "tax_id_prohibited" | "taxes_calculation_failed" | "terminal_location_country_unsupported" | "terminal_reader_busy" | "terminal_reader_hardware_fault" | "terminal_reader_invalid_location_for_activation" | "terminal_reader_invalid_location_for_payment" | "terminal_reader_offline" | "terminal_reader_timeout" | "testmode_charges_only" | "three_d_secure_authentication_not_supported" | "three_d_secure_authentication_upstream_error" | "tls_version_unsupported" | "token_already_used" | "token_card_network_invalid" | "token_in_use" | "transfer_source_balance_parameters_mismatch" | "transfers_not_allowed" | "url_invalid";
+            code?: "account_closed" | "account_country_invalid_address" | "account_error_country_change_requires_additional_steps" | "account_information_mismatch" | "account_invalid" | "account_number_invalid" | "account_token_required_for_v2_account" | "acss_debit_session_incomplete" | "action_blocked" | "alipay_upgrade_required" | "amount_too_large" | "amount_too_small" | "anomalous_money_movement_request" | "api_key_expired" | "application_fees_not_allowed" | "approval_required" | "authentication_failure" | "authentication_required" | "balance_insufficient" | "balance_invalid_parameter" | "bank_account_bad_routing_numbers" | "bank_account_declined" | "bank_account_exists" | "bank_account_restricted" | "bank_account_unusable" | "bank_account_unverified" | "bank_account_verification_failed" | "billing_invalid_mandate" | "bitcoin_upgrade_required" | "capability_not_active" | "capture_charge_authorization_expired" | "capture_unauthorized_payment" | "card_decline_rate_limit_exceeded" | "card_declined" | "cardholder_phone_number_required" | "charge_already_captured" | "charge_already_refunded" | "charge_disputed" | "charge_exceeds_source_limit" | "charge_exceeds_transaction_limit" | "charge_expired_for_capture" | "charge_invalid_parameter" | "charge_not_refundable" | "clearing_code_unsupported" | "country_code_invalid" | "country_unsupported" | "coupon_expired" | "customer_max_payment_methods" | "customer_max_subscriptions" | "customer_session_expired" | "customer_tax_location_invalid" | "debit_not_authorized" | "dispute_evidence_page_limit_exceeded" | "email_invalid" | "expired_card" | "expired_payment_method" | "failed_tax_calculation" | "financial_account_balance_does_not_support_currency" | "financial_account_capability_not_enabled" | "financial_account_capability_restricted" | "financial_connections_account_inactive" | "financial_connections_account_pending_account_numbers" | "financial_connections_account_unavailable_account_numbers" | "financial_connections_consent_locale_invalid" | "financial_connections_consent_locale_unsupported" | "financial_connections_no_successful_transaction_refresh" | "forwarding_api_inactive" | "forwarding_api_invalid_parameter" | "forwarding_api_retryable_upstream_error" | "forwarding_api_upstream_connection_error" | "forwarding_api_upstream_connection_timeout" | "forwarding_api_upstream_error" | "idempotency_key_in_use" | "inactive_api_operation_confirmation_required" | "incorrect_address" | "incorrect_cvc" | "incorrect_number" | "incorrect_postal_code" | "incorrect_zip" | "india_recurring_payment_mandate_canceled" | "instant_payouts_config_disabled" | "instant_payouts_currency_disabled" | "instant_payouts_limit_exceeded" | "instant_payouts_unsupported" | "insufficient_funds" | "intent_invalid_state" | "intent_verification_method_missing" | "invalid_canceled_subscription_fields" | "invalid_card_type" | "invalid_characters" | "invalid_charge_amount" | "invalid_cvc" | "invalid_expiry_month" | "invalid_expiry_year" | "invalid_mandate_reference_prefix_format" | "invalid_number" | "invalid_source_usage" | "invalid_tax_location" | "invoice_no_customer_line_items" | "invoice_no_payment_method_types" | "invoice_no_subscription_line_items" | "invoice_not_editable" | "invoice_on_behalf_of_not_editable" | "invoice_payment_intent_requires_action" | "invoice_upcoming_none" | "livemode_mismatch" | "lock_timeout" | "missing" | "no_account" | "not_allowed_on_standard_account" | "out_of_inventory" | "ownership_declaration_not_allowed" | "parameter_invalid_empty" | "parameter_invalid_integer" | "parameter_invalid_string_blank" | "parameter_invalid_string_empty" | "parameter_missing" | "parameter_unknown" | "parameters_exclusive" | "payment_evaluation_on_api_version_not_supported" | "payment_intent_action_required" | "payment_intent_authentication_failure" | "payment_intent_incompatible_payment_method" | "payment_intent_invalid_parameter" | "payment_intent_konbini_rejected_confirmation_number" | "payment_intent_mandate_invalid" | "payment_intent_payment_attempt_expired" | "payment_intent_payment_attempt_failed" | "payment_intent_rate_limit_exceeded" | "payment_intent_unexpected_state" | "payment_method_bank_account_already_verified" | "payment_method_bank_account_blocked" | "payment_method_billing_details_address_missing" | "payment_method_configuration_failures" | "payment_method_currency_mismatch" | "payment_method_customer_decline" | "payment_method_invalid_parameter" | "payment_method_invalid_parameter_testmode" | "payment_method_microdeposit_failed" | "payment_method_microdeposit_processing_error" | "payment_method_microdeposit_verification_amounts_invalid" | "payment_method_microdeposit_verification_amounts_mismatch" | "payment_method_microdeposit_verification_attempts_exceeded" | "payment_method_microdeposit_verification_descriptor_code_mismatch" | "payment_method_microdeposit_verification_timeout" | "payment_method_not_available" | "payment_method_provider_decline" | "payment_method_provider_timeout" | "payment_method_restricted" | "payment_method_unactivated" | "payment_method_unexpected_state" | "payment_method_unsupported_type" | "payout_reconciliation_not_ready" | "payouts_limit_exceeded" | "payouts_not_allowed" | "platform_account_required" | "platform_api_key_expired" | "postal_code_invalid" | "processing_error" | "product_inactive" | "progressive_onboarding_limit_exceeded" | "rate_limit" | "refer_to_customer" | "refund_disputed_payment" | "request_blocked" | "resource_already_exists" | "resource_missing" | "return_intent_already_processed" | "routing_number_invalid" | "secret_key_required" | "sepa_unsupported_account" | "service_period_coupon_with_metered_tiered_item_unsupported" | "setup_attempt_failed" | "setup_intent_authentication_failure" | "setup_intent_invalid_parameter" | "setup_intent_mandate_invalid" | "setup_intent_mobile_wallet_unsupported" | "setup_intent_setup_attempt_expired" | "setup_intent_unexpected_state" | "shipping_address_invalid" | "shipping_calculation_failed" | "siret_invalid" | "sku_inactive" | "smart_disputes_not_available" | "state_unsupported" | "status_transition_invalid" | "storer_capability_missing" | "storer_capability_not_active" | "stripe_tax_inactive" | "subscription_update_trial_after_billing_cycle_anchor" | "tax_id_invalid" | "tax_id_prohibited" | "taxes_calculation_failed" | "terminal_location_country_unsupported" | "terminal_reader_busy" | "terminal_reader_hardware_fault" | "terminal_reader_invalid_location_for_activation" | "terminal_reader_invalid_location_for_payment" | "terminal_reader_offline" | "terminal_reader_timeout" | "testmode_charges_only" | "three_d_secure_authentication_not_supported" | "three_d_secure_authentication_upstream_error" | "tls_version_unsupported" | "token_already_used" | "token_card_network_invalid" | "token_in_use" | "transfer_source_balance_parameters_mismatch" | "transfers_not_allowed" | "url_invalid";
             decline_code?: string;
             doc_url?: string;
             message?: string;
@@ -1011,7 +1011,7 @@ export interface components {
             status: "complete" | "failed" | "requires_location_inputs" | null;
         };
         balance: {
-            available: components["schemas"]["balance_amount"][];
+            available: components["schemas"]["balance_amount_available"][];
             connect_reserved?: components["schemas"]["balance_amount"][];
             instant_available?: components["schemas"]["balance_amount_net"][];
             issuing?: components["schemas"]["balance_detail"];
@@ -1022,6 +1022,12 @@ export interface components {
             refund_and_dispute_prefunding?: components["schemas"]["balance_detail_ungated"];
         };
         balance_amount: {
+            amount: number;
+            /** Format: currency */
+            currency: string;
+            source_types?: components["schemas"]["balance_amount_by_source_type"];
+        };
+        balance_amount_available: {
             amount: number;
             /** Format: currency */
             currency: string;
@@ -1930,7 +1936,7 @@ export interface components {
         };
         dispute_evidence: {
             access_activity_log: string | null;
-            appeal?: components["schemas"]["dispute_appeal"] | null;
+            appeal: components["schemas"]["dispute_appeal"] | null;
             billing_address: string | null;
             cancellation_policy: (string | components["schemas"]["file"]) | null;
             cancellation_policy_disclosure: string | null;
@@ -2133,6 +2139,7 @@ export interface components {
             interval_start?: number;
             payout?: string;
             reporting_category?: string;
+            tax_invoice_month?: string;
             timezone?: string;
         };
         funding_instructions_bank_transfer_aba_record: {
@@ -2736,7 +2743,7 @@ export interface components {
             carrier: "correos" | "dhl" | "fedex" | "royal_mail" | "usps" | null;
             customs: components["schemas"]["issuing_card_shipping_customs"] | null;
             /** Format: unix-time */
-            delivered_at?: number | null;
+            delivered_at: number | null;
             /** Format: unix-time */
             eta: number | null;
             name: string;
@@ -2745,7 +2752,7 @@ export interface components {
             /** @enum {string} */
             service: "express" | "priority" | "standard";
             /** Format: unix-time */
-            shipped_at?: number | null;
+            shipped_at: number | null;
             /** @enum {string|null} */
             status: "canceled" | "delivered" | "failure" | "pending" | "returned" | "shipped" | "submitted" | null;
             tracking_number: string | null;
@@ -3632,8 +3639,182 @@ export interface components {
             allow_redirects?: "always" | "never";
             enabled: boolean | null;
         };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental: {
+            affiliate?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_affiliate"];
+            booking_number?: string;
+            carrier_name?: string;
+            customer_service_phone_number?: string;
+            days_rented?: number;
+            distance?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_distance"];
+            drivers?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_driver"][];
+            drop_off?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_location"];
+            insurances?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_insurance"][];
+            no_show_indicator?: boolean;
+            pickup?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_location"];
+            renter_name?: string;
+            total?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_total"];
+            vehicle?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_vehicle"];
+        };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_affiliate: {
+            code?: string;
+            name?: string;
+        };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_date_of_birth: {
+            day?: number;
+            month?: number;
+            year?: number;
+        };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_discounts: {
+            corporate_client_code?: string;
+            coupon?: string;
+            maximum_free_miles_or_kilometers?: number;
+        };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_distance: {
+            amount?: number;
+            /** @enum {string} */
+            unit?: "kilometers" | "miles";
+        };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_driver: {
+            date_of_birth?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_date_of_birth"];
+            driver_identification_number?: string;
+            driver_tax_number?: string;
+            name?: string;
+        };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_extra_charge: {
+            amount?: number;
+            /** @enum {string} */
+            type?: "extra_mileage" | "gas" | "gps" | "late_charge" | "one_way_drop_off" | "other" | "parking" | "phone" | "regular_mileage" | "towing";
+        };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_insurance: {
+            amount?: number;
+            /** Format: currency */
+            currency?: string;
+            insurance_company_name?: string;
+            /** @enum {string} */
+            insurance_type?: "liability_supplement" | "loss_damage_waiver" | "other" | "partial_damage_waiver" | "personal_accident" | "personal_effects";
+        };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_location: {
+            address?: components["schemas"]["address"];
+            location_name?: string;
+            /** Format: unix-time */
+            time?: number;
+        };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_tax: {
+            tax_exempt_indicator?: boolean;
+            tax_items?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_tax_item"][];
+        };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_tax_item: {
+            amount?: number;
+            rate?: number;
+            type?: string;
+        };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_total: {
+            amount?: number;
+            currency?: string;
+            discounts?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_discounts"];
+            extra_charges?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_extra_charge"][];
+            rate_per_unit?: number;
+            /** @enum {string} */
+            rate_unit?: "kilometers" | "miles";
+            tax?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_tax"];
+        };
+        payment_flows_industry_metadata_car_rental_data_resource_car_rental_supplementary_vehicle: {
+            make?: string;
+            model?: string;
+            odometer?: number;
+            /** @enum {string} */
+            type?: "cargo_van" | "compact" | "economy" | "exotic" | "exotic_suv" | "fifteen_passenger_van" | "four_wheel_drive" | "full_size" | "intermediate" | "large_suv" | "large_truck" | "luxury" | "medium_suv" | "midsize" | "mini" | "minivan" | "miscellaneous" | "moped" | "moving_van" | "premium" | "regular" | "small_medium_truck" | "small_suv" | "special" | "standard" | "stretch" | "subcompact" | "taxi" | "twelve_foot_truck" | "twelve_passenger_van" | "twenty_foot_truck" | "twenty_four_foot_truck" | "twenty_six_foot_truck" | "unique";
+            /** @enum {string} */
+            vehicle_class?: "business" | "economy" | "first_class" | "premium_economy";
+            vehicle_identification_number?: string;
+        };
+        payment_flows_industry_metadata_lodging_data_resource_lodging: {
+            accommodation?: components["schemas"]["payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_accommodation"];
+            affiliate?: components["schemas"]["payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_affiliate"];
+            booking_number?: string;
+            /** Format: unix-time */
+            checkin_at?: number;
+            /** Format: unix-time */
+            checkout_at?: number;
+            customer_service_phone_number?: string;
+            fire_safety_act_compliance_indicator?: boolean;
+            guests?: components["schemas"]["payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_guest"][];
+            host?: components["schemas"]["payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_host"];
+            insurances?: components["schemas"]["payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_insurance"][];
+            no_show_indicator?: boolean;
+            renter_id_number?: string;
+            renter_name?: string;
+            total?: components["schemas"]["payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_total"];
+        };
+        payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_accommodation: {
+            /** @enum {string|null} */
+            accommodation_type: "apartment" | "cabana" | "house" | "penthouse" | "room" | "standard" | "suite" | "villa" | null;
+            bed_type?: string;
+            daily_rate_amount?: number;
+            nights?: number;
+            number_of_rooms?: number;
+            rate_type?: string;
+            smoking_indicator?: boolean;
+        };
+        payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_affiliate: {
+            code?: string;
+            name?: string;
+        };
+        payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_discount: {
+            corporate_client_code?: string;
+            coupon?: string;
+        };
+        payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_extra_charge: {
+            amount?: number;
+            /** @enum {string} */
+            type?: "gift_shop" | "laundry" | "mini_bar" | "other" | "phone" | "restaurant";
+        };
+        payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_guest: {
+            name?: string;
+        };
+        payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_host: {
+            address?: components["schemas"]["address"];
+            country_of_domicile?: string;
+            host_reference?: string;
+            /** @enum {string} */
+            host_type?: "hostel" | "hotel" | "owner" | "rental_agency";
+            name?: string;
+            number_of_reservations?: number;
+            property_phone_number?: string;
+            /** Format: unix-time */
+            registered_at?: number;
+        };
+        payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_insurance: {
+            amount?: number;
+            /** Format: currency */
+            currency?: string;
+            insurance_company_name?: string;
+            /** @enum {string} */
+            insurance_type?: "bankruptcy" | "cancelation" | "emergency" | "medical";
+        };
+        payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_tax: {
+            tax_exempt_indicator?: boolean;
+            tax_items?: components["schemas"]["payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_tax_item"][];
+        };
+        payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_tax_item: {
+            amount?: number;
+            rate?: number;
+            type?: string;
+        };
+        payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_total: {
+            amount?: number;
+            cash_advances?: number;
+            /** Format: currency */
+            currency?: string;
+            discounts?: components["schemas"]["payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_discount"];
+            extra_charges?: components["schemas"]["payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_extra_charge"][];
+            prepaid_amount?: number;
+            tax?: components["schemas"]["payment_flows_industry_metadata_lodging_data_resource_lodging_supplementary_tax"];
+        };
         payment_flows_payment_details: {
+            car_rental_data?: components["schemas"]["payment_flows_industry_metadata_car_rental_data_resource_car_rental"][];
             customer_reference: string | null;
+            lodging_data?: components["schemas"]["payment_flows_industry_metadata_lodging_data_resource_lodging"][];
             order_reference: string | null;
         };
         payment_flows_payment_intent_async_workflows: {
@@ -4676,6 +4857,7 @@ export interface components {
         payment_method_details_card_wallet_google_pay: Record<string, never>;
         payment_method_details_card_wallet_link: {
             funding_source_group: string | null;
+            funding_sources?: components["schemas"]["payment_method_details_link_funding_source"][];
         };
         payment_method_details_card_wallet_masterpass: {
             billing_address: components["schemas"]["address"] | null;
@@ -4698,7 +4880,7 @@ export interface components {
         payment_method_details_crypto: {
             buyer_address?: string;
             /** @enum {string} */
-            network?: "base" | "ethereum" | "polygon" | "solana" | "sui" | "tempo";
+            network?: "base" | "ethereum" | "polygon" | "solana" | "sui" | "tempo" | "tron";
             /** @enum {string} */
             token_currency?: "ousd" | "phantom_cash" | "usdc" | "usdg" | "usdp" | "usdsui" | "usdt";
             transaction_hash?: string;
@@ -4781,6 +4963,35 @@ export interface components {
         payment_method_details_link: {
             country: string | null;
             funding_source_group?: string;
+            funding_sources?: components["schemas"]["payment_method_details_link_funding_source"][];
+        };
+        payment_method_details_link_funding_source: {
+            card: components["schemas"]["payment_method_details_link_funding_source_card"];
+            /** @enum {string} */
+            type: "card";
+        };
+        payment_method_details_link_funding_source_card: {
+            amount_authorized: number | null;
+            authorization_code: string | null;
+            brand: string | null;
+            checks: components["schemas"]["payment_method_details_card_checks"] | null;
+            country: string | null;
+            description?: string | null;
+            electronic_commerce_indicator: string | null;
+            exp_month: number;
+            exp_year: number;
+            fingerprint?: string | null;
+            funding: string | null;
+            iin?: string | null;
+            issuer?: string | null;
+            last4: string | null;
+            network: string | null;
+            network_token?: components["schemas"]["payment_method_details_card_network_token"] | null;
+            network_transaction_id: string | null;
+            /** @enum {string|null} */
+            regulated_status: "regulated" | "unregulated" | null;
+            three_d_secure: components["schemas"]["three_d_secure_details_charge"] | null;
+            transaction_link_id: string | null;
         };
         payment_method_details_mb_way: Record<string, never>;
         payment_method_details_mobilepay: {
@@ -4949,7 +5160,9 @@ export interface components {
             reader?: string;
             reference: string | null;
         };
-        payment_method_details_payment_record_paypay: Record<string, never>;
+        payment_method_details_payment_record_paypay: {
+            fingerprint?: string;
+        };
         payment_method_details_payment_record_payto: {
             bsb_number: string | null;
             last4: string | null;
@@ -5025,7 +5238,9 @@ export interface components {
             seller_protection: components["schemas"]["paypal_seller_protection"] | null;
             transaction_id: string | null;
         };
-        payment_method_details_paypay: Record<string, never>;
+        payment_method_details_paypay: {
+            fingerprint: string | null;
+        };
         payment_method_details_payto: {
             bsb_number: string | null;
             last4: string | null;
@@ -5593,7 +5808,7 @@ export interface components {
             network_token?: components["schemas"]["payments_primitives_payment_records_resource_payment_method_card_details_resource_network_token"] | null;
             network_transaction_id: string | null;
             /** @enum {string|null} */
-            stored_credential_usage?: "installment" | "recurring" | "unscheduled" | null;
+            stored_credential_usage: "installment" | "recurring" | "unscheduled" | null;
             three_d_secure: components["schemas"]["payments_primitives_payment_records_resource_payment_method_card_details_resource_three_d_secure"] | null;
             wallet: components["schemas"]["payments_primitives_payment_records_resource_payment_method_card_details_resource_wallet"] | null;
         };
@@ -6015,6 +6230,7 @@ export interface components {
             url: string | null;
         };
         product_marketing_feature: {
+            loss_message?: string;
             name?: string;
         };
         promotion_code: {
@@ -6086,6 +6302,7 @@ export interface components {
         };
         refund: {
             amount: number;
+            application: (string | components["schemas"]["application"]) | null;
             balance_transaction: (string | components["schemas"]["balance_transaction"]) | null;
             charge: (string | components["schemas"]["charge"]) | null;
             /** Format: unix-time */
@@ -6125,6 +6342,7 @@ export interface components {
             alma?: components["schemas"]["destination_details_unimplemented"];
             amazon_pay?: components["schemas"]["destination_details_unimplemented"];
             au_bank_transfer?: components["schemas"]["destination_details_unimplemented"];
+            bizum?: components["schemas"]["refund_destination_details_bizum"];
             blik?: components["schemas"]["refund_destination_details_blik"];
             br_bank_transfer?: components["schemas"]["refund_destination_details_br_bank_transfer"];
             card?: components["schemas"]["refund_destination_details_card"];
@@ -6153,11 +6371,16 @@ export interface components {
             th_bank_transfer?: components["schemas"]["refund_destination_details_th_bank_transfer"];
             twint?: components["schemas"]["destination_details_unimplemented"];
             type: string;
+            upi?: components["schemas"]["refund_destination_details_upi"];
             us_bank_transfer?: components["schemas"]["refund_destination_details_us_bank_transfer"];
             wechat_pay?: components["schemas"]["destination_details_unimplemented"];
             zip?: components["schemas"]["destination_details_unimplemented"];
         };
         refund_destination_details_afterpay_clearpay: {
+            reference: string | null;
+            reference_status: string | null;
+        };
+        refund_destination_details_bizum: {
             reference: string | null;
             reference_status: string | null;
         };
@@ -6223,6 +6446,10 @@ export interface components {
             reference_status: string | null;
         };
         refund_destination_details_th_bank_transfer: {
+            reference: string | null;
+            reference_status: string | null;
+        };
+        refund_destination_details_upi: {
             reference: string | null;
             reference_status: string | null;
         };
@@ -7163,6 +7390,9 @@ export interface components {
             mandate_options?: components["schemas"]["subscription_payment_method_options_mandate_options_pix"];
         };
         subscription_payment_method_options_sepa_debit: Record<string, never>;
+        subscription_payment_method_options_upi: {
+            mandate_options?: components["schemas"]["invoice_payment_method_options_mandate_options_upi"];
+        };
         subscription_pending_invoice_item_interval: {
             /** @enum {string} */
             interval: "day" | "month" | "week" | "year";
@@ -7428,7 +7658,7 @@ export interface components {
             payto: components["schemas"]["invoice_payment_method_options_payto"] | null;
             pix: components["schemas"]["subscription_payment_method_options_pix"] | null;
             sepa_debit: components["schemas"]["subscription_payment_method_options_sepa_debit"] | null;
-            upi: components["schemas"]["invoice_payment_method_options_upi"] | null;
+            upi: components["schemas"]["subscription_payment_method_options_upi"] | null;
             us_bank_account: components["schemas"]["invoice_payment_method_options_us_bank_account"] | null;
         };
         subscriptions_resource_payment_settings: {
@@ -8748,6 +8978,7 @@ export interface operations {
                     id?: string;
                     images?: string[];
                     marketing_features?: {
+                        loss_message?: string | "";
                         name: string;
                     }[];
                     metadata?: {
@@ -8830,6 +9061,7 @@ export interface operations {
                     expand?: string[];
                     images?: string[] | "";
                     marketing_features?: {
+                        loss_message?: string | "";
                         name: string;
                     }[] | "";
                     metadata?: {
@@ -8953,6 +9185,7 @@ export interface operations {
                         payout?: string;
                         /** @enum {string} */
                         reporting_category?: "advance" | "advance_funding" | "anticipation_repayment" | "charge" | "charge_failure" | "climate_order_purchase" | "climate_order_refund" | "connect_collection_transfer" | "connect_reserved_funds" | "contribution" | "dispute" | "dispute_reversal" | "fee" | "financing_paydown" | "financing_paydown_reversal" | "financing_payout" | "financing_payout_reversal" | "issuing_authorization_hold" | "issuing_authorization_release" | "issuing_dispute" | "issuing_transaction" | "network_cost" | "other_adjustment" | "partial_capture_reversal" | "payout" | "payout_reversal" | "platform_earning" | "platform_earning_refund" | "refund" | "refund_failure" | "risk_reserved_funds" | "tax" | "topup" | "topup_reversal" | "transfer" | "transfer_reversal" | "unreconciled_customer_funds";
+                        tax_invoice_month?: string;
                         /** @enum {string} */
                         timezone?: "Africa/Abidjan" | "Africa/Accra" | "Africa/Addis_Ababa" | "Africa/Algiers" | "Africa/Asmara" | "Africa/Asmera" | "Africa/Bamako" | "Africa/Bangui" | "Africa/Banjul" | "Africa/Bissau" | "Africa/Blantyre" | "Africa/Brazzaville" | "Africa/Bujumbura" | "Africa/Cairo" | "Africa/Casablanca" | "Africa/Ceuta" | "Africa/Conakry" | "Africa/Dakar" | "Africa/Dar_es_Salaam" | "Africa/Djibouti" | "Africa/Douala" | "Africa/El_Aaiun" | "Africa/Freetown" | "Africa/Gaborone" | "Africa/Harare" | "Africa/Johannesburg" | "Africa/Juba" | "Africa/Kampala" | "Africa/Khartoum" | "Africa/Kigali" | "Africa/Kinshasa" | "Africa/Lagos" | "Africa/Libreville" | "Africa/Lome" | "Africa/Luanda" | "Africa/Lubumbashi" | "Africa/Lusaka" | "Africa/Malabo" | "Africa/Maputo" | "Africa/Maseru" | "Africa/Mbabane" | "Africa/Mogadishu" | "Africa/Monrovia" | "Africa/Nairobi" | "Africa/Ndjamena" | "Africa/Niamey" | "Africa/Nouakchott" | "Africa/Ouagadougou" | "Africa/Porto-Novo" | "Africa/Sao_Tome" | "Africa/Timbuktu" | "Africa/Tripoli" | "Africa/Tunis" | "Africa/Windhoek" | "America/Adak" | "America/Anchorage" | "America/Anguilla" | "America/Antigua" | "America/Araguaina" | "America/Argentina/Buenos_Aires" | "America/Argentina/Catamarca" | "America/Argentina/ComodRivadavia" | "America/Argentina/Cordoba" | "America/Argentina/Jujuy" | "America/Argentina/La_Rioja" | "America/Argentina/Mendoza" | "America/Argentina/Rio_Gallegos" | "America/Argentina/Salta" | "America/Argentina/San_Juan" | "America/Argentina/San_Luis" | "America/Argentina/Tucuman" | "America/Argentina/Ushuaia" | "America/Aruba" | "America/Asuncion" | "America/Atikokan" | "America/Atka" | "America/Bahia" | "America/Bahia_Banderas" | "America/Barbados" | "America/Belem" | "America/Belize" | "America/Blanc-Sablon" | "America/Boa_Vista" | "America/Bogota" | "America/Boise" | "America/Buenos_Aires" | "America/Cambridge_Bay" | "America/Campo_Grande" | "America/Cancun" | "America/Caracas" | "America/Catamarca" | "America/Cayenne" | "America/Cayman" | "America/Chicago" | "America/Chihuahua" | "America/Ciudad_Juarez" | "America/Coral_Harbour" | "America/Cordoba" | "America/Costa_Rica" | "America/Coyhaique" | "America/Creston" | "America/Cuiaba" | "America/Curacao" | "America/Danmarkshavn" | "America/Dawson" | "America/Dawson_Creek" | "America/Denver" | "America/Detroit" | "America/Dominica" | "America/Edmonton" | "America/Eirunepe" | "America/El_Salvador" | "America/Ensenada" | "America/Fort_Nelson" | "America/Fort_Wayne" | "America/Fortaleza" | "America/Glace_Bay" | "America/Godthab" | "America/Goose_Bay" | "America/Grand_Turk" | "America/Grenada" | "America/Guadeloupe" | "America/Guatemala" | "America/Guayaquil" | "America/Guyana" | "America/Halifax" | "America/Havana" | "America/Hermosillo" | "America/Indiana/Indianapolis" | "America/Indiana/Knox" | "America/Indiana/Marengo" | "America/Indiana/Petersburg" | "America/Indiana/Tell_City" | "America/Indiana/Vevay" | "America/Indiana/Vincennes" | "America/Indiana/Winamac" | "America/Indianapolis" | "America/Inuvik" | "America/Iqaluit" | "America/Jamaica" | "America/Jujuy" | "America/Juneau" | "America/Kentucky/Louisville" | "America/Kentucky/Monticello" | "America/Knox_IN" | "America/Kralendijk" | "America/La_Paz" | "America/Lima" | "America/Los_Angeles" | "America/Louisville" | "America/Lower_Princes" | "America/Maceio" | "America/Managua" | "America/Manaus" | "America/Marigot" | "America/Martinique" | "America/Matamoros" | "America/Mazatlan" | "America/Mendoza" | "America/Menominee" | "America/Merida" | "America/Metlakatla" | "America/Mexico_City" | "America/Miquelon" | "America/Moncton" | "America/Monterrey" | "America/Montevideo" | "America/Montreal" | "America/Montserrat" | "America/Nassau" | "America/New_York" | "America/Nipigon" | "America/Nome" | "America/Noronha" | "America/North_Dakota/Beulah" | "America/North_Dakota/Center" | "America/North_Dakota/New_Salem" | "America/Nuuk" | "America/Ojinaga" | "America/Panama" | "America/Pangnirtung" | "America/Paramaribo" | "America/Phoenix" | "America/Port-au-Prince" | "America/Port_of_Spain" | "America/Porto_Acre" | "America/Porto_Velho" | "America/Puerto_Rico" | "America/Punta_Arenas" | "America/Rainy_River" | "America/Rankin_Inlet" | "America/Recife" | "America/Regina" | "America/Resolute" | "America/Rio_Branco" | "America/Rosario" | "America/Santa_Isabel" | "America/Santarem" | "America/Santiago" | "America/Santo_Domingo" | "America/Sao_Paulo" | "America/Scoresbysund" | "America/Shiprock" | "America/Sitka" | "America/St_Barthelemy" | "America/St_Johns" | "America/St_Kitts" | "America/St_Lucia" | "America/St_Thomas" | "America/St_Vincent" | "America/Swift_Current" | "America/Tegucigalpa" | "America/Thule" | "America/Thunder_Bay" | "America/Tijuana" | "America/Toronto" | "America/Tortola" | "America/Vancouver" | "America/Virgin" | "America/Whitehorse" | "America/Winnipeg" | "America/Yakutat" | "America/Yellowknife" | "Antarctica/Casey" | "Antarctica/Davis" | "Antarctica/DumontDUrville" | "Antarctica/Macquarie" | "Antarctica/Mawson" | "Antarctica/McMurdo" | "Antarctica/Palmer" | "Antarctica/Rothera" | "Antarctica/South_Pole" | "Antarctica/Syowa" | "Antarctica/Troll" | "Antarctica/Vostok" | "Arctic/Longyearbyen" | "Asia/Aden" | "Asia/Almaty" | "Asia/Amman" | "Asia/Anadyr" | "Asia/Aqtau" | "Asia/Aqtobe" | "Asia/Ashgabat" | "Asia/Ashkhabad" | "Asia/Atyrau" | "Asia/Baghdad" | "Asia/Bahrain" | "Asia/Baku" | "Asia/Bangkok" | "Asia/Barnaul" | "Asia/Beirut" | "Asia/Bishkek" | "Asia/Brunei" | "Asia/Calcutta" | "Asia/Chita" | "Asia/Choibalsan" | "Asia/Chongqing" | "Asia/Chungking" | "Asia/Colombo" | "Asia/Dacca" | "Asia/Damascus" | "Asia/Dhaka" | "Asia/Dili" | "Asia/Dubai" | "Asia/Dushanbe" | "Asia/Famagusta" | "Asia/Gaza" | "Asia/Harbin" | "Asia/Hebron" | "Asia/Ho_Chi_Minh" | "Asia/Hong_Kong" | "Asia/Hovd" | "Asia/Irkutsk" | "Asia/Istanbul" | "Asia/Jakarta" | "Asia/Jayapura" | "Asia/Jerusalem" | "Asia/Kabul" | "Asia/Kamchatka" | "Asia/Karachi" | "Asia/Kashgar" | "Asia/Kathmandu" | "Asia/Katmandu" | "Asia/Khandyga" | "Asia/Kolkata" | "Asia/Krasnoyarsk" | "Asia/Kuala_Lumpur" | "Asia/Kuching" | "Asia/Kuwait" | "Asia/Macao" | "Asia/Macau" | "Asia/Magadan" | "Asia/Makassar" | "Asia/Manila" | "Asia/Muscat" | "Asia/Nicosia" | "Asia/Novokuznetsk" | "Asia/Novosibirsk" | "Asia/Omsk" | "Asia/Oral" | "Asia/Phnom_Penh" | "Asia/Pontianak" | "Asia/Pyongyang" | "Asia/Qatar" | "Asia/Qostanay" | "Asia/Qyzylorda" | "Asia/Rangoon" | "Asia/Riyadh" | "Asia/Saigon" | "Asia/Sakhalin" | "Asia/Samarkand" | "Asia/Seoul" | "Asia/Shanghai" | "Asia/Singapore" | "Asia/Srednekolymsk" | "Asia/Taipei" | "Asia/Tashkent" | "Asia/Tbilisi" | "Asia/Tehran" | "Asia/Tel_Aviv" | "Asia/Thimbu" | "Asia/Thimphu" | "Asia/Tokyo" | "Asia/Tomsk" | "Asia/Ujung_Pandang" | "Asia/Ulaanbaatar" | "Asia/Ulan_Bator" | "Asia/Urumqi" | "Asia/Ust-Nera" | "Asia/Vientiane" | "Asia/Vladivostok" | "Asia/Yakutsk" | "Asia/Yangon" | "Asia/Yekaterinburg" | "Asia/Yerevan" | "Atlantic/Azores" | "Atlantic/Bermuda" | "Atlantic/Canary" | "Atlantic/Cape_Verde" | "Atlantic/Faeroe" | "Atlantic/Faroe" | "Atlantic/Jan_Mayen" | "Atlantic/Madeira" | "Atlantic/Reykjavik" | "Atlantic/South_Georgia" | "Atlantic/St_Helena" | "Atlantic/Stanley" | "Australia/ACT" | "Australia/Adelaide" | "Australia/Brisbane" | "Australia/Broken_Hill" | "Australia/Canberra" | "Australia/Currie" | "Australia/Darwin" | "Australia/Eucla" | "Australia/Hobart" | "Australia/LHI" | "Australia/Lindeman" | "Australia/Lord_Howe" | "Australia/Melbourne" | "Australia/NSW" | "Australia/North" | "Australia/Perth" | "Australia/Queensland" | "Australia/South" | "Australia/Sydney" | "Australia/Tasmania" | "Australia/Victoria" | "Australia/West" | "Australia/Yancowinna" | "Brazil/Acre" | "Brazil/DeNoronha" | "Brazil/East" | "Brazil/West" | "CET" | "CST6CDT" | "Canada/Atlantic" | "Canada/Central" | "Canada/Eastern" | "Canada/Mountain" | "Canada/Newfoundland" | "Canada/Pacific" | "Canada/Saskatchewan" | "Canada/Yukon" | "Chile/Continental" | "Chile/EasterIsland" | "Cuba" | "EET" | "EST" | "EST5EDT" | "Egypt" | "Eire" | "Etc/GMT" | "Etc/GMT+0" | "Etc/GMT+1" | "Etc/GMT+10" | "Etc/GMT+11" | "Etc/GMT+12" | "Etc/GMT+2" | "Etc/GMT+3" | "Etc/GMT+4" | "Etc/GMT+5" | "Etc/GMT+6" | "Etc/GMT+7" | "Etc/GMT+8" | "Etc/GMT+9" | "Etc/GMT-0" | "Etc/GMT-1" | "Etc/GMT-10" | "Etc/GMT-11" | "Etc/GMT-12" | "Etc/GMT-13" | "Etc/GMT-14" | "Etc/GMT-2" | "Etc/GMT-3" | "Etc/GMT-4" | "Etc/GMT-5" | "Etc/GMT-6" | "Etc/GMT-7" | "Etc/GMT-8" | "Etc/GMT-9" | "Etc/GMT0" | "Etc/Greenwich" | "Etc/UCT" | "Etc/UTC" | "Etc/Universal" | "Etc/Zulu" | "Europe/Amsterdam" | "Europe/Andorra" | "Europe/Astrakhan" | "Europe/Athens" | "Europe/Belfast" | "Europe/Belgrade" | "Europe/Berlin" | "Europe/Bratislava" | "Europe/Brussels" | "Europe/Bucharest" | "Europe/Budapest" | "Europe/Busingen" | "Europe/Chisinau" | "Europe/Copenhagen" | "Europe/Dublin" | "Europe/Gibraltar" | "Europe/Guernsey" | "Europe/Helsinki" | "Europe/Isle_of_Man" | "Europe/Istanbul" | "Europe/Jersey" | "Europe/Kaliningrad" | "Europe/Kiev" | "Europe/Kirov" | "Europe/Kyiv" | "Europe/Lisbon" | "Europe/Ljubljana" | "Europe/London" | "Europe/Luxembourg" | "Europe/Madrid" | "Europe/Malta" | "Europe/Mariehamn" | "Europe/Minsk" | "Europe/Monaco" | "Europe/Moscow" | "Europe/Nicosia" | "Europe/Oslo" | "Europe/Paris" | "Europe/Podgorica" | "Europe/Prague" | "Europe/Riga" | "Europe/Rome" | "Europe/Samara" | "Europe/San_Marino" | "Europe/Sarajevo" | "Europe/Saratov" | "Europe/Simferopol" | "Europe/Skopje" | "Europe/Sofia" | "Europe/Stockholm" | "Europe/Tallinn" | "Europe/Tirane" | "Europe/Tiraspol" | "Europe/Ulyanovsk" | "Europe/Uzhgorod" | "Europe/Vaduz" | "Europe/Vatican" | "Europe/Vienna" | "Europe/Vilnius" | "Europe/Volgograd" | "Europe/Warsaw" | "Europe/Zagreb" | "Europe/Zaporozhye" | "Europe/Zurich" | "Factory" | "GB" | "GB-Eire" | "GMT" | "GMT+0" | "GMT-0" | "GMT0" | "Greenwich" | "HST" | "Hongkong" | "Iceland" | "Indian/Antananarivo" | "Indian/Chagos" | "Indian/Christmas" | "Indian/Cocos" | "Indian/Comoro" | "Indian/Kerguelen" | "Indian/Mahe" | "Indian/Maldives" | "Indian/Mauritius" | "Indian/Mayotte" | "Indian/Reunion" | "Iran" | "Israel" | "Jamaica" | "Japan" | "Kwajalein" | "Libya" | "MET" | "MST" | "MST7MDT" | "Mexico/BajaNorte" | "Mexico/BajaSur" | "Mexico/General" | "NZ" | "NZ-CHAT" | "Navajo" | "PRC" | "PST8PDT" | "Pacific/Apia" | "Pacific/Auckland" | "Pacific/Bougainville" | "Pacific/Chatham" | "Pacific/Chuuk" | "Pacific/Easter" | "Pacific/Efate" | "Pacific/Enderbury" | "Pacific/Fakaofo" | "Pacific/Fiji" | "Pacific/Funafuti" | "Pacific/Galapagos" | "Pacific/Gambier" | "Pacific/Guadalcanal" | "Pacific/Guam" | "Pacific/Honolulu" | "Pacific/Johnston" | "Pacific/Kanton" | "Pacific/Kiritimati" | "Pacific/Kosrae" | "Pacific/Kwajalein" | "Pacific/Majuro" | "Pacific/Marquesas" | "Pacific/Midway" | "Pacific/Nauru" | "Pacific/Niue" | "Pacific/Norfolk" | "Pacific/Noumea" | "Pacific/Pago_Pago" | "Pacific/Palau" | "Pacific/Pitcairn" | "Pacific/Pohnpei" | "Pacific/Ponape" | "Pacific/Port_Moresby" | "Pacific/Rarotonga" | "Pacific/Saipan" | "Pacific/Samoa" | "Pacific/Tahiti" | "Pacific/Tarawa" | "Pacific/Tongatapu" | "Pacific/Truk" | "Pacific/Wake" | "Pacific/Wallis" | "Pacific/Yap" | "Poland" | "Portugal" | "ROC" | "ROK" | "Singapore" | "Turkey" | "UCT" | "US/Alaska" | "US/Aleutian" | "US/Arizona" | "US/Central" | "US/East-Indiana" | "US/Eastern" | "US/Hawaii" | "US/Indiana-Starke" | "US/Michigan" | "US/Mountain" | "US/Pacific" | "US/Pacific-New" | "US/Samoa" | "UTC" | "Universal" | "W-SU" | "WET" | "Zulu";
                     };
