@@ -164,7 +164,7 @@ export interface components {
             /** Format: int64 */
             offset?: number;
             probes?: number[];
-            settings?: settings_921758e6;
+            settings?: settings_5cde6863;
             target?: string;
             /** Format: int64 */
             tenantId?: number;
@@ -180,13 +180,12 @@ export interface components {
             err?: string | null;
             msg?: string | null;
         };
-        GetCheckResponse: GetCheckResponse_aefd6a8f;
+        GetCheckResponse: GetCheckResponse_032da70a;
         Probe: {
             buildstamp?: string;
             capabilities?: {
                 disableBrowserChecks?: boolean | null;
                 disableScriptedChecks?: boolean | null;
-                enableProtocolSecrets?: boolean | null;
             } | null;
             commit?: string;
             /** Format: double */
@@ -241,14 +240,14 @@ export interface components {
             /** Format: int64 */
             offset?: number;
             probes?: (string | number)[] | null;
-            settings?: settings_921758e6;
+            settings?: settings_5cde6863;
             target?: string;
             /** Format: int64 */
             tenantId?: number;
             /** Format: int64 */
             timeout?: number;
         };
-        UpdateCheckResponse: GetCheckResponse_aefd6a8f;
+        UpdateCheckResponse: GetCheckResponse_032da70a;
     };
     responses: never;
     parameters: never;
@@ -467,7 +466,7 @@ export interface operations {
         };
     };
 }
-type GetCheckResponse_aefd6a8f = {
+type GetCheckResponse_032da70a = {
     alertSensitivity?: string;
     basicMetricsOnly?: boolean;
     channels?: {
@@ -500,14 +499,14 @@ type GetCheckResponse_aefd6a8f = {
     /** Format: int64 */
     offset?: number;
     probes?: number[];
-    settings?: settings_921758e6;
+    settings?: settings_5cde6863;
     target?: string;
     /** Format: int64 */
     tenantId?: number;
     /** Format: int64 */
     timeout?: number;
 };
-type settings_921758e6 = {
+type settings_5cde6863 = {
     browser?: {
         /** Format: byte */
         script?: string;
@@ -606,6 +605,7 @@ type settings_921758e6 = {
         } | null;
         proxyConnectHeaders?: (string | null)[] | null;
         proxyURL?: string | null;
+        /** @deprecated */
         secretManagerEnabled?: boolean | null;
         tlsConfig?: {
             /** Format: byte */

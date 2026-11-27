@@ -708,7 +708,7 @@ export interface components {
             id: number;
             name: string;
             /** @enum {string} */
-            provider: "aws" | "azure" | "fedramp-palantir" | "gcp";
+            provider: "aws" | "azure" | "fedramp-palantir" | "gcp" | "metal";
             publicName: string;
             slug: string;
             sortOrder: number;
@@ -780,7 +780,7 @@ export interface components {
             pdcHostname: string;
             pdcPrivateConnectivityInfo: otlpPrivateConnectivityInfo_282d81d1;
             /** @enum {string} */
-            provider: "aws" | "azure" | "fedramp-palantir" | "gcp";
+            provider: "aws" | "azure" | "fedramp-palantir" | "gcp" | "metal";
             providerRegion: string;
             publicName: string;
             readyForStacks: boolean;
@@ -796,7 +796,7 @@ export interface components {
             visibility: string;
             workflowEngineUrl: string;
         };
-        FormattedOrgMembership: FormattedOrgMembership_c4ddf960;
+        FormattedOrgMembership: FormattedOrgMembership_d6b9bff8;
         NewApiKeyResult: {
             /** Format: int64 */
             id: number;
@@ -806,7 +806,7 @@ export interface components {
         OrgMemberListResponse: {
             cursor?: number;
             direction?: string;
-            items: FormattedOrgMembership_c4ddf960[];
+            items: FormattedOrgMembership_d6b9bff8[];
             links: {
                 href: string;
                 rel: string;
@@ -879,7 +879,6 @@ export interface operations {
                     grafanaSqlCluster?: string;
                     graphite?: boolean;
                     hlCluster?: string;
-                    hlInstanceId?: number;
                     hmGraphiteCluster?: string;
                     hmPromCluster?: string;
                     hosted?: boolean;
@@ -964,7 +963,6 @@ export interface operations {
                     deleteProtection?: boolean;
                     description?: string;
                     graphite?: boolean;
-                    hlInstanceId?: number;
                     issueLink?: string;
                     k6OrgId?: number | null;
                     labels?: {
@@ -1398,7 +1396,7 @@ export interface operations {
                 labels?: string[];
                 orderBy?: "id" | "createdAt" | "updatedAt" | "sortOrder";
                 orgId?: number;
-                provider?: "aws" | "gcp" | "azure" | "fedramp-palantir";
+                provider?: "aws" | "gcp" | "azure" | "fedramp-palantir" | "metal";
                 providerRegion?: string;
                 slug?: string;
                 slugIn?: string[];
@@ -1680,7 +1678,7 @@ type api_f6323610 = {
     alias: string;
     endpointName?: string;
 };
-type FormattedOrgMembership_c4ddf960 = {
+type FormattedOrgMembership_d6b9bff8 = {
     allowGCloudTrial: boolean;
     billing: number;
     /** @enum {number} */
@@ -1695,7 +1693,7 @@ type FormattedOrgMembership_c4ddf960 = {
         /** Format: date-time */
         accessExpiresAt: string;
         publicReason?: string | null;
-        ticketId?: number | null;
+        ticketId?: string | null;
     } | null;
     hgDatasourceCnts: string;
     hlUsage: number;
