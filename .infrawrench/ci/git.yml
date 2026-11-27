@@ -199,7 +199,7 @@ jobs:
       set -euo pipefail
       root="$PWD"
       tools=/root/.cache/git-forge-tools
-      .infrawrench/ci/git-tools.sh "$tools" git openssh
+      .infrawrench/ci/git-tools.sh "$tools" git openssh terraform
       export PATH="$tools/bin:$PATH"
 
       # PostgreSQL 18 (production's major), from AWS's mirror of the official
