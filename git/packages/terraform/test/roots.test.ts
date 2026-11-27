@@ -237,8 +237,13 @@ describe("discovering roots", () => {
       calledBy: [],
     });
     expect(prod.moduleCalls).toEqual([
-      { name: "network", source: NETWORK_MODULE, localPath: "modules/network" },
-      { name: "registry", source: "terraform-aws-modules/ecr/aws", localPath: null },
+      { name: "network", source: NETWORK_MODULE, localPath: "modules/network", version: null },
+      {
+        name: "registry",
+        source: "terraform-aws-modules/ecr/aws",
+        localPath: null,
+        version: "2.0.0",
+      },
     ]);
     expect(prod.variables).toEqual([
       { name: "region", required: false, sensitive: false },
