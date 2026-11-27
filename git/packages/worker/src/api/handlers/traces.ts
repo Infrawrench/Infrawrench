@@ -95,6 +95,14 @@ const authorOf = async (cx: RepoCx, branch: string): Promise<string | null> => {
       ownBranchOnly(cx, branch);
       return null;
     }
+    // An agent session's token for pushing one branch (`ref`, minted by the app):
+    // it records on that branch, as instructions already let it answer there.
+    if (principal.ref != null) {
+      if (principal.ref !== `refs/heads/${branch}`) {
+        throw forbidden("This token records on the branch it pushes, and no other");
+      }
+      return null;
+    }
     if (principal.runId === null) throw forbidden("Only a CI run's own token records a trace");
     const run = await getCiRun(
       cx.repo.repository.id,

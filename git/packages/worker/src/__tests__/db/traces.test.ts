@@ -294,6 +294,24 @@ describe.skipIf(!configured)("traces, against a real Postgres", () => {
     expect(await stored()).toHaveLength(1);
   });
 
+  it("takes an agent session's push token for its own branch and nothing else", async () => {
+    const session = (ref: string): Principal => ({
+      kind: "job",
+      repositoryId: id,
+      write: true,
+      runId: null,
+      workspaceId: null,
+      ref,
+    });
+    const body = (branch: string) => ({ branch, entries: [entry("from the session", "step")] });
+    const ok = await record(body("feature"), { principal: session("refs/heads/feature") });
+    expect(ok.status).toBe(200);
+    expect(ok.body.entries[0]).toMatchObject({ author: null, branch: "feature" });
+    expect((await record(body("other"), { principal: session("refs/heads/feature") })).status).toBe(
+      403,
+    );
+  });
+
   it("refuses the default branch and what is not a branch", async () => {
     for (const branch of ["main", "a..b", "refs/tags/v1", "has space", "/lead", "x.lock"]) {
       const answer = await record({ branch, entries: [entry("a step")] });
