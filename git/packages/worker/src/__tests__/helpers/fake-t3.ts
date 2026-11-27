@@ -16,6 +16,11 @@
  *   name both types; no token is a 401 with `resource_metadata`; protocol
  *   `2025-06-18` with a session id from `initialize`, a 400 without one and
  *   a 404 for one it does not know.
+ * - `orchestrator_capabilities` and `modelSelection` are as T3 Code's source
+ *   has them at 0.1.13 (`contracts/orchestratorMcp.ts`, `modelSelection.ts`,
+ *   `mcp/toolkits/project/handlers.ts`): a launch with no model on a project
+ *   with no default is refused once `requireModel` is set, and a model the
+ *   provider does not have is `model_unavailable`.
  * - Tools answer `structuredContent` and the same as JSON text; a refusal
  *   is `isError` with `{"_tag":"OrchestratorMcpFailure","code","message"}`
  *   as text; an argument the tool's schema does not have is refused.
@@ -38,7 +43,62 @@ export interface FakeT3Project {
   title: string;
   workspaceRoot: string;
   remoteUrl: string | null;
+  /** The project's own default, `{ instanceId, model, options? }`. */
+  defaultModelSelection?: Record<string, unknown> | null;
 }
+
+/** A provider as `orchestrator_capabilities` answers it. */
+export interface FakeT3Provider {
+  providerInstanceId: string;
+  driverKind: string;
+  displayName: string | null;
+  models: Array<{
+    id: string;
+    label?: string;
+    options?: Array<{ id: string; values: Array<string | boolean>; default?: string | boolean }>;
+  }>;
+  constraints: string[];
+}
+
+export const FAKE_T3_PROVIDERS: readonly FakeT3Provider[] = [
+  {
+    providerInstanceId: "codex",
+    driverKind: "codex",
+    displayName: "Codex",
+    models: [
+      {
+        id: "gpt-6-astra",
+        label: "GPT-6 Astra",
+        options: [
+          { id: "reasoningEffort", values: ["low", "medium", "high"], default: "medium" },
+          { id: "fastMode", values: [false, true], default: false },
+        ],
+      },
+    ],
+    constraints: [],
+  },
+  {
+    providerInstanceId: "claudeAgent",
+    driverKind: "claudeAgent",
+    displayName: "Claude",
+    models: [
+      {
+        id: "claude-opus-5-5",
+        label: "Claude Opus 5.5",
+        options: [{ id: "effort", values: ["low", "medium", "high", "xhigh"], default: "high" }],
+      },
+      { id: "claude-haiku-5-5", label: "Claude Haiku 5.5" },
+    ],
+    constraints: [],
+  },
+  {
+    providerInstanceId: "cursor",
+    driverKind: "cursor",
+    displayName: "Cursor",
+    models: [{ id: "auto" }],
+    constraints: ["Provider is not authenticated."],
+  },
+];
 
 export interface FakeT3Thread {
   threadId: string;
@@ -58,6 +118,7 @@ export interface SeenRequest {
 }
 
 const TOOL_ARGUMENTS: Record<string, readonly string[]> = {
+  orchestrator_capabilities: ["environmentId", "search"],
   t3_project_list: ["environmentId", "cursor", "limit"],
   t3_project_clone: [
     "environmentId",
@@ -88,6 +149,7 @@ const TOOL_ARGUMENTS: Record<string, readonly string[]> = {
     "attachments",
     "clientRequestId",
     "delegatedFrom",
+    "workflowRun",
   ],
   t3_thread_list: [
     "environmentId",
@@ -171,6 +233,9 @@ export const fakeT3 = (options: FakeT3Options = {}) => {
     projects: [] as FakeT3Project[],
     threads: [] as FakeT3Thread[],
     registrations: [] as Array<Record<string, unknown>>,
+    providers: structuredClone(FAKE_T3_PROVIDERS) as FakeT3Provider[],
+    /** Refuse a launch with no model on a project with no default, as T3 Code does. */
+    requireModel: false,
     /** Made to fail the next call of a tool, once: `{ t3_thread_launch: "message" }`. */
     failNext: {} as Record<string, string>,
     /** Stop answering at all. */
@@ -301,7 +366,7 @@ export const fakeT3 = (options: FakeT3Options = {}) => {
               .toLowerCase(),
             locator: { source: "git-remote", remoteName: "origin", remoteUrl: each.remoteUrl },
           },
-    defaultModelSelection: null,
+    defaultModelSelection: each.defaultModelSelection ?? null,
     scripts: [],
     createdAt: "2026-11-01T00:00:00.000Z",
     updatedAt: "2026-11-01T00:00:00.000Z",
@@ -309,6 +374,20 @@ export const fakeT3 = (options: FakeT3Options = {}) => {
   });
 
   const tools: Record<string, (args: Record<string, any>) => unknown> = {
+    orchestrator_capabilities: () => ({
+      parentThreadId: null,
+      inheritedProviderInstanceId: null,
+      inheritedModel: null,
+      inheritedOptions: [],
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      providers: state.providers.map((each) => ({
+        ...each,
+        canRunChildTask: each.constraints.length === 0,
+        canRunCrossProviderChildTask: each.constraints.length === 0,
+      })),
+      features: { threadManagement: true, maxBatchThreads: 20 },
+    }),
     t3_project_list: (args) => {
       const cursor = args["cursor"] ?? 0;
       const limit = Math.min(args["limit"] ?? 20, 100);
@@ -359,6 +438,39 @@ export const fakeT3 = (options: FakeT3Options = {}) => {
       const key = String(args["clientRequestId"] ?? next("request"));
       let thread = launches.get(key);
       if (!thread) {
+        const chosen = args["modelSelection"] as Record<string, any> | undefined;
+        if (chosen !== undefined) {
+          const provider = state.providers.find(
+            (each) => each.providerInstanceId === chosen["instanceId"],
+          );
+          const model = provider?.models.find((each) => each.id === chosen["model"]);
+          if (!provider || !model) {
+            throw new Failure(
+              "model_unavailable",
+              `Model ${chosen["model"]} is not advertised. No thread was created.`,
+            );
+          }
+          for (const option of (chosen["options"] ?? []) as Array<Record<string, unknown>>) {
+            const known = model.options?.find((each) => each.id === option["id"]);
+            if (!known || !known.values.includes(option["value"] as string)) {
+              throw new Failure(
+                "invalid_request",
+                `Option ${option["id"]} is not one of the model's.`,
+              );
+            }
+          }
+        }
+        const preset =
+          state.projects.find((each) => each.id === args["projectId"])?.defaultModelSelection ??
+          (state.requireModel ? undefined : { instanceId: "claude", model: "some-model" });
+        const modelSelection = chosen ?? preset;
+        if (modelSelection === undefined) {
+          throw new Failure(
+            "invalid_request",
+            "Pass modelSelection: the project has no default model. orchestrator_capabilities lists providers and models.",
+          );
+        }
+        args = { ...args, modelSelection };
         const threadId = next("thread");
         thread = {
           threadId,
@@ -376,7 +488,7 @@ export const fakeT3 = (options: FakeT3Options = {}) => {
         threadId: thread.threadId,
         link: `https://app.t3.codes/threads/env-1/${thread.threadId}`,
         projectId: thread.projectId,
-        modelSelection: { instanceId: "claude", model: "some-model" },
+        modelSelection: thread.launch["modelSelection"],
         runId: "run-1",
         status: thread.status,
       };

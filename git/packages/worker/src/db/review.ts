@@ -495,6 +495,26 @@ export const setAgentLink = async (link: {
   return row!;
 };
 
+/**
+ * Write one of a link's refs, or take it away with null, leaving the rest
+ * as they are: one statement, so it cannot undo a ref somebody else wrote.
+ */
+export const noteAgentLinkRef = async (
+  pullRequestId: string,
+  key: string,
+  value: string | null,
+): Promise<void> => {
+  await db
+    .update(gitAgentLinks)
+    .set({
+      externalRefs:
+        value === null
+          ? sql`${gitAgentLinks.externalRefs} - ${key}::text`
+          : sql`${gitAgentLinks.externalRefs} || jsonb_build_object(${key}::text, ${value}::text)`,
+    })
+    .where(eq(gitAgentLinks.pullRequestId, pullRequestId));
+};
+
 export const removeAgentLink = async (pullRequestId: string): Promise<void> => {
   await db.delete(gitAgentLinks).where(eq(gitAgentLinks.pullRequestId, pullRequestId));
 };
