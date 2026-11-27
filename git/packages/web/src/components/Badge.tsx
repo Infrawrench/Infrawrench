@@ -48,7 +48,26 @@ const STATUS_LABEL: Record<StatusState, string> = {
   pending: "Checks running",
 };
 
-/** A commit's combined status, in the glyphs the app's CI uses. Renders nothing for null. */
+export const commitStatusLabel = (state: StatusState): string => STATUS_LABEL[state];
+
+/** The glyph alone, for a control that names itself (`CommitChecks`). */
+export function CommitStatusGlyph({ state, size = 13 }: { state: StatusState; size?: number }) {
+  return state === "pending" ? (
+    <Spinner size={size} className="text-warning" />
+  ) : state === "success" ? (
+    <Icon name="checkCircle" size={size} className="text-success" />
+  ) : state === "failure" ? (
+    <Icon name="xCircle" size={size} className="text-danger" />
+  ) : (
+    <Icon name="alertCircle" size={size} className="text-danger" />
+  );
+}
+
+/**
+ * A commit's combined status, in the glyphs the app's CI uses. Renders
+ * nothing for null. Where the commit's repository is known, use
+ * `CommitChecks`, which opens the list of checks.
+ */
 export function CommitStatusIcon({
   state,
   size = 13,
@@ -60,15 +79,7 @@ export function CommitStatusIcon({
   const label = STATUS_LABEL[state];
   return (
     <span role="img" aria-label={label} title={label} className="inline-flex">
-      {state === "pending" ? (
-        <Spinner size={size} className="text-warning" />
-      ) : state === "success" ? (
-        <Icon name="checkCircle" size={size} className="text-success" />
-      ) : state === "failure" ? (
-        <Icon name="xCircle" size={size} className="text-danger" />
-      ) : (
-        <Icon name="alertCircle" size={size} className="text-danger" />
-      )}
+      <CommitStatusGlyph state={state} size={size} />
     </span>
   );
 }

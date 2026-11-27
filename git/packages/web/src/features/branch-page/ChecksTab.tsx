@@ -8,10 +8,11 @@ import { RelativeTime } from "../../components/people";
 import { EmptyState, QueryView } from "../../components/states";
 import { CheckStateIcon } from "../../components/StatusIcons";
 import { useRepoRef } from "../../layout/RepoLayout";
+import { checkHref } from "../../lib/checks";
 import { shortOid } from "../../lib/format";
 import { paths } from "../../lib/paths";
 import { RunRow, isActive } from "../ci/RunRow";
-import { checkRows } from "./merge-box";
+import { checkRows, type CheckRow } from "./merge-box";
 import { useBranchPage } from "./BranchLayout";
 
 /** What ran on the branch's head commit: its CI runs, and every status reported on it. */
@@ -79,14 +80,7 @@ export function ChecksTab() {
                   {at !== undefined ? (
                     <RelativeTime iso={at} className="shrink-0 text-on-surface-muted" />
                   ) : null}
-                  {row.targetUrl !== null ? (
-                    <AppLink
-                      href={row.targetUrl}
-                      className="shrink-0 text-on-surface-secondary hover:underline"
-                    >
-                      Details
-                    </AppLink>
-                  ) : null}
+                  <CheckDetails row={row} />
                 </li>
               );
             })}
@@ -94,5 +88,16 @@ export function ChecksTab() {
         )}
       </Panel>
     </div>
+  );
+}
+
+/** "Details" of a check: the run's page here when CI reported it, else the reporter's link. */
+function CheckDetails({ row }: { row: CheckRow }) {
+  const repo = useRepoRef();
+  const href = checkHref(repo, row);
+  return href === null ? null : (
+    <AppLink href={href} className="shrink-0 text-on-surface-secondary hover:underline">
+      Details
+    </AppLink>
   );
 }

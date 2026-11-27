@@ -18,6 +18,7 @@ import { Avatar, RelativeTime, UserLink } from "../../components/people";
 import { ErrorState, Loading } from "../../components/states";
 import { ThreadStateBadge, pageKind } from "../../components/StatusIcons";
 import { usePageTitle } from "../../lib/title";
+import { CommitChecks } from "../../components/CommitChecks";
 import { RepoBarCrumb, useRepoRef } from "../../layout/RepoLayout";
 import { paths, type BranchPageTab } from "../../lib/paths";
 import { ThreadHeader } from "../issues/ThreadHeader";
@@ -106,6 +107,7 @@ function BranchMeta({ data }: { data: BranchPage }) {
         </AppLink>
       </span>
       <CopyButton text={data.headRef} label="Copy branch name" />
+      <CommitChecks repo={repo} oid={data.headOid} state={data.mergeability.checks.state} />
       {data.author !== null ? (
         <UserLink user={data.author} avatar className="!font-normal text-on-surface-secondary" />
       ) : (

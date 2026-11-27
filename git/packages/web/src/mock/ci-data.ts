@@ -590,6 +590,7 @@ export function statusesFor(repo: RepositoryRecord, sha: string): CommitStatus[]
                 ? "Failed"
                 : "Errored",
         targetUrl: `/${repo.owner.slug}/${repo.name}/ci/runs/${record.run.id}`,
+        runId: record.run.id,
         creator: null,
         createdAt: record.run.createdAt,
         updatedAt: record.run.finishedAt ?? record.run.createdAt,

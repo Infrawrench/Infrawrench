@@ -224,7 +224,8 @@ export const ContentsHandlers = HttpApiBuilder.group(GitApi, "contents", (handle
         const decorate = await commitDecorator(
           cx.repo.repository.id,
           [listing.lastCommit, ...listing.entries.map((entry) => entry.lastCommit)],
-          { statuses: false },
+          // The header's commit shows its checks; a row's does not.
+          { statuses: listing.lastCommit ? [listing.lastCommit.oid] : false },
         );
         return {
           ...listing,
@@ -268,9 +269,8 @@ export const ContentsHandlers = HttpApiBuilder.group(GitApi, "contents", (handle
       repoOp(async (cx, { query }) => {
         const found = await cx.git.latestCommit({ ref: query.ref, path: query.path ?? "" });
         if (found.commit === null) return found;
-        const decorate = await commitDecorator(cx.repo.repository.id, [found.commit], {
-          statuses: false,
-        });
+        // The strip above a listing or a file shows this commit's checks.
+        const decorate = await commitDecorator(cx.repo.repository.id, [found.commit]);
         return { ...found, commit: decorate(found.commit) };
       }),
     )

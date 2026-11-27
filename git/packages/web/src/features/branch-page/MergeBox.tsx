@@ -18,6 +18,7 @@ import { Menu } from "../../components/Menu";
 import { InlineError } from "../../components/states";
 import { CheckStateIcon } from "../../components/StatusIcons";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
+import { checkHref } from "../../lib/checks";
 import { plural, shortOid } from "../../lib/format";
 import { paths } from "../../lib/paths";
 import {
@@ -82,14 +83,7 @@ function CheckList({ rows }: { rows: ReadonlyArray<CheckRow> }) {
           <span className="min-w-0 truncate font-medium text-on-surface">{row.context}</span>
           <span className="min-w-0 flex-1 truncate text-on-surface-muted">{row.description}</span>
           {row.required ? <Badge tone="outline">Required</Badge> : null}
-          {row.targetUrl !== null ? (
-            <AppLink
-              href={row.targetUrl}
-              className="shrink-0 text-on-surface-secondary hover:underline"
-            >
-              Details
-            </AppLink>
-          ) : null}
+          <CheckDetails row={row} />
         </li>
       ))}
     </ul>
@@ -499,5 +493,16 @@ export function MergeBox({
         </div>
       )}
     </section>
+  );
+}
+
+/** "Details" of a check: the run's page here when CI reported it, else the reporter's link. */
+function CheckDetails({ row }: { row: CheckRow }) {
+  const repo = useRepoRef();
+  const href = checkHref(repo, row);
+  return href === null ? null : (
+    <AppLink href={href} className="shrink-0 text-on-surface-secondary hover:underline">
+      Details
+    </AppLink>
   );
 }

@@ -8,6 +8,7 @@ const status = (context: string, state: StatusState): CommitStatus => ({
   state,
   description: null,
   targetUrl: `/acme/infra/ci/runs/${context}`,
+  runId: null,
   creator: null,
   createdAt: "2026-11-01T10:00:00.000Z",
   updatedAt: "2026-11-01T10:00:00.000Z",
@@ -193,6 +194,7 @@ describe("checkRows", () => {
         state: null,
         description: "Expected",
         targetUrl: null,
+        runId: null,
         required: true,
       },
       {
@@ -200,6 +202,7 @@ describe("checkRows", () => {
         state: "success",
         description: null,
         targetUrl: "/acme/infra/ci/runs/ci / lint",
+        runId: null,
         required: true,
       },
     ]);

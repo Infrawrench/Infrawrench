@@ -43,6 +43,7 @@ export default defineMockHandlers({
         state: payload.state,
         description: payload.description ?? null,
         targetUrl: payload.targetUrl ?? null,
+        runId: null,
         creator,
         createdAt: now,
         updatedAt: now,

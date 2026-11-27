@@ -9,7 +9,7 @@ import type { BranchPageSummary, IssueSummary } from "@infrawrench/git-contract"
 import { api } from "../../api/client";
 import { queries, usePages } from "../../api/queries";
 import { AppLink, useGo } from "../../components/AppLink";
-import { CommitStatusIcon } from "../../components/Badge";
+import { CommitChecks } from "../../components/CommitChecks";
 import { ButtonLink } from "../../components/Button";
 import { SearchInput } from "../../components/forms";
 import { Icon, type IconName } from "../../components/icons";
@@ -425,7 +425,9 @@ function ThreadWorkRow({ row, labelHref }: { row: Row; labelHref: (name: string)
       chips={
         // Above the row's own link, so a label and a milestone can be followed.
         <span className="relative z-10 flex items-center gap-2 text-xs text-on-surface-muted">
-          {page !== null ? <CommitStatusIcon state={page.status} /> : null}
+          {page !== null ? (
+            <CommitChecks repo={repo} oid={page.headOid} state={page.status} />
+          ) : null}
           {page !== null && page.crossRepository ? (
             <span
               title={

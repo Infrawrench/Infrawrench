@@ -8,7 +8,7 @@ import type { TimelineItem } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
 import { invalidate, usePages } from "../../api/queries";
 import { AppLink } from "../../components/AppLink";
-import { CommitStatusIcon } from "../../components/Badge";
+import { CommitChecks } from "../../components/CommitChecks";
 import { Icon, type IconName } from "../../components/icons";
 import { LabelChip } from "../../components/LabelChip";
 import { RelativeTime, UserLink } from "../../components/people";
@@ -314,7 +314,7 @@ function CommitsRow({ item }: { item: Extract<TimelineItem, { type: "commits" }>
               >
                 {showBidi(commit.summary)}
               </AppLink>
-              <CommitStatusIcon state={commit.status} size={12} />
+              <CommitChecks repo={repo} oid={commit.oid} state={commit.status} size={12} />
               <span className="ml-auto shrink-0">
                 <CommitLink repo={repo} oid={commit.oid} />
               </span>

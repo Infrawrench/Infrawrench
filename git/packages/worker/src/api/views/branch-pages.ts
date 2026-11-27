@@ -58,6 +58,7 @@ export const statusViews = async (rows: readonly CommitStatusRow[]): Promise<Com
     state: row.state,
     description: row.description,
     targetUrl: row.targetUrl,
+    runId: row.ciRunId,
     creator: person(row.creatorUserId),
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),

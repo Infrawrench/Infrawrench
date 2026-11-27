@@ -4,7 +4,8 @@ import type { Signature, UserRef } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
 import { queries } from "../../api/queries";
 import { AppLink } from "../../components/AppLink";
-import { Badge, CommitStatusIcon } from "../../components/Badge";
+import { Badge } from "../../components/Badge";
+import { CommitChecks } from "../../components/CommitChecks";
 import { ButtonLink } from "../../components/Button";
 import { CopyButton } from "../../components/controls";
 import { Icon } from "../../components/icons";
@@ -66,7 +67,13 @@ export function CommitPage({ sha }: { sha: string }) {
                   <div className="min-w-0 flex-1">
                     <h1 className="flex items-center gap-2 text-base font-semibold text-on-surface">
                       <span className="min-w-0 break-words">{showBidi(commit.summary)}</span>
-                      <CommitStatusIcon state={commit.status} size={15} />
+                      <CommitChecks
+                        repo={repo}
+                        oid={commit.oid}
+                        state={commit.status}
+                        size={15}
+                        live
+                      />
                     </h1>
                     {body !== "" ? (
                       <pre className="mt-2 whitespace-pre-wrap font-mono text-xs leading-5 text-on-surface-secondary">

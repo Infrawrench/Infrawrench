@@ -110,8 +110,9 @@ export interface CommitDecorator {
 
 /**
  * Look up everything these commits need at once, and answer each decorated.
- * `statuses` is for lists a person reads as history; a tree listing leaves
- * them null, as the contract allows.
+ * `statuses` is for lists a person reads as history. A listing names the
+ * commits it wants them for (a folder's own newest commit, which its header
+ * shows) and leaves the rest null, as the contract allows.
  */
 /** A summary written down before `coAuthors` existed (a stored timeline) has none. */
 const coAuthorsOf_ = (commit: CommitSummary): CommitSummary["coAuthors"] =>
@@ -120,7 +121,7 @@ const coAuthorsOf_ = (commit: CommitSummary): CommitSummary["coAuthors"] =>
 export const commitDecorator = async (
   repositoryId: string,
   commits: ReadonlyArray<CommitSummary | null | undefined>,
-  options: { readonly statuses: boolean } = { statuses: true },
+  options: { readonly statuses: boolean | readonly string[] } = { statuses: true },
 ): Promise<CommitDecorator> => {
   const known = commits.filter((commit): commit is CommitSummary => Boolean(commit));
   // A bot's address needs no lookup, and is never a person's.
@@ -135,9 +136,15 @@ export const commitDecorator = async (
   const [people, aliases, states] = await Promise.all([
     usersByEmail(emails),
     usersByCommitEmail(repositoryId, emails),
-    options.statuses
-      ? combinedStatesFor(repositoryId, [...new Set(known.map((commit) => commit.oid))])
-      : Promise.resolve(new Map<string, CommitSummary["status"]>()),
+    // One query for the page, whatever its length; none when nothing is asked for.
+    options.statuses === false
+      ? Promise.resolve(new Map<string, CommitSummary["status"]>())
+      : combinedStatesFor(
+          repositoryId,
+          options.statuses === true
+            ? [...new Set(known.map((commit) => commit.oid))]
+            : [...new Set(options.statuses)],
+        ),
   ]);
   // A bot's address is the bot whatever the commit calls it; then the person
   // whose account has the address; then whoever added it for the

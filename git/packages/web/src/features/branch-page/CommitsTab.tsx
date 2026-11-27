@@ -2,7 +2,7 @@ import type { CommitSummary } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
 import { usePages } from "../../api/queries";
 import { AppLink } from "../../components/AppLink";
-import { CommitStatusIcon } from "../../components/Badge";
+import { CommitChecks } from "../../components/CommitChecks";
 import { CopyButton } from "../../components/controls";
 import { Panel, PanelHeader } from "../../components/Panel";
 import { CommitAuthors, RelativeTime } from "../../components/people";
@@ -53,7 +53,7 @@ export function CommitsTab() {
                     <span>
                       committed <RelativeTime iso={commit.committer.when} />
                     </span>
-                    <CommitStatusIcon state={commit.status} size={12} />
+                    <CommitChecks repo={repo} oid={commit.oid} state={commit.status} size={12} />
                   </div>
                 </div>
                 <AppLink

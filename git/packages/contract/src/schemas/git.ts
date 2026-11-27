@@ -447,6 +447,10 @@ export const CommitStatus = Schema.Struct({
   state: StatusState,
   description: Schema.NullOr(Schema.String),
   targetUrl: Schema.NullOr(Schema.String),
+  runId: Schema.NullOr(Schema.String).annotate({
+    description:
+      "The Infrawrench CI run that reported it, whose page is `/:owner/:repo/ci/runs/:runId`. Null for a status something else reported.",
+  }),
   creator: Schema.NullOr(UserRef),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,

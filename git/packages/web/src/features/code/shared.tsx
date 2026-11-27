@@ -9,7 +9,7 @@ import {
 } from "@infrawrench/git-contract";
 import { queries } from "../../api/queries";
 import { AppLink, useGo } from "../../components/AppLink";
-import { CommitStatusIcon } from "../../components/Badge";
+import { CommitChecks } from "../../components/CommitChecks";
 import { buttonClass } from "../../components/Button";
 import { Breadcrumbs, CopyButton, Segmented, type Crumb } from "../../components/controls";
 import { CodePageSkeleton } from "./CodePageSkeleton";
@@ -143,7 +143,7 @@ export function CommitStrip({
       >
         {showBidi(commit.summary)}
       </AppLink>
-      <CommitStatusIcon state={commit.status} />
+      <CommitChecks repo={repo} oid={commit.oid} state={commit.status} live />
       <AppLink
         href={paths.commit(repo, commit.oid)}
         className="font-mono text-on-surface-muted hover:underline"

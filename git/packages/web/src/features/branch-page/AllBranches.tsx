@@ -11,6 +11,7 @@ import { invalidate, usePages } from "../../api/queries";
 import { AppLink } from "../../components/AppLink";
 import { Badge } from "../../components/Badge";
 import { Button, ButtonLink } from "../../components/Button";
+import { CommitChecks } from "../../components/CommitChecks";
 import { ConfirmDialog, Dialog, Segmented } from "../../components/controls";
 import { Field, Input, SearchInput } from "../../components/forms";
 import { Icon } from "../../components/icons";
@@ -245,6 +246,11 @@ export function AllBranches({ lead }: { lead: ReactNode }) {
                     <span className="flex items-center gap-1.5">
                       <CommitAuthors commit={branch.commit} />
                       <RelativeTime iso={branch.commit.committer.when} />
+                      <CommitChecks
+                        repo={repo}
+                        oid={branch.commit.oid}
+                        state={branch.commit.status}
+                      />
                     </span>
                   </Td>
                   <Td>

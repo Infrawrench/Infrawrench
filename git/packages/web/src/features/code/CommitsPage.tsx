@@ -3,7 +3,7 @@ import type { CommitSummary } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
 import { usePages } from "../../api/queries";
 import { AppLink } from "../../components/AppLink";
-import { CommitStatusIcon } from "../../components/Badge";
+import { CommitChecks } from "../../components/CommitChecks";
 import { ButtonLink } from "../../components/Button";
 import { CopyButton } from "../../components/controls";
 import { Icon } from "../../components/icons";
@@ -49,7 +49,7 @@ export function CommitRow({
           <RelativeTime iso={commit.committer.when} />
         </p>
       </div>
-      <CommitStatusIcon state={commit.status} />
+      <CommitChecks repo={repo} oid={commit.oid} state={commit.status} />
       <div className="flex items-center rounded border border-border">
         <AppLink
           href={paths.commit(repo, commit.oid)}

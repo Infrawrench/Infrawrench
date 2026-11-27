@@ -19,6 +19,8 @@ export interface CheckRow {
   readonly state: StatusState | null;
   readonly description: string | null;
   readonly targetUrl: string | null;
+  /** The CI run behind it, whose page "Details" opens (`lib/checks.ts` `checkHref`). */
+  readonly runId: string | null;
   readonly required: boolean;
 }
 
@@ -53,6 +55,7 @@ export function checkRows(checks: Mergeability["checks"]): CheckRow[] {
     state: status.state,
     description: status.description,
     targetUrl: status.targetUrl,
+    runId: status.runId,
     required: required.has(status.context),
   }));
   const reported = new Set(checks.statuses.map((status) => status.context));
@@ -63,6 +66,7 @@ export function checkRows(checks: Mergeability["checks"]): CheckRow[] {
         state: null,
         description: "Expected",
         targetUrl: null,
+        runId: null,
         required: true,
       });
     }
