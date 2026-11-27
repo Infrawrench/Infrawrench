@@ -45,7 +45,7 @@ import {
 } from "../repo/reader";
 import { announcePullRequest } from "./ci";
 import type { PushContext } from "./consumer";
-import { queuePullRequestPlans } from "./terraform";
+import { queuePullRequestPlans, scanAhead } from "./terraform";
 
 type Update = GitPushEvent["updates"][number];
 
@@ -239,6 +239,7 @@ export const openDraftPage = async (input: DraftPage): Promise<PullRequestWithTh
     }),
   );
   await announcePullRequest(input.repo, created, "opened", input.repo, input.actor);
+  await scanAhead(input.reader, repository.id, [input.headOid, input.comparison.mergeBaseOid]);
   if (plansPullRequest(repository.id, created.pull.headRepositoryId)) {
     await queuePullRequestPlans({
       repositoryId: repository.id,
