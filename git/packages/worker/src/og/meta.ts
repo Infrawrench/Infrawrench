@@ -62,6 +62,10 @@ const join = (...parts: ReadonlyArray<string | null | undefined | false>): strin
 const titled = (...parts: ReadonlyArray<string | null | undefined>): string =>
   join(...parts, SITE_NAME);
 
+/** Text that ends a sentence before more is written after it. */
+const asSentence = (text: string): string =>
+  /[.!?…:]$/.test(text.trimEnd()) ? text.trimEnd() : `${text.trimEnd()}.`;
+
 const fullName = (repository: RepositoryFacts): string => `${repository.owner}/${repository.name}`;
 
 /** A repository's numbers, as its header shows them. */
@@ -236,7 +240,7 @@ export async function pageMeta(
         description:
           repository.description === null
             ? numbers
-            : `${clip(repository.description, 250)} ${numbers}.`,
+            : `${asSentence(clip(repository.description, 250))} ${numbers}.`,
         type: "website",
         image: await imageOf(origin, at, card, join(name, repository.description)),
       };

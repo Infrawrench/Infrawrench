@@ -32,6 +32,19 @@ describe("pageMeta", () => {
     }
   });
 
+  it("ends a description without a full stop before the numbers", async () => {
+    const fixture = FIXTURES["repository"]!;
+    if (fixture.kind !== "repository") throw new Error("fixture");
+    const tags = await pageMeta(
+      pageOf("/acme/platform-infra"),
+      { ...fixture, repository: { ...fixture.repository, description: "Infra for testing" } },
+      ORIGIN,
+    );
+    expect(tags.description).toBe(
+      "Infra for testing. HCL · 1,284 stars · 87 forks · 23 open issues.",
+    );
+  });
+
   it("names explore", async () => {
     expect(await meta("/explore", null)).toMatchObject({
       title: "Explore · Infrawrench Git",
