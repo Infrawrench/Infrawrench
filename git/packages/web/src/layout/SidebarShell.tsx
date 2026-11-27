@@ -288,17 +288,20 @@ function WorkspaceSwitcher({
     <Menu
       label="Workspace"
       className="w-56"
+      rootClassName="min-w-0"
       trigger={({ props }) => (
         <button
           {...props}
           type="button"
           aria-haspopup="menu"
           aria-label={`Workspace: ${current?.name ?? "none"}`}
-          className="flex h-8 min-w-0 items-center gap-2 rounded-md px-1.5 text-sm font-medium text-on-surface hover:bg-surface-sunken"
+          className="flex h-8 max-w-full min-w-0 items-center gap-2 rounded-md px-1.5 text-sm font-medium text-on-surface hover:bg-surface-sunken"
         >
-          <BrandMark size={20} />
+          <span className="shrink-0">
+            <BrandMark size={20} />
+          </span>
           <span className="truncate">{current?.name ?? "Git"}</span>
-          <Icon name="chevronsUpDown" size={13} className="text-on-surface-muted" />
+          <Icon name="chevronsUpDown" size={13} className="shrink-0 text-on-surface-muted" />
         </button>
       )}
       items={[
@@ -446,14 +449,16 @@ function MemberSidebar({
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-12 shrink-0 items-center justify-between gap-1 px-2.5">
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
           <WorkspaceSwitcher
             workspaces={workspaces ?? []}
             current={current}
             select={select}
             unclaimed={unclaimed}
           />
-          <Badge tone="outline">Beta</Badge>
+          <Badge tone="outline" className="shrink-0">
+            Beta
+          </Badge>
         </div>
         <SearchLink />
       </div>
@@ -532,7 +537,9 @@ function VisitorSidebar({ user, appUrl }: { user: SessionUser | null; appUrl: st
         >
           <BrandMark size={20} />
           <span>Git</span>
-          <Badge tone="outline">Beta</Badge>
+          <Badge tone="outline" className="shrink-0">
+            Beta
+          </Badge>
         </AppLink>
         <SearchLink />
       </div>

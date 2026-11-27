@@ -30,6 +30,8 @@ export interface PopoverProps {
   /** Above the trigger rather than under it: for one at the foot of the page. */
   readonly side?: "bottom" | "top";
   readonly className?: string;
+  /** Classes for the element around the trigger, e.g. `min-w-0` so a long trigger can shrink. */
+  readonly rootClassName?: string;
   readonly onOpenChange?: (open: boolean) => void;
 }
 
@@ -40,6 +42,7 @@ export function Popover({
   side = "bottom",
   className = "",
   onOpenChange,
+  rootClassName,
 }: PopoverProps) {
   const id = useId();
   const [open, setOpenState] = useState(false);
@@ -71,7 +74,7 @@ export function Popover({
   return (
     <div
       ref={root}
-      className="relative inline-block"
+      className={`relative inline-block ${rootClassName ?? ""}`}
       onKeyDown={(event) => {
         if (event.key === "Escape" && open) {
           event.stopPropagation();
@@ -156,6 +159,7 @@ export interface MenuProps {
   /** Shown above the items: who is signed in, what the menu is about. */
   readonly header?: ReactNode;
   readonly className?: string;
+  readonly rootClassName?: string;
 }
 
 /**
@@ -168,7 +172,16 @@ const itemClass =
 
 const ITEMS = "[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled])";
 
-export function Menu({ trigger, items, label, align, side, header, className }: MenuProps) {
+export function Menu({
+  trigger,
+  items,
+  label,
+  align,
+  side,
+  header,
+  className,
+  rootClassName,
+}: MenuProps) {
   const list = useRef<HTMLDivElement>(null);
   return (
     <Popover
@@ -176,6 +189,7 @@ export function Menu({ trigger, items, label, align, side, header, className }: 
       align={align ?? "start"}
       side={side ?? "bottom"}
       className={className ?? ""}
+      rootClassName={rootClassName ?? ""}
       onOpenChange={(open) => {
         if (open) {
           requestAnimationFrame(() => list.current?.querySelector<HTMLElement>(ITEMS)?.focus());
