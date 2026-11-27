@@ -177,7 +177,7 @@ An address is matched in this order:
    A bot account has a page (`git.infrawrench.com/claude`, `git.infrawrench.com/cursor`) with a **Bot** badge and nothing else. Nobody can sign in as one, take its username, add it as a collaborator or mention it.
 
 2. **The address on your Infrawrench account**, everywhere on the forge, once you have a username.
-3. **A commit email verified for the repository's owner**, described below: in an organization's repository, one a member verified in that organization; in a person's own repository, one that person verified for their own repositories.
+3. **A commit email added for the repository's owner**, described below: in an organization's repository, one a member added in that organization; in a person's own repository, one that person added for their own repositories. It does not have to be verified.
 
 An address that matches none of these is shown with the name the commit wrote.
 
@@ -190,38 +190,50 @@ An address that matches none of these is shown with the name the commit wrote.
 If some of your commits in an organization's repositories were made with another address, such as an old work address or the one on a laptop you no longer use, add it as a commit email in that organization:
 
 1. Open the account menu and go to **Settings > Organisations**.
-2. Under the organization, in **Commit emails in _organization_**, type the address and click **Add**. It is listed as **Pending**.
-3. A message with a code is sent to the address, usually within a minute. It names you and the organization.
-4. Type the code beside the address and click **Verify**. It is now **Verified**.
+2. Under the organization, in **Commit emails**, type the address and click **Add**.
 
-From then on, commits with that address are shown as yours in that organization's repositories. A few rules:
+That is all. Commits with that address are shown as yours in that organization's repositories straight away. No message is sent and nothing has to be confirmed. A few rules:
 
-- **It applies in that organization only.** The same address in another organization's repositories, in your own namespace or in anyone else's is unaffected, and someone else can verify the same address in a different organization. A repository in your own namespace that [runs in the organization](#where-your-own-repositories-run) does not count as the organization's.
-- **Nothing changes until the code is entered**, and only you can enter it, signed in. The code works once, for 24 hours, and for five wrong tries. **Send again** sends a new one, at most once a minute.
+- **It applies in that organization only.** The same address in another organization's repositories, in your own namespace or in anyone else's is unaffected, and someone else can add the same address in a different organization. A repository in your own namespace that [runs in the organization](#where-your-own-repositories-run) does not count as the organization's.
 - **One member per address.** An address that is on another member's account, or that another member has verified, is refused. A bot account's address is refused too.
 - **It stops when you leave.** If you leave the organization or are removed from it, your commit emails there stop applying at once.
-- You can have up to 10 in each organization. **Remove** takes one away, verified or not.
+- You can have up to 10 in each organization. The bin icon beside an address removes it, after asking.
 
 Commit emails in an organization need an organization with a [namespace](#namespaces). They are set from a signed-in browser, not with an access token.
 
-<insert [Settings > Organisations on git.infrawrench.com: an organisation's row with "Commit emails in Acme" under it, one address marked Verified, one marked Pending with its code field, Verify and Send again buttons, and the field to add another address] here>
+<insert [Settings > Organisations on git.infrawrench.com: an organisation's row with its "Commit emails" panel under the name, one address with the green Verified check, one with the Verify action, a bin icon on each row, and the field to add another address at the bottom] here>
+
+#### Verifying an address
+
+Verifying is optional. It proves the address is yours, with a code sent to it:
+
+1. Click **Verify** beside the address. A message with a code is sent to the address, usually within a minute. It names you and the organization.
+2. Type the code in the field that opens in that row and click **Verify**. The address now shows **Verified**.
+
+The code works once, for 24 hours, and for five wrong tries. **Send again** sends a new one, at most once a minute. **Cancel** closes the field, and the address goes on applying as before.
+
+What verifying adds in an organization:
+
+- **Nobody else can add the address.** An address a member has only added can be added by another member too, as described next. A verified one cannot.
+- **It takes the address over.** If another member added the address before you, yours is listed with the line **Another member added this address. It counts for you once verified.** and a code is sent to it straight away. Until you enter the code, commits with that address stay with the member who added it first. Once you do, they are shown as yours and the other member's entry is removed.
+
+If the member who had the address removes it or leaves the organization before you verify, yours starts applying without the code.
 
 ### Commit emails in your own repositories
 
 The repositories in your own namespace take commit emails too, kept apart from any organization's:
 
 1. Open the account menu and go to **Settings > Profile**.
-2. Under **Commit emails**, type the address and click **Add**. It is listed as **Pending**.
-3. A message with a code is sent to the address, usually within a minute.
-4. Type the code beside the address and click **Verify**. It is now **Verified**.
+2. Under **Commit emails**, type the address and click **Add**.
 
-From then on, commits with that address are shown as yours in the repositories of your own namespace. The code, **Send again** and **Remove** work as they do in an organization, and you can have up to 10. What differs:
+Commits with that address are shown as yours in the repositories of your own namespace straight away. **Verify**, **Send again** and removing work as they do in an organization, and you can have up to 10. What differs:
 
 - **It applies in your own repositories only.** Not in an organization's repositories, even one you own, and not in anyone else's own repositories. To have the same address count in an organization, add it there as well.
 - **An address on someone else's account is refused**, whoever they are, so nobody's commits are shown as yours by claiming the address they sign in with. Your own account's address already counts everywhere, and a bot account's address is refused.
-- **It is separate from every organization.** Verifying an address here does not stop a member verifying it in an organization, and an address verified in an organization can still be added here.
+- **It is separate from every organization.** An address here does not stop a member adding or verifying it in an organization, and an address in an organization can still be added here.
+- **Verifying only marks it.** Nobody else adds addresses for your repositories, so there is nothing to take over: a verified address shows **Verified** and applies exactly as it did.
 
-<insert [Settings > Profile on git.infrawrench.com: the Commit emails section under the profile form, headed "Your own repositories", with one address marked Verified, one marked Pending with its code field, Verify and Send again buttons, and the field to add another address] here>
+<insert [Settings > Profile on git.infrawrench.com: the Commit emails section under the profile form, a panel headed "Your own repositories" with one address showing the green Verified check, one with the Verify action, a bin icon on each row, and the field to add another address at the bottom] here>
 
 ## Repository settings
 
