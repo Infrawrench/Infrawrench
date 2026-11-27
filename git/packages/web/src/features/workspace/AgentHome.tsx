@@ -63,7 +63,8 @@ function AgentsWorking({ count }: { count: number }) {
   );
 }
 
-const section = "border-b border-border px-5 py-8 md:px-10 md:py-10";
+// The gutters are the bar's, so the page starts under its name at every width.
+const section = "border-b border-border px-4 py-8 md:px-10 md:py-10";
 const column = "mx-auto w-full max-w-[1640px]";
 
 const SeeAll = ({ href, children }: { href: string; children: string }) => (
@@ -74,7 +75,7 @@ const SeeAll = ({ href, children }: { href: string; children: string }) => (
 
 function Activity({ events }: { events: ReadonlyArray<ActivityEvent> }) {
   return (
-    <section aria-labelledby="workspace-activity" className="px-5 py-8 md:px-10 md:py-10">
+    <section aria-labelledby="workspace-activity" className="px-4 py-8 md:px-10 md:py-10">
       <div className={column}>
         <h2
           id="workspace-activity"
@@ -118,15 +119,32 @@ function Activity({ events }: { events: ReadonlyArray<ActivityEvent> }) {
   );
 }
 
+/** Two cards side by side once each has room for a row's title and its line of text. */
+const cards = "grid gap-8 2xl:grid-cols-2";
+
+/** The page's outline while it loads: the lead, the two cards, the suggestions. */
 function HomeSkeleton() {
   return (
-    <div className={section}>
-      <div className={`${column} space-y-4`} role="status" aria-label="Loading">
-        <Skeleton className="size-10 rounded-lg" />
-        <Skeleton className="h-10 w-2/5" />
-        <Skeleton className="h-4 w-1/3" />
+    <>
+      <div className={section}>
+        <div className={`${column} space-y-4`} role="status" aria-label="Loading">
+          <Skeleton className="size-10 rounded-lg" />
+          <Skeleton className="h-10 w-2/5" />
+          <Skeleton className="h-4 w-1/3" />
+        </div>
       </div>
-    </div>
+      <div className={section} aria-hidden="true">
+        <div className={`${column} ${cards}`}>
+          <Loading count={4} />
+          <Loading count={4} />
+        </div>
+      </div>
+      <div className={section} aria-hidden="true">
+        <div className={column}>
+          <Loading count={5} />
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -214,7 +232,7 @@ export function AgentHome() {
         <>
           <Lead home={data} workspace={current} />
           <div className={section}>
-            <div className={`${column} grid gap-8 xl:grid-cols-2`}>
+            <div className={`${column} ${cards}`}>
               <WorkCard
                 title="Your changes"
                 label="Your changes"

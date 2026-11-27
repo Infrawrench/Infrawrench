@@ -42,7 +42,7 @@ function ListPage({
   return (
     <>
       <TopBar title={title} actions={signedOut ? undefined : actions} />
-      <div className="px-5 py-6 md:px-10 md:py-8">
+      <div className="px-4 py-6 md:px-10">
         <div className="mx-auto w-full max-w-[1640px]">
           {signedOut ? (
             <EmptyState
