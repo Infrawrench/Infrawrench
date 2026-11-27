@@ -2006,6 +2006,7 @@ export interface components {
             /** Format: date-time */
             created_on?: string;
             description?: string;
+            enforced_signed_commits?: boolean;
             has_publicly_visible_repos?: boolean;
             is_private?: boolean;
             key: string;
