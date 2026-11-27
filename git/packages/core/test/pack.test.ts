@@ -38,6 +38,7 @@ import {
   makeFixtureRepo,
   packFiles,
   prng,
+  randomBytes,
   readBytes,
   tempDir,
 } from "./helpers";
@@ -360,6 +361,32 @@ describeGit("packs written by git", () => {
     expect(result.stats.rangeReads).toBe(0);
     expect(result.stats.resolvedLater).toBeGreaterThan(0);
     expect(result.externalBases.length).toBeGreaterThan(0);
+  });
+
+  it("asks storage once for a block that several reads miss at the same time", async () => {
+    const bytes = randomBytes(10_000, prng(21));
+    let calls = 0;
+    let failing = false;
+    const read = cachedRangeReader(
+      async (offset, length) => {
+        calls++;
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        if (failing) throw new Error("storage is away");
+        return bytes.subarray(offset, offset + length);
+      },
+      { blockSize: 4096, maxBlocks: 2 },
+    );
+    const got = await Promise.all([read(0, 100), read(50, 100), read(4000, 200), read(4100, 10)]);
+    // Two blocks, however many reads wanted them.
+    expect(calls).toBe(2);
+    expect(Buffer.compare(got[2]!, bytes.subarray(4000, 4200))).toBe(0);
+    expect(Buffer.compare(await read(9990, 100), bytes.subarray(9990))).toBe(0);
+    expect(calls).toBe(3);
+    // A read that fails is not remembered: the next one asks again.
+    failing = true;
+    await expect(Promise.all([read(0, 10), read(20, 10)])).rejects.toThrow("storage is away");
+    failing = false;
+    expect(Buffer.compare(await read(0, 10), bytes.subarray(0, 10))).toBe(0);
   });
 
   it("reads any object back by offset, following its delta chain", async () => {
