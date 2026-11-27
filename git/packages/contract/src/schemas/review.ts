@@ -42,7 +42,7 @@ const ReviewerKindName = Schema.String.check(
   Schema.isMinLength(1),
   Schema.isMaxLength(64),
 ).annotate({
-  description: `A reviewer. The forge's own are ${REVIEWER_KINDS.map((kind) => `\`${kind}\``).join(", ")}; an agent that reports findings may name another.`,
+  description: `A reviewer. The forge's own are ${REVIEWER_KINDS.map((kind) => `\`${kind}\``).join(", ")}; an agent that reports findings may name another. Names that start with \`ci:\` are Infrawrench CI's (\`ci:<pipeline>/<job>\`, a job's note commands) and are refused to a report.`,
 });
 
 export const ReviewSettings = Schema.Struct({
@@ -81,7 +81,8 @@ export type AgentKind = typeof AgentKind.Type;
 /** Who acted, when it was an agent: on a version, a trace entry. */
 export const AgentIdentity = Schema.Struct({
   kind: Schema.String.annotate({
-    description: "One of the agent kinds, or what the agent called itself.",
+    description:
+      "One of the agent kinds, or what the agent called itself. `ci` is a job of Infrawrench CI, whose note commands the entry came from; its `name` is `<pipeline>/<job>`.",
   }),
   name: Schema.String,
   sessionRef: Schema.NullOr(Schema.String).annotate({

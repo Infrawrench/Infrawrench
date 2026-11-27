@@ -28,3 +28,16 @@ export {
   type GitBranchKey as ParsedBranchKey,
   type GitBranchKeyFork as BranchKeyFork,
 } from "@infrawrench/client-core";
+
+/**
+ * The names Infrawrench CI writes a job's note commands under (client-core
+ * `ci-notes.ts`): findings by the reviewer `ci:<pipeline>/<job>`, trace
+ * entries by an agent of kind `ci`. The API refuses both to everyone else,
+ * and the pages say "CI" by them.
+ */
+export {
+  CI_AGENT_KIND,
+  CI_REVIEWER_PREFIX,
+  ciReviewerJob,
+  isCiReviewer,
+} from "@infrawrench/client-core";

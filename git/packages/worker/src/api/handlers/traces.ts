@@ -24,6 +24,7 @@
  * entries and what waits on it for the next push.
  */
 import { HttpApiBuilder } from "effect/http-api";
+import { CI_AGENT_KIND } from "@infrawrench/client-core";
 import {
   GitApi,
   type TraceEntry,
@@ -169,6 +170,13 @@ export const TracesHandlers = HttpApiBuilder.group(GitApi, "traces", (handlers) 
         if (branch === cx.repo.repository.defaultBranch) {
           throw unprocessable(
             "The default branch has no versions: record on the branch the work is on",
+          );
+        }
+        // What Infrawrench CI writes a job's note commands as (server-core
+        // `ci/git-notes.ts`): the page says "from CI" by it, so nobody else is it.
+        if (payload.agent?.kind.trim().toLowerCase() === CI_AGENT_KIND) {
+          throw unprocessable(
+            `An agent of kind \`${CI_AGENT_KIND}\` is Infrawrench CI's own: name the agent another kind`,
           );
         }
         const prepared = prepareTraceEntries(payload.entries);

@@ -47,6 +47,8 @@ import {
   type CiRun,
   type CiRunDetail,
   type CiRunStatus,
+  ciNotesIgnoredSummary,
+  parseCiNotes,
 } from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
@@ -81,6 +83,7 @@ import { CiProxyError, proxyFetch, proxyJson, runUsage, type ProxyRun } from "./
 import { pluginCodeAvailable } from "../runtime/plugin-code.js";
 import type { CiConcurrencyEntry, CiJobAccess } from "../db/schema.js";
 import { noteRepository, runningCi, stillRunsCi } from "./schedules.js";
+import { landRunNotes } from "./git-notes.js";
 import { lendGithubTokens } from "./github-token.js";
 import { noticeTokenValid, withNotify } from "./notify.js";
 import {
@@ -886,6 +889,26 @@ async function retryLater(row: CiRunRow, reason: string): Promise<void> {
  */
 export const CACHED_REASON = "Cached: nothing it reads changed since a run that passed";
 
+/**
+ * A job's reason, with a sentence for the note commands in its output that
+ * were not taken (malformed, too long, past the limit): the one place a
+ * pipeline's author is told. Carried in `reason`, like {@link CACHED_REASON},
+ * so every client that shows one shows it. A job without output (one the
+ * task cache stood in for) is left exactly as it was.
+ */
+function withIgnoredNotes(
+  reason: string | null,
+  execution: { stdout?: string; stderr?: string } | null | undefined,
+): string | null {
+  const stdout = execution?.stdout ?? "";
+  const stderr = execution?.stderr ?? "";
+  if (!stdout.includes("::") && !stderr.includes("::")) return reason;
+  const ignored = ciNotesIgnoredSummary(parseCiNotes({ stdout, stderr }).ignored);
+  if (ignored === null) return reason;
+  if (reason === null || reason === "") return `${ignored}.`;
+  return `${reason}${/[.!?]$/.test(reason) ? "" : "."} ${ignored}.`;
+}
+
 /** The jobs of a finished run, with or without their output. */
 export function jobsOf(run: ProxyRun, withOutput: true): CiJobOutput[];
 export function jobsOf(run: ProxyRun, withOutput: false): CiJobSummary[];
@@ -929,7 +952,10 @@ export function jobsOf(run: ProxyRun, withOutput: boolean): Array<CiJobSummary |
         id: job.id ?? "",
         name: job.name ?? job.id ?? "",
         status,
-        reason: job.reason ?? job.message ?? (job.cached === true ? CACHED_REASON : null),
+        reason: withIgnoredNotes(
+          job.reason ?? job.message ?? (job.cached === true ? CACHED_REASON : null),
+          job.execution,
+        ),
         durationMs: typeof job.duration_ms === "number" ? job.duration_ms : null,
         ...(Array.isArray(job.needs) && job.needs.every((n) => typeof n === "string")
           ? { needs: job.needs }
@@ -1122,6 +1148,9 @@ export async function syncRun(
     "running",
   );
   if (!ended) return "settled";
+  // Before the commit says it passed: a must-fix a job printed holds the
+  // merge its green status would otherwise let through.
+  await landRunNotes(row, run);
   // The run's own check first: it is the one a branch protection rule
   // waits for, and each job check after it is a GitHub call of its own.
   await upsertCheck(row, finishedCheck(row, jobs, passed, failedCount, cancelReason));

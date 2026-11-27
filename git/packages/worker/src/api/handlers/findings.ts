@@ -13,8 +13,15 @@
  *
  * A CI job's token lists and reports and nothing else: it never dismisses,
  * overrides or asks for a run.
+ *
+ * A third writer does not come through here at all: Infrawrench CI writes a
+ * job's note commands as findings under `ci:<pipeline>/<job>` from the app
+ * (server-core `ci/git-notes.ts`), through the same `recordFindings`. Those
+ * names are refused to `report` for the reason the forge's own are: a job
+ * that passes marks that name's other findings fixed.
  */
 import { HttpApiBuilder } from "effect/http-api";
+import { CI_REVIEWER_PREFIX } from "@infrawrench/client-core";
 import { GitApi, conflict, forbidden, notFound, unprocessable } from "@infrawrench/git-contract";
 import {
   type FindingRow,
@@ -38,7 +45,7 @@ import {
   versionsForPull,
 } from "../../db/review";
 import { describeError } from "../../http/log";
-import { isForgeReviewer, recordFindings } from "../../review/findings";
+import { isCiReviewer, isForgeReviewer, recordFindings } from "../../review/findings";
 import { maskOptional } from "../../review/masking";
 import { reviewAvailability } from "../../review/policy";
 import { enqueueReviewRun } from "../../review/queue";
@@ -111,6 +118,11 @@ export const FindingsHandlers = HttpApiBuilder.group(GitApi, "findings", (handle
         if (isForgeReviewer(payload.reviewerKind)) {
           throw unprocessable(
             `\`${payload.reviewerKind}\` is one of the forge's own reviewers: report under another name`,
+          );
+        }
+        if (isCiReviewer(payload.reviewerKind)) {
+          throw unprocessable(
+            `\`${CI_REVIEWER_PREFIX}\` names are Infrawrench CI's, written from a job's note commands: report under another name`,
           );
         }
         const { version } = versionOr422(await versionsForPull(pull), payload.version);
