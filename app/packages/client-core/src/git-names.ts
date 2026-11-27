@@ -89,11 +89,16 @@ export const GIT_RESERVED_REPOSITORY_NAMES: readonly string[] = [
 export type GitNameProblem =
   "empty" | "too_long" | "characters" | "git_suffix" | "dots" | "reserved" | "bot";
 
+// Note: the checks run in this order on purpose, so a name with several
+// problems reports the most basic one first (an empty name is "empty", not
+// "characters").
 const shapeProblem = (name: string, maxLength: number): GitNameProblem | null => {
   if (name.length === 0) return "empty";
   if (name.length > maxLength) return "too_long";
   if (!NAME_PATTERN.test(name)) return "characters";
   const lower = name.toLowerCase();
+  // Note: compared lowercased, so `Foo.GIT` is refused as well. A `foo.git`
+  // repository would read like the clone address of a repository `foo`.
   if (lower.endsWith(".git") || lower.endsWith(".wiki")) return "git_suffix";
   if (name.endsWith(".") || name.includes("..")) return "dots";
   return null;
@@ -143,6 +148,9 @@ export const gitNameProblemMessage = (problem: GitNameProblem, maxLength: number
  * may be reserved or taken; the caller checks.
  */
 export const suggestGitSlug = (source: string): string =>
+  // Note: NFKD splits an accented letter into its base letter and a combining
+  // mark, so "José" becomes "Jose" plus a mark; the mark turns into a dash
+  // below and the trailing dash is trimmed, leaving "Jose".
   source
     .split("@")[0]!
     .normalize("NFKD")

@@ -114,3 +114,7 @@ User-facing docs live in `app/packages/website/src/content/docs/` and are publis
 ## License
 
 [Business Source License 1.1](./LICENSE).
+
+## A note from a test run
+
+This section exists only to check that an agent's branch, its versions and its trace show up on git.infrawrench.com. It says nothing about Infrawrench. If you are reading it on `main`, someone merged a test by mistake: delete it.
