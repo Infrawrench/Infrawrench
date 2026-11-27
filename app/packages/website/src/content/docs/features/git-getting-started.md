@@ -17,7 +17,11 @@ sidebar_order: 7
 
 Usernames use letters, digits, dots, dashes and underscores, are at most 39 characters, and cannot end in `.git`. The field tells you whether a name is available as you type.
 
-You can change your username later under **Settings > Profile**. Addresses of your repositories change with it and the old ones stop working, so update your remotes afterwards.
+A username of 6 characters or fewer costs $50, paid once. Longer usernames are free. When you type a short one the page shows the price and the button becomes **Continue to payment ($50)**. The name is kept for you for 30 minutes while you pay by card, and you come back to git.infrawrench.com with the username yours. If someone else gets the name before your payment goes through, the payment is refunded automatically.
+
+<insert [The Choose a username page with a four-letter username typed: "Available" and "$50, paid once" under the field, and the button reading "Continue to payment ($50)"] here>
+
+You can change your username later under **Settings > Profile**. Addresses of your repositories change with it and the old ones stop working, so update your remotes afterwards. Changing to a username of 6 characters or fewer costs $50 as well; keeping the one you have, or changing only its capitalization, costs nothing. Organization names are never charged for, whatever their length.
 
 <insert [The Choose a username page on git.infrawrench.com after the first sign-in: the Username field filled in with "Available" under it, the "Run CI and review agents in" menu set to an organisation, and the Continue button] here>
 
