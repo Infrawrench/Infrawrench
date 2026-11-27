@@ -687,7 +687,14 @@ export async function dispatchRun(id: string): Promise<void> {
   }
   const [started] = await db
     .update(ciRuns)
-    .set({ status: "running", proxyRunId: answer.id, startedAt: new Date(), updatedAt: new Date() })
+    .set({
+      status: "running",
+      // Why it waited (busy or unreachable runners, the gateway) is over.
+      statusReason: null,
+      proxyRunId: answer.id,
+      startedAt: new Date(),
+      updatedAt: new Date(),
+    })
     .where(and(eq(ciRuns.id, row.id), eq(ciRuns.status, "queued")))
     .returning();
   if (!started) {

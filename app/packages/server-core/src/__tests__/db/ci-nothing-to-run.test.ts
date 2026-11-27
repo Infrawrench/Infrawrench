@@ -26,6 +26,8 @@ const fake = {
   /** Per proxy run id: what `GET /v1/runs/{id}` answers. */
   runs: new Map<string, Record<string, unknown>>(),
   next: 0,
+  /** No runner answers: `POST /v1/concurrency` is a 503. */
+  down: false,
 };
 
 const json = (status: number, body: unknown) =>
@@ -47,6 +49,7 @@ vi.mock("../../ci/proxy.js", async (importOriginal) => {
     const body = parse(init);
     fake.proxy.push({ path, body });
     if (path === "/v1/concurrency") {
+      if (fake.down) return json(503, { error: "no runner answered" });
       return json(200, fake.concurrency.get(String(body?.["sha"])) ?? { pipelines: [] });
     }
     if (path === "/v1/runs") {
@@ -236,6 +239,32 @@ describe.skipIf(!configured)("CI runs with nothing to run, against a real Postgr
     });
     expect((await row(id)).status).toBe("passed");
     expect((await runs.listRuns(orgId, { limit: 50 })).map((x) => x.id)).toContain(id);
+  });
+
+  it("forgets why a run waited once it starts", async () => {
+    const { runs, db, schema } = await modules();
+    const { eq } = await import("drizzle-orm");
+    fake.down = true;
+    let id: string;
+    try {
+      id = await deliver("push", { commit: "x", pipelines: [TEST_PIPELINE], invalid: [] });
+    } finally {
+      fake.down = false;
+    }
+    expect(await row(id)).toMatchObject({
+      status: "queued",
+      statusReason: "The runners could not read the pipelines (503).",
+    });
+    expect(sentRuns()).toHaveLength(0);
+
+    // The retry is due.
+    await db
+      .update(schema.ciRuns)
+      .set({ nextAttemptAt: new Date(Date.now() - 60_000) })
+      .where(eq(schema.ciRuns.id, id));
+    await runs.dispatchRun(id);
+    expect(await row(id)).toMatchObject({ status: "running", statusReason: null });
+    expect(sentRuns()).toHaveLength(1);
   });
 
   it("runs a push whose only pipeline file is broken, so the run reports it", async () => {
