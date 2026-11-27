@@ -217,6 +217,13 @@ describe.skipIf(!configured)("an agent's token, against a real Postgres", () => 
     ).toBe(422);
   });
 
+  it("reads its own branch's page, which the MCP tools look up first", async () => {
+    const agent = await agentOf((await ask("work/a")).body.token);
+    const read = await world.call("GET", page("work/a"), agent);
+    expect(read.status).toBe(200);
+    expect(read.body).toMatchObject({ headRef: "work/a" });
+  });
+
   it("reaches no other branch, nothing else of its repository, and no other repository", async () => {
     const agent = await agentOf((await ask("work/a")).body.token);
     const entry = { entries: [{ kind: "step", body: "Elsewhere." }] };
@@ -251,9 +258,9 @@ describe.skipIf(!configured)("an agent's token, against a real Postgres", () => 
       ["POST", `${page("work/a")}/findings/override`, { reason: "Ship it." }],
       ["POST", `${page("work/a")}/review-runs`, {}],
       ["GET", `${page("work/a")}/review-runs`],
-      // Everything else of the repository.
+      // Another branch's page, and everything else of the repository.
+      ["GET", page("work/b")],
       ["GET", repo],
-      ["GET", page("work/a")],
       ["GET", `${page("work/a")}/versions`],
       ["GET", `${page("work/a")}/agent`],
       ["PUT", `${page("work/a")}/agent`, { kind: "mcp", displayName: "Me" }],

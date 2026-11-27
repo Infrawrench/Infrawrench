@@ -14,7 +14,8 @@
  * - **Six hours**, the longest a job token lives. Asking again is the
  *   renewal.
  * - **What it reaches** is {@link AGENT_ENDPOINTS} and nothing else, on its
- *   own branch and no other: the middleware holds it to those endpoints,
+ *   own branch and no other (its page to read; its trace, instructions and
+ *   findings to work with): the middleware holds it to those endpoints,
  *   {@link ownPageOnly} (from `pageOr404`) to its branch's page, and
  *   {@link ownBranchOnly} to its branch's trace. Git never authenticates
  *   one, nor the archive, raw files or Terraform, so it clones and pushes
@@ -29,6 +30,8 @@ import type { RepoCx } from "./context";
 
 /** Every endpoint an agent's token calls, by group. */
 export const AGENT_ENDPOINTS: Readonly<Record<string, ReadonlySet<string>>> = {
+  // Its own branch's page, which every MCP tool reads first to find the page.
+  branches: new Set(["get"]),
   traces: new Set(["record", "list"]),
   instructions: new Set(["list", "markDelivered", "markAnswered"]),
   findings: new Set(["list", "report"]),
@@ -41,6 +44,10 @@ export const agentRefOf = (principal: Principal): string | null =>
 /** Whether the principal, when it is an agent's token, may call this endpoint at all. */
 export const agentMayCall = (principal: Principal, group: string, endpoint: string): boolean =>
   agentRefOf(principal) === null || AGENT_ENDPOINTS[group]?.has(endpoint) === true;
+
+/** Whether the principal is an agent's token and this is one of its endpoints. */
+export const isAgentEndpoint = (principal: Principal, group: string, endpoint: string): boolean =>
+  agentRefOf(principal) !== null && AGENT_ENDPOINTS[group]?.has(endpoint) === true;
 
 const OTHER_BRANCH = "This token is for another branch's markers";
 
