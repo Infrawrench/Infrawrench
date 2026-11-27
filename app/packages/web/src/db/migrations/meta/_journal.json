@@ -1450,6 +1450,13 @@
       "when": 1795731105306,
       "tag": "0206_git_needs_code",
       "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1795740096024,
+      "tag": "0207_personal_workspace",
+      "breakpoints": true
     }
   ]
 }

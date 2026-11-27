@@ -80,6 +80,22 @@ export const gitNamespaces = pgTable(
     /** The last rename, which the rename limit counts from. */
     renamedAt: timestamp("renamed_at"),
     /**
+     * A person's own namespace only: the organisation its repositories run CI
+     * and review agents in, and are billed to. Set by the person, to an
+     * organisation they belong to. It counts only while they still do
+     * (`git/workspace.ts` reads it through their membership), so leaving the
+     * organisation ends it without anything being written.
+     */
+    workspaceOrganizationId: text("workspace_organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * An organisation's namespace only: when its subscription was last seen to
+     * carry the metered storage price (`git/billing.ts`
+     * `ensureGitStoragePrices`). Null until the poller has looked.
+     */
+    storagePriceEnsuredAt: timestamp("storage_price_ensured_at"),
+    /**
      * What a new repository here starts as when its creator does not say. Set
      * for an organisation in the app (Settings > Git); a creator can always
      * choose the other, within the plan's limits (`git/quota.ts`).
@@ -98,6 +114,10 @@ export const gitNamespaces = pgTable(
     ownerCheck: check(
       "git_namespaces_owner_check",
       sql`(${t.kind} = 'user' AND ${t.userId} IS NOT NULL AND ${t.organizationId} IS NULL) OR (${t.kind} = 'org' AND ${t.organizationId} IS NOT NULL AND ${t.userId} IS NULL)`,
+    ),
+    workspaceCheck: check(
+      "git_namespaces_workspace_check",
+      sql`${t.kind} = 'user' OR ${t.workspaceOrganizationId} IS NULL`,
     ),
   }),
 );
