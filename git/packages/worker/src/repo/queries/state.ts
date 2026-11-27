@@ -93,6 +93,8 @@ export class ReaderState {
   readonly memo = new Lru<unknown>(256);
   /** Changed-file lists with their counts: few, because one can be thousands of entries. */
   readonly diffs = new Lru<unknown>(8);
+  /** Terraform snapshots by tree: very few, because one can hold megabytes of text. */
+  readonly terraform = new Lru<unknown>(4);
   private readonly walks = new Lru<LastCommitsProgress>(128);
   /** Per directory: the commits `reader_cache` has a finished answer for. */
   private readonly finished = new Lru<Set<ObjectId>>(128);

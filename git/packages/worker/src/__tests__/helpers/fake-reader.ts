@@ -15,6 +15,7 @@ import {
   unavailableRepoReader,
 } from "../../repo/reader";
 import type { RepoReaderFactory } from "../../repo/select";
+import { isTerraformScanFile } from "@infrawrench/git-terraform";
 
 const hex = (n: number): string => n.toString(16).padStart(40, "0");
 
@@ -24,6 +25,8 @@ export interface FakeRepository {
   readonly pullRefs: Map<number, string>;
   /** `path` to text, at every ref. */
   readonly files: Map<string, string>;
+  /** `path` to text at one commit, in place of `files` there. */
+  readonly filesAt: Map<string, Map<string, string>>;
   /** The versions the storage recorded: one per move of a branch that is not the default branch. */
   readonly versions: ReaderVersion[];
   /** Versions `pruneVersions` was asked to forget, as `branch lineage/number`. */
@@ -46,6 +49,8 @@ export interface FakeStorage {
   readonly changedLines: Set<string>;
   /** How far `mapLines` moves the lines that stand. */
   lineShift: number;
+  /** Commits `terraformFiles` was asked to read, in order. */
+  readonly terraformReads: string[];
   /** A new commit id, different every time. */
   nextOid(): string;
   /**
@@ -70,6 +75,7 @@ export const fakeStorage = (): FakeStorage => {
   const ranges = new Map<string, string[]>();
   const merges: MergeInput[] = [];
   const changedLines = new Set<string>();
+  const terraformReads: string[] = [];
   const nextOid = () => hex(++counter);
 
   const repository = (id: string): FakeRepository => {
@@ -79,6 +85,7 @@ export const fakeStorage = (): FakeStorage => {
         branches: new Map(),
         pullRefs: new Map(),
         files: new Map(),
+        filesAt: new Map(),
         versions: [],
         pruned: [],
         defaultBranch: "main",
@@ -209,8 +216,37 @@ export const fakeStorage = (): FakeStorage => {
       };
     };
 
+    /** The files at a commit: its own when it has some, else the repository's. */
+    const filesOf = (commitOid: string): Map<string, string> =>
+      repo().filesAt.get(commitOid) ?? repo().files;
+
+    /** A tree id for a set of files: the same files, the same id. */
+    const treeOf = (files: Map<string, string>): string => {
+      let hash = 0x811c9dc5;
+      for (const [path, text] of [...files].sort(([a], [b]) => (a < b ? -1 : 1))) {
+        for (const ch of `${path}\0${text}\0`) hash = Math.imul(hash ^ ch.charCodeAt(0), 16777619);
+      }
+      return (hash >>> 0).toString(16).padStart(40, "7");
+    };
+
     return {
       ...unavailableRepoReader,
+      terraformFiles: async ({ ref }) => {
+        const { commitOid } = resolve(ref);
+        terraformReads.push(commitOid);
+        const files = filesOf(commitOid);
+        return {
+          commitOid,
+          treeOid: treeOf(files),
+          snapshot: {
+            files: [...files]
+              .filter(([path]) => isTerraformScanFile(path.split("/").pop() ?? path))
+              .sort(([a], [b]) => (a < b ? -1 : 1))
+              .map(([path, text]) => ({ path, text, size: text.length })),
+            truncated: false,
+          },
+        };
+      },
       init: async (input) => {
         const state = repo();
         state.defaultBranch = input.defaultBranch;
@@ -308,13 +344,38 @@ export const fakeStorage = (): FakeStorage => {
           mergeable: same ? null : !conflicting.has(resolvedHead.commitOid),
         };
       },
-      compareDiff: async ({ base, head, headRepositoryId }) => ({
-        baseOid: resolve(base).commitOid,
-        headOid: resolveIn(head, headRepositoryId).commitOid,
-        stats: { filesChanged: 0, additions: 0, deletions: 0 },
-        files: [],
-        nextCursor: null,
-      }),
+      compareDiff: async ({ base, head, headRepositoryId }) => {
+        const baseOid = resolve(base).commitOid;
+        const headOid = resolveIn(head, headRepositoryId).commitOid;
+        // Files differ only between commits that have files of their own.
+        const before = filesOf(baseOid);
+        const after = filesOf(headOid);
+        const paths = [...new Set([...before.keys(), ...after.keys()])]
+          .filter((path) => before.get(path) !== after.get(path))
+          .sort();
+        return {
+          baseOid,
+          headOid,
+          stats: { filesChanged: paths.length, additions: 0, deletions: 0 },
+          files: paths.map((path) => ({
+            path,
+            oldPath: null,
+            status: (!before.has(path) ? "added" : !after.has(path) ? "deleted" : "modified") as
+              "added" | "deleted" | "modified",
+            oldMode: before.has(path) ? ("100644" as const) : null,
+            newMode: after.has(path) ? ("100644" as const) : null,
+            oldOid: null,
+            newOid: null,
+            binary: false,
+            additions: 0,
+            deletions: 0,
+            similarity: null,
+            tooLarge: false,
+            hunks: [],
+          })),
+          nextCursor: null,
+        };
+      },
       diffAnchor: async ({ line }) =>
         line > 100
           ? null
@@ -415,6 +476,7 @@ export const fakeStorage = (): FakeStorage => {
 
   const storage: FakeStorage = {
     readers,
+    terraformReads,
     repositories,
     commits,
     conflicting,

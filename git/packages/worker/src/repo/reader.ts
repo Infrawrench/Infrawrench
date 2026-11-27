@@ -66,6 +66,7 @@ import type {
   TreeLastCommits,
   TreeListing,
 } from "@infrawrench/git-contract";
+import type { TerraformSnapshot } from "@infrawrench/git-terraform";
 import type { GitEventActor } from "../env";
 
 /** What `languages` answers. */
@@ -74,6 +75,14 @@ export interface RepositoryLanguages {
   readonly languages: ReadonlyArray<{ readonly name: string; readonly bytes: number }>;
   /** The walk stopped at `LANGUAGE_LIMITS` before seeing every file. */
   readonly truncated: boolean;
+}
+
+/** What `terraformFiles` answers: a commit's Terraform files, read in one walk. */
+export interface TerraformFiles {
+  readonly commitOid: string;
+  /** The commit's root tree: what a scan is cached by. */
+  readonly treeOid: string;
+  readonly snapshot: TerraformSnapshot;
 }
 
 /** Which repository a reader is for. */
@@ -530,6 +539,13 @@ export interface RepoReader {
   /** Bytes of each language at a ref, most first (`queries/content.ts` `languages`). */
   languages(input: { readonly ref: RefInput }): Promise<RepositoryLanguages>;
 
+  /**
+   * Every Terraform file at a ref (`isTerraformScanFile`), with its text, in
+   * one walk bounded by `SNAPSHOT_LIMITS` (`truncated` past them). What a
+   * Terraform scan reads instead of a call per directory.
+   */
+  terraformFiles(input: { readonly ref: RefInput }): Promise<TerraformFiles>;
+
   /** A path's newest commit, and at the root how many commits the ref has. */
   latestCommit(input: { readonly ref: RefInput; readonly path: string }): Promise<LatestCommit>;
 
@@ -701,6 +717,7 @@ export const unavailableRepoReader: RepoReader = {
   blob: refuse,
   latestCommit: refuse,
   languages: refuse,
+  terraformFiles: refuse,
   readme: refuse,
   listCommits: refuse,
   commits: refuse,
