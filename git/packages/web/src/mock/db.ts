@@ -87,6 +87,7 @@ export function session(): Session {
       organizations: [],
       signInUrl: "/auth/sign-in",
       appUrl: APP_URL,
+      sshEnabled: true,
     };
   }
   const own = namespaces.find((n) => n.userId === user.id && user.username !== null);
@@ -136,6 +137,7 @@ export function session(): Session {
     ],
     signInUrl: "/auth/sign-in",
     appUrl: APP_URL,
+    sshEnabled: true,
   };
 }
 

@@ -96,7 +96,9 @@ export const Repository = Schema.Struct({
     description: "No branch yet: show the setup instructions instead of a tree.",
   }),
   httpCloneUrl: Schema.String,
-  sshCloneUrl: Schema.String,
+  sshCloneUrl: Schema.NullOr(Schema.String).annotate({
+    description: "Null while Git over SSH is turned off.",
+  }),
   features: RepositoryFeatures,
   merge: MergeSettings,
   branchCount: Schema.Int,

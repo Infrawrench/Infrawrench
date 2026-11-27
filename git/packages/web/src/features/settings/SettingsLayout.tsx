@@ -40,11 +40,15 @@ export function SettingsLayout({ children }: { children: ReactNode }) {
                 icon: <Icon name="user" size={13} />,
                 exact: true,
               },
-              {
-                label: "SSH keys",
-                href: paths.settings("keys"),
-                icon: <Icon name="key" size={13} />,
-              },
+              ...(session.data.sshEnabled
+                ? [
+                    {
+                      label: "SSH keys",
+                      href: paths.settings("keys"),
+                      icon: <Icon name="key" size={13} />,
+                    },
+                  ]
+                : []),
               {
                 label: "Access tokens",
                 href: paths.settings("tokens"),

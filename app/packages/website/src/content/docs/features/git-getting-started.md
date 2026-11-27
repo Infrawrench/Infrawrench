@@ -45,6 +45,8 @@ Public repositories are free and unlimited. Private repositories and private sto
 
 The password of your Infrawrench account is never used for Git. Add an SSH key, an access token, or both.
 
+Git over SSH is turned off for now: clone and push over HTTPS with an access token. While it is off, **Settings > SSH keys** and a repository's **Deploy keys** say so, and the Clone menu offers HTTPS only.
+
 ### SSH keys
 
 1. Open the account menu and go to **Settings > SSH keys**.

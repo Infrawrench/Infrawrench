@@ -148,6 +148,11 @@ export interface Env {
    * Unset, the site's own host.
    */
   readonly SSH_HOST?: string;
+  /**
+   * `"false"` turns Git over SSH off: no SSH clone URLs, no SSH or deploy key
+   * pages, and an inbound connection is closed at once. Anything else is on.
+   */
+  readonly SSH_ENABLED?: string;
   /** The Infrawrench app's origin, for links back. */
   readonly APP_ORIGIN?: string;
 }
@@ -163,6 +168,9 @@ export const sshHost = (env: Pick<Env, "SSH_HOST" | "SITE_ORIGIN">): string =>
   env.SSH_HOST !== undefined && env.SSH_HOST !== ""
     ? env.SSH_HOST
     : new URL(siteOrigin(env)).hostname;
+
+/** Whether Git over SSH is offered (`SSH_ENABLED`). */
+export const sshEnabled = (env: Pick<Env, "SSH_ENABLED">): boolean => env.SSH_ENABLED !== "false";
 
 export const appOrigin = (env: Pick<Env, "APP_ORIGIN">): string =>
   env.APP_ORIGIN ?? DEFAULT_APP_ORIGIN;

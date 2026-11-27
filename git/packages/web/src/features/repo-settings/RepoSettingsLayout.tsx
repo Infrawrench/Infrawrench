@@ -47,11 +47,16 @@ export function RepoSettingsLayout({ children }: { children: ReactNode }) {
               href: paths.repoSettings(repo, "review"),
               icon: <Icon name="eye" size={13} />,
             },
-            {
-              label: "Deploy keys",
-              href: paths.repoSettings(repo, "keys"),
-              icon: <Icon name="key" size={13} />,
-            },
+            // Deploy keys are SSH keys: none while Git over SSH is turned off.
+            ...(repository.sshCloneUrl !== null
+              ? [
+                  {
+                    label: "Deploy keys",
+                    href: paths.repoSettings(repo, "keys"),
+                    icon: <Icon name="key" size={13} />,
+                  },
+                ]
+              : []),
             {
               label: "Labels",
               href: paths.repoSettings(repo, "labels"),

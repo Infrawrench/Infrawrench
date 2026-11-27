@@ -13,7 +13,7 @@ import type {
   ScheduledController,
   Socket,
 } from "@cloudflare/workers-types/index";
-import { type Env, type GitEvent, type GitReviewMessage, siteOrigin } from "./env";
+import { type Env, type GitEvent, type GitReviewMessage, siteOrigin, sshEnabled } from "./env";
 import { type Ctx, type Routes, serve } from "./http/router";
 
 /** The review queue's name (`wrangler.jsonc`). Spelled here so nothing is imported to route a batch. */
@@ -148,6 +148,11 @@ export default {
 
   /** Git over SSH: inbound TCP, through Spectrum in production (git/README.md "Transports"). */
   async connect(socket: Socket, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Turned off (`SSH_ENABLED`): nothing is read from the connection.
+    if (!sshEnabled(env)) {
+      await socket.close();
+      return;
+    }
     await (await transport()).gitConnect(socket, env, ctx);
   },
 };

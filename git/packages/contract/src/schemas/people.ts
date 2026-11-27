@@ -162,6 +162,9 @@ export const Session = Schema.Struct({
     description: "Where to send a signed-out browser (`/auth/sign-in`); add `?returnTo=`.",
   }),
   appUrl: Schema.String.annotate({ description: "The Infrawrench app's origin, for links back." }),
+  sshEnabled: Schema.Boolean.annotate({
+    description: "Whether Git over SSH is offered: SSH clone URLs, SSH keys and deploy keys.",
+  }),
 }).annotate({ identifier: "Session" });
 export type Session = typeof Session.Type;
 

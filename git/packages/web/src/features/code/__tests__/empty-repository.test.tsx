@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { Repository } from "@infrawrench/git-contract";
 import { EmptyRepository } from "../EmptyRepository";
@@ -24,5 +24,15 @@ describe("EmptyRepository", () => {
     fireEvent.click(screen.getByRole("button", { name: "SSH" }));
     expect(commands(container)).toContain(`git remote add origin ${repository.sshCloneUrl}`);
     expect(commands(container)).not.toContain(repository.httpCloneUrl);
+  });
+});
+
+describe("EmptyRepository with Git over SSH turned off", () => {
+  it("offers HTTPS alone, with no switch", () => {
+    const https = { ...repository, sshCloneUrl: null } as unknown as Repository;
+    const { container } = render(<EmptyRepository repository={https} />);
+    expect(within(container).queryByRole("button", { name: "SSH" })).toBeNull();
+    expect(commands(container)).toContain(`git remote add origin ${https.httpCloneUrl}`);
+    expect(commands(container)).not.toContain("git@");
   });
 });

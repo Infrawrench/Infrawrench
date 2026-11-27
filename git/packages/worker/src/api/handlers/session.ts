@@ -42,7 +42,7 @@ import { getOrganization } from "../../db/organizations";
 import { countVisibleRepositories } from "../../db/repository-lists";
 import { maySignUp } from "../../db/signups"; // git-feature-flag
 import { getGitUser, getUser } from "../../db/users";
-import { appOrigin } from "../../env";
+import { appOrigin, sshEnabled } from "../../env";
 import { type Cx, op } from "../context";
 import { iso } from "../views/repositories";
 
@@ -140,7 +140,11 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
     .handle(
       "me",
       op(async (cx) => {
-        const base = { signInUrl: AUTH_PATHS.signIn, appUrl: appOrigin(cx.env) };
+        const base = {
+          signInUrl: AUTH_PATHS.signIn,
+          appUrl: appOrigin(cx.env),
+          sshEnabled: sshEnabled(cx.env),
+        };
         const userId = cx.principal.kind === "user" ? cx.principal.userId : null;
         const user = userId ? await getUser(userId) : null;
         if (!user) {

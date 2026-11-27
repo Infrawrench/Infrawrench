@@ -17,7 +17,7 @@ import { db } from "../../db/client";
 import { type RepositoryWithOwner, starredAmong } from "../../db/repositories";
 import { visibleRepositoriesById } from "../../db/repository-lists";
 import { type UserRefRow, userRefs } from "../../db/users";
-import { siteOrigin, sshHost } from "../../env";
+import { siteOrigin, sshEnabled, sshHost } from "../../env";
 import type { Cx, RepoCx } from "../context";
 
 export const iso = (date: Date): string => date.toISOString();
@@ -121,7 +121,7 @@ export const repositoryDetail = async (
     isEmpty: repository.isEmpty,
     languages: repository.languages,
     httpCloneUrl: httpCloneUrl(ref, siteOrigin(cx.env)),
-    sshCloneUrl: sshCloneUrl(ref, sshHost(cx.env)),
+    sshCloneUrl: sshEnabled(cx.env) ? sshCloneUrl(ref, sshHost(cx.env)) : null,
     features: { issues: repository.hasIssues },
     merge: {
       allowMergeCommit: repository.allowMergeCommit,

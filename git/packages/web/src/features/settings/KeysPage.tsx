@@ -11,6 +11,7 @@ import { RelativeTime } from "../../components/people";
 import { SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
 import type { UserKey } from "@infrawrench/git-contract";
+import { useSession } from "../../lib/session";
 import { commentOfKey } from "./keys";
 
 function KeyForm({ onDone }: { onDone: () => void }) {
@@ -71,7 +72,22 @@ function KeyForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+/** SSH keys, while Git over SSH is offered. */
 export function KeysPage() {
+  const session = useSession();
+  if (session.data !== undefined && !session.data.sshEnabled) {
+    return (
+      <SettingsSection title="SSH keys">
+        <EmptyState>
+          Git over SSH is turned off. Clone and push over HTTPS with an access token.
+        </EmptyState>
+      </SettingsSection>
+    );
+  }
+  return <SshKeys />;
+}
+
+function SshKeys() {
   const keys = useQuery(queries.account.listKeys());
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<UserKey | null>(null);

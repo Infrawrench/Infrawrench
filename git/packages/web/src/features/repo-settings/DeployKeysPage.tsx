@@ -11,7 +11,7 @@ import { Panel } from "../../components/Panel";
 import { RelativeTime } from "../../components/people";
 import { SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
-import { useRepoRef } from "../../layout/RepoLayout";
+import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import type { DeployKey } from "@infrawrench/git-contract";
 
 function KeyForm({ onDone }: { onDone: () => void }) {
@@ -80,7 +80,20 @@ function KeyForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+/** Deploy keys, while Git over SSH is offered: they are SSH keys. */
 export function DeployKeysPage() {
+  const repository = useRepository();
+  if (repository.sshCloneUrl === null) {
+    return (
+      <SettingsSection title="Deploy keys">
+        <EmptyState>Git over SSH is turned off, and deploy keys are SSH keys.</EmptyState>
+      </SettingsSection>
+    );
+  }
+  return <DeployKeys />;
+}
+
+function DeployKeys() {
   const repo = useRepoRef();
   const keys = useQuery(queries.deployKeys.list({ params: repo }));
   const [adding, setAdding] = useState(false);

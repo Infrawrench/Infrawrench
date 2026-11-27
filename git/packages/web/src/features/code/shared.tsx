@@ -161,10 +161,11 @@ export function CommitStrip({
 
 export type Transport = "https" | "ssh";
 
-/** A clone URL with its copy button, and the HTTPS/SSH switch. */
-/** The repository's clone URL for a transport. */
+/** The repository's clone URL for a transport: HTTPS while SSH is turned off. */
 export const cloneUrlOf = (repository: Repository, transport: Transport): string =>
-  transport === "https" ? repository.httpCloneUrl : repository.sshCloneUrl;
+  transport === "ssh" && repository.sshCloneUrl !== null
+    ? repository.sshCloneUrl
+    : repository.httpCloneUrl;
 
 /**
  * The HTTPS/SSH switch and the URL it picks. Pass `transport` and `onChange`
@@ -181,20 +182,24 @@ export function CloneUrl({
   onChange?: (transport: Transport) => void;
 }) {
   const [own, setOwn] = useState<Transport>("https");
-  const transport = chosen ?? own;
+  // While SSH is turned off there is one way to clone, and nothing to choose.
+  const ssh = repository.sshCloneUrl !== null;
+  const transport = ssh ? (chosen ?? own) : "https";
   const setTransport = onChange ?? setOwn;
   const url = cloneUrlOf(repository, transport);
   return (
     <div className="flex items-center gap-2">
-      <Segmented
-        label="Clone over"
-        value={transport}
-        onChange={setTransport}
-        options={[
-          { value: "https", label: "HTTPS" },
-          { value: "ssh", label: "SSH" },
-        ]}
-      />
+      {ssh ? (
+        <Segmented
+          label="Clone over"
+          value={transport}
+          onChange={setTransport}
+          options={[
+            { value: "https", label: "HTTPS" },
+            { value: "ssh", label: "SSH" },
+          ]}
+        />
+      ) : null}
       <div className="flex min-w-0 flex-1 items-center rounded border border-border bg-surface">
         <input
           readOnly
