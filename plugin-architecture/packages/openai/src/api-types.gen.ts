@@ -913,7 +913,7 @@ export interface components {
             id: string;
             last_used_at?: number | null;
             name?: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.admin_api_key";
             owner: {
                 /** Format: unixtime */
@@ -931,7 +931,7 @@ export interface components {
             first_id?: string | null;
             has_more: boolean;
             last_id?: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         /**
@@ -952,6 +952,7 @@ export interface components {
             };
             "api_key.updated"?: {
                 changes_requested?: {
+                    expires_in_seconds?: number;
                     scopes?: string[];
                 };
                 id?: string;
@@ -1255,7 +1256,7 @@ export interface components {
         /** @enum {string} */
         AuditLogEventType: "api_key.created" | "api_key.updated" | "api_key.deleted" | "certificate.created" | "certificate.updated" | "certificate.deleted" | "certificates.activated" | "certificates.deactivated" | "checkpoint.permission.created" | "checkpoint.permission.deleted" | "external_key.registered" | "external_key.removed" | "external_storage.registered" | "external_storage.removed" | "group.created" | "group.updated" | "group.deleted" | "invite.sent" | "invite.accepted" | "invite.deleted" | "ip_allowlist.created" | "ip_allowlist.updated" | "ip_allowlist.deleted" | "ip_allowlist.config.activated" | "ip_allowlist.config.deactivated" | "login.succeeded" | "login.failed" | "logout.succeeded" | "logout.failed" | "organization.updated" | "project.created" | "project.updated" | "project.archived" | "project.deleted" | "rate_limit.updated" | "rate_limit.deleted" | "resource.deleted" | "tunnel.created" | "tunnel.updated" | "tunnel.deleted" | "workload_identity_provider.created" | "workload_identity_provider.updated" | "workload_identity_provider.deleted" | "workload_identity_provider_mapping.created" | "workload_identity_provider_mapping.updated" | "workload_identity_provider_mapping.deleted" | "role.created" | "role.updated" | "role.deleted" | "role.assignment.created" | "role.assignment.deleted" | "role.bound_to_resource" | "role.unbound_from_resource" | "scim.enabled" | "scim.disabled" | "service_account.created" | "service_account.updated" | "service_account.deleted" | "user.added" | "user.updated" | "user.deleted" | "tenant.metadata.updated" | "tenant.microsoft_entra_mapping.upserted" | "tenant.microsoft_entra_mapping.deleted" | "tenant.workload_identity.provider.created" | "tenant.workload_identity.provider.updated" | "tenant.workload_identity.provider.archived" | "tenant.workload_identity.mapping.created" | "tenant.workload_identity.mapping.updated" | "tenant.workload_identity.mapping.archived" | "tenant.workload_identity.binding.created" | "tenant.workload_identity.principal.provisioned" | "tenant.workload_identity.access_token.issued" | "tenant.admin_api_key.created" | "tenant.admin_api_key.updated" | "tenant.admin_api_key.deleted" | "tenant.project_api_key.created" | "tenant.trusted_access.business_verification.started" | "tenant.trusted_access.application.submitted" | "tenant.chatgpt_access_token.revoked" | "tenant.migration.completed" | "tenant.sso.migrated" | "tenant.domains.migrated" | "tenant.sso_connection.created" | "tenant.sso_connection.updated" | "tenant.sso_connection.deleted" | "tenant.sso_connection.setup.started" | "tenant.policy.created" | "tenant.policy.updated" | "tenant.policy.deleted" | "tenant.policy.attached" | "tenant.policy.detached" | "tenant.principal_authentication_policy.resolved" | "tenant.scim.setup.started" | "tenant.scim.deletion.requested" | "tenant.scim.directory.created" | "tenant.product_access_policy.updated" | "tenant.resource_share_grant.created" | "tenant.resource_share_grant.updated" | "tenant.resource_share_grant.accepted" | "tenant.resource_share_grant.declined" | "tenant.resource_share_grant.revoked" | "tenant.resource_share_grant.deleted" | "tenant.service_account.updated" | "tenant.service_account.deleted" | "tenant.service_account.token.revoked" | "tenant.billing.overage_limit.updated" | "tenant.billing.alerts.updated" | "tenant.billing.info.updated" | "tenant.usage_limit.workspace.updated" | "tenant.usage_limit.group.updated" | "tenant.usage_limit.user.updated" | "tenant.usage_limit.increase_request.updated" | "tenant.usage_limit.increase_request.resolved" | "tenant.group.created" | "tenant.group.updated" | "tenant.group.deleted" | "tenant.group.member.added" | "tenant.group.member.removed" | "tenant.migration_rollout.status.updated" | "tenant.migration_rollout.tier.updated" | "tenant.role.metadata.updated" | "tenant.custom_role.created" | "tenant.custom_role.updated" | "tenant.custom_role.deleted" | "tenant.role_assignment.created" | "tenant.role_assignment.deleted" | "tenant.resource_role_assignment.created" | "tenant.resource_role_assignment.deleted" | "tenant.resource_access.updated" | "tenant.resource_access.deleted" | "tenant.ads_account.onboarding.redemption" | "tenant.session_policy.created" | "tenant.session_policy.updated" | "tenant.session_policy.deleted" | "tenant.session_revocation.started" | "tenant.third_party_app_policy.updated" | "tenant.user.added" | "tenant.user.updated" | "tenant.user.removed" | "tenant.user.looked_up" | "tenant.user.invited" | "tenant.membership.revoked" | "tenant.api_organization_invite.upserted" | "tenant.api_organization_invite.deleted" | "tenant.chatgpt_workspace_invite.upserted" | "tenant.membership.accepted" | "tenant.membership.declined" | "tenant.workspace_invite_email_settings.updated";
         AutoChunkingStrategyRequestParam: {
-            /** @enum {string} */
+            /** @constant */
             type: "auto";
         };
         AwsExternalStorageProviderResponse: {
@@ -1313,7 +1314,7 @@ export interface components {
             input_file_id: string;
             metadata?: components["schemas"]["Metadata"];
             model?: string;
-            /** @enum {string} */
+            /** @constant */
             object: "batch";
             output_file_id?: string | null;
             request_counts?: components["schemas"]["BatchRequestCounts"];
@@ -1338,7 +1339,7 @@ export interface components {
             param?: string | null;
         };
         BatchFileExpirationAfter: {
-            /** @enum {string} */
+            /** @constant */
             anchor: "created_at";
             /** Format: int64 */
             seconds: number;
@@ -1457,7 +1458,7 @@ export interface components {
             }[] | null;
             metadata?: components["schemas"]["Metadata"];
             method?: components["schemas"]["FineTuneMethod"];
-            model: string | ("babbage-002" | "davinci-002" | "gpt-3.5-turbo" | "gpt-4o-mini");
+            model: string | ("gpt-4.1-mini-2025-04-14" | "babbage-002" | "davinci-002" | "gpt-3.5-turbo" | "gpt-4o-mini");
             seed?: number | null;
             /** @default null */
             suffix?: string | null;
@@ -1525,7 +1526,7 @@ export interface components {
             /** Format: double */
             duration: number;
             segments: components["schemas"]["TranscriptionDiarizedSegment"][];
-            /** @enum {string} */
+            /** @constant */
             task: "transcribe";
             text: string;
             usage?: components["schemas"]["TranscriptTextUsageTokens"] | components["schemas"]["TranscriptTextUsageDuration"];
@@ -1561,7 +1562,7 @@ export interface components {
         DeleteFileResponse: {
             deleted: boolean;
             id: string;
-            /** @enum {string} */
+            /** @constant */
             object: "file";
         };
         DeleteModelResponse: {
@@ -1572,8 +1573,17 @@ export interface components {
         DeleteVectorStoreResponse: {
             deleted: boolean;
             id: string;
-            /** @enum {string} */
+            /** @constant */
             object: "vector_store.deleted";
+        };
+        EmailNotificationChannel: {
+            recipients: string[];
+            subject_prefix?: string | null;
+            /**
+             * @default email
+             * @enum {string}
+             */
+            type: "email";
         };
         Error: {
             code: string | null;
@@ -1594,7 +1604,7 @@ export interface components {
             name: string;
             /**
              * @default eval
-             * @enum {string}
+             * @constant
              */
             object: "eval";
             testing_criteria: (components["schemas"]["EvalGraderLabelModel"] | components["schemas"]["EvalGraderStringCheck"] | components["schemas"]["EvalGraderTextSimilarity"] | components["schemas"]["EvalGraderPython"] | components["schemas"]["EvalGraderScoreModel"])[];
@@ -1605,7 +1615,7 @@ export interface components {
             };
             /**
              * @default custom
-             * @enum {string}
+             * @constant
              */
             type: "custom";
         };
@@ -1624,7 +1634,7 @@ export interface components {
             content: components["schemas"]["EvalItemContent"];
             /** @enum {string} */
             role: "user" | "assistant" | "system" | "developer";
-            /** @enum {string} */
+            /** @constant */
             type?: "message";
         };
         EvalItemContent: components["schemas"]["EvalItemContentItem"] | components["schemas"]["EvalItemContentArray"];
@@ -1632,7 +1642,7 @@ export interface components {
         EvalItemContentItem: components["schemas"]["EvalItemContentText"] | components["schemas"]["InputTextContent"] | components["schemas"]["EvalItemContentOutputText"] | components["schemas"]["EvalItemInputImage"] | components["schemas"]["InputAudio"];
         EvalItemContentOutputText: {
             text: string;
-            /** @enum {string} */
+            /** @constant */
             type: "output_text";
         };
         EvalItemContentText: string;
@@ -1640,7 +1650,7 @@ export interface components {
             detail?: string;
             /** Format: uri */
             image_url: string;
-            /** @enum {string} */
+            /** @constant */
             type: "input_image";
         };
         EvalList: {
@@ -1650,7 +1660,7 @@ export interface components {
             last_id: string;
             /**
              * @default list
-             * @enum {string}
+             * @constant
              */
             object: "list";
         };
@@ -1661,7 +1671,7 @@ export interface components {
             };
             /**
              * @default logs
-             * @enum {string}
+             * @constant
              */
             type: "logs";
         };
@@ -1673,7 +1683,7 @@ export interface components {
             };
             /**
              * @default stored_completions
-             * @enum {string}
+             * @constant
              */
             type: "stored_completions";
         };
@@ -1732,7 +1742,7 @@ export interface components {
             hyperparameters?: components["schemas"]["FineTuneSupervisedHyperparameters"];
         };
         FineTuningIntegration: {
-            /** @enum {string} */
+            /** @constant */
             type: "wandb";
             wandb: {
                 entity?: string | null;
@@ -1764,7 +1774,7 @@ export interface components {
             metadata?: components["schemas"]["Metadata"];
             method?: components["schemas"]["FineTuneMethod"] | null;
             model: string;
-            /** @enum {string} */
+            /** @constant */
             object: "fine_tuning.job";
             organization_id: string;
             result_files: string[];
@@ -1808,7 +1818,7 @@ export interface components {
             name: string;
             /**
              * @default multi
-             * @enum {string}
+             * @constant
              */
             type: "multi";
         };
@@ -1893,7 +1903,7 @@ export interface components {
                 /** @enum {string} */
                 format: "mp3" | "wav";
             };
-            /** @enum {string} */
+            /** @constant */
             type: "input_audio";
         };
         InputTextContent: {
@@ -1912,7 +1922,7 @@ export interface components {
             email: string;
             expires_at?: number | null;
             id: string;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.invite";
             projects: {
                 id: string;
@@ -1927,7 +1937,7 @@ export interface components {
         InviteDeleteResponse: {
             deleted: boolean;
             id: string;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.invite.deleted";
         };
         InviteListResponse: {
@@ -1935,7 +1945,7 @@ export interface components {
             first_id?: string | null;
             has_more: boolean;
             last_id?: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         InviteRequest: {
@@ -1951,7 +1961,7 @@ export interface components {
             first_id?: string | null;
             has_more: boolean;
             last_id?: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         ListBatchesResponse: {
@@ -1959,7 +1969,7 @@ export interface components {
             first_id?: string;
             has_more: boolean;
             last_id?: string;
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         ListFilesResponse: {
@@ -1971,13 +1981,13 @@ export interface components {
         };
         ListModelsResponse: {
             data: components["schemas"]["Model"][];
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         ListPaginatedFineTuningJobsResponse: {
             data: components["schemas"]["FineTuningJob"][];
             has_more: boolean;
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         ListVectorStoresResponse: {
@@ -2000,7 +2010,7 @@ export interface components {
             /** Format: unixtime */
             created: number;
             id: string;
-            /** @enum {string} */
+            /** @constant */
             object: "model";
             owned_by: string;
             shutdown_date?: string | null;
@@ -2023,7 +2033,7 @@ export interface components {
             expires_at?: number;
             filename: string;
             id: string;
-            /** @enum {string} */
+            /** @constant */
             object: "file";
             /** @enum {string} */
             purpose: "assistants" | "assistants_output" | "batch" | "batch_output" | "fine-tune" | "fine-tune-results" | "vision" | "user_data";
@@ -2042,14 +2052,14 @@ export interface components {
             /** @enum {string} */
             interval: "month";
             notification_channel: components["schemas"]["SpendAlertNotificationChannel"];
-            /** @enum {string} */
+            /** @constant */
             object: "organization.spend_alert";
             threshold_amount: number;
         };
         OrganizationSpendAlertDeletedResource: {
             deleted: boolean;
             id: string;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.spend_alert.deleted";
         };
         OrganizationSpendAlertListResource: {
@@ -2057,7 +2067,7 @@ export interface components {
             first_id: string | null;
             has_more: boolean;
             last_id: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         OrganizationSpendLimitDeletedResource: {
@@ -2072,6 +2082,7 @@ export interface components {
             currency: components["schemas"]["SpendLimitCurrency"];
             enforcement: components["schemas"]["SpendLimitEnforcement"];
             interval: components["schemas"]["SpendLimitInterval"];
+            notification_channel: components["schemas"]["EmailNotificationChannel"];
             /**
              * @default organization.spend_limit
              * @enum {string}
@@ -2089,7 +2100,7 @@ export interface components {
             external_key_id?: string | null;
             id: string;
             name?: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.project";
             residency?: components["schemas"]["PublicProjectResidency"];
             status?: string | null;
@@ -2101,7 +2112,7 @@ export interface components {
             id: string;
             last_used_at: number | null;
             name: string;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.project.api_key";
             owner: {
                 service_account?: components["schemas"]["ProjectApiKeyOwnerServiceAccount"];
@@ -2116,7 +2127,7 @@ export interface components {
         ProjectApiKeyDeleteResponse: {
             deleted: boolean;
             id: string;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.project.api_key.deleted";
         };
         ProjectApiKeyListResponse: {
@@ -2124,7 +2135,7 @@ export interface components {
             first_id?: string | null;
             has_more: boolean;
             last_id?: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         ProjectApiKeyOwnerServiceAccount: {
@@ -2154,7 +2165,7 @@ export interface components {
             first_id?: string | null;
             has_more: boolean;
             last_id?: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         ProjectRateLimit: {
@@ -2166,7 +2177,7 @@ export interface components {
             max_requests_per_1_minute: number;
             max_tokens_per_1_minute: number;
             model: string;
-            /** @enum {string} */
+            /** @constant */
             object: "project.rate_limit";
         };
         ProjectRateLimitListResponse: {
@@ -2174,7 +2185,7 @@ export interface components {
             first_id?: string | null;
             has_more: boolean;
             last_id?: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         ProjectRateLimitUpdateRequest: {
@@ -2190,7 +2201,7 @@ export interface components {
             created_at: number;
             id: string;
             name: string;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.project.service_account";
             /** @enum {string} */
             role: "owner" | "member" | "none";
@@ -2201,7 +2212,7 @@ export interface components {
             expires_at?: number | null;
             id: string;
             name: string;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.project.service_account.api_key";
             value: string;
         };
@@ -2216,7 +2227,7 @@ export interface components {
             created_at: number;
             id: string;
             name: string;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.project.service_account";
             /** @enum {string} */
             role: "member" | "none";
@@ -2224,7 +2235,7 @@ export interface components {
         ProjectServiceAccountDeleteResponse: {
             deleted: boolean;
             id: string;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.project.service_account.deleted";
         };
         ProjectServiceAccountListResponse: {
@@ -2232,7 +2243,7 @@ export interface components {
             first_id?: string | null;
             has_more: boolean;
             last_id?: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         ProjectSpendAlert: {
@@ -2242,14 +2253,14 @@ export interface components {
             /** @enum {string} */
             interval: "month";
             notification_channel: components["schemas"]["SpendAlertNotificationChannel"];
-            /** @enum {string} */
+            /** @constant */
             object: "project.spend_alert";
             threshold_amount: number;
         };
         ProjectSpendAlertDeletedResource: {
             deleted: boolean;
             id: string;
-            /** @enum {string} */
+            /** @constant */
             object: "project.spend_alert.deleted";
         };
         ProjectSpendAlertListResource: {
@@ -2257,7 +2268,7 @@ export interface components {
             first_id: string | null;
             has_more: boolean;
             last_id: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         ProjectSpendLimitDeletedResource: {
@@ -2272,6 +2283,7 @@ export interface components {
             currency: components["schemas"]["SpendLimitCurrency"];
             enforcement: components["schemas"]["SpendLimitEnforcement"];
             interval: components["schemas"]["SpendLimitInterval"];
+            notification_channel: components["schemas"]["EmailNotificationChannel"];
             /**
              * @default project.spend_limit
              * @enum {string}
@@ -2291,7 +2303,7 @@ export interface components {
             email?: string | null;
             id: string;
             name?: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.project.user";
             role: string;
         };
@@ -2303,7 +2315,7 @@ export interface components {
         ProjectUserDeleteResponse: {
             deleted: boolean;
             id: string;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.project.user.deleted";
         };
         ProjectUserListResponse: {
@@ -2353,11 +2365,11 @@ export interface components {
         };
         SpeechAudioDeltaEvent: {
             audio: string;
-            /** @enum {string} */
+            /** @constant */
             type: "speech.audio.delta";
         };
         SpeechAudioDoneEvent: {
-            /** @enum {string} */
+            /** @constant */
             type: "speech.audio.done";
             usage: {
                 input_tokens: number;
@@ -2368,10 +2380,19 @@ export interface components {
         SpendAlertNotificationChannel: {
             recipients: string[];
             subject_prefix?: string | null;
-            /** @enum {string} */
+            /** @constant */
             type: "email";
         };
         SpendLimitCurrency: string | "USD";
+        SpendLimitEmailNotificationChannelParams: {
+            recipients?: string[];
+            subject_prefix?: string | null;
+            /**
+             * @default email
+             * @enum {string}
+             */
+            type: "email";
+        };
         SpendLimitEnforcement: {
             status: components["schemas"]["SpendLimitEnforcementStatus"];
         };
@@ -2383,7 +2404,7 @@ export interface components {
         };
         StaticChunkingStrategyRequestParam: {
             static: components["schemas"]["StaticChunkingStrategy"];
-            /** @enum {string} */
+            /** @constant */
             type: "static";
         };
         TranscriptionDiarizedSegment: {
@@ -2394,7 +2415,7 @@ export interface components {
             /** Format: double */
             start: number;
             text: string;
-            /** @enum {string} */
+            /** @constant */
             type: "transcript.text.segment";
         };
         /** @enum {string} */
@@ -2435,7 +2456,7 @@ export interface components {
                 token?: string;
             }[];
             segment_id?: string;
-            /** @enum {string} */
+            /** @constant */
             type: "transcript.text.delta";
         };
         TranscriptTextDoneEvent: {
@@ -2446,7 +2467,7 @@ export interface components {
                 token?: string;
             }[];
             text: string;
-            /** @enum {string} */
+            /** @constant */
             type: "transcript.text.done";
             usage?: components["schemas"]["TranscriptTextUsageTokens"];
         };
@@ -2458,7 +2479,7 @@ export interface components {
             /** Format: double */
             start: number;
             text: string;
-            /** @enum {string} */
+            /** @constant */
             type: "transcript.text.segment";
         };
         TranscriptTextUsageDuration: {
@@ -2489,6 +2510,7 @@ export interface components {
             currency: "USD";
             /** @enum {string} */
             interval: "month";
+            notification_channel?: components["schemas"]["SpendLimitEmailNotificationChannelParams"] | null;
             threshold_amount: number;
         };
         UpdateProjectServiceAccountBody: {
@@ -2501,6 +2523,7 @@ export interface components {
             currency: "USD";
             /** @enum {string} */
             interval: "month";
+            notification_channel?: components["schemas"]["SpendLimitEmailNotificationChannelParams"] | null;
             threshold_amount: number;
         };
         UpdateVectorStoreRequest: {
@@ -2632,12 +2655,12 @@ export interface components {
             data: components["schemas"]["UsageTimeBucket"][];
             has_more: boolean;
             next_page: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "page";
         };
         UsageTimeBucket: {
             end_time: number;
-            /** @enum {string} */
+            /** @constant */
             object: "bucket";
             results: (components["schemas"]["UsageCompletionsResult"] | components["schemas"]["UsageEmbeddingsResult"] | components["schemas"]["UsageModerationsResult"] | components["schemas"]["UsageImagesResult"] | components["schemas"]["UsageAudioSpeechesResult"] | components["schemas"]["UsageAudioTranscriptionsResult"] | components["schemas"]["UsageVectorStoresResult"] | components["schemas"]["UsageCodeInterpreterSessionsResult"] | components["schemas"]["UsageFileSearchCallsResult"] | components["schemas"]["UsageWebSearchCallsResult"] | components["schemas"]["CostsResult"])[];
             start_time: number;
@@ -2680,7 +2703,7 @@ export interface components {
             is_scim_managed?: boolean;
             is_service_account?: boolean;
             name?: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.user";
             projects?: {
                 data: {
@@ -2688,7 +2711,7 @@ export interface components {
                     name?: string | null;
                     role?: string | null;
                 }[];
-                /** @enum {string} */
+                /** @constant */
                 object: "list";
             } | null;
             role?: string | null;
@@ -2700,7 +2723,7 @@ export interface components {
                 enabled?: boolean | null;
                 id: string;
                 name?: string | null;
-                /** @enum {string} */
+                /** @constant */
                 object: "user";
                 picture?: string | null;
             };
@@ -2708,7 +2731,7 @@ export interface components {
         UserDeleteResponse: {
             deleted: boolean;
             id: string;
-            /** @enum {string} */
+            /** @constant */
             object: "organization.user.deleted";
         };
         UserListResponse: {
@@ -2716,7 +2739,7 @@ export interface components {
             first_id?: string | null;
             has_more: boolean;
             last_id?: string | null;
-            /** @enum {string} */
+            /** @constant */
             object: "list";
         };
         UserRoleUpdateRequest: {
@@ -2736,7 +2759,7 @@ export interface components {
             type: "server_vad";
         };
         VectorStoreExpirationAfter: {
-            /** @enum {string} */
+            /** @constant */
             anchor: "last_active_at";
             days: number;
         };
@@ -2756,7 +2779,7 @@ export interface components {
             last_active_at: number | null;
             metadata: components["schemas"]["Metadata"];
             name: string;
-            /** @enum {string} */
+            /** @constant */
             object: "vector_store";
             /** @enum {string} */
             status: "expired" | "in_progress" | "completed";
@@ -3377,7 +3400,7 @@ export interface operations {
                     "application/json": {
                         deleted: boolean;
                         id: string;
-                        /** @enum {string} */
+                        /** @constant */
                         object: "organization.admin_api_key.deleted";
                     };
                 };
