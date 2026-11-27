@@ -196,6 +196,9 @@ export interface components {
             type: "fetch_url_results";
         };
         FetchUrlTool: {
+            filters?: {
+                snapshot_as_of?: string;
+            };
             /** Format: int32 */
             max_urls?: number;
             /**
@@ -465,7 +468,7 @@ export interface components {
             /** @enum {string} */
             type: "function";
         };
-        OutputItem: components["schemas"]["MessageOutputItem"] | components["schemas"]["SearchResultsOutputItem"] | components["schemas"]["ImageSearchResultsOutputItem"] | components["schemas"]["FetchUrlResultsOutputItem"] | components["schemas"]["FinanceResultsOutputItem"] | components["schemas"]["PeopleSearchResultsOutputItem"] | components["schemas"]["FunctionCallOutputItem"] | components["schemas"]["SandboxResultsOutputItem"] | components["schemas"]["McpListToolsOutputItem"] | components["schemas"]["McpCallOutputItem"] | components["schemas"]["McpApprovalRequestOutputItem"] | components["schemas"]["ToolSearchOutputItem"];
+        OutputItem: components["schemas"]["MessageOutputItem"] | components["schemas"]["SearchResultsOutputItem"] | components["schemas"]["ImageSearchResultsOutputItem"] | components["schemas"]["FetchUrlResultsOutputItem"] | components["schemas"]["FinanceResultsOutputItem"] | components["schemas"]["PeopleSearchResultsOutputItem"] | components["schemas"]["FunctionCallOutputItem"] | components["schemas"]["SandboxResultsOutputItem"] | components["schemas"]["SandboxWriteFileOutputItem"] | components["schemas"]["SandboxReadFileOutputItem"] | components["schemas"]["ShareFileOutputItem"] | components["schemas"]["SkillLoadedOutputItem"] | components["schemas"]["McpListToolsOutputItem"] | components["schemas"]["McpCallOutputItem"] | components["schemas"]["McpApprovalRequestOutputItem"] | components["schemas"]["ToolSearchOutputItem"];
         OutputItemAddedEvent: {
             item: components["schemas"]["OutputItem"];
             /** Format: int64 */
@@ -519,6 +522,11 @@ export interface components {
             /** @enum {string} */
             type: "custom";
             version?: string;
+        };
+        PromptCacheOptions: {
+            /** @enum {string} */
+            mode?: "implicit" | "explicit";
+            ttl?: string;
         };
         ReasoningConfig: {
             /** @enum {string} */
@@ -624,6 +632,8 @@ export interface components {
             models?: string[];
             previous_response_id?: string;
             profile?: components["schemas"]["ProfileReference"];
+            prompt_cache_key?: string;
+            prompt_cache_options?: components["schemas"]["PromptCacheOptions"];
             reasoning?: components["schemas"]["ReasoningConfig"];
             response_format?: components["schemas"]["ResponseFormat"];
             skills?: components["schemas"]["Skill"][];
@@ -640,13 +650,13 @@ export interface components {
             /** Format: int64 */
             created_at: number;
             effort?: string;
-            error?: components["schemas"]["ErrorInfo"];
+            error?: components["schemas"]["ErrorInfo"] | null;
             id: string;
             model: string;
             object: components["schemas"]["ResponsesObjectType"];
             output: components["schemas"]["OutputItem"][];
             status: components["schemas"]["Status"];
-            usage?: components["schemas"]["ResponsesUsage"];
+            usage?: components["schemas"]["ResponsesUsage"] | null;
         };
         ResponseStreamEvent: components["schemas"]["ResponseCreatedEvent"] | components["schemas"]["ResponseInProgressEvent"] | components["schemas"]["ResponseCompletedEvent"] | components["schemas"]["ResponseFailedEvent"] | components["schemas"]["OutputItemAddedEvent"] | components["schemas"]["OutputItemDoneEvent"] | components["schemas"]["TextDeltaEvent"] | components["schemas"]["TextDoneEvent"] | components["schemas"]["ReasoningStartedEvent"] | components["schemas"]["SearchQueriesEvent"] | components["schemas"]["SearchResultsEvent"] | components["schemas"]["ImageSearchQueriesEvent"] | components["schemas"]["ImageSearchResultsEvent"] | components["schemas"]["FetchUrlQueriesEvent"] | components["schemas"]["FetchUrlResultsEvent"] | components["schemas"]["ReasoningStoppedEvent"];
         ResponsesUsage: {
@@ -669,6 +679,21 @@ export interface components {
         };
         /** @enum {string} */
         RoleType: "assistant";
+        SandboxReadFileOutputItem: {
+            call_id: string;
+            content?: string;
+            error?: string;
+            file_path: string;
+            /** Format: int32 */
+            start_line?: number;
+            /** Format: int32 */
+            total_lines?: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sandbox_read_file";
+        };
         SandboxResultsOutputItem: {
             code?: string;
             /** Format: int64 */
@@ -691,6 +716,18 @@ export interface components {
              * @enum {string}
              */
             type: "sandbox";
+        };
+        SandboxWriteFileOutputItem: {
+            call_id: string;
+            error?: string;
+            file_path: string;
+            /** Format: int64 */
+            size_bytes?: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "sandbox_write_file";
         };
         SearchDomainFilter: {
             search_domain_filter?: string[];
@@ -741,10 +778,32 @@ export interface components {
         };
         /** @enum {string} */
         SearchSource: "web";
+        ShareFileOutputItem: {
+            call_id: string;
+            error?: string;
+            file_id?: string;
+            filename?: string;
+            /** Format: int64 */
+            size_bytes?: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "share_file";
+            url?: string;
+        };
         Skill: components["schemas"]["BuiltinSkill"] | components["schemas"]["InlineSkill"] | components["schemas"]["CustomSkill"];
         SkillList: {
             next_page_token?: string;
             skills: components["schemas"]["SkillSummary"][];
+        };
+        SkillLoadedOutputItem: {
+            name: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "skill_loaded";
         };
         SkillRevision: {
             /** Format: date-time */
@@ -844,7 +903,9 @@ export interface components {
             title: string;
             url: string;
         };
-        WebSearchFilters: components["schemas"]["SearchDomainFilter"] & components["schemas"]["DateFilters"];
+        WebSearchFilters: components["schemas"]["SearchDomainFilter"] & components["schemas"]["DateFilters"] & {
+            snapshot_as_of?: string;
+        };
         WebSearchTool: {
             filters?: components["schemas"]["WebSearchFilters"];
             /** Format: int32 */
