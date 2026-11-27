@@ -75,9 +75,26 @@ Without full access, add the repository as a project in T3 Code yourself first. 
 ### What happens when work starts in T3 Code
 
 - If the environment has no project for the repository, the forge has T3 Code clone it to `~/infrawrench-git/<owner>/<repository>` and register it.
-- A thread is launched on a new worktree for the branch, with the project's default model. Its first message is the ask, the branch to push to, and how to add the forge's MCP server so the agent can record its trace and read instructions.
+- A thread is launched on a new worktree for the branch, with the project's default model. Its first message is the ask, the branch to push to, and how to record its work for the reviewers.
 - The thread pushes with the Git credentials already on that machine. git.infrawrench.com sends no credentials to T3 Code. Make sure the machine can push to the repository, with an [SSH key or an access token](./git-getting-started.md).
 - If T3 Code refuses the launch (for example, the project has no default model), the branch and its page are kept and the page says why. Fix it in T3 Code and connect the agent again.
+
+### How the thread records its work
+
+The thread's first message tells the agent to record its trace as it works: the ask as it understood it, each step, each decision with its reason and what it ruled out, evidence (the command, its exit code and the output that shows the result), doubts and notes, each pointing at the code it is about. It also tells the agent to mark a reviewer's instruction delivered when it takes it on and answered before the push that answers it, how to report findings if it is asked to review, and the [note commands](./git-branches.md#notes-from-ci) for a CI job it writes. An instruction sent to the thread repeats the part about marking it.
+
+The agent does this through the forge's MCP server, with a token it asks for itself. The thread runs a command that hands the access token in the machine's Git credential helper to git.infrawrench.com and gets back a token for that one branch:
+
+| The branch token can                                               | It cannot                                             |
+| ------------------------------------------------------------------ | ----------------------------------------------------- |
+| Record the branch's trace                                          | Clone, fetch or push                                  |
+| List the branch's instructions and mark them delivered or answered | Send or withdraw an instruction, or dismiss a finding |
+| List and report findings on the branch                             | Reach another branch or another repository            |
+|                                                                    | Read or change anything else, settings included       |
+
+It lasts six hours. The agent keeps it in a file inside the worktree's Git directory, which is never committed or pushed, and asks again when it runs out. git.infrawrench.com never sends a token to T3 Code, so none appears in the thread's messages.
+
+For this to work the machine needs an [access token](./git-getting-started.md) with the `repo:write` scope stored for `https://git.infrawrench.com` in its Git credential helper. A machine that pushes over SSH only has none: there the agent says so and carries on, and you can sign the `infrawrench-git` MCP server in yourself from the thread (T3 Code shows a **Sign in** notice for it).
 
 ### Sign-ins
 

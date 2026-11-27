@@ -167,11 +167,11 @@ const whoami: ToolDefinition = {
   name: "whoami",
   title: "Who this connection acts as",
   description:
-    "Says whose credential this connection uses and what it may do: a person (username, and the token's scopes when it is a token), an organisation's API key, or a CI job (one repository, one run). Call it once when you are unsure whether you can write: `can_write` false means recording traces, answering instructions and reporting findings will be refused.",
+    "Says whose credential this connection uses and what it may do: a person (username, and the token's scopes when it is a token), an organisation's API key, a CI job (one repository, one run), or an agent's token (one repository, one branch: `branch` names it, and the trace, instructions and findings tools work for that branch only). Call it once when you are unsure whether you can write: `can_write` false means recording traces, answering instructions and reporting findings will be refused.",
   inputSchema: object({}),
   outputSchema: output(
     {
-      kind: { type: "string", enum: ["user", "api_key", "ci_job"] },
+      kind: { type: "string", enum: ["user", "api_key", "ci_job", "agent"] },
       username: { type: ["string", "null"] },
       user_id: { type: ["string", "null"] },
       scopes: {
@@ -185,6 +185,10 @@ const whoami: ToolDefinition = {
         description: "The one repository a CI job's token is for.",
       },
       ci_run_id: { type: ["string", "null"] },
+      branch: {
+        type: ["string", "null"],
+        description: "The one branch an agent's token is for.",
+      },
     },
     ["kind", "can_write"],
   ),
@@ -192,6 +196,18 @@ const whoami: ToolDefinition = {
   idempotent: true,
   async run(_input, cx) {
     const principal = cx.principal;
+    if (principal.kind === "job" && principal.agentRef != null) {
+      return {
+        kind: "agent",
+        username: null,
+        user_id: null,
+        scopes: null,
+        can_write: true,
+        repository_id: principal.repositoryId,
+        ci_run_id: null,
+        branch: principal.agentRef.replace(/^refs\/heads\//, ""),
+      };
+    }
     if (principal.kind === "job") {
       return {
         kind: "ci_job",

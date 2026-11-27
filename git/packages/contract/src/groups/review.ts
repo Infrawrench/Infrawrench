@@ -31,6 +31,7 @@ import { DiffQuery } from "../schemas/git";
 import {
   AgentLink,
   AgentLinkSet,
+  AgentToken,
   BranchPageState,
   BranchVersion,
   BranchVersionList,
@@ -376,6 +377,18 @@ export class AgentsGroup extends HttpApiGroup.make("agents")
       .annotate(RequiredAccess, "write")
       .annotate(OpenApi.Summary, "Disconnect a branch's agent")
       .annotate(SuccessDescription, "Disconnected"),
+    HttpApiEndpoint.post("token", "/branches/:branch/agent/token", {
+      params: BranchParams,
+      success: AgentToken,
+      error: UnprocessableEntity,
+    })
+      .annotate(RequiredAccess, "write")
+      .annotate(OpenApi.Summary, "A token for a branch's agent")
+      .annotate(
+        OpenApi.Description,
+        "A token good for six hours that records this branch's trace, reads and answers its instructions and reports findings on it, through the API and the MCP server, and does nothing else: it does not clone or push. Asked for with a personal access token, an API key or a session that has write access; asking again is how it is renewed. 422 for a branch page that is closed or a fork's.",
+      )
+      .annotate(SuccessDescription, "The token"),
     HttpApiEndpoint.post("startWork", "/work", {
       params: RepoParams,
       payload: StartWork,

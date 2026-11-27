@@ -137,6 +137,7 @@ export const API_ROUTES = {
     get: ["GET", "/api/repos/:owner/:repo/branches/:branch/agent"],
     set: ["PUT", "/api/repos/:owner/:repo/branches/:branch/agent"],
     remove: ["DELETE", "/api/repos/:owner/:repo/branches/:branch/agent"],
+    token: ["POST", "/api/repos/:owner/:repo/branches/:branch/agent/token"],
     startWork: ["POST", "/api/repos/:owner/:repo/work"],
   },
   reviewSettings: {

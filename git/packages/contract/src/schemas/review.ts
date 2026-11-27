@@ -103,6 +103,15 @@ const ExternalRefs = Schema.Record(Schema.String, Schema.String).annotate({
 });
 
 /** The agent that writes a branch page's branch. */
+/** What `agents.token` answers: a credential, shown once. */
+export const AgentToken = Schema.Struct({
+  token: Schema.String,
+  expiresAt: IsoDateTime,
+  /** The branch whose markers it writes. */
+  branch: Schema.String,
+});
+export type AgentToken = typeof AgentToken.Type;
+
 export const AgentLink = Schema.Struct({
   kind: AgentKind,
   displayName: Schema.String,

@@ -32,6 +32,7 @@ import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { type Principal, toCaller } from "../auth/principal";
 import { repoAccess } from "../auth/repo-access";
 import { getNamespaceForUser } from "../db/namespaces";
+import { agentMayCall } from "./agent-token";
 import { orgPermissions } from "../db/organizations";
 import { getRepository, toRepoForAccess } from "../db/repositories";
 import { AuthRef, type AuthState, RepoRef, inScope } from "./context";
@@ -98,6 +99,12 @@ export const AuthenticationLive = Layer.succeed(Authentication)((httpEffect, { e
     if (limited !== null) return HttpServerResponse.raw(limited);
     if (principal.kind === "job" && !JOB_GROUPS.has(group.identifier)) {
       return yield* forbidden("A CI job token reads over Git and reports commit statuses");
+    }
+    // An agent's token for one branch's markers: those endpoints and no others.
+    if (!agentMayCall(principal, group.identifier, endpoint.identifier)) {
+      return yield* forbidden(
+        "An agent's token records a trace, answers instructions and reports findings on its branch",
+      );
     }
     const isPerson = principal.kind === "user";
     if (Context.get(endpoint.annotations, RequiresUser) && !isPerson) {

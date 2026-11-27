@@ -45,6 +45,7 @@ import {
   versionsOfBranch,
 } from "../../db/traces";
 import { TRACE_LIMITS, prepareAgent, prepareTraceEntries } from "../../review/trace";
+import { ownBranchOnly } from "../agent-token";
 import { type RepoCx, repoOp } from "../context";
 import { iso, peopleById } from "../views/repositories";
 
@@ -87,6 +88,12 @@ const authorOf = async (cx: RepoCx, branch: string): Promise<string | null> => {
     // `repoAccess` already holds a job's token to its own repository; this says so again.
     if (principal.repositoryId !== cx.repo.repository.id || principal.workspaceId) {
       throw forbidden("This job's token is for another repository");
+    }
+    // An agent's token for one branch's markers: that branch, as nobody (the
+    // entry names its agent). Its repository is already this one.
+    if (principal.agentRef != null) {
+      ownBranchOnly(cx, branch);
+      return null;
     }
     if (principal.runId === null) throw forbidden("Only a CI run's own token records a trace");
     const run = await getCiRun(
@@ -149,6 +156,7 @@ const scopeOf = async (
   query: { readonly branch: string; readonly version?: string | undefined },
 ): Promise<TraceScope> => {
   const branch = traceBranch(query.branch);
+  ownBranchOnly(cx, branch);
   const versions = await versionsOfBranch(cx.repo.repository.id, branch);
   const pending: TraceScope["pending"] = { repositoryId: cx.repo.repository.id, branch };
   if (query.version === undefined) {

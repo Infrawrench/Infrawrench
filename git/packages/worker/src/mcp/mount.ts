@@ -52,7 +52,9 @@ export const serveMcp = (
   const scope = currentRequestScope();
   return handleMcp(request, {
     origin: siteOrigin(env),
-    authenticate: (bare) => authenticateRequest(bare, env),
+    // An agent's token for one branch's markers is taken here: the tools it
+    // can use are the API's marker paths, which keep it to its branch.
+    authenticate: (bare) => authenticateRequest(bare, env, { agentTokens: true }),
     // The transport is counted as a read whatever it carries: what a tool
     // does is counted again, as what it is, by the API it calls.
     admit: (principal) => admissionFor(env).admit({ method: "GET", url: request.url }, principal),

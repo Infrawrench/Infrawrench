@@ -18,7 +18,10 @@
  * read of a state names the workspace, and is good for that workspace's
  * state and plans alone: it clones nothing and writes nothing to the
  * repository. One minted for an agent's work names a branch (`ref`): it
- * clones the repository and pushes that one branch, and nothing else.
+ * clones the repository and pushes that one branch, and nothing else. One
+ * minted for an agent's markers names a branch too (`agent`): it records
+ * the branch's trace, answers its instructions and reports findings on it,
+ * and reaches nothing over Git at all.
  *
  * Git sends it as the password of Basic auth, with any user name (the
  * runner sends `x-access-token`); every other route takes it as a Bearer
@@ -73,6 +76,17 @@ export interface GitJobTokenClaims {
    * for. Cannot be combined with `commit` or `workspace`.
    */
   ref?: string;
+  /**
+   * Set on a token that only writes one branch's markers (a full ref name,
+   * `refs/heads/<branch>`): what an agent working outside the app holds, in
+   * a T3 Code thread for one. It records that branch's trace, reads and
+   * answers its instructions and reports findings on it, through the API
+   * and the MCP server. It clones nothing and pushes nothing: a verifier
+   * that does not say it keeps the token to its branch's markers
+   * (`expect.agent`) refuses it, and Git never says so. Cannot be combined
+   * with `commit`, `workspace` or `ref`.
+   */
+  agent?: string;
 }
 
 /**
@@ -81,6 +95,13 @@ export interface GitJobTokenClaims {
  * which refs a push names only after it has authenticated.
  */
 export const ANY_GIT_JOB_TOKEN_REF = Symbol.for("infrawrench.git-job-token.any-ref");
+
+/**
+ * For `expect.agent`: the verifier serves a branch's markers and compares
+ * the token's branch with the one it is asked about itself (it learns the
+ * branch from the path or the body, after it has authenticated).
+ */
+export const ANY_GIT_JOB_TOKEN_AGENT = Symbol.for("infrawrench.git-job-token.any-agent");
 
 /**
  * For `expect.workspace`: the verifier serves Terraform workspaces and
@@ -190,6 +211,17 @@ export async function signGitJobToken(
       "A git job token bound to a branch is not also bound to a commit or a workspace.",
     );
   }
+  if (claims.agent !== undefined && !isGitJobTokenRef(claims.agent)) {
+    throw new Error("A git job token's agent branch is a branch's full ref name.");
+  }
+  if (
+    claims.agent !== undefined &&
+    (claims.commit !== undefined || claims.workspace !== undefined || claims.ref !== undefined)
+  ) {
+    throw new Error(
+      "A git job token for an agent's markers is not also bound to a commit, a workspace or a push.",
+    );
+  }
   const nowSeconds = Math.floor(now / 1000);
   if (
     !Number.isSafeInteger(claims.expiresAt) ||
@@ -209,6 +241,7 @@ export async function signGitJobToken(
         ...(claims.commit !== undefined ? { sha: claims.commit } : {}),
         ...(claims.workspace !== undefined ? { ws: claims.workspace } : {}),
         ...(claims.ref !== undefined ? { ref: claims.ref } : {}),
+        ...(claims.agent !== undefined ? { agent: claims.agent } : {}),
       }),
     ),
   );
@@ -237,7 +270,10 @@ export function isGitJobToken(text: string): boolean {
  * for a verifier that confines the push itself): every caller that does not
  * enforce the branch leaves `ref` out and so refuses it. Unlike a workspace,
  * naming `ref` does not refuse a token without the claim, which may already
- * write any branch. The claims of a refused token are never returned, so
+ * write any branch. A token for an agent's markers passes only for
+ * `expect.agent` equal to its branch (or {@link ANY_GIT_JOB_TOKEN_AGENT}, for
+ * a verifier that compares the branch itself): every caller that does not
+ * serve markers leaves `agent` out and so refuses it, Git first of all. The claims of a refused token are never returned, so
  * nothing is decided from an unsigned payload.
  */
 export async function verifyGitJobToken(
@@ -249,6 +285,7 @@ export async function verifyGitJobToken(
     commit?: string;
     workspace?: string | typeof ANY_GIT_JOB_TOKEN_WORKSPACE;
     ref?: string | typeof ANY_GIT_JOB_TOKEN_REF;
+    agent?: string | typeof ANY_GIT_JOB_TOKEN_AGENT;
   } = {},
   now: number = Date.now(),
 ): Promise<GitJobTokenResult> {
@@ -281,7 +318,7 @@ export async function verifyGitJobToken(
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     return refused("malformed");
   }
-  const { v, repo, access, run, exp, sha, ws, ref } = parsed as Record<string, unknown>;
+  const { v, repo, access, run, exp, sha, ws, ref, agent } = parsed as Record<string, unknown>;
   if (
     v !== 1 ||
     !validField(repo) ||
@@ -292,7 +329,16 @@ export async function verifyGitJobToken(
     (sha !== undefined && (typeof sha !== "string" || !COMMIT.test(sha))) ||
     (ws !== undefined && (!validField(ws) || sha !== undefined)) ||
     (ref !== undefined &&
-      (typeof ref !== "string" || !isGitJobTokenRef(ref) || sha !== undefined || ws !== undefined))
+      (typeof ref !== "string" ||
+        !isGitJobTokenRef(ref) ||
+        sha !== undefined ||
+        ws !== undefined)) ||
+    (agent !== undefined &&
+      (typeof agent !== "string" ||
+        !isGitJobTokenRef(agent) ||
+        sha !== undefined ||
+        ws !== undefined ||
+        ref !== undefined))
   ) {
     return refused("malformed");
   }
@@ -318,6 +364,13 @@ export async function verifyGitJobToken(
     if (expect.ref === undefined) return refused("access");
     if (expect.ref !== ANY_GIT_JOB_TOKEN_REF && expect.ref !== ref) return refused("access");
   }
+  // An agent's token goes only where a branch's markers are served, for its branch.
+  if (agent !== undefined) {
+    if (expect.agent === undefined) return refused("access");
+    if (expect.agent !== ANY_GIT_JOB_TOKEN_AGENT && expect.agent !== agent) {
+      return refused("access");
+    }
+  }
   return {
     ok: true,
     claims: {
@@ -328,6 +381,7 @@ export async function verifyGitJobToken(
       ...(sha !== undefined ? { commit: sha } : {}),
       ...(ws !== undefined ? { workspace: ws } : {}),
       ...(ref !== undefined ? { ref } : {}),
+      ...(agent !== undefined ? { agent } : {}),
     },
   };
 }

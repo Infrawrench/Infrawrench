@@ -73,6 +73,13 @@ export interface JobPrincipal {
    * authenticate one at all; the archive, raw files and Terraform refuse it.
    */
   readonly ref?: string | null;
+  /**
+   * Set on an agent's token for one branch's markers (a full ref name): it
+   * records that branch's trace, answers its instructions and reports
+   * findings on it, and reaches nothing else (`api/agent-token.ts`). Only
+   * the API's marker paths and the MCP server authenticate one at all.
+   */
+  readonly agentRef?: string | null;
 }
 
 export type Principal =

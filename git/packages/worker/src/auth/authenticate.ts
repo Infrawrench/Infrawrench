@@ -76,6 +76,13 @@ export interface AuthenticateOptions {
    * token is a refused credential.
    */
   readonly refTokens?: boolean;
+  /**
+   * The caller accepts an agent's token for one branch's markers: the JSON
+   * API on its trace, instructions and findings paths, and the MCP server,
+   * whose tools are requests to those paths. Everywhere else, Git above
+   * all, such a token is a refused credential.
+   */
+  readonly agentTokens?: boolean;
 }
 
 const fromAuthorization = async (
@@ -125,6 +132,7 @@ const fromAuthorization = async (
       const claims = await verifyJobToken(env.GIT_JOB_TOKEN_KEY, credential.secret, undefined, {
         workspace: options.workspaceTokens === true,
         ref: options.refTokens === true,
+        agent: options.agentTokens === true,
       });
       if (!claims) return anonymous(true);
       return {
@@ -135,6 +143,7 @@ const fromAuthorization = async (
           runId: claims.runId,
           workspaceId: claims.workspaceId,
           ref: claims.ref,
+          agentRef: claims.agentRef,
         },
         refused: false,
         setCookies: [],
@@ -197,6 +206,20 @@ const REF_TOKEN_API_PATHS = [
 /** Whether the API takes a branch-bound job token on this path (`refTokens`). */
 export const apiAcceptsRefTokens = (pathname: string): boolean =>
   REF_TOKEN_API_PATHS.some((path) => path.test(pathname));
+
+/**
+ * Where the API takes an agent's token for one branch's markers. The paths
+ * only say where such a token is a credential at all; which endpoints and
+ * which branch is `api/agent-token.ts`.
+ */
+const AGENT_TOKEN_API_PATHS = [
+  ...REF_TOKEN_API_PATHS,
+  new RegExp(`^/api/repos/${SEGMENT}/${SEGMENT}/branches/${SEGMENT}/findings$`),
+];
+
+/** Whether the API takes an agent's marker token on this path (`agentTokens`). */
+export const apiAcceptsAgentTokens = (pathname: string): boolean =>
+  AGENT_TOKEN_API_PATHS.some((path) => path.test(pathname));
 
 /** Who an HTTP request is from. */
 export const authenticateRequest = async (

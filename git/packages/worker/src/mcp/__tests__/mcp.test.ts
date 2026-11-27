@@ -395,6 +395,98 @@ describe("the tools", () => {
     ).toMatchObject({ kind: "user", scopes: ["repo:read"], can_write: false });
   });
 
+  it("whoami says an agent's token is for one branch", async () => {
+    const agent: Principal = {
+      kind: "job",
+      repositoryId: "repo-1",
+      write: true,
+      runId: "agent:alice",
+      workspaceId: null,
+      agentRef: "refs/heads/work/add-rate-limits",
+    };
+    const site = makeSite({ principals: new Map<string, Principal>([["Bearer agent", agent]]) });
+    expect(
+      (await (await connect(site, "Bearer agent")).callTool({ name: "whoami", arguments: {} }))
+        .structuredContent,
+    ).toMatchObject({
+      kind: "agent",
+      can_write: true,
+      repository_id: "repo-1",
+      branch: "work/add-rate-limits",
+      ci_run_id: null,
+    });
+  });
+
+  it("answers one tools/call sent alone, as a thread without the tools loaded sends it", async () => {
+    const agent: Principal = {
+      kind: "job",
+      repositoryId: "repo-1",
+      write: true,
+      runId: "agent:alice",
+      workspaceId: null,
+      agentRef: "refs/heads/feature",
+    };
+    let recorded: Record<string, unknown> | undefined;
+    const site = makeSite({
+      principals: new Map<string, Principal>([["Bearer agent", agent]]),
+      api: apiOf({
+        [`POST ${REPO}/traces`]: async (request: Request) => {
+          recorded = (await request.json()) as Record<string, unknown>;
+          return { entries: [{ id: "t1", kind: "decision" }] };
+        },
+      }),
+    });
+    // No `initialize`, no session: the request `curl` makes from the prompt's example.
+    const response = await site.fetch(MCP_URL, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer agent",
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "record_trace",
+          arguments: {
+            repository: "acme/infra",
+            branch: "feature",
+            agent_name: "Claude Code",
+            entries: [
+              {
+                kind: "decision",
+                body: "Kept the retry in the client.",
+                anchors: [{ path: "src/client.ts", start_line: 40, end_line: 58 }],
+                needs_code: true,
+              },
+            ],
+          },
+        },
+      }),
+    });
+    expect(response.status).toBe(200);
+    const answer = (await response.json()) as {
+      result?: { structuredContent?: Record<string, unknown>; isError?: boolean };
+    };
+    expect(answer.result?.isError ?? false).toBe(false);
+    expect(answer.result?.structuredContent).toMatchObject({ recorded: 1, branch: "feature" });
+    expect(recorded).toMatchObject({
+      branch: "feature",
+      agent: { kind: "mcp", name: "Claude Code" },
+      entries: [
+        {
+          kind: "decision",
+          needsCode: true,
+          anchors: [{ path: "src/client.ts", startLine: 40, endLine: 58 }],
+        },
+      ],
+    });
+    // The API call carries the same credential and nothing else of the request.
+    expect(site.apiCalls[0]!.headers.get("authorization")).toBe("Bearer agent");
+  });
+
   it("list_my_branches reads the inbox", async () => {
     const inbox = {
       items: [{ repository: { owner: "acme", name: "infra" }, key: "feature", branch: "feature" }],
