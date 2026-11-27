@@ -58,7 +58,7 @@ Access resolution is one function, `repoAccess(principal, repo) -> none | read |
 
 ## The forge
 
-Code (tree, file with highlighting, raw, blame, history, archive download), branches, tags, compare, commits with diffs, issues (labels, milestones, assignees, comments), branch pages (one for every branch: versions, diff, inline review comments, approvals, merge commit / squash / rebase, conflict check, protected branches with required approvals and required checks), stars, forks, explore and search, user and organisation pages, repository settings (rename, transfer, visibility, collaborators, deploy keys, protected branches, delete), personal settings (SSH keys, tokens, username).
+Code (tree, file with highlighting, raw, blame, history, archive download), branches, tags, compare, commits with diffs, issues (labels, milestones, assignees, comments), branch pages (one for every branch: versions, diff, inline review comments, approvals, merge commit / squash / rebase, conflict check, protected branches with required approvals and required checks), stars, forks, explore and search, user and organisation pages, repository settings (rename, transfer, visibility, collaborators, deploy keys, protected branches, delete), personal settings (SSH keys, tokens, username). Every page has link preview tags and an image (`/-/og/...`) drawn as a signed-out visitor sees it (`packages/worker/NOTES.md` "Link previews").
 
 ## Agent work review
 
