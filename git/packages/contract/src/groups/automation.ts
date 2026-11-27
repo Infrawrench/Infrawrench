@@ -12,7 +12,13 @@ import {
   SuccessDescription,
 } from "../http/annotations";
 import { Authentication, RepositoryAccess } from "../http/auth";
-import { BadRequest, Conflict, NotFound, UnprocessableEntity } from "../http/errors";
+import {
+  BadRequest,
+  Conflict,
+  NotFound,
+  PaymentRequired,
+  UnprocessableEntity,
+} from "../http/errors";
 import { BranchKey, CommitSha, Ok, Page, PageQuery, RefQuery, RepoParams } from "../schemas/common";
 import {
   CiEvent,
@@ -91,13 +97,13 @@ export class CiGroup extends HttpApiGroup.make("ci")
       params: RepoParams,
       payload: CiRepositorySettingsUpdate,
       success: CiRepositorySettings,
-      error: [BadRequest, UnprocessableEntity],
+      error: [BadRequest, PaymentRequired, UnprocessableEntity],
     })
       .annotate(RequiredAccess, "admin")
       .annotate(OpenApi.Summary, "Switch CI on or off for a repository")
       .annotate(
         OpenApi.Description,
-        "Runs already started finish. Secrets, variables and approvals are the organisation's, in the app. 422 `ci_unavailable` for a repository in a personal namespace.",
+        "Runs already started finish. Secrets, variables and approvals are the organisation's, in the app. 422 `ci_unavailable` for a repository in a personal namespace that is connected to no organisation. 402 `plan_required` when switching it on for an organisation on the free plan; switching it off never asks.",
       )
       .annotate(SuccessDescription, "The switch"),
     HttpApiEndpoint.get("listRuns", "/ci/runs", {

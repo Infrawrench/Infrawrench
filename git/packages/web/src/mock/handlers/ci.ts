@@ -1,11 +1,13 @@
-import { defineMockHandlers, notFound, paginate, unprocessable } from "../define";
+import { defineMockHandlers, mockError, notFound, paginate, unprocessable } from "../define";
 import {
   APP_URL,
   type RepositoryRecord,
   findRepository,
   gitOf,
+  namespaces,
   requireUser,
   runsInOf as runsIn,
+  unclaimedOrganizations,
 } from "../db";
 import { flatten, resolveRef } from "../git";
 import { combine, logFrames, reportStatus, runsOf, statusesFor, toDetail, toRun } from "../ci-data";
@@ -14,9 +16,20 @@ import { newId } from "../settings-data";
 const NEEDS_ORGANISATION =
   "CI runs in an organisation. Choose one for your own repositories in Settings > Profile";
 
+const NEEDS_PLAN = "Infrawrench CI is part of Pro";
+
 const ciAppUrl = (repo: RepositoryRecord): string | null => {
   const organizationId = runsIn(repo);
   return organizationId === null ? null : `${APP_URL}/org/${organizationId}/ci`;
+};
+
+/** Whether the organisation the repository runs in is on the free plan. */
+const onFreePlan = (repo: RepositoryRecord): boolean => {
+  const organizationId = runsIn(repo);
+  return [
+    ...namespaces,
+    ...unclaimedOrganizations.map((o) => ({ ...o, organizationId: o.id })),
+  ].some((n) => n.organizationId === organizationId && n.plan === "free");
 };
 
 /** Repositories whose CI switch someone turned off. No entry means on. */
@@ -64,13 +77,30 @@ export default defineMockHandlers({
           pipelines.push({ file: path, name: name?.trim() ?? path.split("/").pop()! });
         }
       }
-      const reason =
+      const code =
         runsIn(repo) === null
-          ? NEEDS_ORGANISATION
-          : switchedOff.has(repo.id)
-            ? "CI is switched off for this repository"
-            : null;
-      return { enabled: reason === null, pipelines, reason };
+          ? ("needs_organisation" as const)
+          : onFreePlan(repo)
+            ? ("plan_required" as const)
+            : switchedOff.has(repo.id)
+              ? ("switched_off" as const)
+              : null;
+      const reason =
+        code === null
+          ? null
+          : code === "needs_organisation"
+            ? NEEDS_ORGANISATION
+            : code === "plan_required"
+              ? NEEDS_PLAN
+              : "CI is switched off for this repository";
+      return {
+        enabled: code === null,
+        pipelines,
+        reason,
+        code,
+        upgradeUrl:
+          code === "plan_required" ? `${APP_URL}/org/${runsIn(repo)}/settings/billing` : null,
+      };
     },
     settings: ({ params }) => {
       const repo = findRepository(params.owner, params.repo);
@@ -84,6 +114,7 @@ export default defineMockHandlers({
       const repo = findRepository(params.owner, params.repo);
       requireUser();
       if (runsIn(repo) === null) throw unprocessable(NEEDS_ORGANISATION, "ci_unavailable");
+      if (payload.enabled && onFreePlan(repo)) throw mockError(402, NEEDS_PLAN, "plan_required");
       if (payload.enabled) switchedOff.delete(repo.id);
       else switchedOff.add(repo.id);
       return { enabled: payload.enabled, available: true, appUrl: ciAppUrl(repo) };

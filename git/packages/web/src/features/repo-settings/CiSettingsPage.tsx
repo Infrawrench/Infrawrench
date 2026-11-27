@@ -10,6 +10,7 @@ import { SettingsRow, SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
 import { useRepoRef, useRepository } from "../../layout/RepoLayout";
 import { paths } from "../../lib/paths";
+import { CiBlocked, planBlocks } from "../ci/CiBlocked";
 
 /**
  * CI for the repository: its own switch, which its administrators hold, and
@@ -50,13 +51,24 @@ export function CiSettingsPage() {
               </ButtonLink>
             }
           >
+            {planBlocks(state) ? (
+              <Panel className="mb-3">
+                <CiBlocked state={state} ownNamespace={false} className="py-6" />
+              </Panel>
+            ) : null}
             <Panel className="divide-y divide-border">
-              <SettingsRow title="Infrawrench CI" detail={state.enabled ? undefined : state.reason}>
+              <SettingsRow
+                title="Infrawrench CI"
+                detail={state.enabled || planBlocks(state) ? undefined : state.reason}
+              >
                 <span className="flex flex-wrap items-center gap-2">
                   <Badge tone={state.enabled ? "success" : "neutral"}>
                     <span role="status">{state.enabled ? "On" : "Off"}</span>
                   </Badge>
-                  {switchState?.available === true && !repository.archived ? (
+                  {switchState?.available === true &&
+                  !repository.archived &&
+                  // On the free plan there is nothing to switch on.
+                  !(planBlocks(state) && !switchState.enabled) ? (
                     <Button
                       size="sm"
                       busy={change.isPending}

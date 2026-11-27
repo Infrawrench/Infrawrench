@@ -10,6 +10,7 @@ import { CheckStateIcon } from "../../components/StatusIcons";
 import { useRepoRef } from "../../layout/RepoLayout";
 import { shortOid } from "../../lib/format";
 import { paths } from "../../lib/paths";
+import { CiBlocked, planBlocks } from "../ci/CiBlocked";
 import { RunRow, isActive } from "../ci/RunRow";
 import { checkRows } from "./merge-box";
 import { useBranchPage } from "./BranchLayout";
@@ -22,6 +23,8 @@ export function ChecksTab() {
     ...queries.ci.listRuns({ params: repo, query: { sha: page.headOid, limit: 50 } }),
     refetchInterval: (query) => (query.state.data?.items.some(isActive) === true ? 4000 : false),
   });
+  // Why nothing ran, when the plan is why: the commit would have run otherwise.
+  const ci = useQuery(queries.ci.status({ params: repo }));
   const rows = checkRows(page.mergeability.checks);
   const reportedAt = new Map(
     page.mergeability.checks.statuses.map((status) => [status.context, status.updatedAt]),
@@ -41,7 +44,12 @@ export function ChecksTab() {
         </PanelHeader>
         <QueryView query={runs}>
           {(page) =>
-            page.items.length === 0 ? (
+            page.items.length === 0 &&
+            ci.data !== undefined &&
+            planBlocks(ci.data) &&
+            ci.data.pipelines.length > 0 ? (
+              <CiBlocked state={ci.data} ownNamespace={false} />
+            ) : page.items.length === 0 ? (
               <EmptyState action={<ButtonLink href={paths.ci(repo)}>CI</ButtonLink>}>
                 No runs for this commit
               </EmptyState>

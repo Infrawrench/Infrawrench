@@ -102,6 +102,8 @@ describe.skipIf(!configured)("a person's namespace connected to an organisation"
     expect((await world.call("GET", `${own.path}/ci`, { as: alice })).body).toMatchObject({
       enabled: false,
       reason: expect.stringContaining("Settings > Profile"),
+      code: "needs_organisation",
+      upgradeUrl: null,
     });
   });
 
@@ -180,9 +182,35 @@ describe.skipIf(!configured)("a person's namespace connected to an organisation"
       await db.select().from(ciSchedules).where(eq(ciSchedules.gitRepositoryId, own.id)),
     ).toEqual([]);
     expect(await push()).toBeNull();
+    // The CI tab says the plan is why, with billing in the app for a member.
     expect((await world.call("GET", `${own.path}/ci`, { as: alice })).body).toMatchObject({
       enabled: false,
-      reason: "CI needs a paid plan",
+      reason: "Infrawrench CI is part of Pro",
+      code: "plan_required",
+      upgradeUrl: `https://app.example.test/org/${free.id}/settings/billing`,
+    });
+    // Nobody else is told which organisation: the sentence, and no link.
+    expect((await world.call("GET", `${own.path}/ci`, {})).body).toMatchObject({
+      code: "plan_required",
+      upgradeUrl: null,
+    });
+    // The switch can be switched off without a plan, and not back on.
+    const off = await world.call("PUT", `${own.path}/ci/settings`, {
+      as: alice,
+      body: { enabled: false },
+    });
+    expect(off.status).toBe(200);
+    const on = await world.call("PUT", `${own.path}/ci/settings`, {
+      as: alice,
+      body: { enabled: true },
+    });
+    expect(on.status).toBe(402);
+    expect(on.body).toMatchObject({
+      error: "Infrawrench CI is part of Pro",
+      code: "plan_required",
+    });
+    expect((await world.call("GET", `${own.path}/ci/settings`, { as: alice })).body).toMatchObject({
+      enabled: false,
     });
     expect((await connect(acme.id)).status).toBe(200);
     expect((await push())?.status).toBe("queued");
