@@ -1,6 +1,6 @@
 ---
 title: Get started on git.infrawrench.com
-description: Sign in to git.infrawrench.com, choose a username and the organization your own repositories run CI in, add an SSH key or an access token, create a repository and clone it over HTTPS or SSH.
+description: Sign in to git.infrawrench.com, choose a username and the organization your own repositories run CI in, create an access token, create a repository, and clone and push it over HTTPS.
 sidebar_order: 7
 ---
 
@@ -66,33 +66,16 @@ Public repositories are free and unlimited. Private repositories and private sto
 
 ## Credentials for Git
 
-The password of your Infrawrench account is never used for Git. Add an SSH key, an access token, or both.
+Git reaches git.infrawrench.com over HTTPS, with an access token as the password. The password of your Infrawrench account is never used for Git.
 
-Git over SSH is turned off for now: clone and push over HTTPS with an access token. While it is off, **Settings > SSH keys** and a repository's **Deploy keys** say so, and the Clone menu offers HTTPS only.
+> **SSH is coming soon.** Cloning and pushing over SSH, SSH keys and deploy keys are not available yet. Use HTTPS for now; this page will say when SSH is on.
 
-### SSH keys
-
-1. Open the account menu and go to **Settings > SSH keys**.
-2. Click **Add key**, paste your **public** key (the contents of `~/.ssh/id_ed25519.pub`, for example) and give it a title.
-
-Ed25519, ECDSA and RSA keys are accepted. A key identifies you everywhere you have access, so it can do whatever you can do. The list shows each key's fingerprint and when it was last used; **Delete** stops it working at once.
-
-To check a key:
-
-```
-ssh -T git@git.infrawrench.com
-```
-
-It answers with your username and says that there is no shell access.
-
-<insert [Settings > SSH keys with one key listed: its title, SHA256 fingerprint, key type, when it was added and last used, and the Delete button] here>
-
-### Access tokens
+### Create an access token
 
 A personal access token is what Git over HTTPS takes as a password. It is also what the [Terraform state backend](./git-terraform.md#state) takes.
 
 1. Go to **Settings > Access tokens** and click **New token**.
-2. Give it a name, tick its scopes and choose when it expires.
+2. Give it a name, tick its scopes and choose when it expires. To clone and push, tick both.
 3. Copy the token. It starts with `iwg_` and is shown once.
 
 | Scope        | Allows                                                                                                                                     |
@@ -106,34 +89,64 @@ A token never does more than you can, and never administers a repository: a rule
 
 An organization's Infrawrench [API key](../team-and-billing/api-keys.md) (`iwk_`) is also accepted as the password, for that organization's repositories and with the key's own role.
 
+### Save the token in Git
+
+The first time Git needs credentials for git.infrawrench.com it asks for a username and a password: type your username and paste the token. A credential helper stores them so Git does not ask again.
+
+| System  | Helper                                                                                                                                     |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| macOS   | `git config --global credential.helper osxkeychain` (Git from Xcode or Homebrew already uses it). The token is kept in the login keychain. |
+| Windows | Git for Windows comes with Git Credential Manager, which is on by default and keeps the token in Windows Credential Manager.               |
+| Linux   | Git Credential Manager, or `git config --global credential.helper libsecret` where the libsecret helper is installed.                      |
+
+To set the token without being asked, for example on a server or in a script:
+
+```
+printf 'protocol=https\nhost=git.infrawrench.com\nusername=<username>\npassword=<token>\n\n' | git credential approve
+```
+
+To replace a revoked or expired token, remove the stored one and push again; Git asks for the new one:
+
+```
+printf 'protocol=https\nhost=git.infrawrench.com\n\n' | git credential reject
+```
+
+A CI job or another automated client can also send the token as a header instead of storing it: `git -c http.extraHeader="Authorization: Bearer <token>" clone https://git.infrawrench.com/<owner>/<repository>.git`.
+
 ## Clone and push
 
-The **Clone** button on a repository's page shows both addresses.
+The **Clone** button on a repository's page shows its address.
 
-### HTTPS
+### Clone
 
 ```
 git clone https://git.infrawrench.com/<owner>/<repository>.git
 ```
 
-A public repository clones without credentials. For a private one, or to push, Git asks for a username and password: your username and an access token. A credential helper remembers them.
-
-### SSH
-
-```
-git clone git@git.infrawrench.com:<owner>/<repository>.git
-```
-
-Push a very large history over SSH: a single HTTPS request is limited in size, and SSH is not.
+A public repository clones without credentials. A private one needs a token with `repo:read`.
 
 ### Push an existing repository
 
 ```
-git remote add origin git@git.infrawrench.com:<owner>/<repository>.git
+git remote add origin https://git.infrawrench.com/<owner>/<repository>.git
 git push -u origin main
 ```
 
+If the repository already has a remote pointing elsewhere, `git remote set-url origin https://git.infrawrench.com/<owner>/<repository>.git` points it here instead.
+
 Branches and tags are what you can push. When a push is refused, Git prints the reason after `remote:` or beside the ref, for example a [protected branch](./git-branches.md#protected-branches) or a [storage limit](./git.md#usage-and-plan-limits).
+
+### Push a long history
+
+One push over HTTPS carries at most 100 MB. To bring over a repository with a long history, push it in parts, oldest first, each part a commit further along the branch:
+
+```
+git push origin <older-commit>:refs/heads/main
+git push origin <later-commit>:refs/heads/main
+git push -u origin main
+```
+
+`git rev-list --reverse main | awk 'NR % 2000 == 0'` lists every 2,000th commit, which is usually a good size for each part. Tags go last: `git push origin --tags`.
 
 ## Browse a repository
 
@@ -157,7 +170,6 @@ Administrators of a repository get a **Settings** tab:
 | **General**                | Name, description, topics, default branch, whether issues are on, merge methods, visibility, archive, transfer, delete. |
 | **Collaborators**          | People added to this repository alone, each with a role: **Read**, **Triage**, **Write** or **Admin**.                  |
 | **Branches**               | [Protected branches](./git-branches.md#protected-branches).                                                             |
-| **Deploy keys**            | SSH keys that reach this one repository, for a server or a deploy script.                                               |
 | **Labels**, **Milestones** | What issues and branch pages can be filed under.                                                                        |
 | **CI**                     | Whether [Infrawrench CI](./ci.md) runs for this repository, and its pipelines.                                          |
 
