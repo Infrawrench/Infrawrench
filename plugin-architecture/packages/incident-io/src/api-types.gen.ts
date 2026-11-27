@@ -185,7 +185,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["Escalations V2/ListPaths"];
+        get: operations["Escalation Paths V2/List"];
         put?: never;
         post?: never;
         delete?: never;
@@ -201,10 +201,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["Escalations V2/ShowPath"];
+        get: operations["Escalation Paths V2/Show"];
         put?: never;
         post?: never;
-        delete: operations["Escalations V2/DestroyPath"];
+        delete: operations["Escalation Paths V2/Destroy"];
         options?: never;
         head?: never;
         patch?: never;
@@ -502,6 +502,14 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AccessGroupV2: {
+            description?: string;
+            id: string;
+            name: string;
+            slug: string;
+            /** @enum {string} */
+            type: "base" | "custom";
+        };
         ActorV2: {
             alert?: components["schemas"]["AlertActorV2"];
             api_key?: components["schemas"]["APIKeyActorV2"];
@@ -585,6 +593,10 @@ export interface components {
             alerts: components["schemas"]["AlertV2"][];
             pagination_meta: components["schemas"]["PaginationMetaResultV2"];
         };
+        AlertSourceAlertmanagerOptionsV2: {
+            /** @default true */
+            one_alert_per_group: boolean;
+        };
         AlertSourceAzureDevopsOptionsV2: {
             project_ids: string[];
         };
@@ -621,6 +633,7 @@ export interface components {
         };
         AlertSourceV2: {
             alert_events_url?: string;
+            alertmanager_options?: components["schemas"]["AlertSourceAlertmanagerOptionsV2"];
             auto_resolve_incident_alerts?: boolean;
             /** Format: int64 */
             auto_resolve_timeout_minutes?: number;
@@ -963,6 +976,13 @@ export interface components {
             /** Format: int64 */
             rotate_after_seconds?: number;
         };
+        EscalationPathsListResultV2: {
+            escalation_paths: components["schemas"]["EscalationPathV2"][];
+            pagination_meta: components["schemas"]["PaginationMetaResultV2"];
+        };
+        EscalationPathsShowResultV2: {
+            escalation_path: components["schemas"]["EscalationPathV2"];
+        };
         EscalationPathTargetV2: {
             id: string;
             /** @enum {string} */
@@ -996,10 +1016,6 @@ export interface components {
             /** Format: date-time */
             snooze_until: string;
         };
-        EscalationsListPathsResultV2: {
-            escalation_paths: components["schemas"]["EscalationPathV2"][];
-            pagination_meta: components["schemas"]["PaginationMetaResultV2"];
-        };
         EscalationsListResultV2: {
             escalations: components["schemas"]["EscalationV2"][];
             pagination_meta: components["schemas"]["PaginationMetaResultV2"];
@@ -1008,9 +1024,6 @@ export interface components {
             /** @enum {string} */
             response: "ack" | "nack" | "snooze";
             snooze_details?: components["schemas"]["EscalationRespondSnoozeDetailsPayloadV2"];
-        };
-        EscalationsShowPathResultV2: {
-            escalation_path: components["schemas"]["EscalationPathV2"];
         };
         EscalationsShowResultV2: {
             escalation: components["schemas"]["EscalationV2"];
@@ -1367,12 +1380,6 @@ export interface components {
             /** Format: int64 */
             total_record_count?: number;
         };
-        RBACRoleV2: {
-            description?: string;
-            id: string;
-            name: string;
-            slug: string;
-        };
         RetrospectiveIncidentOptionsV2: {
             /** Format: int64 */
             external_id?: number;
@@ -1600,8 +1607,8 @@ export interface components {
             slack_user_id?: string;
         };
         UserWithRolesV2: {
-            base_role: components["schemas"]["RBACRoleV2"];
-            custom_roles: components["schemas"]["RBACRoleV2"][];
+            base_role: components["schemas"]["AccessGroupV2"];
+            custom_roles: components["schemas"]["AccessGroupV2"][];
             email?: string;
             id: string;
             is_active: boolean;
@@ -2050,7 +2057,7 @@ export interface operations {
             };
         };
     };
-    "Escalations V2/ListPaths": {
+    "Escalation Paths V2/List": {
         parameters: {
             query?: {
                 after?: string;
@@ -2067,12 +2074,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EscalationsListPathsResultV2"];
+                    "application/json": components["schemas"]["EscalationPathsListResultV2"];
                 };
             };
         };
     };
-    "Escalations V2/ShowPath": {
+    "Escalation Paths V2/Show": {
         parameters: {
             query?: never;
             header?: never;
@@ -2088,12 +2095,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EscalationsShowPathResultV2"];
+                    "application/json": components["schemas"]["EscalationPathsShowResultV2"];
                 };
             };
         };
     };
-    "Escalations V2/DestroyPath": {
+    "Escalation Paths V2/Destroy": {
         parameters: {
             query?: never;
             header?: never;
