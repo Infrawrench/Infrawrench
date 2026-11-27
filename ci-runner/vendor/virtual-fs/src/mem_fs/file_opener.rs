@@ -546,7 +546,7 @@ impl crate::FileOpener for FileSystem {
                         })
                     }
                     _ => {
-                        let file = File::new(fs.limiter.clone());
+                        let file = File::new(fs.limiter.clone(), fs.spill.clone());
                         Node::File(FileNode {
                             inode: inode_of_file,
                             name: name_of_file,

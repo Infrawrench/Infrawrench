@@ -121,6 +121,9 @@ const DesktopCompliancePanel = lazyPanel(() =>
 const DesktopAccessReviewPanel = lazyPanel(() =>
   import("@/components/DesktopAccessReviewPanel").then((m) => m.DesktopAccessReviewPanel),
 );
+const DesktopOffboardingPanel = lazyPanel(() =>
+  import("@/components/DesktopOffboardingPanel").then((m) => m.DesktopOffboardingPanel),
+);
 const DesktopJitAccessPanel = lazyPanel(() =>
   import("@/components/DesktopJitAccessPanel").then((m) => m.DesktopJitAccessPanel),
 );
@@ -917,6 +920,8 @@ function renderPanel(
       return <DesktopMigrationEstimatesPanel estimateId={t.estimateId} />;
     case "incidents":
       return <DesktopIncidentsPanel incidentId={t.incidentId} />;
+    case "offboarding":
+      return <DesktopOffboardingPanel offboardingId={t.offboardingId} />;
     case "slos":
       return <DesktopSlosPanel sloId={t.sloId} />;
     case "resource-reports":

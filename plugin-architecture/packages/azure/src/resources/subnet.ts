@@ -14,6 +14,22 @@ export const SubnetResourceType = rt({
     f("networkSecurityGroup", "Network Security Group", { required: false }),
     f("routeTable", "Route Table", { required: false }),
     f("natGateway", "NAT Gateway", { required: false }),
+    // The virtual network's usages API reports each subnet's used IP addresses
+    // against its size (`SubnetSpace`); the lister reads it once per network.
+    // https://learn.microsoft.com/rest/api/virtualnetwork/virtual-networks/list-usage
+    // (read 2026-11-23)
+    f("ipAddressesUsed", "IP Addresses Used", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "ipAddressCapacity" }, unit: "IP addresses" },
+    }),
+    f("ipAddressCapacity", "IP Address Capacity", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description: "Addresses the subnet can hand out, as Azure reports its size",
+    }),
   ],
   outputs: [o("resourceId", "Resource ID")],
   dependsOn: [

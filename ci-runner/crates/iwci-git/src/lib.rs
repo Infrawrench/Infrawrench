@@ -26,6 +26,8 @@ mod checkout;
 mod commit;
 mod diff;
 mod fetch;
+mod git_dir;
+pub use git_dir::Head;
 mod lock;
 mod url;
 
@@ -44,6 +46,12 @@ pub enum GitError {
     NotFetched(String),
     #[error("{id} is a {kind}, not a commit")]
     NotACommit { id: String, kind: String },
+    #[error("{id} is a {actual}, not a {expected}")]
+    WrongObjectKind {
+        id: String,
+        expected: String,
+        actual: String,
+    },
     #[error("the remote sent no commit {commit} (asked by sha{})", match hint { Some(h) => format!(" and through {h}"), None => String::new() })]
     NotReachable {
         commit: String,
@@ -293,10 +301,33 @@ impl RemoteCache {
         builder: &iwci_vfs::SnapshotBuilder,
         into: &str,
     ) -> Result<Checkout> {
+        self.checkout(commit_sha, builder, into, None)
+    }
+
+    /// [`Self::checkout_into`], plus a shallow `.git` beside the files, with
+    /// `HEAD` at `head`: what a job's clone gets, so `git ls-files`,
+    /// `git rev-parse HEAD` and `git status` work in it (see `git_dir`).
+    pub fn checkout_repository_into(
+        &self,
+        commit_sha: &str,
+        builder: &iwci_vfs::SnapshotBuilder,
+        into: &str,
+        head: &Head,
+    ) -> Result<Checkout> {
+        self.checkout(commit_sha, builder, into, Some(head))
+    }
+
+    fn checkout(
+        &self,
+        commit_sha: &str,
+        builder: &iwci_vfs::SnapshotBuilder,
+        into: &str,
+        head: Option<&Head>,
+    ) -> Result<Checkout> {
         let id = parse_oid(commit_sha)?;
         let _lock = lock::RemoteLock::acquire(&self.lock_path, lock::Mode::Shared)?;
         let repo = self.open_or_not_fetched(commit_sha)?;
-        checkout::checkout(&repo, id, builder, into)
+        checkout::checkout(&repo, id, builder, into, head)
     }
 
     /// Paths (relative to the repository root, `/`-separated, sorted) whose

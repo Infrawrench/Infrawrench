@@ -1,0 +1,4 @@
+ALTER TABLE "git_namespaces" ADD COLUMN "workspace_organization_id" text;--> statement-breakpoint
+ALTER TABLE "git_namespaces" ADD COLUMN "storage_price_ensured_at" timestamp;--> statement-breakpoint
+ALTER TABLE "git_namespaces" ADD CONSTRAINT "git_namespaces_workspace_organization_id_organizations_id_fk" FOREIGN KEY ("workspace_organization_id") REFERENCES "public"."organizations"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "git_namespaces" ADD CONSTRAINT "git_namespaces_workspace_check" CHECK ("git_namespaces"."kind" = 'user' OR "git_namespaces"."workspace_organization_id" IS NULL);

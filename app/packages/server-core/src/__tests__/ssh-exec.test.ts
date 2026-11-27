@@ -17,8 +17,15 @@ const { connectPinned, execOnAccountHost, hostKeyOfAccountHost } = await import(
 
 type Server = InstanceType<typeof ssh2.Server>;
 
+// ssh2 1.17's ed25519 generator strips every leading zero byte from the public
+// key's DER bit string, not just the unused-bits byte, so a public key that
+// starts with 0x00 (about 1 in 256) is written 31 bytes long and its own
+// `parseKey` (and `new Server`) refuses the result. Draw again until it parses.
 function keyPair() {
-  return ssh2.utils.generateKeyPairSync("ed25519");
+  for (;;) {
+    const pair = ssh2.utils.generateKeyPairSync("ed25519");
+    if (!(ssh2.utils.parseKey(pair.private) instanceof Error)) return pair;
+  }
 }
 
 function hostKeyFingerprint(privateKey: string): string {

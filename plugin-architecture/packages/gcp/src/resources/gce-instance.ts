@@ -66,6 +66,18 @@ export const GceInstanceResourceType = rt({
     { fieldKey: "serviceAccounts", targetTypeId: "gcp-service-account", label: "runs as" },
   ],
   supportsMetrics: true,
+  // `agent.googleapis.com/disk/percent_used` with `state="used"` ("used /
+  // (free + used + reserved)", 0.0 to 100.0, per partition; Ops Agent only),
+  // charted for the fullest partition under this label:
+  // https://docs.cloud.google.com/monitoring/api/metrics_agent, read 2026-11-23
+  capacityMetrics: [
+    {
+      seriesLabel: "Disk Used (fullest volume)",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Disk",
+    },
+  ],
   // Sleep/wake schedules: instances.stop / instances.start. A TERMINATED VM
   // stops compute billing (disks and reserved IPs keep billing).
   lifecycle: {

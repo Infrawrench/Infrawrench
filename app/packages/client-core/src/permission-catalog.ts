@@ -55,6 +55,17 @@ export const ALL_PERMISSIONS = [
   // credentials to every pipeline with push access. Admins and owners hold
   // it; API keys and agents never reach its routes (`API_KEY_DENY_RULES`).
   "ci-access:write",
+  // git.infrawrench.com, for the organisation's namespace there. `read`:
+  // see and clone its repositories, private ones included. `write`: push,
+  // merge, and create repositories in the namespace. `admin`: claim and rename
+  // the namespace, and administer every repository in it (settings,
+  // collaborators, protected branches, deploy keys, transfer, deletion).
+  // Three levels because they are the forge's three: a per-repository
+  // collaborator can raise one person on one repository, and nothing lowers
+  // what these grant. A user's own namespace is theirs and takes none of them.
+  "git:read",
+  "git:write",
+  "git:admin",
   // Declared incidents (incident mode), not provider status incidents, which
   // ride `resources:read` with the rest of the correlation feeds.
   //

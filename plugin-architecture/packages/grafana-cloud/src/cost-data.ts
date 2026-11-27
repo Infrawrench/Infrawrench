@@ -235,6 +235,8 @@ export interface GrafanaBillSummary {
   total: number;
   products: Array<{
     product: string;
+    /** The billing dimension's id (`hm` metrics, `hl` logs, `hg` Grafana users, ...). */
+    dimensionId?: string;
     unit: string;
     usage?: number;
     included?: number;
@@ -242,6 +244,9 @@ export interface GrafanaBillSummary {
     amount: number;
   }>;
   stacks: Array<{ stack: string; amount: number }>;
+  /** The billing period the items cover, as Grafana states it on the first item that has one. */
+  periodStart?: string;
+  periodEnd?: string;
 }
 
 export async function fetchBillSummary(
@@ -261,6 +266,7 @@ export async function fetchBillSummary(
   const products = items
     .map((i) => ({
       product: i.dimensionName || i.dimensionId || "Other",
+      ...(i.dimensionId ? { dimensionId: i.dimensionId } : {}),
       unit: i.unit ?? "",
       ...(typeof i.totalUsage === "number" ? { usage: i.totalUsage } : {}),
       ...(typeof i.includedUsage === "number" ? { included: i.includedUsage } : {}),
@@ -268,7 +274,11 @@ export async function fetchBillSummary(
       amount: round2(i.amountDue ?? 0),
     }))
     .sort((a, b) => b.amount - a.amount || a.product.localeCompare(b.product));
+  const periodStart = items.find((i) => i.periodStart)?.periodStart;
+  const periodEnd = items.find((i) => i.periodEnd)?.periodEnd;
   return {
+    ...(periodStart ? { periodStart } : {}),
+    ...(periodEnd ? { periodEnd } : {}),
     month: month.slice(0, 7),
     total: round2(products.reduce((a, p) => a + p.amount, 0)),
     products,

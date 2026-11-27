@@ -14,7 +14,7 @@ use gix::objs::tree::EntryKind;
 use iwci_vfs::VfsError;
 use iwci_vfs::virtual_fs::{AsyncWriteExt, FileSystem, FsError, mem_fs};
 
-use crate::{GitError, Result, find_commit};
+use crate::{GitError, Result, find_commit, git_dir};
 
 /// Deeper trees than this are refused. Real repositories stay far below
 /// it; a crafted one could otherwise recurse until the stack runs out.
@@ -63,6 +63,7 @@ pub(crate) fn checkout(
     commit: ObjectId,
     builder: &iwci_vfs::SnapshotBuilder,
     into: &str,
+    git: Option<&git_dir::Head>,
 ) -> Result<Checkout> {
     let fs = builder.fs();
     let tree = find_commit(repo, commit)?.tree_id()?.detach();
@@ -77,10 +78,12 @@ pub(crate) fn checkout(
         hash: repo.object_hash(),
         fs,
         root_len: root.as_os_str().len(),
-        path: root,
+        path: root.clone(),
         blob: Vec::new(),
         tree_bufs: Vec::new(),
         files: Vec::new(),
+        trees: Vec::new(),
+        links: Vec::new(),
         out: Checkout {
             commit: commit.to_string(),
             tree: tree.to_string(),
@@ -88,11 +91,55 @@ pub(crate) fn checkout(
         },
     };
     walker.tree(tree, 0)?;
-    let Walker { files, mut out, .. } = walker;
+    let Walker {
+        mut files,
+        trees,
+        links,
+        mut out,
+        ..
+    } = walker;
     out.files = files.len();
-    out.bytes = write_files(repo, fs, &files)?;
+    out.bytes = write_files(repo, fs, &mut files)?;
     for job in files.iter().filter(|job| job.executable) {
         builder.set_mode(&job.path, iwci_vfs::modes::EXECUTABLE_MODE)?;
+    }
+    if let Some(head) = git {
+        let relative = |path: &Path| {
+            path.strip_prefix(&root)
+                .unwrap_or(path)
+                .as_os_str()
+                .as_bytes()
+                .to_vec()
+        };
+        let mut entries: Vec<git_dir::IndexEntry> = files
+            .iter()
+            .map(|job| git_dir::IndexEntry {
+                path: relative(&job.path),
+                id: job.id,
+                mode: if job.executable { 0o100755 } else { 0o100644 },
+                size: job.size,
+            })
+            .collect();
+        entries.extend(links.iter().map(|(path, id, size)| git_dir::IndexEntry {
+            path: relative(path),
+            id: *id,
+            mode: git_dir::SYMLINK_MODE,
+            size: *size,
+        }));
+        // A submodule is a gitlink in the index over an empty directory,
+        // as `git clone` leaves one it was not told to fetch.
+        for sub in &out.submodules {
+            let path = root.join(&sub.path);
+            iwci_vfs::create_dir_all(fs, &path)?;
+            entries.push(git_dir::IndexEntry {
+                path: sub.path.as_bytes().to_vec(),
+                id: ObjectId::from_hex(sub.commit.as_bytes())
+                    .map_err(|_| GitError::BadObjectId(sub.commit.clone()))?,
+                mode: 0o160000,
+                size: 0,
+            });
+        }
+        git_dir::write(repo, builder, &root, head, commit, &trees, &entries)?;
     }
     Ok(out)
 }
@@ -103,9 +150,15 @@ struct FileJob {
     id: ObjectId,
     /// Git's `100755`.
     executable: bool,
+    /// The blob's decoded size, filled in as it is written.
+    size: u64,
 }
 
-fn write_files(repo: &gix::Repository, fs: &mem_fs::FileSystem, files: &[FileJob]) -> Result<u64> {
+fn write_files(
+    repo: &gix::Repository,
+    fs: &mem_fs::FileSystem,
+    files: &mut [FileJob],
+) -> Result<u64> {
     let parallelism = std::thread::available_parallelism().map_or(1, |n| n.get());
     let threads = parallelism
         .min(MAX_THREADS)
@@ -129,7 +182,7 @@ fn write_files(repo: &gix::Repository, fs: &mem_fs::FileSystem, files: &[FileJob
     let chunk = files.len().div_ceil(threads);
     std::thread::scope(|scope| {
         let handles: Vec<_> = files
-            .chunks(chunk)
+            .chunks_mut(chunk)
             .map(|files| {
                 let repo = with_cache(shared.to_thread_local());
                 scope.spawn(move || write_chunk(&repo, fs, files))
@@ -143,10 +196,14 @@ fn write_files(repo: &gix::Repository, fs: &mem_fs::FileSystem, files: &[FileJob
     })
 }
 
-fn write_chunk(repo: &gix::Repository, fs: &mem_fs::FileSystem, files: &[FileJob]) -> Result<u64> {
+fn write_chunk(
+    repo: &gix::Repository,
+    fs: &mem_fs::FileSystem,
+    files: &mut [FileJob],
+) -> Result<u64> {
     let mut blob = Vec::new();
     let mut total = 0;
-    for job in files {
+    for job in files.iter_mut() {
         let data = repo.objects.find_blob(&job.id, &mut blob)?.data;
         // The walk saw to it that every name in a directory is unique, so
         // `create_new` failing means something else wrote here meanwhile.
@@ -161,7 +218,8 @@ fn write_chunk(repo: &gix::Repository, fs: &mem_fs::FileSystem, files: &[FileJob
             file.flush().await
         })
         .map_err(|e| vfs_err(&job.path, e.into()))?;
-        total += data.len() as u64;
+        job.size = data.len() as u64;
+        total += job.size;
     }
     Ok(total)
 }
@@ -204,6 +262,11 @@ struct Walker<'a> {
     /// while its subtrees are read.
     tree_bufs: Vec<Vec<u8>>,
     files: Vec<FileJob>,
+    /// Every tree visited, root first: a `.git` needs them all for
+    /// `git status` to compare the index with `HEAD`.
+    trees: Vec<ObjectId>,
+    /// Symlinks, with their blob and the target's length, for the index.
+    links: Vec<(PathBuf, ObjectId, u64)>,
     out: Checkout,
 }
 
@@ -214,6 +277,7 @@ impl Walker<'_> {
                 self.unsafe_entry(b"".as_bstr(), "trees nest deeper than any checkout allows")
             );
         }
+        self.trees.push(id);
         if self.tree_bufs.len() <= depth {
             self.tree_bufs.push(Vec::new());
         }
@@ -235,6 +299,7 @@ impl Walker<'_> {
                         path: self.path.clone(),
                         id: entry.oid.to_owned(),
                         executable: kind == EntryKind::BlobExecutable,
+                        size: 0,
                     });
                     self.out.executables += usize::from(kind == EntryKind::BlobExecutable);
                     Ok(())
@@ -302,6 +367,8 @@ impl Walker<'_> {
         if let Err(e) = self.fs.create_symlink(&target, &self.path) {
             return Err(self.duplicate_or(e));
         }
+        self.links
+            .push((self.path.clone(), id.to_owned(), raw.len() as u64));
         self.out.symlinks += 1;
         Ok(())
     }

@@ -45,7 +45,7 @@ Click **Check credentials** after adding the account to see which areas the key 
 
 ## Metrics
 
-Vultr doesn't provide CPU or memory graphs for instances, so the Metrics tab shows daily inbound and outbound transfer (outbound is what draws on your bandwidth pool). Managed Databases show their current CPU, memory and disk use.
+Vultr doesn't provide CPU or memory graphs for instances, so the Metrics tab shows daily inbound and outbound transfer (outbound is what draws on your bandwidth pool). Managed Databases show their current CPU, memory and disk use. Capacity runway tracks the month's outbound transfer against the account's bandwidth pool, and each Managed Database's disk use.
 
 ## Savings and security findings
 

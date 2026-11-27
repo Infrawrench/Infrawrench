@@ -25,6 +25,7 @@ export const COMMAND_LOADERS = {
   ownership: () => import("../commands/ownership").then((m) => m.ownership),
   "blast-radius": () => import("../commands/blast-radius").then((m) => m.blastRadius),
   oversized: () => import("../commands/oversized").then((m) => m.oversized),
+  git: () => import("../commands/git").then((m) => m.git),
   "github-issues": () => import("../commands/github-issues").then((m) => m.githubIssues),
   "idle-rules": () => import("../commands/idle-rules").then((m) => m.idleRules),
   incidents: () => import("../commands/incidents").then((m) => m.incidents),
@@ -32,6 +33,7 @@ export const COMMAND_LOADERS = {
   expiring: () => import("../commands/expiring").then((m) => m.expiring),
   schedules: () => import("../commands/schedules").then((m) => m.schedules),
   credits: () => import("../commands/credits").then((m) => m.credits),
+  runway: () => import("../commands/runway").then((m) => m.runway),
   "cost-visibility": () => import("../commands/cost-visibility").then((m) => m.costVisibility),
   "status-pages": () => import("../commands/status-pages").then((m) => m.statusPages),
   "declared-incidents": () =>
@@ -40,6 +42,7 @@ export const COMMAND_LOADERS = {
   estimate: () => import("../commands/estimate").then((m) => m.estimate),
   "migrate-estimate": () => import("../commands/migrate-estimate").then((m) => m.migrateEstimate),
   orphans: () => import("../commands/orphans").then((m) => m.orphans),
+  offboard: () => import("../commands/offboard").then((m) => m.offboard),
   "extended-support": () => import("../commands/extended-support").then((m) => m.extendedSupport),
   probes: () => import("../commands/probes").then((m) => m.probes),
   heartbeats: () => import("../commands/heartbeats").then((m) => m.heartbeats),

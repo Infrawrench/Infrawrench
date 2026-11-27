@@ -15,9 +15,7 @@ import { hasMembership, listUserOrganizations } from "../auth/users";
 import type { ToolAuthContext } from "../tools/types";
 import type { McpAuthContext } from "./auth";
 import { registerMcpViews, toolViewMeta } from "./app-views";
-
-const SERVER_NAME = "infrawrench";
-const SERVER_VERSION = "0.1.0";
+import { MCP_SERVER_NAME, MCP_SERVER_VERSION } from "./server-card";
 
 /**
  * Every MCP tool takes an optional `org_id`. This is MCP-only: it is injected
@@ -82,8 +80,8 @@ async function resolveCallAuth(
  */
 export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
   const server = new McpServer({
-    name: SERVER_NAME,
-    version: SERVER_VERSION,
+    name: MCP_SERVER_NAME,
+    version: MCP_SERVER_VERSION,
   });
 
   const toolAuth: ToolAuthContext = {

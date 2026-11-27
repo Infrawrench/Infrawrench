@@ -294,6 +294,50 @@ pub struct Setup {
     /// The link's addresses, or `None` for a job with `network: false`,
     /// whose machine has no network device at all.
     pub network: Option<Network>,
+    /// The run's `/tmp/workflow`, served by the runner over virtio-fs, to
+    /// mount rather than receive a copy of. Only sent to an agent whose
+    /// [`Hello::virtiofs`] says it can.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scratch: Option<ScratchMount>,
+}
+
+/// The tag the run's `/tmp/workflow` device carries.
+pub const SCRATCH_TAG: &str = "iwci-scratch";
+/// The serial of the block device the runner attaches as the job's
+/// writable layer; the agent finds it by serial and formats it as ext4.
+pub const SCRATCH_SERIAL: &str = "iwci-rw";
+/// The tag the job's own files carry when they are served read only
+/// rather than given as a disk image and an archive; the kernel's command
+/// line says `iwci.files=<tag>` then, for the agent to mount at boot.
+pub const FILES_TAG: &str = "iwci-files";
+/// What `image.json` lists under `features` when its agent mounts
+/// [`FILES_TAG`].
+pub const FILES_FEATURE: &str = "files-virtiofs";
+/// What `image.json` lists under `features` when the image has the job
+/// user ([`JOB_UID`], `runner`, home `/root`) and its agent runs scripts
+/// as that user when the kernel's command line names it ([`USER_ARG`]).
+pub const JOB_USER_FEATURE: &str = "job-user";
+/// What `image.json` lists under `features` when its agent keeps the
+/// writable layer in memory and swaps to the scratch disk: files written in
+/// at the start cost memory speed there, so the runner puts the job's own
+/// files (the caches it restored) in rather than serving them over
+/// virtio-fs, where each file read is a round trip to the runner.
+pub const MEMORY_UPPER_FEATURE: &str = "memory-upper";
+/// The job user's uid and gid, as GitHub's hosted runners have them.
+pub const JOB_UID: u32 = 1001;
+/// The kernel command-line argument (`iwci.user=<uid>`) that tells the
+/// agent to run scripts as that user. The runner sends it only when it also
+/// serves the job's files as that user's, so the job can write them.
+pub const USER_ARG: &str = "iwci.user";
+
+/// A virtio-fs device to mount ([`Setup::scratch`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct ScratchMount {
+    /// The device's tag.
+    pub tag: String,
+    /// Where the job sees it: a clean absolute Unix path.
+    pub at: String,
 }
 
 /// The machine's side of its one link ([`GUEST_IPV4`] and the gateway).
@@ -424,6 +468,10 @@ pub struct Hello {
     /// Whether the files it collects carry real Unix modes. Windows has
     /// none to give; the runner then keeps each file's mode as it was.
     pub modes: bool,
+    /// Whether it can mount a virtio-fs device ([`Setup::scratch`]). An
+    /// older agent says nothing, which is no.
+    #[serde(default)]
+    pub virtiofs: bool,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

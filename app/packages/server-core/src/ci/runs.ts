@@ -1,6 +1,9 @@
 /**
- * CI runs: recorded from GitHub App webhooks, dispatched to the CI proxy,
- * followed until they finish, and reported back to GitHub as a check run.
+ * CI runs: recorded from GitHub App webhooks and from git.infrawrench.com's
+ * events (`git-events.ts`), dispatched to the CI proxy, followed until they
+ * finish, and reported back to the commit: a check run on GitHub, a commit
+ * status on git.infrawrench.com (`status.ts`). Where a run's repository
+ * lives is asked of `source.ts`, and of nothing else here.
  *
  * Who gets what:
  * - A push, or a pull request from a branch of the repository itself, runs
@@ -23,7 +26,9 @@
  *   as the branch's head has it, with the inputs they gave.
  *
  * Dispatch claims the row first (one UPDATE that only one caller can win),
- * because both the webhook and the poller pass dispatch.
+ * because both the webhook and the poller pass dispatch. Finishing claims
+ * it too: the poller and the runner's notice (`notify.ts`) both follow a
+ * running run, and only the one that records its end posts its checks.
  */
 import { and, desc, eq, inArray, isNull, lte, ne, notInArray, sql } from "drizzle-orm";
 import {
@@ -54,7 +59,7 @@ import {
   githubInstallations,
 } from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
-import { getBranchHeadSha, getInstallationToken } from "../github/app.js";
+import { getBranchHeadSha } from "../github/app.js";
 import { type CheckUpdate, upsertCheck } from "./checks.js";
 import {
   admitRun,
@@ -73,10 +78,24 @@ import type { CiEvent } from "./events.js";
 import { ownerKey, repoKey } from "./events.js";
 import { DownloadLinkError, downloadLink, toDownload } from "./downloads.js";
 import { CiProxyError, proxyFetch, proxyJson, runUsage, type ProxyRun } from "./proxy.js";
-import { pluginCodeAvailable } from "../plugin-loader.js";
+import { pluginCodeAvailable } from "../runtime/plugin-code.js";
 import type { CiConcurrencyEntry, CiJobAccess } from "../db/schema.js";
-import { noteRepository } from "./schedules.js";
+import { noteRepository, runningCi, stillRunsCi } from "./schedules.js";
 import { lendGithubTokens } from "./github-token.js";
+import { noticeTokenValid, withNotify } from "./notify.js";
+import {
+  cloneToken,
+  cloneUrl,
+  commitUrl,
+  gitBranchPageUrl,
+  gitRunPageKey,
+  isGitSource,
+  pullUrl,
+  sourceKind,
+  sourceOwnerKey,
+  tokenRefusal,
+} from "./source.js";
+import { gitCiHome } from "../git/workspace.js";
 
 export type CiRunRow = typeof ciRuns.$inferSelect;
 
@@ -186,38 +205,105 @@ export async function acceptCiEvent(
     refreshNow: !isPull && ev.branch === ev.defaultBranch,
   }).catch((err) => console.warn(`[ci] noting ${ev.repoFullName} for schedules failed:`, err));
   const sha = isPull ? ev.headSha : ev.sha;
-  const status: CiRunStatus = isPull && ev.fromFork ? "awaiting_approval" : "queued";
-  const dedupeKey = isPull
-    ? `pr:${ev.installationId}:${ev.repoFullName.toLowerCase()}:${ev.number}:${sha}`
-    : `push:${ev.installationId}:${ev.repoFullName.toLowerCase()}:${ev.branch}:${sha}`;
+  return recordEventRun({
+    organizationId,
+    installationId: ev.installationId,
+    gitRepositoryId: null,
+    repoFullName: ev.repoFullName,
+    ownerKey: ownerKey(ev.repoFullName),
+    repoKey: repoKey(ev.repoFullName),
+    defaultBranch: ev.defaultBranch,
+    sha,
+    baseSha: ev.baseSha,
+    actorLogin: ev.actorLogin,
+    ...(isPull
+      ? {
+          pull: {
+            number: ev.number,
+            headRef: ev.headRef,
+            headRepoFullName: ev.headRepoFullName,
+            fromFork: ev.fromFork,
+          },
+          dedupeKey: `pr:${ev.installationId}:${ev.repoFullName.toLowerCase()}:${ev.number}:${sha}`,
+        }
+      : {
+          branch: ev.branch,
+          dedupeKey: `push:${ev.installationId}:${ev.repoFullName.toLowerCase()}:${ev.branch}:${sha}`,
+        }),
+  });
+}
+
+/** A push or a pull request to record as a run, from either forge. */
+export type EventRun = {
+  organizationId: string;
+  /** `GIT_SOURCE_INSTALLATION_ID` for a repository on git.infrawrench.com. */
+  installationId: number;
+  gitRepositoryId: string | null;
+  repoFullName: string;
+  ownerKey: string;
+  repoKey: string;
+  defaultBranch: string;
+  sha: string;
+  /** What `paths:` and `changed()` diff against; null when there is nothing to compare with. */
+  baseSha: string | null;
+  actorLogin: string | null;
+  /** Unique per delivery target, so a redelivered event makes no second run. */
+  dedupeKey: string;
+} & (
+  | { branch: string; pull?: undefined }
+  | {
+      branch?: undefined;
+      pull: {
+        number: number;
+        headRef: string;
+        headRepoFullName: string | null;
+        /** From another repository: waits for approval, and is never trusted. */
+        fromFork: boolean;
+      };
+    }
+);
+
+/**
+ * Records the run of a push or a pull request, whichever forge it came
+ * from: the one place the rules for both live. A pull request from a fork
+ * waits for a maintainer; anything else is queued. Returns `null` for a
+ * redelivery.
+ */
+export async function recordEventRun(
+  run: EventRun,
+): Promise<{ id: string; status: CiRunStatus } | null> {
+  const { organizationId, pull } = run;
+  const isPull = pull !== undefined;
+  const status: CiRunStatus = pull?.fromFork ? "awaiting_approval" : "queued";
   const id = crypto.randomUUID();
   const [row] = await db
     .insert(ciRuns)
     .values({
       id,
       organizationId,
-      installationId: ev.installationId,
-      repoFullName: ev.repoFullName,
-      ownerKey: ownerKey(ev.repoFullName),
-      repoKey: repoKey(ev.repoFullName),
+      installationId: run.installationId,
+      gitRepositoryId: run.gitRepositoryId,
+      repoFullName: run.repoFullName,
+      ownerKey: run.ownerKey,
+      repoKey: run.repoKey,
       event: isPull ? "pull-request" : "push",
-      branch: isPull ? `pull/${ev.number}` : ev.branch,
-      headRef: isPull ? ev.headRef : ev.branch,
-      defaultBranch: ev.defaultBranch,
-      sha,
-      baseSha: ev.baseSha,
-      pullNumber: isPull ? ev.number : null,
-      headRepoFullName: isPull ? ev.headRepoFullName : null,
-      fromFork: isPull && ev.fromFork,
-      actorLogin: ev.actorLogin,
+      branch: pull ? `pull/${pull.number}` : run.branch,
+      headRef: pull ? pull.headRef : run.branch,
+      defaultBranch: run.defaultBranch,
+      sha: run.sha,
+      baseSha: run.baseSha,
+      pullNumber: pull ? pull.number : null,
+      headRepoFullName: pull ? pull.headRepoFullName : null,
+      fromFork: pull?.fromFork === true,
+      actorLogin: run.actorLogin,
       status,
-      dedupeKey,
+      dedupeKey: run.dedupeKey,
     })
     .onConflictDoNothing()
     .returning({ id: ciRuns.id });
   if (!row) return null;
 
-  if (isPull) {
+  if (pull) {
     // An older commit of the same pull request no longer needs approving.
     await db
       .update(ciRuns)
@@ -229,9 +315,9 @@ export async function acceptCiEvent(
       .where(
         and(
           eq(ciRuns.organizationId, organizationId),
-          eq(ciRuns.installationId, ev.installationId),
-          eq(ciRuns.repoFullName, ev.repoFullName),
-          eq(ciRuns.pullNumber, ev.number),
+          eq(ciRuns.installationId, run.installationId),
+          eq(ciRuns.repoFullName, run.repoFullName),
+          eq(ciRuns.pullNumber, pull.number),
           eq(ciRuns.status, "awaiting_approval"),
           ne(ciRuns.id, row.id),
         ),
@@ -245,17 +331,28 @@ async function load(id: string): Promise<CiRunRow | null> {
   return row ?? null;
 }
 
+/**
+ * Records how a run ended. With `from`, only a run still in that status:
+ * `false` when another caller ended it first, which then posts nothing.
+ */
 async function finish(
   row: CiRunRow,
   status: "passed" | "failed" | "error" | "rejected" | "cancelled" | "skipped",
   reason: string | null,
   extra: Partial<typeof ciRuns.$inferInsert> = {},
-): Promise<void> {
+  from?: CiRunStatus,
+): Promise<boolean> {
   const now = new Date();
-  await db
+  const ended = await db
     .update(ciRuns)
     .set({ status, statusReason: reason, finishedAt: now, updatedAt: now, ...extra })
-    .where(eq(ciRuns.id, row.id));
+    .where(
+      from === undefined
+        ? eq(ciRuns.id, row.id)
+        : and(eq(ciRuns.id, row.id), eq(ciRuns.status, from)),
+    )
+    .returning({ id: ciRuns.id });
+  if (ended.length === 0) return false;
   // Its cloud jobs' machines go with it: the executor's pass tears them down.
   await db
     .update(ciCloudJobs)
@@ -270,9 +367,10 @@ async function finish(
       updatedAt: now,
     })
     .where(and(eq(ciCloudJobs.runId, row.id), inArray(ciCloudJobs.state, ["starting", "running"])));
+  return true;
 }
 
-/** Shows a fork's run on GitHub as waiting for a maintainer. */
+/** Shows a fork's run on its commit as waiting for a maintainer. */
 export async function announceAwaitingApproval(id: string): Promise<void> {
   const row = await load(id);
   if (!row || row.status !== "awaiting_approval") return;
@@ -314,12 +412,14 @@ export function dispatchBody(
     | "pipelineText"
     | "pipelineFile"
     | "inputs"
-  >,
+  > &
+    // Set for a repository on git.infrawrench.com: what it is cloned from.
+    Partial<Pick<CiRunRow, "gitRepositoryId">>,
   token: string,
 ): Record<string, unknown> {
   const isPull = row.event === "pull-request";
   const body: Record<string, unknown> = {
-    repo: `https://github.com/${row.repoFullName}.git`,
+    repo: cloneUrl(row),
     sha: row.sha,
     branch: row.branch,
     event: row.event,
@@ -373,6 +473,23 @@ export function withPlatforms(
   return body;
 }
 
+/**
+ * The code that lends (`lend.ts`, `env-file.ts`), which reaches the plugin
+ * loader and the socket drivers, or null in a Worker built without plugin
+ * code. The ternary is load-bearing, as in `plugin-loader.ts`: esbuild drops
+ * the branch the constant rules out, *including its import()*, which a check
+ * of `pluginCodeAvailable()` and an early return do not do. That keeps both
+ * modules, and everything behind them, out of the forge's Worker.
+ */
+/** Why a run of a forge repository that no longer runs in its organization is not sent. */
+export const GIT_HOME_MOVED = "This repository no longer runs CI in this organization.";
+
+function lendingCode() {
+  return globalThis.__INFRAWRENCH_EDGE_PLUGINS__
+    ? Promise.resolve(null)
+    : Promise.all([import("./lend.js"), import("./env-file.js")]);
+}
+
 export async function dispatchRun(id: string): Promise<void> {
   const now = new Date();
   const [row] = await db
@@ -397,6 +514,27 @@ export async function dispatchRun(id: string): Promise<void> {
     return;
   }
 
+  // A repository of the forge runs where its namespace does now. A person's
+  // own repository runs in the organization they connected it to, for as
+  // long as they are a member: once they leave, disconnect or connect
+  // another, nothing of theirs is sent as this organization's again, whatever
+  // queued it (a push, a schedule, a retry, a run started by hand).
+  let personal = false;
+  if (isGitSource(row)) {
+    const home = await gitCiHome(row.gitRepositoryId);
+    if (!home || home.organizationId !== row.organizationId) {
+      await finish(row, "error", GIT_HOME_MOVED);
+      await upsertCheck(row, {
+        status: "completed",
+        conclusion: "neutral",
+        title: "Not run",
+        summary: GIT_HOME_MOVED,
+      });
+      return;
+    }
+    personal = home.personal;
+  }
+
   // A run whose jobs are lent something is sent where plugin code runs; on
   // the edge it waits for the gateway's pass, before spending a token on it.
   if (!row.fromFork && namesSomethingLent(row.access) && !pluginCodeAvailable()) {
@@ -406,9 +544,9 @@ export async function dispatchRun(id: string): Promise<void> {
 
   let token: string;
   try {
-    token = await getInstallationToken(row.installationId);
+    token = await cloneToken(row, row.id);
   } catch (err) {
-    await retryLater(row, `GitHub refused an installation token: ${String(err)}`);
+    await retryLater(row, tokenRefusal(row, err));
     return;
   }
   const body = dispatchBody(row, token);
@@ -439,9 +577,40 @@ export async function dispatchRun(id: string): Promise<void> {
       await db.update(ciRuns).set({ concurrency: entries }).where(eq(ciRuns.id, row.id));
     }
   }
-  // The platforms its pipelines need, for the proxy to place it by; counted
+  // The platforms its pipelines need, for the proxy to place it by, and
+  // where the runner tells the app the run changed, so it is read then
+  // rather than on the poller's next pass (`notify.ts`). Both counted
   // before anything is lent, so the body's size includes them.
   withPlatforms(body, concurrency);
+  const notified = withNotify(body, row.id);
+
+  // A Terraform workspace's run (`terraform.ts`): its job token goes in as a
+  // run secret, minted now and never stored, and its workspace's linked
+  // accounts are lent without the per-connection opt-in. Added after the
+  // pipelines were read, so the token is only ever in the request that runs.
+  let linkedAccounts: Map<string, string | null> | undefined;
+  if (row.terraformRunId) {
+    const { terraformDispatch } = await import("./terraform.js");
+    let terraform: Awaited<ReturnType<typeof terraformDispatch>>;
+    try {
+      terraform = await terraformDispatch(row);
+    } catch (err) {
+      await retryLater(row, tokenRefusal(row, err));
+      return;
+    }
+    if ("refuse" in terraform) {
+      await finish(row, "error", terraform.refuse);
+      await upsertCheck(row, {
+        status: "completed",
+        conclusion: "failure",
+        title: "Not run",
+        summary: terraform.refuse,
+      });
+      return;
+    }
+    body["secrets"] = terraform.secrets;
+    linkedAccounts = terraform.linkedAccounts;
+  }
 
   // Connections, SSH keys, resources and environment files its jobs name,
   // checked and read now (never for a fork's run). Reading them calls
@@ -453,13 +622,19 @@ export async function dispatchRun(id: string): Promise<void> {
       return;
     }
     // Loaded here: lending reaches plugin code, which only this branch needs.
-    const { auditLends, buildLent, fitLent } = await import("./lend.js");
-    const built = await buildLent(row, access);
+    const lending = await lendingCode();
+    if (!lending) {
+      await deferToGateway(row);
+      return;
+    }
+    const [{ auditLends, buildLent, fitLent }, { lendEnvFiles }] = lending;
+    // `personal`: a person's own repository is lent only what names it.
+    const lendingRun = { ...row, personal, ...(linkedAccounts ? { linkedAccounts } : {}) };
+    const built = await buildLent(lendingRun, access);
     if (built) {
       // `env-file:`: the file read at the run's commit, each reference
       // checked against the grants like the rest.
-      const { lendEnvFiles } = await import("./env-file.js");
-      const files = await lendEnvFiles(row, access);
+      const files = await lendEnvFiles(lendingRun, access);
       if (files) {
         built.lent["env-files"] = files.entries;
         built.records.push(...files.records);
@@ -481,6 +656,13 @@ export async function dispatchRun(id: string): Promise<void> {
   let res: Response;
   try {
     res = await proxyFetch("/v1/runs", { method: "POST", body: JSON.stringify(body) });
+    if (notified && (await refusesNotify(res))) {
+      // A proxy from before notices passes `notify` on, and a runner from
+      // before them refuses the request for it, before it starts anything:
+      // sent again without it, the run is followed by polling as before.
+      delete body["notify"];
+      res = await proxyFetch("/v1/runs", { method: "POST", body: JSON.stringify(body) });
+    }
   } catch (err) {
     await retryLater(row, `The CI proxy did not answer: ${String(err)}`);
     return;
@@ -505,7 +687,14 @@ export async function dispatchRun(id: string): Promise<void> {
   }
   const [started] = await db
     .update(ciRuns)
-    .set({ status: "running", proxyRunId: answer.id, startedAt: new Date(), updatedAt: new Date() })
+    .set({
+      status: "running",
+      // Why it waited (busy or unreachable runners, the gateway) is over.
+      statusReason: null,
+      proxyRunId: answer.id,
+      startedAt: new Date(),
+      updatedAt: new Date(),
+    })
     .where(and(eq(ciRuns.id, row.id), eq(ciRuns.status, "queued")))
     .returning();
   if (!started) {
@@ -519,12 +708,53 @@ export async function dispatchRun(id: string): Promise<void> {
   // A run the runners listed no pipeline for (one from before they could
   // say a file is broken) most likely runs nothing: its check waits for the
   // result, so a push that runs nothing shows nothing on GitHub.
-  if (skipsWhenEmpty(started) && (started.concurrency ?? []).length === 0) return;
-  await upsertCheck(row, {
-    status: "in_progress",
-    title: "Running",
-    summary: runningSummary(row),
-  });
+  if (!(skipsWhenEmpty(started) && (started.concurrency ?? []).length === 0)) {
+    await upsertCheck(row, {
+      status: "in_progress",
+      title: "Running",
+      summary: runningSummary(row),
+    });
+  }
+  // Its start is on GitHub: from now on its end may be (`startAnnounced`).
+  await db.update(ciRuns).set({ nextAttemptAt: dbNow }).where(eq(ciRuns.id, row.id));
+}
+
+/**
+ * Whether the proxy's answer to `POST /v1/runs` is a runner refusing the
+ * request for its `notify` field (a runner from before notices, behind a
+ * proxy from before them). Reads the body only for a 400.
+ */
+export async function refusesNotify(res: Response): Promise<boolean> {
+  if (res.status !== 400) return false;
+  const text = await res
+    .clone()
+    .text()
+    .catch(() => "");
+  const refused = /unknown field `notify`/.test(text);
+  if (refused) await res.body?.cancel();
+  return refused;
+}
+
+/**
+ * How long past its start a running run's `next_attempt_at` still stands
+ * for the dispatcher's claim (`CLAIM_MS` from the claim), which it moves
+ * to now once the run's check says "in progress".
+ */
+const ANNOUNCING_MS = 30_000;
+
+/**
+ * Whether the run's start has been announced on GitHub. Until the process
+ * that dispatched it has posted its "in progress" check, a finished run is
+ * not ended: that post would land after the result and leave the check
+ * running for good. A run whose dispatcher died is announced once its
+ * claim lapses.
+ */
+export function startAnnounced(
+  row: Pick<CiRunRow, "nextAttemptAt">,
+  now: number = Date.now(),
+): boolean {
+  const at = row.nextAttemptAt?.getTime();
+  return at === undefined || at <= now + ANNOUNCING_MS;
 }
 
 /**
@@ -566,16 +796,38 @@ export function skippedReason(row: Pick<CiRunRow, "event">): string {
  * check the run already has (a runner that could not say beforehand, a
  * fork's approval) is closed as skipped either way.
  */
-async function skipRun(row: CiRunRow, extra: Partial<typeof ciRuns.$inferInsert> = {}) {
+async function skipRun(
+  row: CiRunRow,
+  extra: Partial<typeof ciRuns.$inferInsert> = {},
+  from?: CiRunStatus,
+): Promise<boolean> {
   const reason = skippedReason(row);
-  await finish(row, "skipped", reason, { concurrency: [], access: [], jobs: [], ...extra });
-  if (row.event !== "pull-request" && row.checkRunId === null) return;
+  const skipped = await finish(
+    row,
+    "skipped",
+    reason,
+    { concurrency: [], access: [], jobs: [], ...extra },
+    from,
+  );
+  if (!skipped) return false;
+  if (row.terraformRunId) {
+    // A workspace's run that runs nothing did not plan: its run says so.
+    await upsertCheck(row, {
+      status: "completed",
+      conclusion: "failure",
+      title: "Nothing ran",
+      summary: "The runners found nothing to run for this workspace on this commit.",
+    });
+    return true;
+  }
+  if (row.event !== "pull-request" && row.checkRunId === null) return true;
   await upsertCheck(row, {
     status: "completed",
     conclusion: "skipped",
     title: reason.replace(/\.$/, ""),
     summary: reason.replace(/^No pipeline/, "No pipeline in `.infrawrench/ci`"),
   });
+  return true;
 }
 
 /** Leaves a run for the gateway's `ci-cloud` pass, without counting an attempt. */
@@ -768,13 +1020,29 @@ export function checkSummary(jobs: CiJobSummary[]): string {
 }
 
 /**
+ * What following a run came to:
+ * - `running`: it is still going.
+ * - `ended`: this call recorded its end and posted its checks.
+ * - `settled`: nothing to do; it is not running here, or another caller
+ *   recorded its end first.
+ * - `announcing`: it has ended, but its start is not on GitHub yet
+ *   (`startAnnounced`); try again in a moment.
+ * - `unread`: the proxy could not be read; try again.
+ */
+export type SyncOutcome = "running" | "ended" | "settled" | "announcing" | "unread";
+
+/**
  * Brings a running run up to date from the proxy. `jobChecks: false` skips
  * the job checks of a run that is still going (the pass follows a run more
  * often than it writes its jobs to GitHub); a finished run's are always
- * written.
+ * written. Ending it is a claim, so the poller and a runner's notice never
+ * both post its checks.
  */
-export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {}): Promise<void> {
-  if (row.status !== "running" || !row.proxyRunId) return;
+export async function syncRun(
+  row: CiRunRow,
+  opts: { jobChecks?: boolean } = {},
+): Promise<SyncOutcome> {
+  if (row.status !== "running" || !row.proxyRunId) return "settled";
   await resendCancels(row);
   let run: ProxyRun;
   try {
@@ -788,12 +1056,14 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
     const gone = err instanceof CiProxyError && err.status === 404;
     if (gone && row.cancelRequestedAt && Date.now() - started > GONE_AFTER_MS) {
       // Asked to stop, and gone: nothing is left to cancel.
-      await finish(row, "cancelled", CANCELLED_BY_PERSON);
+      if (!(await finish(row, "cancelled", CANCELLED_BY_PERSON, {}, "running"))) return "settled";
       await abandonJobChecks(row, CANCELLED_BY_PERSON);
       await upsertCheck(row, cancelledCheck(CANCELLED_BY_PERSON));
-    } else if (gone ? Date.now() - started > GONE_AFTER_MS : Date.now() - seen > LOST_AFTER_MS) {
+      return "ended";
+    }
+    if (gone ? Date.now() - started > GONE_AFTER_MS : Date.now() - seen > LOST_AFTER_MS) {
       const reason = gone ? GONE_REASON : "The runner stopped reporting on this run.";
-      await finish(row, "error", reason);
+      if (!(await finish(row, "error", reason, {}, "running"))) return "settled";
       // Its jobs' checks would otherwise say "in progress" for good.
       await abandonJobChecks(row, reason);
       await upsertCheck(row, {
@@ -802,10 +1072,10 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
         title: "Lost",
         summary: reason,
       });
-    } else if (!gone) {
-      console.warn(`[ci] could not read run ${row.id}:`, err);
+      return "ended";
     }
-    return;
+    if (!gone) console.warn(`[ci] could not read run ${row.id}:`, err);
+    return "unread";
   }
   if (run.state === "running") {
     if (Date.now() - row.updatedAt.getTime() > SEEN_EVERY_MS) {
@@ -815,20 +1085,21 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
     if (run.progress && opts.jobChecks !== false) {
       await syncJobChecks(row, groupsFromProgress(run.progress));
     }
-    return;
+    return "running";
   }
+  if (!startAnnounced(row)) return "announcing";
   if (run.state !== "finished") {
     // The runner reports this as `error`. It used to be read as a finished
     // run with no jobs, so a refused clone showed "No pipeline ran".
     const reason = run.error ?? "The runner could not run this commit.";
-    await finish(row, "error", reason);
+    if (!(await finish(row, "error", reason, {}, "running"))) return "settled";
     await upsertCheck(row, {
       status: "completed",
       conclusion: "failure",
       title: "Could not run",
       summary: reason,
     });
-    return;
+    return "ended";
   }
   const jobs = jobsOf(run, false);
   const passed = run.result?.passed === true;
@@ -841,18 +1112,59 @@ export async function syncRun(row: CiRunRow, opts: { jobChecks?: boolean } = {})
   const cancelReason = cancelled ? cancelledReason(row) : null;
   if (passed && jobs.length === 0 && skipsWhenEmpty(row)) {
     // Ran, and nothing in it did: a runner that could not say beforehand.
-    await skipRun(row, runUsage(run));
-    return;
+    return (await skipRun(row, runUsage(run), "running")) ? "ended" : "settled";
   }
-  await finish(row, passed ? "passed" : cancelled ? "cancelled" : "failed", cancelReason, {
-    jobs,
-    ...runUsage(run),
-  });
+  const ended = await finish(
+    row,
+    passed ? "passed" : cancelled ? "cancelled" : "failed",
+    cancelReason,
+    { jobs, ...runUsage(run) },
+    "running",
+  );
+  if (!ended) return "settled";
   // The run's own check first: it is the one a branch protection rule
   // waits for, and each job check after it is a GitHub call of its own.
   await upsertCheck(row, finishedCheck(row, jobs, passed, failedCount, cancelReason));
   // Every job's check finished, including any no poll saw running.
   await syncJobChecks(row, groupsFromJobs(jobs, CACHED_REASON));
+  return "ended";
+}
+
+/** Why a runner's notice was not taken; the status is the answer it gets. */
+export class CiNoticeError extends Error {
+  constructor(
+    message: string,
+    readonly status: 401 | 404 | 409 | 503,
+  ) {
+    super(message);
+    this.name = "CiNoticeError";
+  }
+}
+
+/**
+ * A runner's notice that run `id` changed (`notify.ts`): follows the run now,
+ * as the poller's pass would, job checks included. The token is checked
+ * before anything is read. A `409` or `503` is what the runner tries again
+ * on, for the notice of a run's end: the run is not recorded as started yet
+ * (the dispatcher's answer from the proxy is still on its way), its start
+ * is not on GitHub yet, or the proxy could not be read. Notices of one run
+ * come one at a time, each after the last was answered.
+ */
+export async function acceptRunNotice(id: string, token: string): Promise<SyncOutcome> {
+  if (!noticeTokenValid(id, token)) {
+    throw new CiNoticeError("That is not this run's notice token.", 401);
+  }
+  const row = await load(id);
+  if (!row) throw new CiNoticeError("No such run.", 404);
+  if (row.status === "queued" || row.status === "pending") {
+    throw new CiNoticeError("The run is not recorded as started yet; try again.", 409);
+  }
+  const outcome = await syncRun(row, { jobChecks: true });
+  if (outcome === "announcing") {
+    throw new CiNoticeError("The run's start is not on GitHub yet; try again.", 409);
+  }
+  if (outcome === "unread") throw new CiNoticeError("The CI proxy could not be read.", 503);
+  return outcome;
 }
 
 /** What a finished run's own check says. */
@@ -1100,12 +1412,14 @@ export async function insertRetry(
       id: crypto.randomUUID(),
       organizationId: original.organizationId,
       installationId: original.installationId,
+      gitRepositoryId: original.gitRepositoryId,
       repoFullName: original.repoFullName,
       ownerKey: original.ownerKey,
       repoKey: original.repoKey,
       event: original.event,
       pipelineFile: original.pipelineFile,
       pipelineText: original.pipelineText,
+      terraformRunId: original.terraformRunId,
       inputs: original.inputs,
       startedByUserId: original.event === "manual" ? userId || null : null,
       branch: original.branch,
@@ -1184,18 +1498,10 @@ export async function startManualRun(
   actor: string | null,
   request: CiStartRun,
 ): Promise<CiRun> {
-  const [found] = await db
-    .select({ schedule: ciSchedules })
-    .from(ciSchedules)
-    .innerJoin(
-      ciAccounts,
-      and(
-        eq(ciAccounts.installationId, ciSchedules.installationId),
-        eq(ciAccounts.organizationId, ciSchedules.organizationId),
-      ),
-    )
+  const [found] = await runningCi(db.select({ schedule: ciSchedules }).from(ciSchedules).$dynamic())
     .where(
       and(
+        stillRunsCi(),
         eq(ciSchedules.organizationId, organizationId),
         eq(ciSchedules.installationId, request.installationId),
         eq(ciSchedules.repoFullName, request.repoFullName),
@@ -1226,7 +1532,16 @@ export async function startManualRun(
     );
   }
   const [owner, name] = repo.repoFullName.split("/");
-  const sha = await getBranchHeadSha(repo.installationId, owner ?? "", name ?? "", branch);
+  let sha: string | null;
+  if (isGitSource(repo)) {
+    const { gitBranchHead } = await import("./git-forge.js");
+    sha = await gitBranchHead(repo, branch).catch((err: unknown) => {
+      console.warn(`[ci] could not read ${repo.repoFullName}'s branches:`, err);
+      throw new CiInputError(`${repo.repoFullName} could not be read; try again.`, 409);
+    });
+  } else {
+    sha = await getBranchHeadSha(repo.installationId, owner ?? "", name ?? "", branch);
+  }
   if (!sha) throw new CiInputError(`${repo.repoFullName} has no branch ${branch}.`, 404);
 
   const id = crypto.randomUUID();
@@ -1236,8 +1551,9 @@ export async function startManualRun(
       id,
       organizationId,
       installationId: repo.installationId,
+      gitRepositoryId: repo.gitRepositoryId,
       repoFullName: repo.repoFullName,
-      ownerKey: ownerKey(repo.repoFullName),
+      ownerKey: sourceOwnerKey(repo),
       repoKey: repoKey(repo.repoFullName),
       event: "manual",
       pipelineFile: pipeline.file,
@@ -1286,10 +1602,14 @@ async function newestRetries(organizationId: string, ids: string[]): Promise<Map
 }
 
 export function toWire(row: CiRunRow, retriedAsRunId: string | null = null): CiRun {
-  const githubUrl =
-    row.pullNumber !== null
-      ? `https://github.com/${row.repoFullName}/pull/${row.pullNumber}`
-      : `https://github.com/${row.repoFullName}/commit/${row.sha}`;
+  // The pull request (GitHub) or the branch page (git.infrawrench.com), or
+  // the commit, on the forge the repository is on.
+  const sourceUrl =
+    row.pullNumber === null
+      ? commitUrl(row, row.sha)
+      : isGitSource(row)
+        ? gitBranchPageUrl(row.repoFullName, gitRunPageKey(row))
+        : pullUrl(row, row.pullNumber);
   return {
     id: row.id,
     repoFullName: row.repoFullName,
@@ -1308,7 +1628,10 @@ export function toWire(row: CiRunRow, retriedAsRunId: string | null = null): CiR
     jobs: (row.jobs as CiJobSummary[] | null) ?? null,
     vcpuSeconds: row.vcpuSeconds,
     memoryGibSeconds: row.memoryGibSeconds,
-    githubUrl,
+    // Clients from before `sourceUrl` open this one, whatever the forge.
+    githubUrl: sourceUrl,
+    source: sourceKind(row),
+    sourceUrl,
     retryOfRunId: row.retryOfRunId,
     retriedAsRunId,
     noTaskCache: row.noTaskCache,

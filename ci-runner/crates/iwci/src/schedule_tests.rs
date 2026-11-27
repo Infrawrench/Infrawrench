@@ -156,6 +156,10 @@ impl Executor<String> for FakeExecutor {
         if tool.contains(":write@") {
             inv.fs.write("/app/src/a.ts", b"formatted").unwrap();
         }
+        // What `git status` does to the clone's `.git`: refreshes its index.
+        if tool.contains(":git-index@") {
+            inv.fs.write("/app/.git/index", b"refreshed").unwrap();
+        }
         if tool.contains(":slow@") {
             std::thread::sleep(Duration::from_millis(50));
         }
@@ -356,9 +360,16 @@ impl Executor<String> for FakeExecutor {
             inv.fs.remove_file("/tmp/two.bin").unwrap();
             peak_memory_bytes = 5 << 20;
         }
+        // `-oom` (outside `hang`) makes a tool end as the runtime ends one it
+        // stopped for running out of memory, after doing its work.
+        let out_of_memory = tool.contains("-oom@");
+        if out_of_memory {
+            exit_code = iwci_runtime::TIMEOUT_EXIT_CODE;
+        }
         Ok(Execution {
             exit_code,
             stdout,
+            out_of_memory,
             peak_memory_bytes,
             // Of its 5 MiB, 3 were room a heap had reserved and not used.
             held_memory_bytes: peak_memory_bytes.saturating_sub(3 << 20),
@@ -421,6 +432,18 @@ fn run_full(
     caches: Option<Arc<dyn Caches>>,
     secrets: BTreeMap<String, String>,
 ) -> (RunReport, FakeExecutor, FakeCommitter, usize) {
+    run_spilling(plan, changed, fail_ws, memory, caches, secrets, None)
+}
+
+fn run_spilling(
+    plan: &Plan,
+    changed: Option<Vec<String>>,
+    fail_ws: bool,
+    memory: Option<Arc<MemoryBudget>>,
+    caches: Option<Arc<dyn Caches>>,
+    secrets: BTreeMap<String, String>,
+    spill: Option<Spill>,
+) -> (RunReport, FakeExecutor, FakeCommitter, usize) {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
         installs: AtomicUsize::new(0),
@@ -453,6 +476,8 @@ fn run_full(
         helping: None,
         inflight: None,
         machines: None,
+        spill,
+        remote_cache: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -580,6 +605,28 @@ fn change_policies() {
     assert_eq!(
         commits.0.lock().unwrap().clone(),
         vec![("/app".to_string(), 1, "style: format".to_string())]
+    );
+}
+
+#[test]
+fn what_git_writes_in_the_clones_git_dir_is_no_change() {
+    let p = plan("name: x\njobs:\n  status:\n    using: builtin:git-index@1\n    changes: fail\n");
+    let (report, _, _, _) = run_plan(&p, None, false);
+    assert_eq!(status(&report, "status"), &Status::Passed);
+}
+
+#[test]
+fn hash_files_never_reads_the_clones_git_dir() {
+    let with = SnapshotBuilder::new();
+    let without = SnapshotBuilder::new();
+    for b in [&with, &without] {
+        b.write("/app/src/a.ts", b"a").unwrap();
+    }
+    with.write("/app/.git/HEAD", b"c0ffee\n").unwrap();
+    let globs = ["**".to_string()];
+    assert_eq!(
+        hash_files(&with.freeze(), Some("/app"), &globs),
+        hash_files(&without.freeze(), Some("/app"), &globs)
     );
 }
 
@@ -971,6 +1018,8 @@ fn run_sharing_with(
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1111,6 +1160,8 @@ fn a_cancelled_run_leaves_nothing_waiting() {
                 helping: None,
                 inflight: None,
                 machines: None,
+                spill: None,
+                remote_cache: None,
                 downloads: None,
                 cancel: Some(cancel.clone()),
                 access: Default::default(),
@@ -1228,6 +1279,40 @@ fn a_job_cannot_write_past_its_memory_and_its_bytes_are_given_back() {
     );
 }
 
+#[test]
+fn with_a_spill_disk_a_job_writes_past_its_memory_and_only_part_counts_as_held() {
+    let dir = std::env::temp_dir().join(format!("iwci-sched-spill-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // `bigwrite` writes one byte more than the job's memory.
+    let p = plan("name: x\njobs:\n  w:\n    using: builtin:bigwrite@1\n    memory: 16MiB\n");
+    let spill = Spill {
+        dir: dir.clone(),
+        disk_bytes: 64 << 20,
+    };
+    let (report, _, _, _) = run_spilling(&p, None, false, None, None, BTreeMap::new(), Some(spill));
+    assert_eq!(status(&report, "w"), &Status::Passed);
+    // What it held in memory counts half its `memory:` of files at most.
+    let job = report.jobs.iter().find(|j| j.id == "w").unwrap();
+    let held = job.peak_memory_mib;
+    assert!(held <= 8 + 1, "{held} MiB");
+    assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
+
+    // Past the disk allowance a write is still refused, and says so.
+    let p = plan("name: x\njobs:\n  w:\n    using: builtin:bigwrite@1\n    memory: 64MiB\n");
+    let spill = Spill {
+        dir: dir.clone(),
+        disk_bytes: 32 << 20,
+    };
+    let (report, _, _, _) = run_spilling(&p, None, false, None, None, BTreeMap::new(), Some(spill));
+    assert!(
+        matches!(status(&report, "w"), Status::Failed { reason } if reason.contains("MiB of disk")),
+        "{:?}",
+        status(&report, "w")
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Caches in memory: key to entries and their modes, plus what was saved,
 /// in order.
 #[derive(Default)]
@@ -1235,6 +1320,12 @@ struct MemoryCaches {
     entries: Mutex<HashMap<String, Vec<iwci_vfs::Entry>>>,
     modes: Mutex<HashMap<String, iwci_vfs::archive::ModeList>>,
     saved: Mutex<Vec<String>>,
+    /// Keys another job saves while this one runs: absent when first
+    /// asked about, there from then on.
+    late: Mutex<std::collections::HashSet<String>>,
+    landed: Mutex<std::collections::HashSet<String>>,
+    /// Keys with an entry no restore can read (another archive format).
+    unreadable: Mutex<std::collections::HashSet<String>>,
 }
 
 impl Caches for MemoryCaches {
@@ -1291,6 +1382,52 @@ impl Caches for MemoryCaches {
         self.saved.lock().unwrap().push(key.into());
         Ok(())
     }
+    fn has(&self, key: &str) -> bool {
+        if self.late.lock().unwrap().remove(key) {
+            self.landed.lock().unwrap().insert(key.into());
+            return false;
+        }
+        self.entries.lock().unwrap().contains_key(key)
+            || self.landed.lock().unwrap().contains(key)
+            || self.unreadable.lock().unwrap().contains(key)
+    }
+}
+
+/// A key is saved once: when another job saved it while this one ran (a
+/// matrix sharing a package store), this one does not compress and upload
+/// the same files again. An entry under the key that no restore could read
+/// is replaced, not kept.
+#[test]
+fn a_cache_another_job_saved_meanwhile_is_not_saved_again() {
+    let p = plan(
+        "name: x\njobs:\n  w:\n    using: builtin:write@1\n    cache: { key: shared, paths: [src] }\n",
+    );
+    let store: Arc<MemoryCaches> = Arc::new(MemoryCaches::default());
+    store.late.lock().unwrap().insert("shared".into());
+    let (report, _, _, _) = run_with(&p, None, false, None, Some(store.clone()));
+    let job = report.jobs.iter().find(|j| j.id == "w").unwrap();
+    assert_eq!(job.status, Status::Passed);
+    assert!(
+        job.caches
+            .iter()
+            .any(|l| l == "cache `shared`: already saved"),
+        "{:?}",
+        job.caches
+    );
+    assert!(store.saved.lock().unwrap().is_empty());
+
+    let store: Arc<MemoryCaches> = Arc::new(MemoryCaches::default());
+    store.unreadable.lock().unwrap().insert("shared".into());
+    let (report, _, _, _) = run_with(&p, None, false, None, Some(store.clone()));
+    let job = report.jobs.iter().find(|j| j.id == "w").unwrap();
+    assert!(
+        job.caches
+            .iter()
+            .any(|l| l.starts_with("cache `shared`: saved")),
+        "{:?}",
+        job.caches
+    );
+    assert_eq!(*store.saved.lock().unwrap(), vec!["shared".to_string()]);
 }
 
 #[test]
@@ -1322,7 +1459,9 @@ fn caches_restore_before_a_job_and_save_after_it_passes() {
     let job = report.jobs.iter().find(|j| j.id == "w").unwrap();
     assert_eq!(job.status, Status::Passed);
     assert!(
-        job.caches.iter().any(|l| l.ends_with("restored")),
+        job.caches
+            .iter()
+            .any(|l| l.contains(": restored in ") && l.ends_with(" s")),
         "{:?}",
         job.caches
     );
@@ -1337,8 +1476,9 @@ fn caches_restore_before_a_job_and_save_after_it_passes() {
 }
 
 /// Environment caches through the real store adapter: one cache per job
-/// and environment version, restored on the next run, saved only after a
-/// pass and only when the run changed it.
+/// and environment version, restored on the next run. Environment caches
+/// are saved after a failed job too, since they hold toolchains rather than
+/// test results; only a job that never ran its script saves nothing.
 fn env_cache_store(name: &str) -> (Arc<dyn iwci_store::ObjectStore>, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("iwci-env-cache-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -1399,11 +1539,31 @@ fn environment_caches_come_back_on_the_next_run() {
         ]
     );
 
-    // A failing run saves nothing, even what it changed.
+    // A failing run still saves what it changed in its environment cache:
+    // it holds toolchains and packages keyed by version, not the test
+    // result. The next run starts with what the failing one installed.
     let failing = plan(
         "name: x\njobs:\n  g:\n    using: builtin:envcache-fail@1\n    env: { CACHE_CONTENT: broken }\n",
     );
     let (status, held, lines) = env_cache_run(&failing, &main);
+    assert!(matches!(status, Status::Failed { .. }), "{status:?}");
+    assert_eq!(held, "a=built");
+    assert_eq!(
+        lines,
+        vec![
+            "env cache `build`: restored 1 KiB",
+            "env cache `build`: saved 1 KiB"
+        ]
+    );
+    let (_, held, _) = env_cache_run(&p, &main);
+    assert_eq!(held, "a=broken");
+
+    // A job stopped mid-write (here, out of memory) saves nothing: what it
+    // left may be half an install.
+    let stopped = plan(
+        "name: x\njobs:\n  g:\n    using: builtin:envcache-oom@1\n    env: { CACHE_CONTENT: half }\n",
+    );
+    let (status, held, lines) = env_cache_run(&stopped, &main);
     assert!(matches!(status, Status::Failed { .. }), "{status:?}");
     assert_eq!(held, "a=built");
     assert_eq!(lines, vec!["env cache `build`: restored 1 KiB"]);
@@ -1517,6 +1677,8 @@ fn runs_share_the_runners_slots() {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1567,6 +1729,8 @@ fn run_on_slots(p: &Plan, slots: &Arc<Slots>) -> (RunReport, FakeExecutor) {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1680,6 +1844,8 @@ fn logs_stream_lines_and_job_events_in_order() {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -1952,6 +2118,8 @@ fn run_cached_on(
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -2298,6 +2466,8 @@ fn run_looked_up(
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -2677,6 +2847,8 @@ fn run_downloads(
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
+        remote_cache: None,
         downloads: store.map(|s| s as Arc<dyn Downloads>),
         cancel: None,
         access: Default::default(),
@@ -2829,6 +3001,8 @@ fn a_cancelled_run_stops_what_runs_and_starts_nothing_more() {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: Some(iwci_runtime::Cancel::new()),
         access: Default::default(),
@@ -2910,6 +3084,8 @@ fn a_held_budget_starts_no_more_jobs_and_lets_the_running_one_finish() {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: Some(iwci_runtime::Cancel::new()),
         access: Default::default(),
@@ -2991,6 +3167,8 @@ fn a_run_on_a_held_budget_starts_nothing_and_says_why_when_cancelled() {
             helping: None,
             inflight: None,
             machines: None,
+            spill: None,
+            remote_cache: None,
             downloads: None,
             cancel,
             access: Default::default(),
@@ -3049,6 +3227,8 @@ fn a_run_cancelled_before_it_starts_runs_nothing() {
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: Some(cancel),
         access: Default::default(),
@@ -3116,6 +3296,8 @@ fn run_access(
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel,
         access,
@@ -3838,6 +4020,8 @@ fn run_ordered(
         helping: None,
         inflight: None,
         machines: None,
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -4628,6 +4812,7 @@ fn artifacts_carry_their_modes() {
             peak: AtomicU64::new(0),
             refused: AtomicBool::new(false),
             gauge: None,
+            resident_cap: None,
         }));
     fs.write("/out/app", b"\x7fELF").unwrap();
     fs.write("/out/notes.txt", b"hi").unwrap();
@@ -4649,4 +4834,137 @@ fn artifacts_carry_their_modes() {
     let (plain, none) = artifact_modes(&files);
     assert_eq!(plain.len(), files.len());
     assert!(none.is_empty());
+}
+
+/// [`MemoryCaches`] whose saves wait until `b` has finished (or 5 s), and
+/// say whether it had.
+#[derive(Default)]
+struct GatedCaches {
+    inner: MemoryCaches,
+    b_finished: Arc<AtomicBool>,
+    saved_after_b: AtomicBool,
+}
+
+impl Caches for GatedCaches {
+    fn restore(
+        &self,
+        key: &str,
+        restore_keys: &[String],
+        max: u64,
+    ) -> Result<Option<Restored>, String> {
+        self.inner.restore(key, restore_keys, max)
+    }
+    fn save_with_modes(
+        &self,
+        key: &str,
+        restore_keys: &[String],
+        entries: &[iwci_vfs::Entry],
+        modes: &[(std::path::PathBuf, u32)],
+    ) -> Result<(), String> {
+        let until = Instant::now() + Duration::from_secs(5);
+        while !self.b_finished.load(Ordering::SeqCst) && Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        self.saved_after_b
+            .store(self.b_finished.load(Ordering::SeqCst), Ordering::SeqCst);
+        self.inner
+            .save_with_modes(key, restore_keys, entries, modes)
+    }
+}
+
+/// A job's cache save is made after the job is reported: the job that
+/// needs it runs while the upload is still going, and the run ends only
+/// once the save has, with the save's line in the job's report.
+#[test]
+fn a_cache_save_does_not_hold_up_the_jobs_that_need_it() {
+    let p = plan(
+        "name: x\njobs:\n  a:\n    using: builtin:write@1\n    cache: { key: store, paths: [src] }\n  b:\n    using: builtin:ok@1\n    needs: [a]\n",
+    );
+    let caches = Arc::new(GatedCaches::default());
+    let finished = caches.b_finished.clone();
+    let ws = FakeWorkspaces {
+        builds: AtomicUsize::new(0),
+        installs: AtomicUsize::new(0),
+        fail: false,
+        source: "a",
+    };
+    let exec = FakeExecutor {
+        seen_env: Mutex::default(),
+        seen_tools: Mutex::default(),
+        order: Mutex::default(),
+        running: AtomicUsize::new(0),
+        most_at_once: AtomicUsize::new(0),
+    };
+    let budget = Arc::new(MemoryBudget::new(64 << 30));
+    let options = Options {
+        parallelism: 4,
+        changed_paths: None,
+        base_env: Vec::new(),
+        memory: Some(budget.clone()),
+        caches: Some(caches.clone()),
+        logs: Some(Arc::new(move |event| {
+            if let LogEvent::JobFinished { job, .. } = event
+                && job == "b"
+            {
+                finished.store(true, Ordering::SeqCst);
+            }
+        })),
+        slots: None,
+        secrets: BTreeMap::new(),
+        skip_task_cache: false,
+        durations: None,
+        split: None,
+        helping: None,
+        inflight: None,
+        machines: None,
+        spill: None,
+        remote_cache: None,
+        downloads: None,
+        cancel: None,
+        access: Default::default(),
+    };
+    let report = run(
+        &p,
+        &ws,
+        &FakeTools,
+        &exec,
+        &FakeCommitter(Mutex::default()),
+        &options,
+    );
+    assert!(report.passed(), "{:#?}", report.jobs);
+    assert!(
+        caches.saved_after_b.load(Ordering::SeqCst),
+        "the save held up the job that needs it"
+    );
+    assert_eq!(*caches.inner.saved.lock().unwrap(), ["store"]);
+    let a = report.jobs.iter().find(|j| j.id == "a").unwrap();
+    assert!(
+        a.caches
+            .iter()
+            .any(|l| l.starts_with("cache `store`: saved ") && l.ends_with(" s")),
+        "{:?}",
+        a.caches
+    );
+    // Every reservation, the save's included, was given back.
+    assert_eq!(budget.used(), 0);
+}
+
+/// A job whose cache saves are still being made keeps what they hold of
+/// its reservation and gives the rest back at once; the rest goes when
+/// they end.
+#[test]
+fn a_job_saving_its_caches_holds_only_what_the_saves_hold() {
+    let budget = MemoryBudget::new(10 * GIB);
+    let lease = started(budget.admit([ask(8, 60)]), 0);
+    assert_eq!(budget.used(), 8 * GIB);
+    budget.shrink(&lease, GIB);
+    assert_eq!(budget.used(), GIB);
+    // Never raised by it.
+    budget.shrink(&lease, 4 * GIB);
+    assert_eq!(budget.used(), GIB);
+    // Room for a job that would not have fitted beside the whole lease.
+    let next = started(budget.admit([ask(8, 60)]), 0);
+    budget.release(&lease);
+    budget.release(&next);
+    assert_eq!(budget.used(), 0);
 }

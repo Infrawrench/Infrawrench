@@ -34,6 +34,11 @@ function makeClient(request: ReturnType<typeof hostHttp>) {
   return hostClient(new NeonClient({ apiKey: "neon_test" }, { http: { request } }));
 }
 
+/** `GET /projects/{project_id}`, the per-project read beside the list. */
+function isProjectRead(url: string): boolean {
+  return /\/api\/v2\/projects\/[^/]+$/.test(new URL(url).pathname);
+}
+
 const PRESIGNED =
   "https://br-a1.storage.c-1.us-east-2.aws.neon.tech/assets/photo.png?X-Amz-Signature=s";
 
@@ -67,9 +72,12 @@ describe("Neon API calls through the host's HTTP service", () => {
 
     await makeClient(request).listResources("neon-project", "acct");
 
-    expect(request).toHaveBeenCalledTimes(3);
-    expect(new URL(request.mock.calls[2]![0].url).pathname).toBe("/api/v2/users/me/organizations");
-    const req = request.mock.calls[1]![0];
+    // Each listed project's full record is read too, for its consumption counters.
+    const calls = request.mock.calls.filter(([r]) => !isProjectRead(r.url));
+    expect(request.mock.calls.filter(([r]) => isProjectRead(r.url))).toHaveLength(1);
+    expect(calls).toHaveLength(3);
+    expect(new URL(calls[2]![0].url).pathname).toBe("/api/v2/users/me/organizations");
+    const req = calls[1]![0];
     const url = new URL(req.url);
     expect(url.origin + url.pathname).toBe("https://console.neon.tech/api/v2/projects");
     expect(url.searchParams.get("cursor")).toBe("c1");
@@ -99,7 +107,9 @@ describe("Neon API calls through the host's HTTP service", () => {
     const rows = await makeClient(request).listResources("neon-project", "acct");
 
     expect(rows.map((r) => r.externalId)).toEqual(["p1", "p2", "p3"]);
-    const orgIds = request.mock.calls.map(([r]) => new URL(r.url).searchParams.get("org_id"));
+    const orgIds = request.mock.calls
+      .filter(([r]) => !isProjectRead(r.url))
+      .map(([r]) => new URL(r.url).searchParams.get("org_id"));
     expect(orgIds).toEqual([null, null, "org-a", "org-b"]);
     expect(fetchStub).not.toHaveBeenCalled();
   });

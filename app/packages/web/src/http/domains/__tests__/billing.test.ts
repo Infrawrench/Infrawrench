@@ -23,6 +23,7 @@ const stripeClient = {
 const mockChatPriceId = vi.fn<() => string | null>(() => "price_chat");
 const mockCapacityPriceId = vi.fn<() => string | null>(() => "price_capacity");
 const mockCiPriceIds = vi.fn<() => string[]>(() => []);
+const mockForgeStoragePriceId = vi.fn<() => string | null>(() => null);
 vi.mock("@/services/stripe", () => ({
   getStripe: () => stripeClient,
   getStripePriceId: () => "price_123",
@@ -30,6 +31,8 @@ vi.mock("@/services/stripe", () => ({
   // Unset by default: the build line item is opt-in, same as chat's.
   // None by default: CI's metered prices are opt-in too.
   getStripeCiPriceIds: () => mockCiPriceIds(),
+  // Unset by default, like the others: the forge's storage price is opt-in.
+  getStripeGitStoragePriceId: () => mockForgeStoragePriceId(),
   getStripeCapacitySlotPriceId: () => mockCapacityPriceId(),
 }));
 
@@ -255,6 +258,16 @@ describe("Billing routes", () => {
         { price: "price_ci_vcpu" },
         { price: "price_ci_memory" },
       ]);
+    });
+
+    it("adds the forge's metered storage price when it is configured", async () => {
+      mockForgeStoragePriceId.mockReturnValueOnce("price_forge_storage");
+      selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
+      mockCheckoutCreate.mockResolvedValue({ id: "cs_test_1", url: "https://stripe/checkout6" });
+      await buildApp().request("/checkout", { method: "POST" });
+      const lineItems = mockCheckoutCreate.mock.calls[0]![0].line_items;
+      // Metered, so no quantity.
+      expect(lineItems.at(-1)).toEqual({ price: "price_forge_storage" });
     });
 
     it("omits the chat line item when STRIPE_CHAT_PRICE_ID is unset", async () => {

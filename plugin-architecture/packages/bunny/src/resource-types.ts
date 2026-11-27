@@ -42,7 +42,20 @@ export const PullZoneResourceType = rt({
     f("suspended", "Suspended", { kind: "boolean", ...ro }),
     f("cdnHostname", "CDN Hostname", ro),
     f("hostnames", "Hostnames", ro),
-    f("monthlyBandwidthUsed", "Bandwidth This Month (bytes)", { kind: "number", ...ro }),
+    // `MonthlyBandwidthUsed` ("the amount of bandwidth in bytes that the pull zone used this
+    // month") against `MonthlyBandwidthLimit` ("the monthly limit of bandwidth in bytes that
+    // the pullzone is allowed to use", 0 for none) on the PullZoneModel
+    // (core-api-public-docs.b-cdn.net/docs/v3/public.json, read 2026-11-23).
+    f("monthlyBandwidthUsed", "Bandwidth This Month (bytes)", {
+      kind: "number",
+      ...ro,
+      usage: {
+        limit: { field: "monthlyBandwidthLimit" },
+        unit: "bytes",
+        cycle: { period: "monthly", anchorDay: 1 },
+        label: "Monthly bandwidth limit",
+      },
+    }),
     f("monthlyCharges", "Charges This Month (USD)", { kind: "number", ...ro }),
     f("monthlyBandwidthLimit", "Monthly Bandwidth Limit (bytes)", {
       kind: "number",

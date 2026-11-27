@@ -193,7 +193,7 @@ export function usageSeries(
   return out;
 }
 
-const APP_USAGE: Record<string, { label: string; unit: string }> = {
+export const APP_USAGE: Record<string, { label: string; unit: string }> = {
   total_search_operations: { label: "Search Operations", unit: "operations" },
   total_write_operations: { label: "Write Operations", unit: "operations" },
   records: { label: "Records", unit: "records" },

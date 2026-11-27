@@ -10,6 +10,15 @@
  * imported by the web API server as well as the desktop renderer.
  */
 import type { AgentRuntimePlan, AgentSetupPlan, AgentTool } from "./types.js";
+import {
+  GIT_WORK_PROMPT_FILE,
+  GIT_WORK_PROMPT_SENT_FILE,
+  GIT_WORK_TOKEN_ENV,
+  GIT_WORK_TOKEN_FILE,
+} from "./git-work.js";
+
+// The web API reaches the forge-work helpers through this server-side entry.
+export * from "./git-work.js";
 
 /** Prefix bootstrap scripts print before each human-readable setup step. */
 export const AGENT_SETUP_STEP_PREFIX = "INFRAWRENCH_AGENT_STEP:";
@@ -623,7 +632,12 @@ fi
 # root unless it knows it runs inside a sandbox. detachproc propagates the
 # child's exit status and its client prints it, so startup failures stay
 # visible in the terminal.
-START_SCRIPT="export PATH=\\"\\$HOME/.local/bin:\\$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:\\$PATH\\"; export IS_SANDBOX=1; if command -v mise >/dev/null 2>&1; then eval \\"\\$(mise activate bash)\\" || true; fi; if [ -f \\"\\$HOME/.infrawrench-agent/agent.env\\" ]; then set -a; . \\"\\$HOME/.infrawrench-agent/agent.env\\"; set +a; fi; cd $(printf '%q' "$PROJECT_DIR") && exec ${toolCommand}"
+# A session working on a forge branch (git-work.ts) has a token file,
+# exported to the tool as ${GIT_WORK_TOKEN_ENV}, and a first prompt, which the
+# tool starts with once: it is renamed as it is sent, so a restart or a
+# reattach never sends it again. The prompt is one argument read from a file,
+# so nothing in it reaches a shell.
+START_SCRIPT="export PATH=\\"\\$HOME/.local/bin:\\$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:\\$PATH\\"; export IS_SANDBOX=1; if command -v mise >/dev/null 2>&1; then eval \\"\\$(mise activate bash)\\" || true; fi; if [ -f \\"\\$HOME/.infrawrench-agent/agent.env\\" ]; then set -a; . \\"\\$HOME/.infrawrench-agent/agent.env\\"; set +a; fi; if [ -f \\"\\$HOME/${GIT_WORK_TOKEN_FILE}\\" ]; then export ${GIT_WORK_TOKEN_ENV}=\\"\\$(cat \\"\\$HOME/${GIT_WORK_TOKEN_FILE}\\")\\"; fi; cd $(printf '%q' "$PROJECT_DIR") || exit 1; if [ -f \\"\\$HOME/${GIT_WORK_PROMPT_FILE}\\" ] && mv -f \\"\\$HOME/${GIT_WORK_PROMPT_FILE}\\" \\"\\$HOME/${GIT_WORK_PROMPT_SENT_FILE}\\"; then exec ${toolCommand} \\"\\$(cat \\"\\$HOME/${GIT_WORK_PROMPT_SENT_FILE}\\")\\"; fi; exec ${toolCommand}"
 exec detachproc run --session "$SESSION" -- bash -lc "$START_SCRIPT"
 `;
   return `bash -lc ${shellQuote(script)}`;
@@ -811,7 +825,16 @@ fi
 
 if [ "$REPO_CLONEABLE" = "1" ] && [ -d "$PROJECT_DIR/.git" ]; then
   cd "$PROJECT_DIR"
-  git checkout -B "$BRANCH_NAME" || true
+  # A branch that already exists (a forge branch, which a session started
+  # from its page works on) is checked out as it is, never reset to the
+  # default branch; a new one starts from the clone's HEAD.
+  if git show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
+    git checkout "$BRANCH_NAME" || true
+  elif git show-ref --verify --quiet "refs/remotes/origin/$BRANCH_NAME"; then
+    git checkout -b "$BRANCH_NAME" --track "origin/$BRANCH_NAME" || true
+  else
+    git checkout -B "$BRANCH_NAME" || true
+  fi
 elif [ "$REPO_CLONEABLE" = "1" ]; then
   echo "workspace is not a git repository: $PROJECT_DIR" >&2
 fi

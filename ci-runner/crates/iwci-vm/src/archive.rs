@@ -28,8 +28,22 @@ fn relative(path: &Path) -> &Path {
 /// `/` for none). Entries whose mode is unknown get `0o644` (files) or
 /// `0o755` (directories); links always `0o777`.
 pub fn write(w: impl Write, prefix: &str, entries: &[Moded]) -> io::Result<()> {
+    write_parts(w, &[(prefix, entries)])
+}
+
+/// Several [`write`]s as one archive, each part's entries under its prefix,
+/// written as they are made: a machine's files went into one buffer first,
+/// 1.4 GiB of copying and growing before the first byte was sent.
+pub fn write_parts(w: impl Write, parts: &[(&str, &[Moded])]) -> io::Result<()> {
     let mut tar = tar::Builder::new(w);
     tar.mode(tar::HeaderMode::Deterministic);
+    for (prefix, entries) in parts {
+        append(&mut tar, prefix, entries)?;
+    }
+    tar.into_inner()?.flush()
+}
+
+fn append<W: Write>(tar: &mut tar::Builder<W>, prefix: &str, entries: &[Moded]) -> io::Result<()> {
     let prefix = Path::new(prefix);
     for (entry, mode) in entries {
         let path = prefix.join(relative(entry_path(entry)));
@@ -62,13 +76,24 @@ pub fn write(w: impl Write, prefix: &str, entries: &[Moded]) -> io::Result<()> {
             }
         }
     }
-    tar.into_inner()?.flush()
+    Ok(())
 }
 
 /// What a job's own layer holds (what it starts with on top of the
 /// workspace image), with modes.
 pub fn own(fs: &JobFs) -> Vec<Moded> {
     with_modes(fs.own_entries(), &fs.modes())
+}
+
+/// How many bytes of file contents `entries` hold.
+pub fn file_bytes(entries: &[Moded]) -> u64 {
+    entries
+        .iter()
+        .map(|(e, _)| match e {
+            Entry::File { data, .. } => data.len() as u64,
+            _ => 0,
+        })
+        .sum()
 }
 
 /// Everything the job sees, snapshot included, with modes: what a machine

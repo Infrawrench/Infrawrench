@@ -31,6 +31,21 @@ pub trait Machines: Send + Sync {
     /// with it.
     fn overhead(&self, os: VmOs) -> u64;
 
+    /// The caches a machine of `os` keeps on its own (its image's
+    /// `caches`, such as the versions nvm installs), restored and saved
+    /// as an isolate environment's are ([`crate::env_cache`]).
+    fn env_caches(&self, _os: VmOs) -> Vec<crate::env_cache::EnvCacheDecl> {
+        Vec::new()
+    }
+
+    /// Runs a `bash` script in a fresh Linux machine for the runner itself
+    /// rather than for a job: the install scripts of `install-scripts:
+    /// true` ([`crate::install_scripts`]). What it left under
+    /// `run.collect` comes back in the outcome, not written anywhere.
+    fn run_script(&self, _run: ScriptRun<'_>) -> Result<ScriptOutcome, String> {
+        Err("this runner has no Linux virtual machines".into())
+    }
+
     /// Runs the job's script in a fresh machine, and writes what it left
     /// under `run.collect` into `run.fs` and what it left in the run's
     /// `/tmp/workflow` into `run.scratch` before it returns. An `Err` is
@@ -50,8 +65,11 @@ pub struct MachineRun<'a> {
     /// The job's files: the workspace's with what the job starts with
     /// written over them.
     pub fs: &'a JobFs,
-    /// The run's `/tmp/workflow`, rooted at `/`.
-    pub scratch: &'a JobFs,
+    /// The run's `/tmp/workflow`, rooted at `/`, as the job sees it. A
+    /// machine is given a copy, so [`crate::schedule::ScratchView::settle`] first; what
+    /// comes back is written to [`crate::schedule::ScratchView::fs`] and noted with
+    /// [`crate::schedule::ScratchView::wrote`].
+    pub scratch: &'a crate::schedule::ScratchView,
     /// Every variable the job gets, secrets included, as for any job.
     pub env: Vec<(String, String)>,
     /// The job's working directory, a Unix path.
@@ -61,6 +79,35 @@ pub struct MachineRun<'a> {
     pub collect: Collecting,
     pub log: Option<OutputSink>,
     pub cancel: Option<iwci_runtime::Cancel>,
+}
+
+/// A script for [`Machines::run_script`].
+pub struct ScriptRun<'a> {
+    /// Names the machine in the runner's log.
+    pub id: &'a str,
+    /// The files it starts from, and a key that names them.
+    pub workspace: &'a Snapshot,
+    pub workspace_key: String,
+    pub fs: &'a JobFs,
+    pub script: &'a str,
+    pub env: Vec<(String, String)>,
+    pub cwd: &'a str,
+    /// Unix paths whose changes come back.
+    pub collect: &'a [String],
+    pub memory_bytes: u64,
+    pub timeout: std::time::Duration,
+}
+
+/// How a [`ScriptRun`] went.
+#[derive(Debug, Default)]
+pub struct ScriptOutcome {
+    /// `None` when it did not exit by itself (timed out).
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub boot_ms: u64,
+    /// What it changed under the paths it was asked for.
+    pub collected: Collected,
 }
 
 /// What a runner says when a job asks for machines it does not have.
@@ -98,12 +145,19 @@ impl Collecting {
     }
 }
 
-/// What a job's machine sends back (see [`Collecting`]).
+/// What a job's machine sends back (see [`Collecting`]). `caches` are the
+/// paths of the job's `cache:` entries it may save: not those that
+/// restored their exact key, which are never saved again, so nothing reads
+/// them after the job. Package managers hard-link a restored store into
+/// the project (pnpm, Bun, uv), which changes every file's change time, so
+/// asking for them anyway sent the whole store back after each warm run:
+/// gigabytes through the runner for nothing.
 pub fn collect_paths(
     job: &PlannedJob,
     root: Option<&str>,
     output: &str,
-    caches: bool,
+    caches: &[String],
+    env_caches: &[&str],
 ) -> Collecting {
     let repository = root
         .filter(|_| !matches!(job.changes, iwci_spec::ChangePolicy::Ignore))
@@ -113,11 +167,8 @@ pub fn collect_paths(
     if let Some(downloads) = &job.downloads {
         paths.extend(downloads.paths.iter().cloned());
     }
-    if caches {
-        for cache in &job.caches {
-            paths.extend(cache.paths.iter().cloned());
-        }
-    }
+    paths.extend(caches.iter().cloned());
+    paths.extend(env_caches.iter().map(|p| p.to_string()));
     paths.sort();
     paths.dedup();
     let mut out: Vec<String> = Vec::with_capacity(paths.len());
@@ -253,7 +304,13 @@ jobs:
         // comes back without what git ignores, and artifacts and caches
         // are often there (`dist`, `node_modules`).
         assert_eq!(
-            collect_paths(&job, Some("/app"), "/iwci/output", true),
+            collect_paths(
+                &job,
+                Some("/app"),
+                "/iwci/output",
+                &job.caches[0].paths,
+                &["/root/.nvm/versions"]
+            ),
             Collecting {
                 paths: [
                     "/app/dist",
@@ -261,6 +318,7 @@ jobs:
                     "/app/out",
                     "/iwci/output",
                     "/root/.cache",
+                    "/root/.nvm/versions",
                     "/root/report.xml"
                 ]
                 .map(String::from)
@@ -268,13 +326,14 @@ jobs:
                 repository: Some("/app".into()),
             }
         );
-        // Without `changes:` the clone itself is not read, and without a
-        // cache store neither are the cache paths.
+        // Without `changes:` the clone itself is not read, and the paths
+        // of a cache the job will not save (no cache store, or its exact
+        // key restored) are not either.
         let job = super::tests::job(
             "name: t\njobs:\n  a:\n    platform: linux\n    run: make\n    artifacts: [out]\n    cache: { key: k, paths: [/root/.cache] }\n",
         );
         assert_eq!(
-            collect_paths(&job, Some("/app"), "/iwci/output", false),
+            collect_paths(&job, Some("/app"), "/iwci/output", &[], &[]),
             Collecting {
                 paths: vec!["/app/out".into(), "/iwci/output".into()],
                 repository: None,

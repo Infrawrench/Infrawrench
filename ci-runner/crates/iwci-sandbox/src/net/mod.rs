@@ -15,9 +15,19 @@
 //! [`Outside::allows`] about the address it is for and, if allowed, opens
 //! a host socket to it ([`Outside::connect`]). Only then is the SYN handed
 //! to `smoltcp`, which completes the handshake on a listener made for that
-//! one connection; refused or unreachable, it is handed over with no
-//! listener, and `smoltcp` answers with a reset, as a closed port would.
-//! Bytes are then pumped between the two sockets, half-closes included.
+//! one connection; refused or unreachable, the gateway answers with a reset
+//! of its own, as a closed port would. Bytes are then pumped between the
+//! two sockets, half-closes included.
+//!
+//! A listener takes any SYN for its address, not only the one it was made
+//! for, so `smoltcp` is only ever handed a SYN together with a listener of
+//! its own: each listener then takes one of the SYNs handed over with it
+//! (which one does not matter, since the host end is found by what was
+//! accepted). A SYN handed over on its own (a refused one, a repeat) would
+//! be taken by another connection's listener, leaving that connection's
+//! SYN to be reset and its host end open with nothing joined to it. And a
+//! socket whose handshake the sandbox resets goes back to listening, so it
+//! is retired at once rather than left to take a later connection's SYN.
 //! `Outside` is the same policy and resolver WASIX jobs go through, so the
 //! two kinds of job reach exactly the same places.
 //!
@@ -26,6 +36,12 @@
 //! `Outside::allows` again, so a name never leads inside; `localhost` and
 //! the job's services are the loopback. No other UDP, and no ICMP, is
 //! offered, as WASIX jobs get none.
+//!
+//! A TCP connection to one of the gateway's own ports in
+//! [`Network::local`] goes to a Unix socket of the runner's instead (the
+//! runner's caches for the job, say) and never to the host's network: the
+//! gateway's address is not one [`Outside::allows`], and nothing else
+//! reaches those sockets.
 //!
 //! Everything runs on one thread per sandbox, plus a short-lived one per
 //! connection being opened and per name being resolved, so a slow host
@@ -36,22 +52,24 @@ mod dns;
 #[cfg(test)]
 mod tests;
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, TcpStream};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::thread::JoinHandle;
 
 use smoltcp::iface::{Config, Interface, SocketHandle, SocketSet};
-use smoltcp::phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken};
+use smoltcp::phy::{ChecksumCapabilities, Device, DeviceCapabilities, Medium, RxToken, TxToken};
 use smoltcp::socket::{tcp, udp};
 use smoltcp::time::Instant;
 use smoltcp::wire::{
-    HardwareAddress, IpAddress, IpCidr, IpEndpoint, IpListenEndpoint, IpProtocol, Ipv4Packet,
-    Ipv6Packet, TcpPacket,
+    HardwareAddress, IpAddress, IpCidr, IpEndpoint, IpListenEndpoint, IpProtocol, IpRepr,
+    Ipv4Packet, Ipv6Packet, TcpControl, TcpPacket, TcpRepr, TcpSeqNumber,
 };
 
 /// Where a sandboxed job's connections may go, and how names resolve:
@@ -77,15 +95,30 @@ pub const PREFIX_V6: u8 = 64;
 /// The link's MTU: large, since the link is a socket pair in memory.
 pub const MTU: usize = 65_000;
 
-/// Each TCP connection's buffers, both ways.
-const TCP_BUFFER: usize = 64 * 1024;
+/// Each TCP connection's buffers, both ways, which are also its window.
+/// They span several segments of the link's MTU: a window of one or two
+/// segments makes every segment wait for the other side's (delayed)
+/// acknowledgement. At 64 KiB a machine on a 65,000-byte link downloaded
+/// at a few MB/s, and one on a 1,500-byte link at 230 to 250 MB/s over
+/// three connections; at 256 KiB on the large MTU, 370 to 400 MB/s, about
+/// what the host itself gets from the same registry (measured on a c8i, a
+/// machine of 8 vCPUs, pulling an image's layers from `ghcr.io`).
+/// That is 512 KiB of the runner's memory a connection, so at most
+/// 128 MiB for a job at [`MAX_CONNECTIONS`]; a job opens a few dozen.
+const TCP_BUFFER: usize = 256 * 1024;
+const _: () = assert!(
+    TCP_BUFFER >= 4 * MTU,
+    "the window must span several segments"
+);
 /// At most this many connections at once, and this many being opened.
-/// They hold memory and descriptors in the runner, not in the sandbox.
+/// They hold memory and descriptors in the runner, not in the sandbox. A
+/// SYN past either is dropped rather than reset, so the sandbox sends it
+/// again a second later, as it would through a busy NAT: `bun install`
+/// opens more than 64 connections at once, and each reset was a failed
+/// request.
 const MAX_CONNECTIONS: usize = 256;
-const MAX_CONNECTING: usize = 64;
+const MAX_CONNECTING: usize = 128;
 const MAX_RESOLVING: usize = 32;
-/// A listener made for a connection whose SYN never arrived again.
-const LISTENER_TIMEOUT: smoltcp::time::Duration = smoltcp::time::Duration::from_secs(60);
 
 /// What a sandbox's network is given.
 #[derive(Clone)]
@@ -93,6 +126,9 @@ pub struct Network {
     pub outside: Arc<dyn Outside>,
     /// The job's services' names, which resolve to the IPv4 loopback.
     pub services: Vec<String>,
+    /// The gateway's own ports: a connection to the gateway's address on
+    /// one of these goes to the Unix socket beside it, in the runner.
+    pub local: Vec<(u16, PathBuf)>,
 }
 
 /// A running gateway. Stopping it (or dropping it) ends every connection.
@@ -145,12 +181,71 @@ impl Drop for Gateway {
 type Key = (SocketAddr, SocketAddr);
 
 enum Event {
-    Connected(Key, io::Result<TcpStream>),
+    Connected(Key, io::Result<Host>),
     Resolved(IpEndpoint, Vec<u8>),
 }
 
+/// The runner's end of a connection: a host socket, or a Unix socket of
+/// the runner's for one of the gateway's own ports.
+enum Host {
+    Tcp(TcpStream),
+    Unix(UnixStream),
+}
+
+impl Host {
+    fn set_nonblocking(&self) -> io::Result<()> {
+        match self {
+            Host::Tcp(s) => {
+                let _ = s.set_nodelay(true);
+                s.set_nonblocking(true)
+            }
+            Host::Unix(s) => s.set_nonblocking(true),
+        }
+    }
+
+    fn shutdown(&self, how: Shutdown) -> io::Result<()> {
+        match self {
+            Host::Tcp(s) => s.shutdown(how),
+            Host::Unix(s) => s.shutdown(how),
+        }
+    }
+}
+
+impl AsRawFd for Host {
+    fn as_raw_fd(&self) -> RawFd {
+        match self {
+            Host::Tcp(s) => s.as_raw_fd(),
+            Host::Unix(s) => s.as_raw_fd(),
+        }
+    }
+}
+
+impl Read for Host {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        match self {
+            Host::Tcp(s) => s.read(buf),
+            Host::Unix(s) => s.read(buf),
+        }
+    }
+}
+
+impl Write for Host {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self {
+            Host::Tcp(s) => s.write(buf),
+            Host::Unix(s) => s.write(buf),
+        }
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 struct Conn {
-    host: TcpStream,
+    /// The connection, as accepted: `smoltcp` forgets the endpoints of a
+    /// socket once it is closed, so `known` is kept by this.
+    key: Key,
+    host: Host,
     /// Read from the sandbox, not yet written to the host.
     to_host: Vec<u8>,
     host_eof: bool,
@@ -160,7 +255,6 @@ struct Conn {
 struct Listener {
     handle: SocketHandle,
     key: Key,
-    since: Instant,
 }
 
 struct State {
@@ -178,12 +272,20 @@ struct State {
     /// SYNs held while their host connection is opened.
     held: HashMap<Key, Vec<u8>>,
     /// Host connections opened, waiting for `smoltcp` to accept.
-    ready: HashMap<Key, TcpStream>,
+    ready: HashMap<Key, Host>,
     listeners: Vec<Listener>,
     conns: HashMap<SocketHandle, Conn>,
-    /// Every connection with a socket of its own (listening or past it).
-    known: HashSet<Key>,
+    /// Sockets aborted outside a connection, removed once their reset is
+    /// sent.
+    aborted: Vec<SocketHandle>,
+    /// Every connection with a socket of its own (listening or past it),
+    /// with its SYN's sequence number: a SYN with the same one is a
+    /// repeat, and one with another is a new connection from that port.
+    known: HashMap<Key, u32>,
     resolving: Arc<AtomicUsize>,
+    /// What `pump` moves bytes through, kept rather than allocated (and
+    /// zeroed) on every pass of the loop.
+    pump_buf: Vec<u8>,
 }
 
 impl State {
@@ -234,8 +336,10 @@ impl State {
             ready: HashMap::new(),
             listeners: Vec::new(),
             conns: HashMap::new(),
-            known: HashSet::new(),
+            aborted: Vec::new(),
+            known: HashMap::new(),
             resolving: Arc::new(AtomicUsize::new(0)),
+            pump_buf: vec![0; TCP_BUFFER],
         }
     }
 
@@ -333,25 +437,46 @@ impl State {
     /// One packet from the sandbox: a new connection's SYN is held while
     /// the host end is opened; everything else goes to `smoltcp`.
     fn on_packet(&mut self, packet: Vec<u8>) {
-        let Some(key) = syn_key(&packet) else {
+        let Some((key, seq)) = syn_key(&packet) else {
             self.device.rx.push_back(packet);
             return;
         };
-        if self.known.contains(&key) {
-            // A retransmitted SYN, which its socket answers.
-            self.device.rx.push_back(packet);
+        if let Some(held) = self.held.get_mut(&key) {
+            // Sent again while its host end is opened (the newest, should
+            // the port have started over).
+            *held = packet;
             return;
         }
-        if self.held.contains_key(&key) {
-            return;
+        if let Some(known) = self.known.get(&key) {
+            if *known == seq {
+                // A repeat: its socket sends the SYN-ACK again on its own
+                // timer, and handed over, the SYN could be taken by
+                // another connection's listener.
+                return;
+            }
+            // A new connection from the port of one the sandbox has given
+            // up on (the gateway's end was still closing).
+            self.forget(key);
         }
         let dst = key.1;
-        let refused = !self.network.outside.allows(dst.ip())
-            || self.held.len() >= MAX_CONNECTING
-            || self.conns.len() + self.listeners.len() >= MAX_CONNECTIONS;
-        if refused {
-            // No listener: `smoltcp` answers with a reset.
-            self.device.rx.push_back(packet);
+        // One of the gateway's own ports: the runner's socket for it.
+        let local = (dst.ip() == IpAddr::V4(GATEWAY_V4) || dst.ip() == IpAddr::V6(GATEWAY_V6))
+            .then(|| {
+                self.network
+                    .local
+                    .iter()
+                    .find(|(port, _)| *port == dst.port())
+                    .map(|(_, path)| path.clone())
+            })
+            .flatten();
+        if local.is_none() && !self.network.outside.allows(dst.ip()) {
+            self.reset(&packet);
+            return;
+        }
+        if self.held.len() >= MAX_CONNECTING
+            || self.conns.len() + self.listeners.len() >= MAX_CONNECTIONS
+        {
+            // Busy: the sandbox sends the SYN again.
             return;
         }
         self.held.insert(key, packet);
@@ -361,14 +486,40 @@ impl State {
         let spawned = std::thread::Builder::new()
             .name("iwci-sandbox-connect".into())
             .spawn(move || {
-                let result = outside.connect(dst);
+                let result = match local {
+                    Some(path) => UnixStream::connect(path).map(Host::Unix),
+                    None => outside.connect(dst).map(Host::Tcp),
+                };
                 let _ = send.send(Event::Connected(key, result));
                 poke(&wake);
             });
-        if spawned.is_err()
-            && let Some(packet) = self.held.remove(&key)
-        {
-            self.device.rx.push_back(packet);
+        if spawned.is_err() {
+            self.held.remove(&key);
+        }
+    }
+
+    /// Ends the connection `key` at once, without a word to the sandbox,
+    /// which has already given it up.
+    fn forget(&mut self, key: Key) {
+        self.known.remove(&key);
+        let handles: Vec<SocketHandle> = self
+            .conns
+            .iter()
+            .filter(|(_, conn)| conn.key == key)
+            .map(|(handle, _)| *handle)
+            .collect();
+        for handle in handles {
+            self.conns.remove(&handle);
+            self.sockets.remove(handle);
+        }
+    }
+
+    /// Answers a SYN with a reset, as a closed port does, without handing
+    /// it to `smoltcp` (where a listener for the same address would take
+    /// it).
+    fn reset(&mut self, syn: &[u8]) {
+        if let Some(reply) = reset_for(syn) {
+            self.device.tx.push_back(reply);
         }
     }
 
@@ -378,14 +529,21 @@ impl State {
                 let Some(packet) = self.held.remove(&key) else {
                     return;
                 };
+                let mut listening = false;
                 if let Ok(stream) = result
-                    && stream.set_nonblocking(true).is_ok()
+                    && stream.set_nonblocking().is_ok()
                 {
-                    let _ = stream.set_nodelay(true);
                     let mut socket = tcp::Socket::new(
                         tcp::SocketBuffer::new(vec![0; TCP_BUFFER]),
                         tcp::SocketBuffer::new(vec![0; TCP_BUFFER]),
                     );
+                    // The gateway relays a stream someone else wrote, so it
+                    // neither holds small segments back (Nagle) nor delays
+                    // its acknowledgements: the host end already did what
+                    // batching there is to do, and a delayed acknowledgement
+                    // holds the sandbox's next window for 10 ms.
+                    socket.set_nagle_enabled(false);
+                    socket.set_ack_delay(None);
                     if socket
                         .listen(IpListenEndpoint {
                             addr: Some(key.1.ip().into()),
@@ -394,16 +552,19 @@ impl State {
                         .is_ok()
                     {
                         let handle = self.sockets.add(socket);
-                        self.listeners.push(Listener {
-                            handle,
-                            key,
-                            since: Instant::now(),
-                        });
+                        self.listeners.push(Listener { handle, key });
                         self.ready.insert(key, stream);
-                        self.known.insert(key);
+                        if let Some((_, seq)) = syn_key(&packet) {
+                            self.known.insert(key, seq);
+                        }
+                        listening = true;
                     }
                 }
-                self.device.rx.push_back(packet);
+                if listening {
+                    self.device.rx.push_back(packet);
+                } else {
+                    self.reset(&packet);
+                }
             }
             Event::Resolved(to, reply) => {
                 let socket = self.sockets.get_mut::<udp::Socket>(self.dns);
@@ -413,20 +574,17 @@ impl State {
     }
 
     /// Listeners `smoltcp` has handed a connection to become connections,
-    /// joined to the host end opened for them.
+    /// joined to the host end opened for them. Every listener's SYN was
+    /// handed over just before the poll this follows, so one still
+    /// listening will not be given it: it is retired, with whatever host
+    /// end is left over, and the sandbox's next SYN starts again.
     fn accept(&mut self) {
-        let now = Instant::now();
-        let mut keep = Vec::new();
-        for listener in std::mem::take(&mut self.listeners) {
+        let listeners = std::mem::take(&mut self.listeners);
+        let mut idle = Vec::new();
+        for listener in &listeners {
             let socket = self.sockets.get_mut::<tcp::Socket>(listener.handle);
             if socket.state() == tcp::State::Listen {
-                if now - listener.since < LISTENER_TIMEOUT {
-                    keep.push(listener);
-                } else {
-                    self.sockets.remove(listener.handle);
-                    self.ready.remove(&listener.key);
-                    self.known.remove(&listener.key);
-                }
+                idle.push(listener.handle);
                 continue;
             }
             // Which connection it took: two connections to one address
@@ -441,6 +599,7 @@ impl State {
                     self.conns.insert(
                         listener.handle,
                         Conn {
+                            key,
                             host,
                             to_host: Vec::new(),
                             host_eof: false,
@@ -449,27 +608,45 @@ impl State {
                     );
                 }
                 None => {
+                    // Not a SYN handed over with a listener, which cannot
+                    // happen; reset it rather than leave it half open.
                     socket.abort();
-                    self.known.remove(&listener.key);
+                    self.aborted.push(listener.handle);
                 }
             }
         }
-        self.listeners = keep;
+        for handle in idle {
+            self.sockets.remove(handle);
+        }
+        // The host ends no listener took.
+        for listener in &listeners {
+            if self.ready.remove(&listener.key).is_some() {
+                self.known.remove(&listener.key);
+            }
+        }
     }
 
     /// Moves bytes both ways on every connection, and retires finished ones.
     fn pump(&mut self) {
-        let mut buf = vec![0u8; TCP_BUFFER];
+        let buf = &mut self.pump_buf;
         let mut done = Vec::new();
         for (handle, conn) in &mut self.conns {
             let socket = self.sockets.get_mut::<tcp::Socket>(*handle);
-            if socket.state() == tcp::State::SynReceived {
+            match socket.state() {
                 // Neither way is open until the handshake is done.
-                continue;
+                tcp::State::SynReceived => continue,
+                // The sandbox reset the handshake, which sends `smoltcp`
+                // back to listening, where it would take another
+                // connection's SYN: it is over.
+                tcp::State::Listen => {
+                    done.push(*handle);
+                    continue;
+                }
+                _ => {}
             }
             // Sandbox to host.
             while conn.to_host.len() < TCP_BUFFER && socket.can_recv() {
-                match socket.recv_slice(&mut buf) {
+                match socket.recv_slice(buf) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => conn.to_host.extend_from_slice(&buf[..n]),
                 }
@@ -518,16 +695,22 @@ impl State {
         }
         for handle in done {
             if let Some(conn) = self.conns.remove(&handle) {
-                drop(conn);
+                self.known.remove(&conn.key);
             }
-            let socket = self.sockets.remove(handle);
-            if let smoltcp::socket::Socket::Tcp(socket) = socket
-                && let (Some(remote), Some(local)) =
-                    (socket.remote_endpoint(), socket.local_endpoint())
-            {
-                self.known.remove(&(endpoint(remote), endpoint(local)));
-            }
+            self.sockets.remove(handle);
         }
+        // Aborted sockets once their reset is sent.
+        let sockets = &mut self.sockets;
+        self.aborted.retain(|handle| {
+            let gone = sockets
+                .get::<tcp::Socket>(*handle)
+                .remote_endpoint()
+                .is_none();
+            if gone {
+                sockets.remove(*handle);
+            }
+            !gone
+        });
     }
 
     fn answer_dns(&mut self) {
@@ -617,8 +800,9 @@ fn endpoint(e: IpEndpoint) -> SocketAddr {
     SocketAddr::new(e.addr.into(), e.port)
 }
 
-/// The connection a packet opens, if it is a TCP SYN (without ACK).
-fn syn_key(packet: &[u8]) -> Option<Key> {
+/// The connection a packet opens, if it is a TCP SYN (without ACK), and
+/// the SYN's sequence number.
+fn syn_key(packet: &[u8]) -> Option<(Key, u32)> {
     let version = packet.first()? >> 4;
     let (src, dst, payload): (IpAddr, IpAddr, &[u8]) = match version {
         4 => {
@@ -653,9 +837,69 @@ fn syn_key(packet: &[u8]) -> Option<Key> {
         return None;
     }
     Some((
-        SocketAddr::new(src, tcp.src_port()),
-        SocketAddr::new(dst, tcp.dst_port()),
+        (
+            SocketAddr::new(src, tcp.src_port()),
+            SocketAddr::new(dst, tcp.dst_port()),
+        ),
+        tcp.seq_number().0 as u32,
     ))
+}
+
+/// The reset a closed port answers a SYN (without ACK) with: RST|ACK,
+/// acknowledging the SYN, from the address and port it was sent to.
+fn reset_for(syn: &[u8]) -> Option<Vec<u8>> {
+    let (src, dst, payload): (IpAddress, IpAddress, &[u8]) = match syn.first()? >> 4 {
+        4 => {
+            let ip = Ipv4Packet::new_checked(syn).ok()?;
+            let header = ip.header_len() as usize;
+            let total = (ip.total_len() as usize).min(syn.len());
+            (
+                ip.src_addr().into(),
+                ip.dst_addr().into(),
+                syn.get(header..total)?,
+            )
+        }
+        6 => {
+            let ip = Ipv6Packet::new_checked(syn).ok()?;
+            let end = (40 + ip.payload_len() as usize).min(syn.len());
+            (
+                ip.src_addr().into(),
+                ip.dst_addr().into(),
+                syn.get(40..end)?,
+            )
+        }
+        _ => return None,
+    };
+    let tcp = TcpPacket::new_checked(payload).ok()?;
+    if !tcp.syn() || tcp.ack() || tcp.rst() {
+        return None;
+    }
+    let reply = TcpRepr {
+        src_port: tcp.dst_port(),
+        dst_port: tcp.src_port(),
+        control: TcpControl::Rst,
+        seq_number: TcpSeqNumber(0),
+        ack_number: Some(tcp.seq_number() + tcp.segment_len()),
+        window_len: 0,
+        window_scale: None,
+        max_seg_size: None,
+        sack_permitted: false,
+        sack_ranges: [None, None, None],
+        timestamp: None,
+        payload: &[],
+    };
+    let ip = IpRepr::new(dst, src, IpProtocol::Tcp, reply.buffer_len(), 64);
+    let caps = ChecksumCapabilities::default();
+    let mut packet = vec![0u8; ip.buffer_len()];
+    ip.emit(&mut packet[..], &caps);
+    let header = ip.header_len();
+    reply.emit(
+        &mut TcpPacket::new_unchecked(&mut packet[header..]),
+        &dst,
+        &src,
+        &caps,
+    );
+    Some(packet)
 }
 
 /// `smoltcp`'s device: packets queued both ways, moved to and from the

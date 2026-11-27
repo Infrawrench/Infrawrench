@@ -243,6 +243,24 @@ export async function listCloudRouters(
   });
 }
 
+/**
+ * The ports each VM gets from a NAT config, which caps its simultaneous
+ * connections to any one destination. Static allocation gives
+ * `minPortsPerVm` rounded up to a power of two (64 when unset); dynamic
+ * allocation grows up to `maxPortsPerVm` (65536 when unset)
+ * (https://docs.cloud.google.com/compute/docs/reference/rest/v1/routers and
+ * https://docs.cloud.google.com/nat/docs/ports-and-addresses, read 2026-11-23).
+ */
+export function natPortsPerVm(nat: Record<string, unknown>): number {
+  if (nat["enableDynamicPortAllocation"] === true) {
+    const max = Number(nat["maxPortsPerVm"]);
+    return Number.isFinite(max) && max > 0 ? max : 65536;
+  }
+  const min = Number(nat["minPortsPerVm"]);
+  if (!Number.isFinite(min) || min <= 0) return 64;
+  return 2 ** Math.ceil(Math.log2(min));
+}
+
 export async function listCloudNats(
   ctx: ListerContext,
   accountId: string,
@@ -276,6 +294,7 @@ export async function listCloudNats(
           router: routerName,
           natIpAllocateOption: String(nat["natIpAllocateOption"] ?? ""),
           sourceSubnetworkIpRangesToNat: String(nat["sourceSubnetworkIpRangesToNat"] ?? ""),
+          portsPerVm: natPortsPerVm(nat),
           status: "ACTIVE",
         },
         resolvedOutputs: {},

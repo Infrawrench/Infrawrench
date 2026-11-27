@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
 import { type GitRepoOption } from "@infrawrench/ui/workflows";
 import { apiGet } from "@/lib/api";
+import { clearPendingAgentGitWork, usePendingAgentGitWork } from "@/lib/agent-git-work";
 
 /**
  * Web wrapper around the shared AgentsPanel that supplies the GitHub
@@ -60,11 +61,16 @@ export function WebAgentsPanel({
       .catch(() => undefined);
   }, [orgId]);
 
+  // A branch git.infrawrench.com sent the person here to work on.
+  const gitWork = usePendingAgentGitWork(orgId);
+
   return (
     <AgentsPanel
       client={client}
       {...(openWorkspaceTarget ? { openWorkspaceTarget } : {})}
       gitIntegration={{ configured, repos, loading, onConnect }}
+      gitWork={gitWork}
+      onGitWorkDone={clearPendingAgentGitWork}
     />
   );
 }

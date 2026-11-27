@@ -1921,6 +1921,13 @@ export class FlyClient implements PluginClient {
     if (v.snapshot_retention != null) fields["snapshotRetention"] = v.snapshot_retention;
     if (v.bytes_used != null) fields["bytesUsed"] = v.bytes_used;
     if (v.bytes_total != null) fields["bytesTotal"] = v.bytes_total;
+    // `blocks` is 0 until a Machine has mounted the volume and reported, and
+    // while the host is unreachable: no reading then, rather than a zero.
+    const { blocks, blocks_avail: avail, block_size: blockSize } = v;
+    if (blocks && blockSize && avail != null && avail <= blocks) {
+      fields["fsUsedBytes"] = (blocks - avail) * blockSize;
+      fields["fsSizeBytes"] = blocks * blockSize;
+    }
     if (v.host_status) fields["hostStatus"] = v.host_status;
     return {
       id: `${accountId}:volume:${appName}/${v.id}`,

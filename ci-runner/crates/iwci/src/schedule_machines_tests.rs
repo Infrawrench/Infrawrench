@@ -23,9 +23,22 @@ struct Seen {
 /// - `edit`: changes `/app/src/a.ts` and deletes the installed module;
 /// - `share`: writes `/tmp/workflow/shared.txt`;
 /// - `venv`: makes `/app/.venv`, which ignores itself as Python's does;
+/// - `nvm`: installs Node 22 under `/root/.nvm/versions` unless the job
+///   started with it, and says which on stdout;
 /// - `fail`: exits 2.
-struct FakeMachines {
+pub(super) struct FakeMachines {
     seen: Mutex<Seen>,
+    /// The image's caches.
+    caches: Vec<crate::env_cache::EnvCacheDecl>,
+}
+
+impl FakeMachines {
+    pub(super) fn new() -> Self {
+        Self {
+            seen: Mutex::default(),
+            caches: Vec::new(),
+        }
+    }
 }
 
 fn files(fs: &iwci_vfs::JobFs, root: &str) -> Vec<String> {
@@ -50,6 +63,10 @@ impl Machines for FakeMachines {
         128 << 20
     }
 
+    fn env_caches(&self, _os: VmOs) -> Vec<crate::env_cache::EnvCacheDecl> {
+        self.caches.clone()
+    }
+
     fn run(&self, run: MachineRun<'_>) -> Result<Execution, String> {
         let Action::Script { script } = &run.job.action else {
             return Err("a machine runs a script".into());
@@ -61,7 +78,7 @@ impl Machines for FakeMachines {
             seen.collect.insert(run.job.id.clone(), run.collect.clone());
             let mut start = files(run.fs, "/app/out");
             start.extend(
-                files(run.scratch, "/")
+                files(run.scratch.fs(), "/")
                     .into_iter()
                     .map(|p| format!("scratch:{p}")),
             );
@@ -76,6 +93,7 @@ impl Machines for FakeMachines {
         let mut back = Collected::default();
         let mut shared = Collected::default();
         let mut exit_code = 0;
+        let mut stdout = format!("ran {script}\n");
         let file = |path: &str, data: &[u8]| {
             (
                 iwci_vfs::Entry::File {
@@ -102,6 +120,16 @@ impl Machines for FakeMachines {
                 "share" => shared
                     .entries
                     .push(file("/shared.txt", b"from the machine")),
+                "nvm" => {
+                    let node = "/root/.nvm/versions/node/v22/bin/node";
+                    if run.fs.read(node).is_ok() {
+                        stdout.push_str("node 22 was there\n");
+                    } else {
+                        back.entries.push(file(node, b"node"));
+                        stdout.push_str("installed node 22\n");
+                    }
+                }
+                "store" => back.entries.push(file("/root/.store/pkg", b"package")),
                 "fail" => exit_code = 2,
                 _ => {}
             }
@@ -120,10 +148,12 @@ impl Machines for FakeMachines {
             | iwci_vfs::Entry::Symlink { path, .. } => asked(path),
         });
         apply(run.fs, &back, &allowed)?;
-        apply(run.scratch, &shared, &["/".into()])?;
+        apply(run.scratch.fs(), &shared, &["/".into()])?;
+        run.scratch
+            .wrote(shared.entries.iter().map(|(e, _)| entry_path(e)));
         Ok(Execution {
             exit_code,
-            stdout: format!("ran {script}\n"),
+            stdout,
             ..Default::default()
         })
     }
@@ -137,6 +167,15 @@ fn run_machines_with(
     plan: &Plan,
     machines: Option<Arc<dyn Machines>>,
     slots: Option<Arc<Slots>>,
+) -> (RunReport, FakeExecutor) {
+    run_machines_full(plan, machines, slots, None)
+}
+
+fn run_machines_full(
+    plan: &Plan,
+    machines: Option<Arc<dyn Machines>>,
+    slots: Option<Arc<Slots>>,
+    caches: Option<Arc<dyn Caches>>,
 ) -> (RunReport, FakeExecutor) {
     let ws = FakeWorkspaces {
         builds: AtomicUsize::new(0),
@@ -156,7 +195,7 @@ fn run_machines_with(
         changed_paths: None,
         base_env: vec![("IWCI".into(), "1".into())],
         memory: None,
-        caches: None,
+        caches,
         logs: None,
         slots,
         secrets: BTreeMap::from([("TOKEN".into(), "s3cr3t-value".into())]),
@@ -166,6 +205,8 @@ fn run_machines_with(
         helping: None,
         inflight: None,
         machines,
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -208,9 +249,7 @@ jobs:
     needs: [build]
 ",
     );
-    let machines = Arc::new(FakeMachines {
-        seen: Mutex::default(),
-    });
+    let machines = Arc::new(FakeMachines::new());
     let (report, exec) = run_machines(&p, Some(machines.clone()));
     for id in ["build", "check", "wasm"] {
         assert_eq!(job(&report, id).status, Status::Passed, "{id}");
@@ -268,9 +307,7 @@ jobs:
     changes: fail
 ",
     );
-    let machines = Arc::new(FakeMachines {
-        seen: Mutex::default(),
-    });
+    let machines = Arc::new(FakeMachines::new());
     let (report, _) = run_machines(&p, Some(machines.clone()));
     let fmt = job(&report, "fmt");
     assert!(
@@ -310,9 +347,7 @@ jobs:
     changes: fail
 ",
     );
-    let machines = Arc::new(FakeMachines {
-        seen: Mutex::default(),
-    });
+    let machines = Arc::new(FakeMachines::new());
     let (report, _) = run_machines(&p, Some(machines));
     let changed: Vec<&str> = job(&report, "fmt")
         .changes
@@ -338,12 +373,7 @@ jobs:
     run: nothing
 ",
     );
-    let (report, _) = run_machines(
-        &p,
-        Some(Arc::new(FakeMachines {
-            seen: Mutex::default(),
-        })),
-    );
+    let (report, _) = run_machines(&p, Some(Arc::new(FakeMachines::new())));
     assert!(
         matches!(&job(&report, "build").status, Status::Failed { reason } if reason == "exited with 2")
     );
@@ -387,9 +417,7 @@ jobs:
     run: share
 ",
     );
-    let machines = Arc::new(FakeMachines {
-        seen: Mutex::default(),
-    });
+    let machines = Arc::new(FakeMachines::new());
     // A runner with 2 vCPUs gives a job asking for 8 all of its own.
     let (report, _) = run_machines_with(
         &p,
@@ -443,9 +471,9 @@ jobs:
         split: None,
         helping: None,
         inflight: None,
-        machines: Some(Arc::new(FakeMachines {
-            seen: Mutex::default(),
-        })),
+        machines: Some(Arc::new(FakeMachines::new())),
+        spill: None,
+        remote_cache: None,
         downloads: None,
         cancel: None,
         access: Default::default(),
@@ -463,4 +491,176 @@ jobs:
         &job(&report, "big").status,
         Status::Error { message } if message.contains("asks for 1152 MiB")
     ));
+}
+
+#[test]
+fn a_machine_images_caches_come_back_on_the_next_run() {
+    let dir = std::env::temp_dir().join(format!("iwci-machine-env-cache-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store: Arc<dyn iwci_store::ObjectStore> =
+        Arc::new(iwci_store::LocalStore::new(&dir).unwrap());
+    let caches: Arc<dyn Caches> = Arc::new(crate::adapters::caches::StoreCaches::new(
+        store,
+        &iwci_store::RepoId::new("github.com-acme").unwrap(),
+        &iwci_store::RepoId::new("web").unwrap(),
+        "main",
+        "main",
+        iwci_spec::Event::Push,
+        None,
+    ));
+    let mut fake = FakeMachines::new();
+    fake.caches = vec![crate::env_cache::EnvCacheDecl {
+        name: "nvm".into(),
+        path: "/root/.nvm/versions".into(),
+        max_bytes: 1 << 30,
+        environment: "machine:ubuntu-24.04".into(),
+    }];
+    let machines = Arc::new(fake);
+    let p = plan("name: t\njobs:\n  a:\n    platform: linux\n    run: nvm\n");
+    let go = |p: &Plan| {
+        let (report, _) = run_machines_full(p, Some(machines.clone()), None, Some(caches.clone()));
+        let a = job(&report, "a").clone();
+        (a.status, a.execution.unwrap().stdout, a.caches)
+    };
+
+    let (status, stdout, lines) = go(&p);
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert_eq!(stdout, "ran nvm\ninstalled node 22\n");
+    assert_eq!(
+        lines,
+        vec!["env cache `nvm`: miss", "env cache `nvm`: saved 1 KiB"]
+    );
+    // The machine is asked for the cache's directory back.
+    let collect = machines.seen.lock().unwrap().collect["a"].clone();
+    assert!(
+        collect.paths.contains(&"/root/.nvm/versions".to_string()),
+        "{collect:?}"
+    );
+
+    // The next run starts with it, and leaves it as it was.
+    let (status, stdout, lines) = go(&p);
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert_eq!(stdout, "ran nvm\nnode 22 was there\n");
+    assert_eq!(
+        lines,
+        vec![
+            "env cache `nvm`: restored 1 KiB",
+            "env cache `nvm`: unchanged"
+        ]
+    );
+
+    // `env-cache: false` turns it off for a machine job too.
+    let off =
+        plan("name: t\njobs:\n  a:\n    platform: linux\n    run: nvm\n    env-cache: false\n");
+    let (status, stdout, lines) = go(&off);
+    assert_eq!(status, Status::Passed);
+    assert_eq!(
+        (stdout.as_str(), lines.len()),
+        ("ran nvm\ninstalled node 22\n", 0)
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_cache_that_restored_its_exact_key_is_not_sent_back() {
+    let dir = std::env::temp_dir().join(format!("iwci-machine-job-cache-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store: Arc<dyn iwci_store::ObjectStore> =
+        Arc::new(iwci_store::LocalStore::new(&dir).unwrap());
+    let caches: Arc<dyn Caches> = Arc::new(crate::adapters::caches::StoreCaches::new(
+        store,
+        &iwci_store::RepoId::new("github.com-acme").unwrap(),
+        &iwci_store::RepoId::new("web").unwrap(),
+        "main",
+        "main",
+        iwci_spec::Event::Push,
+        None,
+    ));
+    let machines = Arc::new(FakeMachines::new());
+    let go = |key: &str| {
+        let p = plan(&format!(
+            "name: t\njobs:\n  a:\n    platform: linux\n    run: store\n    cache: {{ key: {key}, restore-keys: [store-], paths: [/root/.store] }}\n"
+        ));
+        let (report, _) = run_machines_full(&p, Some(machines.clone()), None, Some(caches.clone()));
+        let a = job(&report, "a").clone();
+        let collect = machines.seen.lock().unwrap().collect["a"].clone();
+        (a.status, a.caches, collect.paths)
+    };
+
+    // A miss is saved, so the machine sends the store back.
+    let (status, lines, paths) = go("store-1");
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert!(lines.iter().any(|l| l.contains("saved")), "{lines:?}");
+    assert!(paths.contains(&"/root/.store".to_string()), "{paths:?}");
+
+    // Its exact key restored, it is not saved again, and not asked for.
+    let (status, lines, paths) = go("store-1");
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert_eq!(lines, vec!["cache `store-1`: restored in 0.0 s"]);
+    assert!(!paths.contains(&"/root/.store".to_string()), "{paths:?}");
+
+    // Restored from a `restore-keys` prefix, it is saved under the new
+    // key, so it comes back.
+    let (status, lines, paths) = go("store-2");
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert!(lines.iter().any(|l| l.contains("saved")), "{lines:?}");
+    assert!(paths.contains(&"/root/.store".to_string()), "{paths:?}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn an_image_cache_of_a_directory_the_job_caches_is_left_to_the_job() {
+    let dir = std::env::temp_dir().join(format!("iwci-machine-both-caches-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let store: Arc<dyn iwci_store::ObjectStore> =
+        Arc::new(iwci_store::LocalStore::new(&dir).unwrap());
+    let caches: Arc<dyn Caches> = Arc::new(crate::adapters::caches::StoreCaches::new(
+        store,
+        &iwci_store::RepoId::new("github.com-acme").unwrap(),
+        &iwci_store::RepoId::new("web").unwrap(),
+        "main",
+        "main",
+        iwci_spec::Event::Push,
+        None,
+    ));
+    let mut fake = FakeMachines::new();
+    fake.caches = vec![crate::env_cache::EnvCacheDecl {
+        name: "store".into(),
+        path: "/root/.store".into(),
+        max_bytes: 1 << 30,
+        environment: "machine:ubuntu-24.04".into(),
+    }];
+    let machines = Arc::new(fake);
+    let go = |paths: &str| {
+        let p = plan(&format!(
+            "name: t\njobs:\n  a:\n    platform: linux\n    run: store\n    cache: {{ key: store-1, paths: [{paths}] }}\n"
+        ));
+        let (report, _) = run_machines_full(&p, Some(machines.clone()), None, Some(caches.clone()));
+        let a = job(&report, "a").clone();
+        let collect = machines.seen.lock().unwrap().collect["a"].clone();
+        (a.status, a.caches, collect.paths)
+    };
+
+    // The job's own cache of the directory is the one restored and saved.
+    let left = "env cache `store`: left to the job's cache of `/root/.store`";
+    let (status, lines, _) = go("/root/.store");
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert_eq!(lines[0], "cache `store-1`: miss");
+    assert_eq!(lines[1], left);
+    assert!(lines[2].starts_with("cache `store-1`: saved"), "{lines:?}");
+    assert_eq!(lines.len(), 3, "{lines:?}");
+
+    // Its exact key restored, nothing asks for the directory back.
+    let (status, lines, paths) = go("/root/.store");
+    assert_eq!(status, Status::Passed, "{lines:?}");
+    assert_eq!(lines, vec!["cache `store-1`: restored in 0.0 s", left]);
+    assert!(!paths.contains(&"/root/.store".to_string()), "{paths:?}");
+
+    // A job cache of a parent directory takes it too.
+    let (_, lines, _) = go("/root");
+    assert!(
+        lines.contains(&"env cache `store`: left to the job's cache of `/root`".to_string()),
+        "{lines:?}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
 }

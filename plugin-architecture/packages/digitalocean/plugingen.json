@@ -839,6 +839,7 @@
     "/registry": ["get", "post", "delete"],
     "/registry/docker-credentials": ["get"],
     "/registry/subscription": ["get"],
+    "/registry/{registry_name}/repositoriesV2": ["get"],
     "/reserved_ips": ["get", "post"],
     "/reserved_ips/{reserved_ip}": ["delete"],
     "/reserved_ips/{reserved_ip}/actions": ["post"],

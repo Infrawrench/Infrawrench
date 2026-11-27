@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGT } from "gt-react";
+import { BetaBadge } from "../components/BetaBadge.js";
 import type { SidebarToolDef } from "../components/sidebar/SidebarTools.js";
 import { useUIStore } from "../store/ui.store.js";
 import { ProductGlyph, SettingsGlyph } from "./ProductIcon.js";
@@ -102,6 +103,7 @@ export function SidebarRecentTools({ tools, scope }: { tools: SidebarToolDef[]; 
             {tool.icon}
           </span>
           <span className="truncate">{tool.label}</span>
+          {tool.beta && <BetaBadge />}
         </button>
       ))}
     </div>
@@ -129,6 +131,7 @@ function ToolRow({ tool, active }: { tool: SidebarToolDef; active: boolean }) {
         {tool.icon}
       </span>
       <span className="truncate">{tool.label}</span>
+      {tool.beta && <BetaBadge />}
     </button>
   );
 }

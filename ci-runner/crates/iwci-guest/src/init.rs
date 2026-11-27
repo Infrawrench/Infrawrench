@@ -2,10 +2,12 @@
 //! and powers the machine off when the agent is done.
 //!
 //! The machine image is read-only and has the directories this needs:
-//! `/.iwci/rw`, `/.iwci/ws`, `/.iwci/base` and `/.iwci/root`. The job's
+//! `/.iwci/rw`, `/.iwci/disk`, `/.iwci/ws`, `/.iwci/base` and `/.iwci/root`. The job's
 //! root is an overlay file system on `/.iwci/root`:
 //!
-//! - upper: `/.iwci/rw/upper` on a tmpfs, so it holds exactly what changed;
+//! - upper: `/.iwci/rw/upper` on a tmpfs, so it holds exactly what changed
+//!   (the machine swaps to its scratch disk, on `/.iwci/disk`, when the
+//!   job outgrows its memory);
 //! - lower: the workspace image (the disk whose serial is `iwci-ws`, erofs,
 //!   on `/.iwci/ws`) when the machine has one, over the machine image
 //!   itself (`/` bound on `/.iwci/base`).
@@ -18,6 +20,9 @@
 use std::ffi::CString;
 use std::io;
 use std::path::Path;
+use std::process::Command;
+
+use iwci_vm_proto::SCRATCH_SERIAL;
 
 use crate::platform::LinuxMachine;
 use crate::port::{open_linux, serve_port};
@@ -82,22 +87,77 @@ fn bind_read_only(source: &str, target: &str) -> io::Result<()> {
     )
 }
 
+/// Swap is used in whole pages; sizes are rounded down to a MiB.
+const SWAP_ALIGN: u64 = 1 << 20;
+
+/// A block device's size in bytes, from sysfs (in 512-byte sectors).
+fn disk_bytes(dev: &str) -> u64 {
+    let name = dev.trim_start_matches("/dev/");
+    std::fs::read_to_string(format!("/sys/block/{name}/size"))
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .map_or(0, |sectors| sectors * 512)
+}
+
+/// The machine's memory in bytes (`MemTotal`).
+fn memory_bytes() -> u64 {
+    let text = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    text.lines()
+        .find_map(|l| l.strip_prefix("MemTotal:"))
+        .and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<u64>().ok())
+        .map_or(0, |kib| kib * 1024)
+}
+
+/// Makes `path` a swap file of `bytes` and turns it on. The file is
+/// allocated, not written: on a disk that lives for one job, nothing
+/// reads a page of it before the kernel has written that page.
+fn swap_on(path: &str, bytes: u64) -> io::Result<()> {
+    if bytes < 16 * SWAP_ALIGN {
+        return Err(io::Error::other("the disk is too small for swap"));
+    }
+    use std::os::unix::fs::OpenOptionsExt as _;
+    use std::os::unix::io::AsRawFd as _;
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)?;
+    let len = libc::off_t::try_from(bytes).map_err(io::Error::other)?;
+    // SAFETY: a valid descriptor, offset 0 and a positive length.
+    if unsafe { libc::fallocate(file.as_raw_fd(), 0, 0, len) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    drop(file);
+    let status = Command::new("/usr/sbin/mkswap")
+        .args(["-q", path])
+        .status()?;
+    if !status.success() {
+        return Err(io::Error::other(format!("mkswap: {status}")));
+    }
+    let path_c = c(path)?;
+    // SAFETY: a NUL-terminated path that outlives the call.
+    if unsafe { libc::swapon(path_c.as_ptr(), 0) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 /// The serial the runner gives the workspace image's disk.
 pub const WORKSPACE_SERIAL: &str = "iwci-ws";
 
-/// The workspace image's disk (`/dev/vdX`), found by its serial rather
-/// than its name: virtio-mmio devices are numbered in the reverse of the
-/// order QEMU is given them, so only the root disk's name is fixed (the
-/// runner puts it last, which makes it `vda`).
-fn workspace_disk() -> Option<String> {
+/// A disk (`/dev/vdX`), found by its serial rather than its name:
+/// virtio-mmio devices are numbered in the reverse of the order QEMU is
+/// given them, so only the root disk's name is fixed (the runner puts it
+/// last, which makes it `vda`).
+fn disk_by_serial(serial: &str) -> Option<String> {
     let entries = std::fs::read_dir("/sys/block").ok()?;
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         if !name.starts_with("vd") {
             continue;
         }
-        let serial = std::fs::read_to_string(entry.path().join("serial")).unwrap_or_default();
-        if serial.trim() == WORKSPACE_SERIAL {
+        let found = std::fs::read_to_string(entry.path().join("serial")).unwrap_or_default();
+        if found.trim() == serial {
             let dev = format!("/dev/{name}");
             return Path::new(&dev).exists().then_some(dev);
         }
@@ -105,27 +165,125 @@ fn workspace_disk() -> Option<String> {
     None
 }
 
+fn workspace_disk() -> Option<String> {
+    disk_by_serial(WORKSPACE_SERIAL)
+}
+
+/// The tag of the virtio-fs device the job's own files are served on,
+/// when the kernel's command line names one (`iwci.files=<tag>`): the
+/// runner streams them in rather than giving a workspace disk.
+fn files_tag(cmdline: &str) -> Option<&str> {
+    cmdline
+        .split_whitespace()
+        .find_map(|word| word.strip_prefix("iwci.files="))
+        .filter(|tag| {
+            !tag.is_empty()
+                && tag.len() <= 36
+                && tag
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+        })
+}
+
 /// Mounts the job's root and changes into it.
 pub fn build_root() -> io::Result<()> {
     let nosuid = libc::MS_NOSUID | libc::MS_NODEV | libc::MS_NOEXEC;
     mount("proc", "/proc", Some("proc"), nosuid, None)?;
     mount("sysfs", "/sys", Some("sysfs"), nosuid, None)?;
-    mount(
+    // A kernel booted without an initramfs mounts devtmpfs on /dev itself
+    // (CONFIG_DEVTMPFS_MOUNT), so it may be there already.
+    match mount(
         "devtmpfs",
         "/dev",
         Some("devtmpfs"),
         libc::MS_NOSUID,
         Some("mode=0755"),
-    )?;
+    ) {
+        // `mount` keeps the kind of the error, not its number.
+        Err(e) if e.kind() == io::ErrorKind::ResourceBusy => {}
+        other => other?,
+    }
 
-    mount("tmpfs", "/.iwci/rw", Some("tmpfs"), 0, Some("mode=0755"))?;
+    // The writable layer is a tmpfs: what a job writes stays in memory,
+    // where it is fastest to write and to copy up into. A scratch disk,
+    // when the runner attached one, is formatted ext4 and mounted on
+    // `/.iwci/disk`, and holds a swap file of half of it, so a job whose
+    // files and processes outgrow its memory has the kernel move what it
+    // is not using out to the disk rather than run out of space; the
+    // tmpfs may hold up to the memory and the swap together. The other
+    // half is for Docker, whose overlay2 storage wants a real file system
+    // (`iwci-dockerd`). Writing every file to the ext4 instead was slower
+    // than memory by a lot: the bun install cache (63k files, 814 MB)
+    // took 44 s to copy onto it in a 2-CPU, 6 GiB machine, and 0.6 s onto
+    // a tmpfs.
+    //
+    // The disk lives for one job, so it has no journal, and its inode
+    // tables are left for the kernel to initialise as they are used
+    // (`lazy_itable_init` here, `noinit_itable` at mount), rather than
+    // zeroed up front.
+    let scratch = disk_by_serial(SCRATCH_SERIAL);
+    let formatted = match scratch.as_deref() {
+        Some(dev) => {
+            let status = Command::new("/usr/sbin/mkfs.ext4")
+                .args([
+                    "-q",
+                    "-F",
+                    "-O",
+                    "^has_journal",
+                    "-E",
+                    "lazy_itable_init=1,lazy_journal_init=1,nodiscard",
+                    "-m",
+                    "0",
+                    dev,
+                ])
+                .status();
+            match status {
+                Ok(success) if success.success() => true,
+                other => {
+                    eprintln!("iwci-guest: mkfs.ext4 on {dev}: {other:?}; no scratch disk");
+                    false
+                }
+            }
+        }
+        None => false,
+    };
+    let mut swap_bytes = 0;
+    if let (Some(dev), true) = (scratch.as_deref(), formatted) {
+        mount(
+            dev,
+            "/.iwci/disk",
+            Some("ext4"),
+            libc::MS_NOATIME,
+            Some("noinit_itable"),
+        )?;
+        swap_bytes = disk_bytes(dev) / 2 / SWAP_ALIGN * SWAP_ALIGN;
+        if let Err(e) = swap_on("/.iwci/disk/swap", swap_bytes) {
+            eprintln!("iwci-guest: swap on the scratch disk: {e}; none");
+            let _ = std::fs::remove_file("/.iwci/disk/swap");
+            swap_bytes = 0;
+        }
+    }
+    let size = memory_bytes() + swap_bytes;
+    let options = if size > 0 {
+        format!("mode=0755,size={size}")
+    } else {
+        "mode=0755".to_string()
+    };
+    mount("tmpfs", "/.iwci/rw", Some("tmpfs"), 0, Some(&options))?;
     mkdir("/.iwci/rw/upper")?;
     mkdir("/.iwci/rw/work")?;
-    let disk = workspace_disk();
-    let workspace = disk.is_some();
-    if let Some(disk) = &disk {
-        mount(disk, "/.iwci/ws", Some("erofs"), libc::MS_RDONLY, None)?;
-    }
+    // The job's files: streamed in over virtio-fs, read only, or a disk
+    // image of the workspace. Either is the overlay's upper lower layer.
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    let workspace = if let Some(tag) = files_tag(&cmdline) {
+        mount(tag, "/.iwci/ws", Some("virtiofs"), libc::MS_RDONLY, None)?;
+        true
+    } else if let Some(disk) = workspace_disk() {
+        mount(&disk, "/.iwci/ws", Some("erofs"), libc::MS_RDONLY, None)?;
+        true
+    } else {
+        false
+    };
     mount("/", "/.iwci/base", None, libc::MS_BIND, None)?;
     let lower = if workspace {
         "/.iwci/ws:/.iwci/base"
@@ -152,6 +310,15 @@ pub fn build_root() -> io::Result<()> {
     )?;
     if workspace {
         bind_read_only("/.iwci/ws", &format!("{root}/.iwci/ws"))?;
+    }
+    if formatted {
+        mount(
+            "/.iwci/disk",
+            &format!("{root}/.iwci/disk"),
+            None,
+            libc::MS_BIND,
+            None,
+        )?;
     }
     bind_read_only("/.iwci/base", &format!("{root}/.iwci/base"))?;
     mount("proc", &format!("{root}/proc"), Some("proc"), nosuid, None)?;
@@ -203,16 +370,54 @@ pub fn build_root() -> io::Result<()> {
         Some("mode=0755"),
     )?;
 
-    std::env::set_current_dir(root)?;
-    let dot = c(".")?;
-    // SAFETY: a plain system call on a NUL-terminated string.
-    if unsafe { libc::chroot(dot.as_ptr()) } != 0 {
-        return Err(io::Error::last_os_error());
+    // Into the job's root with pivot_root, so it is the root of the mount
+    // namespace and not a directory chrooted into: a container runtime in
+    // the job enters a container by joining its mount namespace, which a
+    // chroot does not carry, so `docker exec` (and buildx's
+    // docker-container driver, which execs `buildctl`) ran in the
+    // machine's own root ("executable file not found"). chroot stays the
+    // fallback when pivot_root is refused.
+    if let Err(e) = pivot_into(root) {
+        eprintln!("iwci-guest: pivot_root into {root}: {e}; using chroot");
+        std::env::set_current_dir(root)?;
+        let dot = c(".")?;
+        // SAFETY: a plain system call on a NUL-terminated string.
+        if unsafe { libc::chroot(dot.as_ptr()) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
     }
     std::env::set_current_dir("/")
 }
 
-/// The environment every script starts from.
+/// Makes `root` the root of the mount namespace, the old root detached.
+/// Everything the agent needs from the old root is bound into `root`
+/// already.
+fn pivot_into(root: &str) -> io::Result<()> {
+    // pivot_root refuses a shared mount tree.
+    mount("none", "/", None, libc::MS_REC | libc::MS_PRIVATE, None)?;
+    let old = format!("{root}/.iwci/old");
+    mkdir(&old)?;
+    let (new_c, old_c) = (c(root)?, c(&old)?);
+    // SAFETY: the pivot_root system call on two NUL-terminated paths that
+    // outlive it.
+    if unsafe { libc::syscall(libc::SYS_pivot_root, new_c.as_ptr(), old_c.as_ptr()) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    std::env::set_current_dir("/")?;
+    let old_c = c("/.iwci/old")?;
+    // SAFETY: a plain system call on a NUL-terminated string.
+    if unsafe { libc::umount2(old_c.as_ptr(), libc::MNT_DETACH) } != 0 {
+        eprintln!(
+            "iwci-guest: detaching the old root: {}",
+            io::Error::last_os_error()
+        );
+    }
+    let _ = std::fs::remove_dir("/.iwci/old");
+    Ok(())
+}
+
+/// The environment every script starts from, before the image's
+/// `/etc/environment` ([`crate::exec::image_environment`]).
 const ENVIRONMENT: [(&str, &str); 6] = [
     (
         "PATH",
@@ -237,20 +442,72 @@ fn power_off() -> ! {
 }
 
 /// Serves the runner from inside the job's root.
+/// Threads reading the streamed-in files ahead of the job.
+const PREFETCH_THREADS: usize = 4;
+/// Files larger than this are left for the job to read if it wants them.
+const PREFETCH_LARGEST: u64 = 256 << 20;
+
 pub fn agent() -> io::Result<()> {
+    // The job's files streamed in from the runner: start pulling them in
+    // now, in the background, while the runner sets the machine up and
+    // the job starts; the job waits only for a file that has not come yet.
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    if files_tag(&cmdline).is_some() {
+        let budget =
+            crate::prefetch::budget(&std::fs::read_to_string("/proc/meminfo").unwrap_or_default());
+        let _ = std::thread::Builder::new()
+            .name("iwci-prefetch".into())
+            .spawn(move || {
+                let started = std::time::Instant::now();
+                let got = crate::prefetch::prefetch(
+                    std::path::Path::new("/.iwci/ws"),
+                    PREFETCH_THREADS,
+                    budget,
+                    PREFETCH_LARGEST,
+                );
+                eprintln!(
+                    "iwci-guest: read ahead {} files, {} KiB, in {} ms",
+                    got.files,
+                    got.bytes / 1024,
+                    started.elapsed().as_millis()
+                );
+            });
+    }
     let port = open_linux()?;
+    mark("agent port open");
     let mut tree = Overlay::linux();
     serve_port(port, &LinuxMachine, &mut tree)
 }
 
 /// Runs as the machine's PID 1. Never returns: the machine powers off when
 /// the agent ends, or when the root cannot be built.
+/// With `iwci.times` on the kernel's command line (the runner adds it
+/// under `IWCI_BOOT_TIMES`), the machine's uptime at `step` on the console.
+pub fn mark(step: &str) {
+    let cmdline = std::fs::read_to_string("/proc/cmdline").unwrap_or_default();
+    if cmdline.split_whitespace().any(|w| w == "iwci.times") {
+        let uptime = std::fs::read_to_string("/proc/uptime").unwrap_or_default();
+        eprintln!(
+            "iwci-guest: {step} at {} s of uptime",
+            uptime.split_whitespace().next().unwrap_or("?")
+        );
+    }
+}
+
 pub fn run() -> ! {
     if let Err(e) = build_root() {
         eprintln!("iwci-guest: could not build the job's root: {e}");
         power_off();
     }
+    mark("root built");
     for (key, value) in ENVIRONMENT {
+        // SAFETY: the process has one thread so far.
+        unsafe { std::env::set_var(key, value) };
+    }
+    // What the image sets for every job (rbenv's shims on the PATH,
+    // NVM_DIR): it knows what it installed.
+    let file = std::fs::read_to_string("/etc/environment").unwrap_or_default();
+    for (key, value) in crate::exec::image_environment(&file) {
         // SAFETY: the process has one thread so far.
         unsafe { std::env::set_var(key, value) };
     }
@@ -284,5 +541,19 @@ pub fn run() -> ! {
         if pid < 0 && io::Error::last_os_error().raw_os_error() == Some(libc::ECHILD) {
             power_off();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::files_tag;
+
+    #[test]
+    fn the_files_tag_comes_from_the_command_line_and_only_a_plain_one() {
+        let line = "console=hvc0 root=/dev/vda ro init=/usr/local/sbin/iwci-guest iwci.files=iwci-files quiet";
+        assert_eq!(files_tag(line), Some("iwci-files"));
+        assert_eq!(files_tag("console=hvc0 quiet"), None);
+        assert_eq!(files_tag("iwci.files="), None);
+        assert_eq!(files_tag("iwci.files=../x"), None);
     }
 }

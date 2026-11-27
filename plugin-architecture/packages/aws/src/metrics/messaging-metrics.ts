@@ -1,5 +1,6 @@
 import type { MetricSeries, ResourceInstance } from "@infrawrench/plugin-base";
 import type { MetricsContext } from "./cw-helpers.js";
+import { combineSeries } from "./series-math.js";
 
 /**
  * Messaging / streaming metric handlers: SQS, SNS, Kinesis, MSK, MQ,
@@ -159,12 +160,46 @@ export async function mskClusterMetrics(
   const clusterName = String(f.clusterName ?? "");
   if (!clusterName) return [];
   const dims = [{ Name: "Cluster Name", Value: clusterName }];
-  const [cpuUser, memUsed, diskUsed, activeConns] = await Promise.all([
+  // `KafkaDataLogsDiskUsed` is published per broker only (`Cluster Name,
+  // Broker ID`), and CloudWatch matches dimensions exactly, so the
+  // cluster-only form returns nothing. Read each broker (MSK numbers them
+  // from 1) and keep the fullest one per timestamp, since a single full
+  // broker is what stops writes:
+  // https://docs.aws.amazon.com/msk/latest/developerguide/metrics-details.html
+  // (read 2026-11-23).
+  const brokerCount = Math.min(Math.max(0, Math.floor(Number(f.numberOfBrokerNodes ?? 0))), 30);
+  const brokerIds = Array.from({ length: brokerCount }, (_, i) => String(i + 1));
+  const [cpuUser, memUsed, activeConns, ...brokerDisks] = await Promise.all([
     ctx.fetchCw("AWS/Kafka", "CpuUser", dims).catch(() => null),
     ctx.fetchCw("AWS/Kafka", "MemoryUsed", dims).catch(() => null),
-    ctx.fetchCw("AWS/Kafka", "KafkaDataLogsDiskUsed", dims).catch(() => null),
     ctx.fetchCw("AWS/Kafka", "ActiveControllerCount", dims, "Sum").catch(() => null),
+    ...brokerIds.map((id) =>
+      ctx
+        .fetchCw(
+          "AWS/Kafka",
+          "KafkaDataLogsDiskUsed",
+          [...dims, { Name: "Broker ID", Value: id }],
+          "Maximum",
+        )
+        .catch(() => null),
+    ),
   ]);
+  const fullest = new Map<number, number>();
+  for (const series of brokerDisks) {
+    for (const p of series?.points ?? []) {
+      fullest.set(p.timestamp, Math.max(fullest.get(p.timestamp) ?? -Infinity, p.value));
+    }
+  }
+  const diskUsed: MetricSeries | null =
+    fullest.size > 0
+      ? {
+          label: "KafkaDataLogsDiskUsed",
+          unit: "%",
+          points: [...fullest.entries()]
+            .map(([timestamp, value]) => ({ timestamp, value }))
+            .sort((a, b) => a.timestamp - b.timestamp),
+        }
+      : null;
   const results: MetricSeries[] = [];
   if (cpuUser && cpuUser.points.length > 0)
     results.push({ ...cpuUser, label: "CPU (User)", unit: "%" });
@@ -185,16 +220,39 @@ export async function mqBrokerMetrics(
   const f = resource.fields;
   const brokerName = String(f.brokerName ?? "");
   if (!brokerName) return [];
-  const dims = [{ Name: "Broker", Value: brokerName }];
-  const [cpu, conns, heap] = await Promise.all([
+  const engine = String(f.engineType ?? "").toUpperCase();
+  // ActiveMQ publishes under the broker name with a `-1` suffix (and `-2`
+  // for the standby of an active/standby pair); RabbitMQ under the bare
+  // name. Verified against
+  // https://docs.aws.amazon.com/amazon-mq/latest/developer-guide/security-logging-monitoring-cloudwatch.html
+  // and .../rabbitmq-logging-monitoring.html (read 2026-11-23).
+  const dims = [{ Name: "Broker", Value: engine === "ACTIVEMQ" ? `${brokerName}-1` : brokerName }];
+  const [cpu, conns, heap, store, memUsed, memLimit] = await Promise.all([
     ctx.fetchCw("AWS/AmazonMQ", "CpuUtilization", dims).catch(() => null),
     ctx.fetchCw("AWS/AmazonMQ", "CurrentConnectionsCount", dims).catch(() => null),
     ctx.fetchCw("AWS/AmazonMQ", "HeapUsage", dims).catch(() => null),
+    engine === "ACTIVEMQ"
+      ? ctx.fetchCw("AWS/AmazonMQ", "StorePercentUsage", dims, "Maximum").catch(() => null)
+      : null,
+    engine === "RABBITMQ"
+      ? ctx.fetchCw("AWS/AmazonMQ", "RabbitMQMemUsed", dims, "Maximum").catch(() => null)
+      : null,
+    engine === "RABBITMQ"
+      ? ctx.fetchCw("AWS/AmazonMQ", "RabbitMQMemLimit", dims, "Maximum").catch(() => null)
+      : null,
   ]);
   const results: MetricSeries[] = [];
   if (cpu && cpu.points.length > 0) results.push({ ...cpu, label: "CPU Utilization", unit: "%" });
   if (conns && conns.points.length > 0) results.push({ ...conns, label: "Connections" });
   if (heap && heap.points.length > 0) results.push({ ...heap, label: "Heap Usage", unit: "%" });
+  // ActiveMQ refuses messages once the store reaches 100% of its limit.
+  if (store && store.points.length > 0) results.push({ ...store, label: "Store Used", unit: "%" });
+  // RabbitMQ blocks publishers once memory use passes its memory limit.
+  const memPct = combineSeries(memUsed, memLimit, (used, limit) =>
+    limit > 0 ? (used / limit) * 100 : null,
+  );
+  if (memPct.length > 0)
+    results.push({ label: "Memory Used (of limit)", unit: "%", points: memPct });
   return results;
 }
 

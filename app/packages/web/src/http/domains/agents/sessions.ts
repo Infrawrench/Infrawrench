@@ -40,6 +40,7 @@ import {
 } from "@infrawrench/ui/agents/nibblets";
 import { T3_CODE_PROJECTS_DIR } from "@infrawrench/ui/agents/t3-code";
 import { createApprovedLink, revokeLink } from "@infrawrench/server-core/agent-links/links";
+import { recordAgentLink, type GitWork } from "@infrawrench/server-core/git/agent-work";
 import { upsertCreatedResource } from "@infrawrench/server-core/created-resource";
 import { holdSecretWrites } from "@infrawrench/server-core/secret-states";
 import { logAudit } from "../../../services/audit";
@@ -282,6 +283,12 @@ export interface CreateSessionInput {
   readonly t3Policy: T3CodePolicy | null;
   /** The approved ceiling of the Nibblets link to create, or null for none. */
   readonly linkScopes: string[] | null;
+  /**
+   * A forge branch page the session works on, resolved, or null. Its branch
+   * is the session's branch, and the session is recorded as the page's agent
+   * before setup starts (setup finds the work from that).
+   */
+  readonly work?: GitWork | null;
 }
 
 export type CreateSessionOutcome =
@@ -295,6 +302,7 @@ export type CreateSessionOutcome =
 export async function createAgentSession(input: CreateSessionInput): Promise<CreateSessionOutcome> {
   const { organizationId, userId, id, repo, projectName, workspaceName, tool, surface } = input;
   const { settings, t3Access, t3Policy, linkScopes } = input;
+  const work = input.work ?? null;
   const isT3Code = isT3CodeSurface(surface);
   const isNibblets = isNibbletsSurface(surface);
   const setupPlan = isNibblets
@@ -308,6 +316,9 @@ export async function createAgentSession(input: CreateSessionInput): Promise<Cre
       : isT3Code
         ? "T3 Code server session created."
         : "Agent session created.",
+    ...(work
+      ? [`Working on the branch ${work.branch} of ${work.owner}/${work.repo}: ${work.pageUrl}`]
+      : []),
     "Setup policy: conservative detection.",
     ...setupPlanLogLines(setupPlan),
     "Provisioning VM with selected provider defaults.",
@@ -414,13 +425,30 @@ export async function createAgentSession(input: CreateSessionInput): Promise<Cre
     t3Policy: policyColumn(t3Policy),
     agentLinkId,
     // Kept non-empty for T3 Code servers too: nothing checks it out, but a
-    // blank branch reads as data loss in the session row.
-    branchName: branchName(id),
+    // blank branch reads as data loss in the session row. Work on a forge
+    // branch happens on that branch, the one its token may push.
+    branchName: work ? work.branch : branchName(id),
     status: initialStatus,
     vmResourceId: resource.id,
     logs: updatedLogs,
     setupPlanJson: JSON.stringify(setupPlan),
   });
+  // Before setup starts: setup finds the branch page (and mints the VM's
+  // branch token) from this link.
+  if (work) {
+    await recordAgentLink({ work, sessionId: id, userId }).catch(async (error: unknown) => {
+      console.error(`[agents] Could not record ${id} as the agent of its branch page:`, error);
+      await db
+        .update(agentSessions)
+        .set({
+          logs: [
+            ...updatedLogs,
+            "Warning: the branch page could not be linked to this session, so the VM gets no credential to push with.",
+          ],
+        })
+        .where(eq(agentSessions.id, id));
+    });
+  }
   // Fire-and-forget: setup progress and failures are persisted on the session
   // row (logs/status), so the client can poll GET /sessions for them.
   scheduleAgentVmSetup(id, organizationId);

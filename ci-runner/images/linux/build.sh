@@ -33,7 +33,8 @@
 #      there.
 #   4. The agent at /usr/local/sbin/iwci-guest (it is PID 1), the empty
 #      /.iwci/{rw,ws,base,root} it mounts on, /etc/iwci-image.
-#   5. `mkfs.erofs --tar=f -zlz4hc` over a tar of the tree, and image.json.
+#   5. `mkfs.erofs --tar=f` (uncompressed) over a tar of the tree, checked
+#      with fsck.erofs, and image.json.
 #
 # Runs as root on Ubuntu 24.04 of the target architecture (x86_64 or
 # aarch64); it cannot cross-build, because packages.txt runs installers in
@@ -120,6 +121,7 @@ case "$arch" in
     kfile=vmlinux
     kbuilt=vmlinux
     nodearch=x64
+    bunarch=x64
     goarch=amd64
     rusttriple=x86_64-unknown-linux-gnu
     filearch="x86-64"
@@ -132,6 +134,7 @@ case "$arch" in
     kfile=Image
     kbuilt=arch/arm64/boot/Image
     nodearch=arm64
+    bunarch=aarch64
     goarch=arm64
     rusttriple=aarch64-unknown-linux-gnu
     filearch="ARM aarch64"
@@ -141,7 +144,7 @@ case "$arch" in
 esac
 
 missing=()
-for tool in debootstrap mkfs.erofs curl gpg sha256sum tar xz file make gcc bc bison flex perl chroot mount umount mountpoint; do
+for tool in debootstrap mkfs.erofs fsck.erofs curl gpg sha256sum tar xz file make gcc bc bison flex perl chroot mount umount mountpoint; do
   command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
 done
 [[ -e /usr/include/libelf.h ]] || missing+=("libelf-dev (libelf.h)")
@@ -275,8 +278,9 @@ fi
 if [[ "$snapshot" == none ]]; then
   mirror="$live_mirror"
 else
-  # Plain http, like the live mirrors: the chroot has no CA certificates
-  # until apt installs them, and apt checks every index signature anyway.
+  # snapshot.ubuntu.com answers plain http with a redirect to https, so
+  # the root is bootstrapped with ca-certificates (below) for apt in the
+  # chroot to follow it; apt checks every index signature either way.
   mirror="http://snapshot.ubuntu.com/$archive/$snapshot"
   curl -fsS -o /dev/null "$mirror/dists/$SUITE/InRelease" ||
     die "the snapshot $mirror does not answer; pick another --snapshot, or --snapshot none for the live archive"
@@ -285,6 +289,7 @@ fi
 step "debootstrap $SUITE ($debarch) from $mirror"
 rm -rf "$root"
 debootstrap --variant=minbase --arch="$debarch" --components=main,universe \
+  --include=ca-certificates \
   --keyring=/usr/share/keyrings/ubuntu-archive-keyring.gpg \
   "$SUITE" "$root" "$mirror"
 
@@ -354,12 +359,99 @@ tar -C "$root/usr/local" -xJf "$dl/node.tar.xz" --strip-components=1 --no-same-o
   --exclude='*/CHANGELOG.md' --exclude='*/README.md'
 in_root corepack enable pnpm yarn
 
+read -r v s < <(release_line nvm)
+fetch "https://github.com/nvm-sh/nvm/archive/refs/tags/v$v.tar.gz" "$s" "nvm.tar.gz"
+rm -rf "$root/root/.nvm"
+install -d "$root/root/.nvm/versions/node"
+tar -C "$root/root/.nvm" -xzf "$dl/nvm.tar.gz" --strip-components=1 --no-same-owner \
+  "nvm-$v/nvm.sh" "nvm-$v/nvm-exec" "nvm-$v/bash_completion" "nvm-$v/LICENSE.md"
+
+read -r v s < <(release_line bun)
+fetch "https://github.com/oven-sh/bun/releases/download/bun-v$v/bun-linux-$bunarch.zip" "$s" "bun.zip"
+install -m 0644 "$dl/bun.zip" "$root/tmp/bun.zip"
+in_root unzip -q -o -j /tmp/bun.zip "bun-linux-$bunarch/bun" -d /usr/local/bin
+rm -f "$root/tmp/bun.zip"
+chmod 0755 "$root/usr/local/bin/bun"
+ln -sf bun "$root/usr/local/bin/bunx"
+
+# rbenv's own files in /usr/local/rbenv, ruby-build's commands on the
+# PATH (rbenv finds `rbenv-install` there), and RBENV_ROOT, where the
+# rubies and their shims go, in /root/.rbenv.
+read -r v s < <(release_line rbenv)
+fetch "https://github.com/rbenv/rbenv/archive/refs/tags/v$v.tar.gz" "$s" "rbenv.tar.gz"
+rm -rf "$root/usr/local/rbenv"
+install -d "$root/usr/local/rbenv"
+tar -C "$root/usr/local/rbenv" -xzf "$dl/rbenv.tar.gz" --strip-components=1 --no-same-owner
+ln -sf ../rbenv/bin/rbenv "$root/usr/local/bin/rbenv"
+read -r v s < <(release_line ruby-build)
+fetch "https://github.com/rbenv/ruby-build/archive/refs/tags/v$v.tar.gz" "$s" "ruby-build.tar.gz"
+rm -rf "$work/ruby-build"
+mkdir -p "$work/ruby-build"
+tar -C "$work/ruby-build" -xzf "$dl/ruby-build.tar.gz" --strip-components=1 --no-same-owner
+PREFIX="$root/usr/local" "$work/ruby-build/install.sh"
+install -d "$root/root/.rbenv/versions" "$root/root/.rbenv/shims"
+# Shims for Ruby's own commands from the start, which run the system Ruby
+# until a version is chosen: otherwise bash remembers /usr/bin/ruby from a
+# job's first `ruby`, and keeps running it after `rbenv install` makes the
+# shim. rbenv only makes shims for what a version has, so a stand-in
+# version lends the names and goes again.
+stand_in="$root/root/.rbenv/versions/iwci-shim-names/bin"
+install -d "$stand_in"
+for name in ruby gem bundle bundler erb irb rake rdoc ri racc rbs rdbg; do
+  install -m 0755 /dev/null "$stand_in/$name"
+done
+in_root env RBENV_ROOT=/root/.rbenv rbenv rehash
+rm -rf "$root/root/.rbenv/versions/iwci-shim-names"
+[[ -x "$root/root/.rbenv/shims/ruby" ]] || die "rbenv rehash made no shims"
+
 read -r v s < <(release_line go)
 fetch "https://go.dev/dl/go$v.linux-$goarch.tar.gz" "$s" "go.tar.gz"
 rm -rf "$root/usr/local/go"
 tar -C "$root/usr/local" -xzf "$dl/go.tar.gz" --no-same-owner
 ln -sf ../go/bin/go "$root/usr/local/bin/go"
 ln -sf ../go/bin/gofmt "$root/usr/local/bin/gofmt"
+
+# goenv's binary on the PATH and GOENV_ROOT, where the Go versions and their
+# shims go, in /root/.goenv, as for rbenv. goenv 3 installs gopls,
+# golangci-lint, staticcheck and delve after every `goenv install` unless
+# told not to: 51 s and 150 MB more a version, measured on ci-1, so it is
+# told not to.
+#
+# The Go above is also a goenv version. goenv reads a project's go.mod (its
+# `go` and `toolchain` lines) as the least version it needs, and with no
+# version installed it refuses every module ("version '1.27.4' is not
+# installed (set by /app/go.mod)") instead of running the Go on the PATH.
+# Registered, it satisfies every go.mod up to its own version. goenv only
+# lists a real directory under versions/ (a symlink to /usr/local/go is
+# skipped), so the version is a directory of links to the install's entries.
+# That also makes the `go` and `gofmt` shims at rehash.
+read -r v s < <(release_line goenv)
+fetch "https://github.com/go-nv/goenv/releases/download/$v/goenv_${v}_linux_$goarch.tar.gz" "$s" "goenv.tar.gz"
+rm -rf "$work/goenv"
+mkdir -p "$work/goenv"
+tar -C "$work/goenv" -xzf "$dl/goenv.tar.gz" --no-same-owner goenv
+install -m 0755 "$work/goenv/goenv" "$root/usr/local/bin/goenv"
+install -d "$root/root/.goenv/versions" "$root/root/.goenv/shims"
+printf 'enabled: false\ntools: []\n' >"$root/root/.goenv/default-tools.yaml"
+read -r gov _ < <(release_line go)
+install -d "$root/root/.goenv/versions/$gov"
+for entry in "$root/usr/local/go/"*; do
+  ln -s "/usr/local/go/${entry##*/}" "$root/root/.goenv/versions/$gov/"
+done
+in_root env GOENV_ROOT=/root/.goenv goenv rehash >/dev/null
+[[ -x "$root/root/.goenv/shims/go" ]] || die "goenv rehash made no shims"
+# The failure this guards against: a module whose go.mod names the bundled
+# Go, built through the shim, as a job would.
+probe="$root/tmp/goenv-probe"
+rm -rf "$probe"
+install -d "$probe"
+printf 'module probe\n\ngo %s\n' "$gov" >"$probe/go.mod"
+printf 'package main\n\nfunc main() {}\n' >"$probe/main.go"
+in_root env GOENV_ROOT=/root/.goenv GOENV_DISABLE_GOPATH=1 GOENV_DISABLE_GOCACHE=1 \
+  GOTOOLCHAIN=local GOCACHE=/tmp/goenv-probe/cache GOPATH=/tmp/goenv-probe/gopath \
+  sh -c 'cd /tmp/goenv-probe && /root/.goenv/shims/go build -o /dev/null .' ||
+  die "goenv's go shim cannot build a module whose go.mod says go $gov"
+rm -rf "$probe"
 
 read -r v s < <(release_line rustup)
 fetch "https://static.rust-lang.org/rustup/archive/$v/$rusttriple/rustup-init" "$s" "rustup-init"
@@ -399,11 +491,36 @@ read -r v s < <(release_line yq)
 fetch "https://github.com/mikefarah/yq/releases/download/v$v/yq_linux_$goarch" "$s" "yq"
 install -m 0755 "$dl/yq" "$root/usr/local/bin/yq"
 
+# Google Chrome on x86_64, with the libraries it needs from the pinned
+# Ubuntu snapshot. Playwright's `install --with-deps chrome` reinstalls it
+# under CI=true whatever is there, but with its dependencies already in
+# place that is one package rather than sixty (2.5 minutes of every trpc
+# e2e job on ci-2). Its package adds Google's apt source and a cron job to
+# keep it; the image keeps to its pins, so both go.
+if [[ "$karch" == x86_64 ]]; then
+  read -r v s < <(release_line google-chrome)
+  fetch "https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${v}_amd64.deb" "$s" "google-chrome.deb"
+  cp "$dl/google-chrome.deb" "$root/tmp/google-chrome.deb"
+  in_root apt-get -y install --no-install-recommends /tmp/google-chrome.deb
+  rm -f "$root/tmp/google-chrome.deb" "$root/etc/apt/sources.list.d/google-chrome.list" \
+    "$root/etc/apt/sources.list.d/google-chrome.sources" "$root/etc/cron.daily/google-chrome"
+  [[ -x "$root/opt/google/chrome/chrome" ]] || die "Chrome did not install"
+fi
+
+# uv, from Astral's GitHub release: uv and uvx into /usr/local/bin.
+case "$karch" in x86_64) uvarch=x86_64 ;; arm64) uvarch=aarch64 ;; *) die "no uv for $karch" ;; esac
+read -r v s < <(release_line uv)
+fetch "https://github.com/astral-sh/uv/releases/download/$v/uv-$uvarch-unknown-linux-gnu.tar.gz" "$s" "uv.tar.gz"
+rm -rf "$work/uv" && mkdir -p "$work/uv"
+tar -C "$work/uv" -xzf "$dl/uv.tar.gz" --no-same-owner --strip-components=1
+install -m 0755 "$work/uv/uv" "$work/uv/uvx" "$root/usr/local/bin/"
+in_root uv --version >/dev/null || die "uv does not run in the image"
+
 # --- 3. what the agent and jobs expect -----------------------------------------
 
 step "agent and machine settings"
 install -D -m 0755 "$agent" "$root/usr/local/sbin/iwci-guest"
-install -d -m 0755 "$root/.iwci" "$root/.iwci/rw" "$root/.iwci/ws" "$root/.iwci/base" "$root/.iwci/root"
+install -d -m 0755 "$root/.iwci" "$root/.iwci/rw" "$root/.iwci/disk" "$root/.iwci/ws" "$root/.iwci/base" "$root/.iwci/root"
 printf '%s' "$IMAGE" >"$root/etc/iwci-image"
 
 # The runner's gateway answers DNS (iwci-vm-proto: GATEWAY_IPV4).
@@ -419,14 +536,51 @@ EOF
 
 # Everything above is on the default PATH already; this records the rest
 # for shells and anything that reads pam_env's file.
+# The agent reads it too, so these are every job's (a job's `env:` wins).
+# goenv's and rbenv's shims come first: with no version chosen they run
+# the Go in /usr/local and the system Ruby. Go keeps its usual GOPATH and
+# build cache (goenv would otherwise move both per version, the build
+# cache into the versions it caches). BASH_ENV makes `nvm` a command in
+# `bash` scripts (see below).
+# A Ruby that ruby-build compiles comes without its documentation, which
+# takes minutes and nobody reads in CI.
 cat >"$root/etc/environment" <<'EOF'
-PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+PATH="/root/.goenv/shims:/root/.rbenv/shims:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+NVM_DIR="/root/.nvm"
+RBENV_ROOT="/root/.rbenv"
+GOENV_ROOT="/root/.goenv"
+GOENV_DISABLE_GOPATH="1"
+GOENV_DISABLE_GOCACHE="1"
+GOENV_ASSUME_YES="1"
+BASH_ENV="/etc/iwci/bash_env"
+RUBY_CONFIGURE_OPTS="--disable-install-doc"
 LANG="C.UTF-8"
 COREPACK_ENABLE_DOWNLOAD_PROMPT="0"
 DOTNET_CLI_TELEMETRY_OPTOUT="1"
+UV_PYTHON_INSTALL_DIR="/root/.local/share/uv/python"
+UV_CACHE_DIR="/root/.cache/uv"
 EOF
 
-# Jobs run as root over files the workspace image owns, and use LFS.
+# nvm is a shell function, so it is defined for every bash, scripts
+# included, but its 4,000 lines are read only when it is first called.
+install -d "$root/etc/iwci"
+cat >"$root/etc/iwci/bash_env" <<'EOF'
+# Read by every non-interactive bash (BASH_ENV in /etc/environment).
+if ! declare -F nvm >/dev/null && [ -s "${NVM_DIR:-/root/.nvm}/nvm.sh" ]; then
+  nvm() {
+    unset -f nvm
+    # shellcheck disable=SC1091
+    . "${NVM_DIR:-/root/.nvm}/nvm.sh" --no-use && nvm "$@"
+  }
+fi
+EOF
+cat >>"$root/root/.bashrc" <<'EOF'
+export NVM_DIR="/root/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+EOF
+
+# Jobs use files someone else may own (the workspace, what the runner
+# lends), and LFS.
 in_root git config --system --add safe.directory '*'
 in_root git lfs install --system --skip-repo >/dev/null
 
@@ -436,18 +590,35 @@ cat >"$root/usr/local/bin/iwci-dockerd" <<'EOF'
 #!/bin/sh
 # Starts the Docker daemon in a job's machine and waits until it answers.
 # The machine has no init system (iwci-guest is PID 1). Docker's storage
-# goes on tmpfs: overlay2 cannot put its upper layers on the overlayfs the
-# job's root is.
+# cannot go on the overlayfs the job's root is (overlay2 cannot put its
+# upper layers there), so it goes on the job's scratch disk, the ext4 at
+# /.iwci/disk, when the runner attached one, and on tmpfs, which comes out
+# of the job's memory, when it did not.
 set -eu
 if docker info >/dev/null 2>&1; then
   exit 0
 fi
+# The job user starts it through sudo, which it may use without a password.
+if [ "$(id -u)" -ne 0 ]; then
+  exec sudo -n "$0" "$@"
+fi
 if ! grep -q '^cgroup2 /sys/fs/cgroup ' /proc/mounts; then
   mount -t cgroup2 cgroup2 /sys/fs/cgroup
 fi
+scratch=
+if [ "$(stat -f -c %T /.iwci/disk 2>/dev/null)" = ext2/ext3 ]; then
+  scratch=/.iwci/disk
+fi
 for dir in /var/lib/docker /var/lib/containerd; do
   mkdir -p "$dir"
-  mountpoint -q "$dir" || mount -t tmpfs -o mode=0710 tmpfs "$dir"
+  mountpoint -q "$dir" && continue
+  if [ -n "$scratch" ]; then
+    mkdir -p "$scratch/${dir##*/}"
+    chmod 0710 "$scratch/${dir##*/}"
+    mount --bind "$scratch/${dir##*/}" "$dir"
+  else
+    mount -t tmpfs -o mode=0710 tmpfs "$dir"
+  fi
 done
 mkdir -p /var/log
 nohup dockerd >/var/log/dockerd.log 2>&1 &
@@ -464,9 +635,46 @@ done
 EOF
 chmod 0755 "$root/usr/local/bin/iwci-dockerd"
 
+# The job user, as on GitHub's hosted runners: `runner`, uid and gid 1001,
+# with passwordless sudo and in the `docker` group. A runner that serves
+# the job's files as this user's says so on the kernel's command line
+# (`iwci.user=1001`), and the agent then runs scripts as it; otherwise they
+# run as root. Its home is /root, which it owns, so every path a pipeline
+# or the runner uses there (the version managers' caches, ~/.cargo,
+# ~/.gitconfig) is the same either way. It also owns where npm and corepack
+# write global commands, which GitHub's toolcache Node lets its user write.
+in_root useradd --no-create-home --home-dir /root --uid 1001 --user-group \
+  --shell /bin/bash runner
+in_root usermod -aG docker runner
+printf 'runner ALL=(ALL) NOPASSWD:ALL\n' >"$root/etc/sudoers.d/runner"
+chmod 0440 "$root/etc/sudoers.d/runner"
+in_root chown -R runner:runner /root /usr/local/lib/node_modules
+in_root chown runner:runner /usr/local/bin
+[[ "$(in_root id -u runner)" == 1001 ]] || die "the job user is not uid 1001"
+# systemd's provision.conf makes /root root's again whenever tmpfiles run,
+# which a job's `apt-get install` of anything that pulls systemd in does
+# (Playwright's `install --with-deps chrome`, through dbus): the job user
+# then loses its own home mid-job. Masked, so /root stays the job user's.
+install -d -m 0755 "$root/etc/tmpfiles.d"
+ln -sfn /dev/null "$root/etc/tmpfiles.d/provision.conf"
+
 # shellcheck disable=SC2016 # dpkg-query's format, not the shell's
 in_root dpkg-query -W -f='${Package}\t${Version}\t${Architecture}\n' >"$stage/packages.lock"
 awk '$1 == "release" || $1 == "rust" { print $2 "\t" $3 "\t" "release" }' "$self/packages.txt" >>"$stage/packages.lock"
+
+# Jobs' own `apt-get install`s go to the live archive, as on GitHub's
+# images: the snapshot pins what the image is built from, but it answers
+# slowly (on ci-2, `apt-get update` took 125 s from it and 3.5 s from
+# archive.ubuntu.com, and Chrome's 92 MB of libraries did not arrive in
+# four minutes, against 2 s), which made every trpc e2e job's Playwright
+# install take minutes.
+cat >"$root/etc/apt/sources.list.d/ubuntu.sources" <<EOF
+Types: deb
+URIs: $live_mirror
+Suites: $SUITE $SUITE-updates $SUITE-security
+Components: main universe
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+EOF
 
 step "cleaning up"
 in_root apt-get clean
@@ -485,8 +693,18 @@ step "rootfs.erofs"
 tar -C "$root" --numeric-owner --xattrs --xattrs-include='*' \
   --exclude='./proc/*' --exclude='./sys/*' --exclude='./dev/*' \
   -cf "$work/rootfs.tar" .
-mkfs.erofs -zlz4hc,12 -L iwci-root --tar=f "$stage/rootfs.erofs" "$work/rootfs.tar"
+# Uncompressed: Ubuntu 24.04's erofs-utils (1.7.1) wrote about a fifth of
+# the files (small ones: Go's sources, npm's, headers, scripts like
+# `which`) unreadable when compressing from a tar ("per-inode big pcluster
+# without sb feature", EUCLEAN on read), with every -z mode tried. The
+# root is built once per host, so the space (about 3 GB rather than 1.6)
+# costs little, and reads skip decompression.
+mkfs.erofs -L iwci-root --tar=f "$stage/rootfs.erofs" "$work/rootfs.tar"
 rm -f "$work/rootfs.tar"
+# Every file read back, so an image a machine could not read is never
+# installed.
+fsck.erofs "$stage/rootfs.erofs" >/dev/null ||
+  die "fsck.erofs found $stage/rootfs.erofs corrupt; the previous image is untouched"
 
 kernel_sha="$(sha "$stage/$kfile")"
 rootfs_sha="$(sha "$stage/rootfs.erofs")"
@@ -502,7 +720,17 @@ cat >"$stage/image.json" <<EOF
   "kernel_sha256": "$kernel_sha",
   "rootfs_sha256": "$rootfs_sha",
   "agent_sha256": "$agent_sha",
-  "snapshot": "$snapshot"
+  "snapshot": "$snapshot",
+  "features": ["files-virtiofs", "job-user", "memory-upper"],
+  "caches": [
+    { "name": "nvm", "path": "/root/.nvm/versions", "max-bytes": 2147483648 },
+    { "name": "rbenv", "path": "/root/.rbenv", "max-bytes": 2147483648 },
+    { "name": "goenv", "path": "/root/.goenv", "max-bytes": 2147483648 },
+    { "name": "m2", "path": "/root/.m2/repository", "max-bytes": 2147483648 },
+    { "name": "gradle", "path": "/root/.gradle/caches", "max-bytes": 2147483648 },
+    { "name": "uv-python", "path": "/root/.local/share/uv/python", "max-bytes": 2147483648 },
+    { "name": "uv", "path": "/root/.cache/uv", "max-bytes": 2147483648 }
+  ]
 }
 EOF
 

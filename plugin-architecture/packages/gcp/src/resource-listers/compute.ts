@@ -133,6 +133,43 @@ export async function listGceDisks(
   });
 }
 
+/**
+ * The most nodes the cluster autoscaler may run, summed over node pools.
+ * `NodePoolAutoscaling.maxNodeCount` is "for one location in the node pool"
+ * and `totalMaxNodeCount` is pool-wide, the two mutually exclusive; a pool's
+ * `locations` default to the cluster's
+ * (https://docs.cloud.google.com/kubernetes-engine/docs/reference/rest/v1/projects.locations.clusters.nodePools,
+ * read 2026-11-23). Undefined whenever there is no single ceiling: Autopilot,
+ * node auto-provisioning (which adds pools), or any pool without autoscaling.
+ */
+export function gkeAutoscalerMaxNodes(cluster: Record<string, unknown>): number | undefined {
+  if ((cluster["autopilot"] as Record<string, unknown> | undefined)?.["enabled"] === true) {
+    return undefined;
+  }
+  const clusterAutoscaling = cluster["autoscaling"] as Record<string, unknown> | undefined;
+  if (clusterAutoscaling?.["enableNodeAutoprovisioning"] === true) return undefined;
+  const pools = (cluster["nodePools"] as Array<Record<string, unknown>> | undefined) ?? [];
+  if (pools.length === 0) return undefined;
+  const clusterZones = (cluster["locations"] as unknown[] | undefined)?.length ?? 0;
+  let total = 0;
+  for (const pool of pools) {
+    const autoscaling = pool["autoscaling"] as Record<string, unknown> | undefined;
+    if (autoscaling?.["enabled"] !== true) return undefined;
+    // proto3 JSON leaves a zero out, so an absent count is 0.
+    if (autoscaling["totalMaxNodeCount"] !== undefined) {
+      const poolMax = Number(autoscaling["totalMaxNodeCount"]);
+      if (!Number.isFinite(poolMax)) return undefined;
+      total += poolMax;
+      continue;
+    }
+    const perZone = Number(autoscaling["maxNodeCount"] ?? 0);
+    if (!Number.isFinite(perZone)) return undefined;
+    const zones = (pool["locations"] as unknown[] | undefined)?.length || clusterZones || 1;
+    total += perZone * zones;
+  }
+  return total > 0 ? total : undefined;
+}
+
 export async function listGkeClusters(
   ctx: ListerContext,
   accountId: string,
@@ -155,6 +192,7 @@ export async function listGkeClusters(
     // "default" (the Compute Engine default service account) rather than an
     // email when the node pool didn't name one: it simply won't match.
     const serviceAccount = String(nodeConfig["serviceAccount"] ?? "");
+    const maxNodeCount = gkeAutoscalerMaxNodes(c);
     return {
       id: ctx.id(accountId, "gke-cluster", `${p}/${location}/${name}`),
       pluginId: "gcp",
@@ -171,6 +209,7 @@ export async function listGkeClusters(
         machineType: String(nodeConfig["machineType"] ?? ""),
         diskSizeGb: Number(nodeConfig["diskSizeGb"] ?? 0),
         nodeCount,
+        ...(maxNodeCount !== undefined ? { maxNodeCount } : {}),
         status: String(c["status"] ?? ""),
         networkName,
         subnetwork,
@@ -232,16 +271,59 @@ export async function listInstanceTemplates(
   });
 }
 
+/** `zones/<z>/instanceGroupManagers/<name>` (or `regions/…`) from a group manager URL. */
+function groupManagerKey(url: unknown): string {
+  const match = /\/((?:zones|regions)\/[^/]+\/instanceGroupManagers\/[^/?]+)/.exec(
+    String(url ?? ""),
+  );
+  return match?.[1] ?? "";
+}
+
+/**
+ * Each autoscaled group's `autoscalingPolicy.maxNumReplicas` ("The maximum
+ * number of instances that the autoscaler can scale out to"), keyed by the
+ * group it scales (`target`), from one aggregated call covering zonal and
+ * regional autoscalers
+ * (https://docs.cloud.google.com/compute/docs/reference/rest/v1/autoscalers/aggregatedList,
+ * read 2026-11-23). An autoscaler in mode OFF leaves the group at a fixed
+ * size, so it states no ceiling. Optional: when the call fails the groups
+ * still list, without the ceiling.
+ */
+async function autoscalerMaxReplicas(ctx: ListerContext, p: string): Promise<Map<string, number>> {
+  const byGroup = new Map<string, number>();
+  let autoscalers: Array<Record<string, unknown>>;
+  try {
+    autoscalers = await paginateAggregated<Record<string, unknown>>(
+      ctx,
+      `https://compute.googleapis.com/compute/v1/projects/${p}/aggregated/autoscalers`,
+      "autoscalers",
+    );
+  } catch {
+    return byGroup;
+  }
+  for (const autoscaler of autoscalers) {
+    const policy = autoscaler["autoscalingPolicy"] as Record<string, unknown> | undefined;
+    if (policy?.["mode"] === "OFF") continue;
+    const max = Number(policy?.["maxNumReplicas"]);
+    const key = groupManagerKey(autoscaler["target"]);
+    if (key && Number.isFinite(max) && max > 0) byGroup.set(key, max);
+  }
+  return byGroup;
+}
+
 export async function listInstanceGroups(
   ctx: ListerContext,
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const items = await paginateAggregated<Record<string, unknown>>(
-    ctx,
-    `https://compute.googleapis.com/compute/v1/projects/${p}/aggregated/instanceGroupManagers`,
-    "instanceGroupManagers",
-  );
+  const [items, maxReplicas] = await Promise.all([
+    paginateAggregated<Record<string, unknown>>(
+      ctx,
+      `https://compute.googleapis.com/compute/v1/projects/${p}/aggregated/instanceGroupManagers`,
+      "instanceGroupManagers",
+    ),
+    autoscalerMaxReplicas(ctx, p),
+  ]);
   return items.map((igm) => {
     const name = String(igm["name"]);
     const zone =
@@ -259,6 +341,11 @@ export async function listInstanceGroups(
     const igmStatus = igm["status"] as Record<string, unknown> | undefined;
     const isStable = igmStatus?.["isStable"] === true;
     const selfLink = String(igm["instanceGroup"] ?? igm["selfLink"] ?? "");
+    const maxSize = maxReplicas.get(
+      zone
+        ? `zones/${zone}/instanceGroupManagers/${name}`
+        : `regions/${region}/instanceGroupManagers/${name}`,
+    );
     return {
       id: ctx.id(accountId, "instance-group", `${zone || region}/${name}`),
       pluginId: "gcp",
@@ -272,6 +359,7 @@ export async function listInstanceGroups(
         size: Number(igm["targetSize"] ?? 0),
         isManaged: true,
         targetSize: Number(igm["targetSize"] ?? 0),
+        ...(maxSize !== undefined ? { autoscalerMaxSize: maxSize } : {}),
         instanceTemplate,
         status: igmStatus ? (isStable ? "RUNNING" : "UPDATING") : "",
       },

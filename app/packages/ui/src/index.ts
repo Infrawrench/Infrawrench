@@ -114,6 +114,7 @@ export type {
 export type {
   AgentClient,
   AgentCreateBody,
+  AgentGitWorkRequest,
   AgentLaunchDefaults,
   AgentOpenSessionResult,
   AgentRepoConfig,
@@ -502,6 +503,7 @@ export {
   priceCatalogTabTarget,
   migrationEstimatesTabTarget,
   incidentsTabTarget,
+  offboardingTabTarget,
   chatTabTarget,
   workflowsTabTarget,
   settingsTabTarget,
@@ -839,6 +841,41 @@ export type {
   QuotaSnapshot,
   QuotaTrend,
 } from "@infrawrench/client-core";
+/**
+ * Capacity runway: declared resource usages against the limits that stop
+ * them, with the projection. The arithmetic lives in client-core so the poller,
+ * the CLI and both apps agree.
+ */
+export {
+  alertableRunway,
+  forecastAllowance,
+  forecastRunway,
+  formatRunwayAmount,
+  formatRunwayDays,
+  runwayStatus,
+  sortRunwayRows,
+  DEFAULT_ALLOWANCE_THRESHOLD,
+  DEFAULT_RUNWAY_DAYS,
+  RUNWAY_ALERT_LIMITS,
+  RUNWAY_STATUSES,
+  RUNWAY_STATUS_LABELS,
+  RUNWAY_WINDOW_DAYS,
+} from "@infrawrench/client-core";
+export type {
+  ResourceRunwayResponse,
+  ResourceRunwayRow,
+  RunwayCycle,
+  RunwayForecast,
+  RunwayListResponse,
+  RunwayPoint,
+  RunwayRow,
+  RunwayStatus,
+} from "@infrawrench/client-core";
+export { RunwaySection } from "./quotas/RunwaySection.js";
+export type { RunwaySectionProps } from "./quotas/RunwaySection.js";
+export { RunwayChart } from "./capacity/RunwayChart.js";
+export { ResourceRunwayPanel } from "./capacity/ResourceRunwayPanel.js";
+export type { ResourceRunwayPanelProps } from "./capacity/ResourceRunwayPanel.js";
 export { QuotasSection } from "./quotas/QuotasSection.js";
 export { QuotasIcon } from "./components/icons/QuotasIcon.js";
 export type { QuotasSectionProps } from "./quotas/QuotasSection.js";
@@ -1012,6 +1049,9 @@ export { VulnerabilitiesIcon } from "./components/icons/VulnerabilitiesIcon.js";
 export { ComplianceIcon } from "./components/icons/ComplianceIcon.js";
 export { AccessReviewIcon } from "./components/icons/AccessReviewIcon.js";
 export { JitAccessIcon } from "./components/icons/JitAccessIcon.js";
+export { OffboardingIcon } from "./components/icons/OffboardingIcon.js";
+export { OffboardingPanel } from "./offboarding/OffboardingPanel.js";
+export type { OffboardingClient, OffboardingPanelProps } from "./offboarding/OffboardingPanel.js";
 
 /**
  * Just-in-time access: time-boxed provider roles under admin-written
@@ -1267,6 +1307,12 @@ export { SlosIcon } from "./components/icons/SlosIcon.js";
 export { ServicesIcon } from "./components/icons/ServicesIcon.js";
 export { DeliveryIcon } from "./components/icons/DeliveryIcon.js";
 export { CiIcon } from "./components/icons/CiIcon.js";
+export { GitIcon } from "./components/icons/GitIcon.js";
+export {
+  notifyGitForgeNamespaceChanged,
+  useGitForgeLinkFrom,
+  type GitForgeLink,
+} from "./git/forge-link.js";
 export { EnvironmentsIcon } from "./components/icons/EnvironmentsIcon.js";
 export { ToolsIcon } from "./components/icons/ToolsIcon.js";
 
@@ -1482,8 +1528,10 @@ export {
 export {
   IacPanel,
   IacImportPlanModal,
+  ManagedByAnnotation,
   type IacPanelProps,
   type IacImportPlanModalProps,
+  type ManagedByAnnotationProps,
   type IacClient,
   type IacAccountOption,
   type IacStateUpload,

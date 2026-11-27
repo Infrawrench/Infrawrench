@@ -41,11 +41,19 @@ const METRICS: Record<string, { label: string; unit?: string }> = {
   planetscale_pods_container_ooms: { label: "Out-of-Memory Kills" },
   planetscale_storage_usage_bytes: { label: "Storage", unit: "bytes" },
   planetscale_volume_usage_percentages: { label: "Disk Used", unit: "%" },
+  planetscale_volume_disk_usage_bytes: { label: "Volume Used", unit: "bytes" },
+  planetscale_volume_capacity_bytes: { label: "Volume Capacity", unit: "bytes" },
   planetscale_replica_lag_seconds: { label: "Replica Lag", unit: "s" },
   // Postgres: connection pooling and the write-ahead log.
   planetscale_pgbouncer_current_connections: { label: "PgBouncer Connections" },
+  planetscale_pgbouncer_current_client_connections: { label: "PgBouncer Client Connections" },
+  planetscale_pgbouncer_settings_max_client_conn: { label: "PgBouncer Max Client Connections" },
   planetscale_wal_size_bytes: { label: "WAL Size", unit: "bytes" },
   planetscale_wal_archiver_lag_bytes: { label: "WAL Archive Lag", unit: "bytes" },
+  planetscale_settings_max_slot_wal_keep_size_bytes: {
+    label: "Max Slot WAL Keep Size",
+    unit: "bytes",
+  },
   planetscale_replication_slot_max_wal_retained_bytes: {
     label: "Replication Slot WAL Retained",
     unit: "bytes",
@@ -55,7 +63,7 @@ const METRICS: Record<string, { label: string; unit?: string }> = {
   planetscale_edge_bytes_sent_rate: { label: "Edge Sent", unit: "bytes/s" },
 };
 
-interface ApiSeries {
+export interface ApiSeries {
   metric?: string;
   label?: string;
   labels?: Record<string, unknown>;
@@ -81,7 +89,8 @@ export async function fetchBranchMetrics(
   }
 
   const out: MetricSeries[] = [];
-  for (const series of data.series ?? []) {
+  const all = data.series ?? [];
+  for (const series of all) {
     const meta = METRICS[series.metric ?? ""];
     const points = (series.points ?? [])
       .filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]))
@@ -96,7 +105,95 @@ export async function fetchBranchMetrics(
       points,
     });
   }
+  for (const ratio of CAPACITY_RATIOS) {
+    const series = highestShare(all, ratio.used, ratio.limit, ratio.label);
+    if (series) out.push(series);
+  }
   return out;
+}
+
+/**
+ * Usages the Metrics API reports beside their own ceiling, as two metrics
+ * (the endpoint's `metrics` enum, PlanetScale API spec, read 2026-11-23). Each
+ * becomes one percent series, the highest share across the pods, volumes or
+ * slots reporting it, which is what capacity runway projects against 100%.
+ */
+export const CAPACITY_RATIOS = [
+  {
+    used: "planetscale_volume_disk_usage_bytes",
+    limit: "planetscale_volume_capacity_bytes",
+    label: "Volume Used (highest)",
+  },
+  {
+    used: "planetscale_pgbouncer_current_client_connections",
+    limit: "planetscale_pgbouncer_settings_max_client_conn",
+    label: "PgBouncer Client Connections Used",
+  },
+  {
+    used: "planetscale_replication_slot_max_wal_retained_bytes",
+    limit: "planetscale_settings_max_slot_wal_keep_size_bytes",
+    label: "Replication Slot WAL Used",
+  },
+] as const;
+
+function labelKey(
+  labels: Record<string, unknown> | undefined,
+  ignore: ReadonlySet<string>,
+): string {
+  return JSON.stringify(
+    Object.entries(labels ?? {})
+      .filter(([key]) => !ignore.has(key))
+      .sort(([a], [b]) => a.localeCompare(b)),
+  );
+}
+
+function pointsOf(series: ApiSeries): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const p of series.points ?? []) {
+    if (!Array.isArray(p) || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) continue;
+    out.set(p[0] > 1e12 ? p[0] : p[0] * 1000, p[1]);
+  }
+  return out;
+}
+
+/**
+ * `used` over `limit` as a percent at each timestamp, pairing series with the
+ * same identifying labels, or with the only `limit` series when the ceiling is
+ * reported once for the branch. The highest share across pairs wins. Nothing
+ * when either metric is missing or the ceiling is not positive (a
+ * `max_slot_wal_keep_size` of -1 is unlimited).
+ */
+export function highestShare(
+  series: readonly ApiSeries[],
+  used: string,
+  limit: string,
+  label: string,
+): MetricSeries | null {
+  const ignore = new Set(["__name__", "metric"]);
+  const limits = series.filter((s) => s.metric === limit);
+  if (limits.length === 0) return null;
+  const byKey = new Map(limits.map((s) => [labelKey(s.labels, ignore), pointsOf(s)]));
+  const only = limits.length === 1 ? pointsOf(limits[0]!) : undefined;
+  const highest = new Map<number, number>();
+  for (const s of series) {
+    if (s.metric !== used) continue;
+    const caps = byKey.get(labelKey(s.labels, ignore)) ?? only;
+    if (!caps) continue;
+    for (const [ts, value] of pointsOf(s)) {
+      const cap = caps.get(ts);
+      if (cap === undefined || !(cap > 0)) continue;
+      const share = (value / cap) * 100;
+      highest.set(ts, Math.max(highest.get(ts) ?? share, share));
+    }
+  }
+  if (highest.size === 0) return null;
+  return {
+    label,
+    unit: "%",
+    points: [...highest]
+      .sort(([a], [b]) => a - b)
+      .map(([timestamp, value]) => ({ timestamp, value })),
+  };
 }
 
 /** Distinguish several lines of one metric by the labels that identify them. */

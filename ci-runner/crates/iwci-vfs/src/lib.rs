@@ -23,6 +23,7 @@ use virtual_fs::{
 };
 
 pub use virtual_fs;
+pub use virtual_fs::mem_fs::SpillConfig;
 
 pub mod archive;
 mod index;
@@ -100,10 +101,13 @@ pub fn create_dir_all(fs: &(impl FileSystem + ?Sized), path: impl AsRef<Path>) -
     let mut current = PathBuf::from("/");
     for component in path.components().skip(1) {
         current.push(component);
-        // Looked up first: the in-memory file system's `create_dir` lists
-        // the whole directory to find out whether it exists, which made
+        // Looked up first: the in-memory file system's `create_dir` listed
+        // the whole directory to find out whether it existed, which made
         // every file written under a `node_modules/.pnpm` of thousands of
-        // packages cost a listing of all of them (#998).
+        // packages cost a listing of all of them (#998). It looks the name
+        // up in the directory's index now (#1408), but an existing
+        // directory is still the common case, and other file systems may
+        // still list.
         if fs.metadata(&current).is_ok_and(|m| m.is_dir()) {
             continue;
         }
@@ -780,7 +784,7 @@ impl Snapshot {
     /// A writable view for one job: a fresh in-memory layer over this
     /// snapshot. Constant time; nothing is copied until the job writes.
     pub fn fork(&self) -> JobFs {
-        self.fork_with(None)
+        self.fork_with(None, None)
     }
 
     /// [`Snapshot::fork`], with the bytes the job adds held to `budget`: a
@@ -788,11 +792,21 @@ impl Snapshot {
     /// files live in memory, so this is what keeps a job that writes
     /// gigabytes inside its memory limit. See `limit.rs`.
     pub fn fork_limited(&self, budget: Arc<dyn WriteBudget>) -> JobFs {
-        self.fork_with(Some(budget))
+        self.fork_with(Some(budget), None)
     }
 
-    fn fork_with(&self, budget: Option<Arc<dyn WriteBudget>>) -> JobFs {
+    /// [`Snapshot::fork_limited`], with the job's files kept in memory only
+    /// up to `spill.resident_max` bytes: past that, the least recently used
+    /// move to unlinked files in `spill.dir` on the host's disk, so `budget`
+    /// can allow a job more files than its memory holds. See the vendored
+    /// virtual-fs's `mem_fs/spill.rs`.
+    pub fn fork_spilling(&self, budget: Arc<dyn WriteBudget>, spill: SpillConfig) -> JobFs {
+        self.fork_with(Some(budget), Some(spill))
+    }
+
+    fn fork_with(&self, budget: Option<Arc<dyn WriteBudget>>, spill: Option<SpillConfig>) -> JobFs {
         let upper = TmpFileSystem::new();
+        let spill = spill.map(|config| upper.set_spill(config));
         let modes = Modes::over(self.modes.clone());
         modes.numbered_by(Arc::new(upper.clone()));
         let overlay = JobOverlay {
@@ -808,6 +822,7 @@ impl Snapshot {
             overlay: Arc::new(overlay),
             upper,
             base: self.clone(),
+            spill,
         }
     }
 }
@@ -818,6 +833,9 @@ pub struct JobFs {
     overlay: Arc<JobOverlay>,
     upper: TmpFileSystem,
     base: Snapshot,
+    /// How much of the job's files is in memory and on disk, when they
+    /// spill ([`Snapshot::fork_spilling`]).
+    spill: Option<Arc<mem_fs::Spill>>,
 }
 
 /// A path a job changed, relative to nothing: these are absolute guest paths.
@@ -848,6 +866,12 @@ impl JobFs {
     /// What the job's writes are charged to, when it has a limit.
     pub fn budget(&self) -> Option<Arc<dyn WriteBudget>> {
         self.overlay.budget.clone()
+    }
+
+    /// Bytes of the job's files in memory and on disk, when they spill;
+    /// `None` when every file is in memory.
+    pub fn spill_usage(&self) -> Option<(u64, u64)> {
+        self.spill.as_ref().map(|spill| spill.usage())
     }
 
     pub fn modes(&self) -> Modes {
@@ -976,6 +1000,23 @@ impl JobFs {
             .collect()
     }
 
+    /// Gives the files among `entries`, which [`JobFs::apply`] wrote, the
+    /// modification time of the Unix epoch, as a machine's put gives them:
+    /// a cache's files are older than anything the job writes. Stamped with
+    /// the time of the restore instead, a restored pnpm store looked
+    /// changed since pnpm last checked it, and pnpm hashed every file of it
+    /// again (161,102 files, 55 s, in one job).
+    pub fn set_restored_times(&self, entries: &[Entry]) {
+        for entry in entries {
+            if let Entry::File { path, .. } = entry
+                && let Ok(path) = normalise(path)
+                && let Ok(mut file) = self.upper.new_open_options().read(true).open(&path)
+            {
+                let _ = file.set_times(None, Some(0));
+            }
+        }
+    }
+
     /// Records `modes` (what [`JobFs::modes_of`] kept) for paths
     /// [`JobFs::apply`] wrote, as `chmod` would.
     pub fn apply_modes(&self, modes: &[(PathBuf, u32)]) {
@@ -1017,6 +1058,17 @@ impl JobFs {
             }
         });
         out
+    }
+
+    /// How many bytes of file contents [`JobFs::own_entries`] would hold,
+    /// read from their metadata alone: what deciding where they go costs,
+    /// without copying them.
+    pub fn own_file_bytes(&self) -> u64 {
+        walk_no_follow(&self.upper, Path::new("/"))
+            .into_iter()
+            .filter(|(path, meta)| whiteout_target(path).is_none() && meta.file_type().is_file())
+            .map(|(_, meta)| meta.len())
+            .sum()
     }
 
     /// Every file the job added, changed or deleted under `root`, sorted by
@@ -1608,10 +1660,11 @@ impl JobOverlay {
 
 /// What a file the job makes is charged beside its bytes: the upper layer's
 /// node for it and its write account (`accounts.rs`), its name included.
-/// Measured at about 350 bytes counted by the allocator, which keeps a
-/// little more of its own (`tests/accounts_memory.rs` holds the job to
-/// paying at least what it holds), so a job of tiny files cannot hold more
-/// of the runner's memory than its budget says, however deep they are.
+/// Measured at about 460 bytes counted by the allocator (60 of them its
+/// directory's name index, #1408), which keeps a little more of its own
+/// (`tests/accounts_memory.rs` holds the job to paying at least what it
+/// holds), so a job of tiny files cannot hold more of the runner's memory
+/// than its budget says, however deep they are.
 pub const ENTRY_COST: u64 = 512;
 
 fn entry_cost(path: &Path) -> u64 {
@@ -1769,6 +1822,9 @@ mod tests {
             })
             .collect();
         seen.sort();
+        // Their size, read without copying them, is the files' and no
+        // more: not the deletion marker's.
+        assert_eq!(job.own_file_bytes(), 5);
         assert!(
             seen.contains(&"file /app/src/new.ts 4".to_string()),
             "{seen:?}"

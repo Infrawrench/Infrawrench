@@ -3,13 +3,9 @@ import { validatePluginContract } from "@infrawrench/plugin-base";
 import { hostPlugins } from "@infrawrench/plugin-base/effect";
 import { pluginManifestSchema, validate } from "@infrawrench/plugin-base/validation";
 
-declare global {
-  /**
-   * Defined `true` at build time by the web edge Worker only (its
-   * wrangler.jsonc `define`). Never set at runtime.
-   */
-  var __INFRAWRENCH_EDGE_PLUGINS__: boolean | undefined;
-}
+// The question and the declaration of `__INFRAWRENCH_EDGE_PLUGINS__` are a
+// module of their own, so that asking does not load this one.
+export { pluginCodeAvailable } from "./runtime/plugin-code";
 
 /**
  * The plugins to load. On Node (and in the poller Worker) that is
@@ -25,17 +21,6 @@ function bundledPlugins(): Promise<readonly Plugin[]> {
   return globalThis.__INFRAWRENCH_EDGE_PLUGINS__
     ? import("./plugin-registry-edge").then((m) => m.EDGE_PLUGINS)
     : import("./plugin-registry").then((m) => m.BUNDLED_PLUGINS);
-}
-
-/**
- * Whether plugin *code* can run in this process. False only in the web edge
- * Worker, whose registry is manifests with stub functions. Code that would
- * otherwise call a plugin inline (a paging send on the alert path) checks this
- * and leaves the work for a gateway pass instead, rather than tripping the
- * gateway-only error mid-request after it has already written to the database.
- */
-export function pluginCodeAvailable(): boolean {
-  return !globalThis.__INFRAWRENCH_EDGE_PLUGINS__;
 }
 
 export interface LoadedPlugin {

@@ -52,8 +52,15 @@ export {
 export { ALL_PERMISSIONS } from "./permission-catalog";
 export * from "./products";
 export * from "./ci";
+export * from "./git-forge";
+export * from "./git-names";
+export * from "./git-branch-key";
 export * from "./ci-access";
 export * from "./ci-live";
+// The job token CI reads a git.infrawrench.com repository with: signed by
+// the app, checked by the forge's Worker.
+export * from "./git-job-token";
+export * from "./git-username-checkout-token";
 // The instance pricing warehouse's tables, as data: documented by the API
 // contract, created and read by server-core.
 export * as PricingWarehouse from "./pricing-warehouse";
@@ -1007,6 +1014,7 @@ export * from "./posture";
 // The customer's cloud principals, not Infrawrench's own roles (permissions
 // catalog) and not the credentials Infrawrench holds (credential-hygiene).
 export * from "./access-review";
+export * from "./offboarding";
 export * from "./backups";
 // The half of a backup nobody tests: does it restore, and how long does it take?
 export * from "./restore-drills";
@@ -1020,6 +1028,7 @@ export * from "./heartbeats";
 export * from "./wallboard";
 export * from "./help-links";
 export * from "./quotas";
+export * from "./capacity-runway";
 export * from "./vulnerabilities";
 export * from "./compliance";
 export * from "./incidents";

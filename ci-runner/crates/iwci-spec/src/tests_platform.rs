@@ -183,7 +183,14 @@ fn what_a_virtual_machine_cannot_have() {
         &job("    services:\n      db: { using: 'env:postgres@17', args: [] }\n"),
         "jobs.a.services: starts services in the job's isolate",
     );
-    assert_error(&job("    env-cache: false\n"), "jobs.a.env-cache:");
+    // A machine's image keeps caches of its own (nvm's and rbenv's
+    // versions), which `env-cache:` turns off as an environment's.
+    assert_eq!(
+        first(&parse(&job("    env-cache: { nvm: false }\n"), &ctx()).unwrap())
+            .env_cache
+            .clone(),
+        EnvCachePolicy::Except(vec!["nvm".into()])
+    );
     assert_error(&job("    task-cache: true\n"), "jobs.a.task-cache:");
 
     // A Linux machine is lent what any job is.

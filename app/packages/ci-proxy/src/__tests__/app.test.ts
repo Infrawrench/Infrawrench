@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { handle, tick, type Deps } from "../app";
+import type { ArtifactBody, ArtifactBucket } from "../artifacts";
 import { Pool } from "../pool";
 import { MemoryRunnerList } from "../runners";
 import { MemoryStore } from "../store";
@@ -32,6 +33,8 @@ class FakeRunner {
   };
   scheduleReads: Array<Record<string, unknown>> = [];
   down = false;
+  /** Answers everything as Cloudflare does for a tunnel with no connector. */
+  tunnelDown = false;
   draining = false;
   cleared: string[] = [];
   /** A run's state by id; finished unless set. */
@@ -42,6 +45,8 @@ class FakeRunner {
   jobCalls: Array<{ method: string; path: string; body: string }> = [];
   /** Whether it says it can share a run (a runner from before does not). */
   split = false;
+  /** Whether it says it takes `notify` (a runner from before does not). */
+  notify = false;
   /** The offers to help another runner's run it took. */
   helps: Array<Record<string, unknown>> = [];
   /** Answers an offer to help with 429, as a runner helping enough does. */
@@ -61,6 +66,12 @@ class FakeRunner {
 
   async handle(path: string, init: RequestInit): Promise<Response> {
     if (this.down) throw new Error("connection refused");
+    if (this.tunnelDown) {
+      return new Response("<html>error code: 1033</html>", {
+        status: 530,
+        headers: { "Content-Type": "text/html" },
+      });
+    }
     const auth = new Headers(init.headers).get("Authorization");
     if (auth !== `Bearer ${RUNNER_KEY}`) return new Response("{}", { status: 401 });
     const json = (status: number, body: unknown) =>
@@ -76,6 +87,7 @@ class FakeRunner {
         slots_free: this.slotsFree,
         runs_active: this.runs.length,
         ...(this.split ? { split: true, runs_helping: this.helps.length } : {}),
+        ...(this.notify ? { notify: true } : {}),
         ...(this.platforms === null ? {} : { platforms: this.platforms }),
       });
     }
@@ -220,6 +232,68 @@ describe("proxy", () => {
     expect(logs.headers.get("Content-Type")).toBe("text/event-stream");
     expect(await logs.text()).toContain("run-finished");
     expect((await call("GET", "/v1/runs/9.00000000000000000000000000000001")).status).toBe(404);
+  });
+
+  it("reads a finished run's report from the store when its runner is gone", async () => {
+    const a = new FakeRunner("http://a.test", 4, 4);
+    const { deps, call } = await setup([a]);
+    const runId = "ab".repeat(16);
+    const report = { id: runId, owner: "github.com-acme", state: "finished", result: { ok: 1 } };
+    const reads: string[] = [];
+    const bucket: ArtifactBucket = {
+      async get(key) {
+        reads.push(key);
+        if (key !== `runs/github.com-acme/${runId}.json`) return null;
+        const text = JSON.stringify(report);
+        return {
+          key,
+          size: text.length,
+          httpEtag: '"1"',
+          body: new Response(text).body,
+        } as ArtifactBody;
+      },
+      async head() {
+        return null;
+      },
+      async list() {
+        return { objects: [], truncated: false };
+      },
+      async delete() {},
+    };
+    deps.downloads = {
+      bucket,
+      key: null,
+      sweep: { read: async () => ({ cursor: null, finishedAt: null }), write: async () => {} },
+    };
+    const path = `/v1/runs/0.${runId}?owner=github.com-acme`;
+
+    // Up: the runner answers, and the store is not read.
+    expect(((await (await call("GET", path)).json()) as { runner: string }).runner).toBe(
+      "http://a.test",
+    );
+    expect(reads).toEqual([]);
+
+    // A spot host reclaimed: the connection fails, or its tunnel has no connector.
+    for (const gone of ["down", "tunnelDown"] as const) {
+      a[gone] = true;
+      const res = await call("GET", path);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ...report, id: `0.${runId}` });
+      a[gone] = false;
+    }
+
+    // A runner taken out of the list.
+    const gone = await call("GET", `/v1/runs/old-runner.${runId}?owner=github.com-acme`);
+    expect(((await gone.json()) as { id: string }).id).toBe(`old-runner.${runId}`);
+
+    // No report (still running, or never finished), no owner, a bad owner, or logs: as before.
+    a.down = true;
+    const other = "cd".repeat(16);
+    expect((await call("GET", `/v1/runs/0.${other}?owner=github.com-acme`)).status).toBe(502);
+    expect((await call("GET", `/v1/runs/0.${runId}`)).status).toBe(502);
+    expect((await call("GET", `/v1/runs/0.${runId}?owner=..`)).status).toBe(502);
+    expect((await call("GET", `/v1/runs/0.${runId}/logs?owner=github.com-acme`)).status).toBe(502);
+    expect((await call("GET", `/v1/runs/old-runner.${runId}`)).status).toBe(404);
   });
 
   it("passes over full and down runners, and says 429 only when all are", async () => {
@@ -558,6 +632,28 @@ describe("secrets and variables", () => {
     // The runner trusts a pull request only when told.
     expect(runner.runs[2]?.body.trusted).toBe(true);
     expect("trusted" in (runner.runs[0]?.body ?? {})).toBe(false);
+  });
+
+  it("puts a secret the request carries over a stored one of the same name", async () => {
+    // The app mints a Terraform run's job token into the request's `secrets`
+    // as IW_GIT_JOB_TOKEN. A secret someone stored under that name must not
+    // take its place, or the job would present a credential of their choosing.
+    const runner = new FakeRunner("http://a.test", 8, 8);
+    const { call } = await setup([runner]);
+    await call("PUT", "/v1/orgs/github.com-acme/secrets/IW_GIT_JOB_TOKEN", { value: "stored-org" });
+    await call("PUT", "/v1/orgs/github.com-acme/repos/web/secrets/IW_GIT_JOB_TOKEN", {
+      value: "stored-repo",
+    });
+    await call("PUT", "/v1/orgs/github.com-acme/secrets/OTHER", { value: "kept" });
+    await call("POST", "/v1/runs", {
+      repo,
+      branch: "main",
+      secrets: { IW_GIT_JOB_TOKEN: "minted-for-this-run" },
+    });
+    expect(runner.runs[0]?.body.secrets).toEqual({
+      IW_GIT_JOB_TOKEN: "minted-for-this-run",
+      OTHER: "kept",
+    });
   });
 
   it("lends connections, keys and resources only to trusted runs", async () => {
@@ -927,6 +1023,65 @@ describe("split runs", () => {
       of: primary.runs[0]?.id,
       runner: helper === a ? "0" : "1",
     });
+  });
+});
+
+describe("notify", () => {
+  const request = { repo: "https://github.com/acme/web", branch: "main" };
+  const notify = { url: "https://app.example/api/ci-notify/runs/r1", token: "not-a-real-token" };
+
+  it("sends `notify` to the runner that has the run when it takes the field, and never to a helper", async () => {
+    const a = new FakeRunner("http://a.test", 8, 2);
+    const b = new FakeRunner("http://b.test", 8, 6);
+    a.split = true;
+    b.split = true;
+    b.notify = true;
+    a.notify = true;
+    const { call } = await setup([a, b]);
+    expect((await call("POST", "/v1/runs", { ...request, notify })).status).toBe(202);
+    expect(b.runs[0]?.body).toEqual({ ...request, split: { runner: "1" }, notify });
+    expect(a.helps).toEqual([{ ...request, split: { of: b.runs[0]?.id, runner: "0" } }]);
+    const cap = (await (await call("GET", "/v1/capacity")).json()) as {
+      runners: Array<{ name: string; notify: boolean }>;
+    };
+    expect(cap.runners.map((r) => [r.name, r.notify])).toEqual([
+      ["0", true],
+      ["1", true],
+    ]);
+  });
+
+  it("leaves `notify` out for a runner that does not take it, which is then followed by polling", async () => {
+    const runner = new FakeRunner("http://a.test", 8, 8);
+    const { call } = await setup([runner]);
+    expect((await call("POST", "/v1/runs", { ...request, notify })).status).toBe(202);
+    expect(runner.runs[0]?.body).toEqual(request);
+  });
+
+  it("sends `notify` with no prepare or concurrency read", async () => {
+    const runner = new FakeRunner("http://a.test", 8, 8);
+    runner.notify = true;
+    const { call } = await setup([runner]);
+    expect((await call("POST", "/v1/prepare", { ...request, notify })).status).toBe(202);
+    expect(runner.prepares).toEqual([request]);
+    expect((await call("POST", "/v1/concurrency", { ...request, notify })).status).toBe(200);
+    expect(runner.resolved[0]).not.toHaveProperty("notify");
+  });
+
+  it("refuses a `notify` that is not an https URL and a token", async () => {
+    const runner = new FakeRunner("http://a.test", 8, 8);
+    runner.notify = true;
+    const { call } = await setup([runner]);
+    for (const bad of [
+      "https://app.example/x",
+      { url: "http://app.example/x", token: "t" },
+      { url: "https://app.example/x", token: "" },
+      { url: "https://app.example/x", token: "t".repeat(513) },
+      { url: "https://app.example/x", token: "t", extra: 1 },
+      { url: "https://app.example/x" },
+    ]) {
+      expect((await call("POST", "/v1/runs", { ...request, notify: bad })).status).toBe(400);
+    }
+    expect(runner.runs).toEqual([]);
   });
 });
 

@@ -95,6 +95,7 @@ interface ResourceDetailResponse {
   supportsMetrics?: boolean;
   schedulable?: boolean;
   hasSchedule?: boolean;
+  hasCapacityRunway?: boolean;
 }
 
 export const Route = createFileRoute("/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId")(
@@ -381,6 +382,7 @@ export function ResourcePanel({
         supportsMetrics={data.supportsMetrics}
         schedulable={data.schedulable}
         hasSchedule={data.hasSchedule}
+        hasCapacityRunway={data.hasCapacityRunway}
         resourceFields={data.resourceFields}
         parentResourceId={parent}
       />

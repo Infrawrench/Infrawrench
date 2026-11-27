@@ -1,8 +1,10 @@
+import { capacityDeclarations, resolveCapacityLimit } from "@infrawrench/plugin-base";
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import { createResendApi } from "../api.js";
 import { ResendClient, WEBHOOK_EVENTS, parseList } from "../client.js";
 import { qualify, toIso } from "../mappers.js";
+import { AccountResourceType as ACCOUNT_TYPE } from "../resource-types.js";
 import { mapComponent, parseStatusFeed } from "../status-feed.js";
 import type { Call } from "./helpers.js";
 import { makeHttp } from "./helpers.js";
@@ -108,6 +110,55 @@ describe("api", () => {
     const err = await c.listResources("resend-account", ACC).catch((e: unknown) => e);
     expect((err as { status: number }).status).toBe(401);
     expect(String(err)).toMatch(/Full access/);
+  });
+});
+
+describe("account usage", () => {
+  it("stores each usage beside its limit and leaves unreported ones out", async () => {
+    const { c } = client((call) => {
+      if (call.url.pathname !== "/usage") throw new Error(call.url.pathname);
+      return {
+        object: "usage",
+        emails: {
+          daily: { used: 10, limit: null, sent: 10, received: 0 },
+          monthly: {
+            used: 100,
+            limit: 3000,
+            sent: 80,
+            received: 20,
+            resets_at: "2026-12-01T00:00:00.000Z",
+          },
+        },
+        contacts: { used: 400, limit: 1000 },
+        domains: { used: 1, limit: null },
+        automation_runs: { used: 120, limit: 1000, resets_at: "2026-12-01T00:00:00.000Z" },
+      };
+    });
+    const [account] = await c.listResources("resend-account", ACC);
+    expect(account!.fields).toMatchObject({
+      automationRuns: 120,
+      automationRunsLimit: 1000,
+      automationRunsResetAt: "2026-12-01T00:00:00.000Z",
+      emailsThisPeriod: 100,
+      monthlyLimit: 3000,
+      periodResetsAt: "2026-12-01T00:00:00.000Z",
+      contacts: 400,
+      contactsLimit: 1000,
+      domains: 1,
+    });
+    expect(account!.fields).not.toHaveProperty("domainsLimit");
+    expect(account!.fields).not.toHaveProperty("segments");
+    expect(account!.fields).not.toHaveProperty("segmentsLimit");
+    const runs = capacityDeclarations(ACCOUNT_TYPE).find((d) => d.key === "automationRuns");
+    expect(runs?.declaration.cycle?.endField).toBe("automationRunsResetAt");
+    expect(resolveCapacityLimit(runs!.declaration.limit, account!.fields)?.limit).toBe(1000);
+  });
+
+  it("leaves automation runs out when the usage read has none", async () => {
+    const { c } = client(() => ({ object: "usage" }));
+    const [account] = await c.listResources("resend-account", ACC);
+    expect(account!.fields).not.toHaveProperty("automationRuns");
+    expect(account!.fields).not.toHaveProperty("automationRunsLimit");
   });
 });
 

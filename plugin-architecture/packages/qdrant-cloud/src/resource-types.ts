@@ -123,6 +123,25 @@ export const ClusterResourceType = rt({
     f("createdAt", "Created", { required: false, editable: false }),
     f("restartedAt", "Last Restart", { required: false, editable: false }),
   ],
+  // The fullest node's disk and RSS memory (client.ts `usageSeries`), in
+  // bytes, against the per-node `available` disk and RAM in GiB the cluster
+  // state reports (base + complimentary + additional - reserved:
+  // qdrant-cloud-public-api proto/qdrant/cloud/cluster/v1/cluster.proto,
+  // ClusterNodeResources, read 2026-11-23).
+  capacityMetrics: [
+    {
+      seriesLabel: "Disk used (max node)",
+      limit: { field: "diskGibPerNode", scale: 1024 ** 3 },
+      unit: "bytes",
+      label: "Disk",
+    },
+    {
+      seriesLabel: "RAM RSS (max node)",
+      limit: { field: "ramGibPerNode", scale: 1024 ** 3 },
+      unit: "bytes",
+      label: "Memory",
+    },
+  ],
   outputs: [
     o("url", "REST URL", { description: "Database REST endpoint, port 6333" }),
     o("grpcUrl", "gRPC URL", { description: "Database gRPC endpoint, port 6334" }),

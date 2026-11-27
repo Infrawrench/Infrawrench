@@ -811,6 +811,53 @@ describe("AgentsPanel", () => {
     });
   });
 
+  it("starts work on a forge branch in place of the repository controls", async () => {
+    const account: AgentVmAccount = {
+      accountId: "acct-1",
+      accountName: "Workspace",
+      pluginId: "digitalocean",
+      pluginName: "DigitalOcean",
+      resourceTypeId: "droplet",
+      resourceTypeName: "Droplet",
+      defaultUsername: "root",
+      defaultFields: {},
+      hiddenFieldKeys: [],
+    };
+    const client = makeClient(account);
+    const onGitWorkDone = vi.fn();
+    render(
+      <AgentsPanel
+        client={client}
+        gitWork={{ owner: "acme", repo: "infra", branch: "work/fix-login" }}
+        onGitWorkDone={onGitWorkDone}
+      />,
+    );
+
+    await screen.findByText("Workspace (DigitalOcean)");
+    expect(screen.getByText("Branch work/fix-login in acme/infra")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("https://github.com/org/repo.git")).toBeNull();
+    // Named after the branch until the person types another name.
+    expect(screen.getByPlaceholderText("Agent name")).toHaveValue("infra-work-fix-login");
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => expect(client.createSession).toHaveBeenCalledTimes(1));
+    expect(client.createSession).toHaveBeenCalledWith({
+      repo: "",
+      projectName: "infra-work-fix-login",
+      workspaceName: "infra",
+      settings: {
+        accountId: "acct-1",
+        pluginId: "digitalocean",
+        resourceTypeId: "droplet",
+        tool: "codex",
+        surface: "terminal",
+        fields: {},
+      },
+      gitWork: { owner: "acme", repo: "infra", branch: "work/fix-login" },
+    });
+    await waitFor(() => expect(onGitWorkDone).toHaveBeenCalledTimes(1));
+  });
+
   it("falls back to a free-text URL when Custom Git URL is picked", async () => {
     const account: AgentVmAccount = {
       accountId: "acct-1",

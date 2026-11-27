@@ -162,7 +162,19 @@ export const ServiceResourceType = rt({
     f("pgVersion", "Postgres Version", { kind: "number", ...ro }),
     f("dbHost", "Database Host", ro),
     f("dbState", "Database Endpoint State", ro),
-    f("dbSizeMb", "Database Size (MB)", { kind: "number", ...ro }),
+    // `database_info.neon_postgres.default_branch_logical_size` (bytes, here
+    // in MiB). Only the `free` database instance type caps stored data, at
+    // 1 GB; paid types bill storage instead of capping it
+    // (https://www.koyeb.com/docs/databases, read 2026-11-23).
+    f("dbSizeMb", "Database Size (MB)", {
+      kind: "number",
+      ...ro,
+      usage: {
+        limit: { plan: { field: "instanceType", allowances: { free: 1000 } } },
+        unit: "MB",
+        label: "Database Storage",
+      },
+    }),
     f("activeDeploymentId", "Active Deployment", ro),
     f("latestDeploymentId", "Latest Deployment", ro),
     f("appId", "App", ro),
@@ -324,7 +336,13 @@ export const VolumeResourceType = rt({
       sizing: "disk-gb",
       description: "Volumes can only grow.",
     }),
-    f("usedGb", "Used (GB)", { kind: "number", ...ro }),
+    // `cur_size` and `max_size` on PersistentVolume, both in GB
+    // (https://api.prod.koyeb.com/public.swagger.json, read 2026-11-18).
+    f("usedGb", "Used (GB)", {
+      kind: "number",
+      ...ro,
+      usage: { limit: { field: "sizeGb" }, unit: "GB", label: "Storage" },
+    }),
     f("status", "Status", { ...ro, showcase: true }),
     f("readOnly", "Read Only", { kind: "boolean", ...ro }),
     f("serviceId", "Attached Service", ro),

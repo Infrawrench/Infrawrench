@@ -12,7 +12,7 @@
 //! |-------|------|
 //! | `GET /healthz` | `200 ok`, unauthenticated, for load balancers |
 //! | `GET /v1/capacity` | slots, memory (reserved by jobs, and the process's own), active runs, and what V8 out-of-memory has cost the process |
-//! | `POST /v1/runs[?wait=true]` | runs a [`RunRequest`]; `202` with an id, or the result when waiting |
+//! | `POST /v1/runs[?wait=true]` | runs a [`RunRequest`]; `202` with an id, or the result when waiting; with `notify`, posts each change of the run's state there (`crate::notify`) |
 //! | `GET /v1/runs/{id}[?owner=]` | a run's state and report |
 //! | `GET /v1/runs/{id}/logs` | the run's log as Server-Sent Events: everything so far, then live until it ends |
 //! | `POST /v1/runs/{id}/cancel` | cancels a run on this runner, or some of its pipelines (`{ "pipelines": [file, ...] }`) |
@@ -34,14 +34,17 @@ use std::sync::{Arc, Mutex};
 use iwci_store::RepoId;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use tiny_http::{Header, Method, Request, Response};
+use tiny_http::{Header, Method, Response};
 
-use crate::adapters::caches::{clear_repository, storage_usage};
+use crate::adapters::caches::clear_repository;
 
 #[path = "server_concurrency.rs"]
 mod concurrency;
 #[path = "server_external.rs"]
 mod external;
+#[path = "server_http.rs"]
+mod http;
+use http::Request;
 #[path = "server_lifecycle.rs"]
 pub(crate) mod lifecycle;
 #[path = "server_schedules.rs"]
@@ -57,6 +60,9 @@ const RETRY_AFTER_SECS: u64 = 10;
 /// Finished runs kept in memory for `GET /v1/runs/{id}`; older ones are
 /// read back from the store with `?owner=`.
 const KEEP_FINISHED: usize = 1000;
+/// How long `GET /v1/storage` waits for an owner's first listing: under
+/// the 20 s the app waits for an answer.
+const STORAGE_WAIT: std::time::Duration = std::time::Duration::from_secs(12);
 /// How long a finished run keeps its report and log in memory. Past it the
 /// report is read back from the store (the run's own owner names it), and
 /// the log is gone, as it is on any other runner. A full Test pipeline's
@@ -101,12 +107,21 @@ pub struct Server {
     /// its limits, take only what its own runs leave, and end with a
     /// drain. How many it has joined is `Runner::helping`'s to say.
     helping: Mutex<std::collections::HashSet<String>>,
+    /// Owners' storage as last listed (`GET /v1/storage`).
+    storage: crate::adapters::caches::StorageSamples,
     /// The most of them at once; 0 helps none.
     max_helping: usize,
+    /// Runs whose last notice (`notify`) has not gone yet: a drain waits
+    /// for them, so a run's end is told before the runner restarts.
+    notifying: Arc<AtomicUsize>,
+    /// What sends notices: HTTPS, or a recorder in tests.
+    notices: crate::notify::Sender,
     /// The host's memory and what the runner keeps of it outside the job
     /// budget, for `/v1/capacity` and the memory log (`crate::memory`).
     memory_host: Option<u64>,
     memory_reserve: Option<u64>,
+    /// What its connections share ([`http`]).
+    bounds: http::Bounds,
 }
 
 /// How often the server checks its own memory, and how often it logs it
@@ -248,7 +263,9 @@ impl Server {
         if runner.slots.is_none() {
             return Err("the server needs shared job slots".into());
         }
+        let storage = crate::adapters::caches::StorageSamples::new(runner.store.clone());
         Ok(Self {
+            storage,
             runner: Arc::new(runner),
             warm: Mutex::default(),
             draining: std::sync::atomic::AtomicBool::new(false),
@@ -264,7 +281,21 @@ impl Server {
             max_helping: DEFAULT_HELPING,
             memory_host: None,
             memory_reserve: None,
+            notifying: Arc::new(AtomicUsize::new(0)),
+            notices: crate::notify::http_sender(),
+            bounds: http::Bounds::new(),
         })
+    }
+
+    /// Sends notices with `send` instead of over HTTPS (tests).
+    pub fn with_notices(mut self, send: crate::notify::Sender) -> Self {
+        self.notices = send;
+        self
+    }
+
+    /// The object store the runner keeps everything in.
+    pub fn store(&self) -> Arc<dyn iwci_store::ObjectStore> {
+        self.runner.store.clone()
     }
 
     /// How many runs of other runners this one helps at once; 0 for none.
@@ -370,15 +401,13 @@ impl Server {
             .expect("spawning the memory thread");
     }
 
-    /// Serves until the process ends; one thread per request, because a
-    /// `?wait=true` run holds its request for as long as the run takes.
+    /// Serves until the process ends; one thread per connection
+    /// ([`http`]), which also holds a `?wait=true` run's request for as
+    /// long as the run takes.
     pub fn serve(self: Arc<Self>, listen: &str) -> Result<(), String> {
-        let http = tiny_http::Server::http(listen).map_err(|e| format!("{listen}: {e}"))?;
+        let listener = std::net::TcpListener::bind(listen).map_err(|e| format!("{listen}: {e}"))?;
         eprintln!("iwci serve: listening on {listen}");
-        for request in http.incoming_requests() {
-            let this = self.clone();
-            std::thread::spawn(move || this.handle(request));
-        }
+        self.serve_on(listener);
         Ok(())
     }
 
@@ -392,7 +421,8 @@ impl Server {
         })
     }
 
-    fn handle(self: &Arc<Self>, mut request: Request) {
+    /// Answers one request ([`http`] sends the answer).
+    fn handle(self: &Arc<Self>, request: &mut Request) -> tiny_http::ResponseBox {
         let url = request.url().to_string();
         let (path, query) = url.split_once('?').unwrap_or((&url, ""));
         let path = path.trim_end_matches('/').to_string();
@@ -403,19 +433,19 @@ impl Server {
             .collect();
         let method = request.method().clone();
 
-        let response = if method == Method::Get && path == "/healthz" {
+        let response: tiny_http::ResponseBox = if method == Method::Get && path == "/healthz" {
             Response::from_string("ok").with_status_code(200).boxed()
-        } else if let Some(reply) = self.claim_route(&mut request, &method, &path, &query) {
+        } else if let Some(reply) = self.claim_route(request, &method, &path, &query) {
             // A cloud job's machine fetches and uploads its artifacts with
             // its claim's token, never the runner's key.
             reply
-        } else if !self.authorised(&request) {
+        } else if !self.authorised(request) {
             error(401, "missing or wrong bearer key").boxed()
         } else {
             let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
             match (&method, segments.as_slice()) {
                 (Method::Get, ["v1", "capacity"]) => json_response(200, &self.capacity()).boxed(),
-                (Method::Post, ["v1", "runs"]) => match read_request(&mut request) {
+                (Method::Post, ["v1", "runs"]) => match read_request(request) {
                     Ok(req) => self
                         .start_run(req, query.get("wait").is_some_and(|w| w == "true"))
                         .boxed(),
@@ -447,13 +477,13 @@ impl Server {
                     }
                 }
                 (_, ["v1", "runs", id, "jobs", ..]) => {
-                    self.external_route(&mut request, &method, id, &segments[4..])
+                    self.external_route(request, &method, id, &segments[4..])
                 }
-                (Method::Post, ["v1", "runs", id, "cancel"]) => match read_cancel(&mut request) {
+                (Method::Post, ["v1", "runs", id, "cancel"]) => match read_cancel(request) {
                     Ok(files) => self.cancel_run(id, files.as_deref()).boxed(),
                     Err(e) => error(400, e).boxed(),
                 },
-                (Method::Post, ["v1", "concurrency"]) => match read_request(&mut request) {
+                (Method::Post, ["v1", "concurrency"]) => match read_request(request) {
                     Ok(req) => self.concurrency(&req).boxed(),
                     Err(e) => error(400, e).boxed(),
                 },
@@ -461,7 +491,7 @@ impl Server {
                     self.begin_drain("asked to by POST /v1/drain");
                     json_response(202, &self.capacity()).boxed()
                 }
-                (Method::Post, ["v1", "prepare"]) => match read_request(&mut request) {
+                (Method::Post, ["v1", "prepare"]) => match read_request(request) {
                     Ok(req) => self.prepare(&req).boxed(),
                     Err(e) => error(400, e).boxed(),
                 },
@@ -474,15 +504,14 @@ impl Server {
                 (Method::Get, ["v1", "usage", owner]) => {
                     self.usage(owner, query.get("month")).boxed()
                 }
-                (Method::Post, ["v1", "schedules", "read"]) => match read_request_any(&mut request)
-                {
+                (Method::Post, ["v1", "schedules", "read"]) => match read_request_any(request) {
                     Ok(req) => self.read_schedules(req).boxed(),
                     Err(e) => error(400, e).boxed(),
                 },
                 _ => error(404, format!("no route {method} {path}")).boxed(),
             }
         };
-        let _ = request.respond(response);
+        response
     }
 
     fn capacity(&self) -> serde_json::Value {
@@ -510,6 +539,8 @@ impl Server {
             // A run may be shared with this runner (`split` in a run
             // request), and what it does for other runners' runs now.
             "split": true,
+            // It takes `notify` in a run request (`crate::notify`).
+            "notify": true,
             "runs_helping": self.runner.helping.as_ref().map_or(0, |h| h.runs()),
             // Every offer it holds: those, and the ones not asked yet.
             "runs_offered": self.helping.lock().unwrap().len(),
@@ -698,6 +729,9 @@ impl Server {
         if let Err(e) = req.inputs() {
             return error(400, e);
         }
+        if let Some(Err(e)) = req.notify.as_ref().map(|n| n.check()) {
+            return error(400, e);
+        }
         // Helping another runner's run is not a run of this runner's: it
         // is admitted by a count of its own and takes none of the others.
         let helper = req.split.as_ref().is_some_and(|s| s.of.is_some());
@@ -768,17 +802,39 @@ impl Server {
         if late_offer && self.draining.load(Ordering::SeqCst) {
             control.cancel(None);
         }
+        // Whoever started it is told as it changes and when it ends; nobody
+        // is told of a helper's run, which the run it helps reports.
+        let notifier = req.notify.clone().filter(|_| !helper).map(|target| {
+            self.notifying.fetch_add(1, Ordering::SeqCst);
+            let notifying = self.notifying.clone();
+            crate::notify::Notifier::start(target, id.clone(), self.notices.clone(), move || {
+                notifying.fetch_sub(1, Ordering::SeqCst);
+            })
+        });
+        let watcher = notifier.as_ref().map(|n| n.watcher());
         let runner = self.runner.clone();
         let (done_tx, done_rx) = std::sync::mpsc::channel();
         let id_for_thread = id.clone();
         let this = self.clone();
         std::thread::spawn(move || {
             let sink = hub.clone();
-            let logs: crate::schedule::LogFn = Arc::new(move |event| sink.push(&event));
+            let logs: crate::schedule::LogFn = Arc::new(move |event: crate::schedule::LogEvent| {
+                // A pipeline or a job starting or ending; never output.
+                if let Some(w) = &watcher
+                    && !matches!(event, crate::schedule::LogEvent::Output { .. })
+                {
+                    w.changed();
+                }
+                sink.push(&event);
+            });
             // Nobody follows a helper's run: the run it helps has the log.
             let logs = (!helper).then_some(logs);
             let outcome = runner.run_with_logs(&req, &id_for_thread, logs, Some(control));
             let entry = this.finish(&id_for_thread, &req, &owner, outcome);
+            // Recorded, so a read that follows the notice finds it ended.
+            if let Some(notifier) = notifier {
+                notifier.ended(entry.state);
+            }
             if let Some(jobs) = &this.runner.external {
                 jobs.forget_run(&id_for_thread);
             }
@@ -1041,8 +1097,23 @@ impl Server {
             },
             None => self.runner.default_storage_quota,
         };
-        match storage_usage(self.runner.store.as_ref(), &owner, quota) {
-            Ok(usage) => json_response(200, &serde_json::to_value(usage).unwrap_or_default()),
+        match self.storage.get(&owner, quota, STORAGE_WAIT) {
+            Ok(Some(usage)) => json_response(200, &serde_json::to_value(usage).unwrap_or_default()),
+            // The owner's first listing is still going: asked again, it
+            // answers from that.
+            Ok(None) => Response::from_data(
+                json!({ "error": "listing the owner's storage; ask again shortly" })
+                    .to_string()
+                    .into_bytes(),
+            )
+            .with_status_code(503)
+            .with_header(
+                Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
+                    .expect("valid header"),
+            )
+            .with_header(
+                Header::from_bytes(&b"Retry-After"[..], &b"15"[..]).expect("valid header"),
+            ),
             Err(e) => error(502, format!("store: {e}")),
         }
     }
@@ -1051,7 +1122,10 @@ impl Server {
         let (Ok(owner), Ok(repo)) = (RepoId::new(owner), RepoId::new(repo)) else {
             return error(400, "bad owner or repository id");
         };
-        match clear_repository(self.runner.store.as_ref(), &owner, &repo) {
+        let cleared = clear_repository(self.runner.store.as_ref(), &owner, &repo);
+        // Listed again on the next ask, without what went.
+        self.storage.forget(&owner);
+        match cleared {
             Ok(cleared) => json_response(200, &serde_json::to_value(cleared).unwrap_or_default()),
             Err(e) => error(502, format!("store: {e}")),
         }
@@ -1378,6 +1452,15 @@ mod tests {
     /// A server over a store in a directory of its own, with 4 slots and
     /// 8 GiB for jobs, that helps at most `helping` runs.
     fn server(name: &str, helping: usize) -> (Arc<Server>, std::path::PathBuf) {
+        server_with(name, helping, |s| s)
+    }
+
+    /// [`server`], changed by `with` before it starts.
+    fn server_with(
+        name: &str,
+        helping: usize,
+        with: impl FnOnce(Server) -> Server,
+    ) -> (Arc<Server>, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!("iwci-server-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let runner = Runner {
@@ -1405,11 +1488,13 @@ mod tests {
             #[cfg(target_os = "linux")]
             sandbox: None,
             machines: None,
+            spill: None,
+            remote_cache: None,
         };
         let server = Server::new(runner, "k".repeat(32))
             .unwrap()
             .with_helping(helping);
-        (Arc::new(server), dir)
+        (Arc::new(with(server)), dir)
     }
 
     /// An offer to help run `of`, which is another runner's.
@@ -1573,6 +1658,92 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// The notices a [`notice_recorder`] was given, with the URL of each.
+    type Sent = Arc<Mutex<Vec<(String, crate::notify::Notice)>>>;
+
+    /// A sender that keeps every notice it is given.
+    fn notice_recorder() -> (crate::notify::Sender, Sent) {
+        let sent = Arc::new(Mutex::new(Vec::new()));
+        let kept = sent.clone();
+        let send: crate::notify::Sender = Arc::new(
+            move |target: &crate::notify::NotifyRequest, notice: &crate::notify::Notice| {
+                kept.lock()
+                    .unwrap()
+                    .push((target.url.clone(), notice.clone()));
+                crate::notify::Answer::Done
+            },
+        );
+        (send, sent)
+    }
+
+    #[test]
+    fn a_run_that_names_notify_tells_it_how_the_run_ended_once_it_is_recorded() {
+        let (send, sent) = notice_recorder();
+        let (server, dir) = server_with("notify", 0, |s| s.with_notices(send));
+        assert_eq!(server.capacity()["notify"], true);
+        // A repository that is not there: the run ends at once, as an error.
+        let req: RunRequest = serde_json::from_value(json!({
+            "repo": dir.join("no-such-repository").to_string_lossy(),
+            "owner": "acme",
+            "repo-id": "app",
+            "branch": "main",
+            "notify": { "url": "https://app.example.com/api/ci-notify/runs/r1", "token": "t0ken" },
+        }))
+        .unwrap();
+        let reply = server.start_run(req, false);
+        assert_eq!(reply.status_code().0, 202);
+        let id = server.order.lock().unwrap().last().cloned().unwrap();
+        wait_for("the run to end and be told", || {
+            sent.lock()
+                .unwrap()
+                .iter()
+                .any(|(_, n)| n.state != "running")
+        });
+        let sent = sent.lock().unwrap().clone();
+        let (url, last) = sent.last().unwrap();
+        assert_eq!(url, "https://app.example.com/api/ci-notify/runs/r1");
+        assert_eq!(last.run, id);
+        assert_ne!(last.state, "running");
+        // Told only once it was recorded: the entry says so too.
+        assert_eq!(server.runs.lock().unwrap()[&id].state, last.state);
+        wait_for("the notice thread to end", || server.busy() == 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_notify_that_is_not_https_to_a_name_is_refused_before_the_run_starts() {
+        let (send, sent) = notice_recorder();
+        let (server, dir) = server_with("notify-refused", 0, |s| s.with_notices(send));
+        let req: RunRequest = serde_json::from_value(json!({
+            "repo": "/nowhere",
+            "owner": "acme",
+            "repo-id": "app",
+            "branch": "main",
+            "notify": { "url": "https://127.0.0.1:8547/v1/drain", "token": "t0ken" },
+        }))
+        .unwrap();
+        assert_eq!(server.start_run(req, false).status_code().0, 400);
+        assert_eq!(server.capacity()["runs_active"], 0);
+        assert!(sent.lock().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_offer_to_help_tells_nobody() {
+        let (send, sent) = notice_recorder();
+        let (server, dir) = server_with("notify-offer", 1, |s| s.with_notices(send));
+        let mut req = offer(&"d".repeat(32));
+        req.notify = Some(crate::notify::NotifyRequest {
+            url: "https://app.example.com/x".into(),
+            token: "t0ken".into(),
+        });
+        assert_eq!(server.start_run(req, false).status_code().0, 202);
+        server.begin_drain("test");
+        wait_for("the drain to end the offer", || server.busy() == 0);
+        assert!(sent.lock().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn progress_follows_each_pipeline_and_its_jobs() {
         use crate::schedule::{LogEvent, PlannedNode};
@@ -1697,5 +1868,121 @@ mod tests {
         assert!(constant_time_eq(b"abc", b"abc"));
         assert!(!constant_time_eq(b"abc", b"abd"));
         assert!(!constant_time_eq(b"abc", b"abcd"));
+    }
+
+    /// Serves `server` on a port of its own, in the background.
+    fn listening(server: Arc<Server>) -> std::net::SocketAddr {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || server.serve_on(listener));
+        addr
+    }
+
+    /// One request on an open connection and its answer's status, the
+    /// body read by its length.
+    fn ask(
+        stream: &mut std::net::TcpStream,
+        reader: &mut std::io::BufReader<std::net::TcpStream>,
+        request: &str,
+    ) -> u16 {
+        use std::io::{BufRead, Write};
+        stream.write_all(request.as_bytes()).unwrap();
+        let mut status = String::new();
+        reader.read_line(&mut status).unwrap();
+        let mut length = 0usize;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line == "\r\n" || line.is_empty() {
+                break;
+            }
+            if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                length = v.trim().parse().unwrap();
+            }
+        }
+        let mut body = vec![0u8; length];
+        std::io::Read::read_exact(reader, &mut body).unwrap();
+        status.split(' ').nth(1).unwrap_or("0").parse().unwrap()
+    }
+
+    fn connect(
+        addr: std::net::SocketAddr,
+    ) -> (std::net::TcpStream, std::io::BufReader<std::net::TcpStream>) {
+        let stream = std::net::TcpStream::connect(addr).unwrap();
+        stream
+            .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+            .unwrap();
+        let reader = std::io::BufReader::new(stream.try_clone().unwrap());
+        (stream, reader)
+    }
+
+    /// The proxy keeps keep-alive connections open to the runner, and
+    /// opens several at once. On tiny_http's pool one of them could go
+    /// unread until another closed; each must be answered at once while
+    /// the others stay open, and carry its next request too.
+    #[test]
+    fn keep_alive_connections_opened_together_are_all_answered_promptly() {
+        let (server, dir) = server("burst", 0);
+        let addr = listening(server);
+        let key = "k".repeat(32);
+        let barrier = Arc::new(std::sync::Barrier::new(32));
+        let threads: Vec<_> = (0..32)
+            .map(|_| {
+                let (barrier, key) = (barrier.clone(), key.clone());
+                std::thread::spawn(move || {
+                    let started = std::time::Instant::now();
+                    let (mut stream, mut reader) = connect(addr);
+                    let first = ask(&mut stream, &mut reader, "GET /healthz HTTP/1.1\r\nHost: r\r\n\r\n");
+                    let waited = started.elapsed();
+                    // Held open until every connection has its answer.
+                    barrier.wait();
+                    let second = ask(
+                        &mut stream,
+                        &mut reader,
+                        &format!("GET /v1/capacity HTTP/1.1\r\nHost: r\r\nAuthorization: Bearer {key}\r\n\r\n"),
+                    );
+                    (first, second, waited)
+                })
+            })
+            .collect();
+        for t in threads {
+            let (first, second, waited) = t.join().unwrap();
+            assert_eq!((first, second), (200, 200));
+            assert!(
+                waited < std::time::Duration::from_secs(2),
+                "answered after {waited:?}"
+            );
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_claim_past_its_connection_cap_is_refused_while_the_key_gets_through() {
+        let (mut server, dir) = server("claims", 0);
+        Arc::get_mut(&mut server).unwrap().bounds =
+            http::Bounds::with(2, http::PER_ANONYMOUS, http::BUFFERED_BODIES);
+        let addr = listening(server);
+        let claim = "GET /v1/runs/r/jobs/j/inputs?claim=t HTTP/1.1\r\nHost: r\r\n\r\n";
+        let (mut c1, mut r1) = connect(addr);
+        let (mut c2, mut r2) = connect(addr);
+        // No cloud jobs here: the key is asked for, and the connection
+        // stays open, holding its place.
+        assert_eq!(ask(&mut c1, &mut r1, claim), 401);
+        assert_eq!(ask(&mut c2, &mut r2, claim), 401);
+        let (mut c3, mut r3) = connect(addr);
+        assert_eq!(ask(&mut c3, &mut r3, claim), 429);
+        let (mut k, mut rk) = connect(addr);
+        let key = "k".repeat(32);
+        assert_eq!(
+            ask(
+                &mut k,
+                &mut rk,
+                &format!(
+                    "GET /v1/capacity HTTP/1.1\r\nHost: r\r\nAuthorization: Bearer {key}\r\n\r\n"
+                ),
+            ),
+            200
+        );
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

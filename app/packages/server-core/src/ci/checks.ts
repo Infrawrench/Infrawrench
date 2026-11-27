@@ -1,6 +1,7 @@
 /**
  * The GitHub check run that shows a CI run on its commit and pull request.
- * Best-effort: an installation without `checks: write` still runs CI, it
+ * A run of a repository on git.infrawrench.com has a commit status instead
+ * (`status.ts`), published through the same `upsertCheck`. Best-effort: an installation without `checks: write` still runs CI, it
  * just shows nothing on GitHub, so failures here are logged, not raised.
  */
 import { eq } from "drizzle-orm";
@@ -10,6 +11,7 @@ import { orgAppUrl } from "../app-url.js";
 import { db } from "../db/client.js";
 import { ciRuns } from "../db/schema.js";
 import { githubInstallationFetch } from "../github/app.js";
+import { isGitSource } from "./source.js";
 
 /**
  * One check per event: a branch with an open pull request gets a push run
@@ -42,6 +44,10 @@ interface CheckTarget {
   event: CiEvent;
   organizationId: string;
   installationId: number;
+  /** Set for a repository on git.infrawrench.com, whose status is a commit status. */
+  gitRepositoryId?: string | null | undefined;
+  /** Set for a Terraform workspace's run (`terraform.ts`), whose status is the workspace's. */
+  terraformRunId?: string | null | undefined;
   repoFullName: string;
   sha: string;
   checkRunId: number | null;
@@ -125,8 +131,18 @@ export async function noteOnCheck(
   }
 }
 
-/** Creates the run's check, or updates the one it has. */
+/**
+ * Says how the run stands on its commit: the run's GitHub check, created or
+ * updated, or for a repository on git.infrawrench.com its commit status
+ * (`status.ts`).
+ */
 export async function upsertCheck(run: CheckTarget, update: CheckUpdate): Promise<void> {
+  if (isGitSource(run)) {
+    // Loaded here: `status.ts` reads this module's names.
+    const { gitStatusPublisher } = await import("./status.js");
+    await gitStatusPublisher.run(run, update);
+    return;
+  }
   const detailsUrl = orgAppUrl(run.organizationId, `ci/${run.id}`);
   const body: Record<string, unknown> = {
     status: update.status,

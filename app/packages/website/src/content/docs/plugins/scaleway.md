@@ -40,7 +40,7 @@ In the Scaleway Console, go to **Identity and Access Management > API keys > Gen
 - **Attach block volumes** to instances in the same zone.
 - **Pick a zone or region** when you create a resource.
 - **Instance actions**: power on and off, reboot, stop in place, and back up (snapshots every volume into a new image).
-- **Metrics**: Managed RDB charts CPU, memory, disk usage and connections (per node on HA and replica setups). With the optional Cockpit query token, instances chart CPU and network, Kapsule charts nodes, pods and API server load, and Serverless Functions and Containers chart CPU, memory usage and utilization, and running instances.
+- **Metrics**: Managed RDB charts CPU, memory, disk usage and connections (per node on HA and replica setups). With the optional Cockpit query token, instances chart CPU and network, Kapsule charts nodes, pods and API server load, and Serverless Functions and Containers chart CPU, memory usage and utilization, and running instances. Capacity runway tracks a single-node Managed RDB's disk and connection usage from those charts.
 - **Logs** on Serverless Functions, Serverless Containers and Managed RDB. Needs the Cockpit token with logs query permission as well as metrics.
 - **Right-sizing** for instances, based on their CPU (needs the optional Cockpit query token). Scaleway only changes an instance's type while it's stopped.
 - **Create a Managed RDB database**: the form only lists engine versions and node types Scaleway currently offers. Automatic backup status and retention are shown and count toward backup coverage.

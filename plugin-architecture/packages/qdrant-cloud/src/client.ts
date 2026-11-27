@@ -1694,6 +1694,37 @@ const SERIES: Array<{
   { key: "gpuRam", label: "GPU RAM" },
 ];
 
+/**
+ * Capacity series, the cluster type's `capacityMetrics` names them. Built from
+ * the per-node `nodes[].disk` and `nodes[].ramRss` timeseries of
+ * `GetClusterUsageMetrics`, both in bytes ("Timeseries of disk usage ... in
+ * bytes", "RSS memory used ... in bytes": qdrant-cloud-public-api
+ * proto/qdrant/cloud/monitoring/v1/monitoring.proto, read 2026-11-23), keeping
+ * the fullest node, because each node fills its own disk and memory.
+ */
+export const DISK_MAX_NODE_SERIES = "Disk used (max node)";
+export const RAM_RSS_MAX_NODE_SERIES = "RAM RSS (max node)";
+
+type NodeUsage = NonNullable<QcUsageMetrics["nodes"]>[number];
+
+function maxAcrossNodes(
+  nodes: NodeUsage[],
+  key: "disk" | "ramRss",
+): Array<{ timestamp: number; value: number }> {
+  const byTs = new Map<number, number>();
+  for (const node of nodes) {
+    for (const m of node[key] ?? []) {
+      const timestamp = Date.parse(m.timestamp ?? "");
+      const value = Number(m.value);
+      if (!Number.isFinite(timestamp) || !Number.isFinite(value)) continue;
+      byTs.set(timestamp, Math.max(byTs.get(timestamp) ?? value, value));
+    }
+  }
+  return [...byTs.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([timestamp, value]) => ({ timestamp, value }));
+}
+
 /** Qdrant's usage metrics carry no unit; series are labelled as the console labels them. */
 export function usageSeries(res: QcUsageMetrics | undefined): MetricSeries[] {
   const out: MetricSeries[] = [];
@@ -1704,5 +1735,10 @@ export function usageSeries(res: QcUsageMetrics | undefined): MetricSeries[] {
     if (!pts.length) continue;
     out.push({ label: s.label, ...(s.unit ? { unit: s.unit } : {}), points: pts });
   }
+  const nodes = res?.nodes ?? [];
+  const disk = maxAcrossNodes(nodes, "disk");
+  if (disk.length) out.push({ label: DISK_MAX_NODE_SERIES, unit: "bytes", points: disk });
+  const rss = maxAcrossNodes(nodes, "ramRss");
+  if (rss.length) out.push({ label: RAM_RSS_MAX_NODE_SERIES, unit: "bytes", points: rss });
   return out;
 }

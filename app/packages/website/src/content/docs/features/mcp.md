@@ -17,6 +17,10 @@ The transport is **Streamable HTTP**, so you don't need a WebSocket or stdio bri
 - **2026-07-28** (the current revision): stateless per-request negotiation, `server/discover`, and the per-request `_meta` envelope. New clients need no handshake.
 - **2025-11-25 and earlier:** the classic `initialize` handshake, with plain JSON response bodies (`enableJsonResponse: true`). Existing clients keep working unchanged.
 
+### Discovery
+
+The server publishes an [MCP Server Card](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2127-mcp-server-cards.md) at `https://app.infrawrench.com/api/mcp/server-card`, listed in the AI Catalog at `https://app.infrawrench.com/.well-known/ai-catalog.json` (and `https://infrawrench.com/.well-known/ai-catalog.json`). Registries and clients that support Server Cards can find the endpoint, its name and its documentation from either one without signing in. Infrawrench is also submitted to [MCPNow](https://mcpnow.app), which passes changes to the server on to the directories that subscribe to it.
+
 ## Sign in
 
 Authentication is OAuth via WorkOS AuthKit, following [RFC 9728 Protected Resource Metadata](https://datatracker.ietf.org/doc/html/rfc9728), so any OAuth-capable MCP client works:
@@ -187,5 +191,5 @@ Restart Claude Desktop. The first request opens the OAuth sign-in in your browse
 ## Tips and limits
 
 - Each request stands alone, with no sessions. Long-running tools should return quickly and report progress through later calls rather than holding a request open.
-- Self-hosting: set `PUBLIC_BASE_URL` to your public origin so the OAuth metadata advertises the right URL (it falls back to `APP_URL`), and `WORKOS_AUTHKIT_DOMAIN` (or `WORKOS_ISSUER`) so clients find the right authorization server. `WORKOS_AUTHKIT_DOMAIN` must be your AuthKit domain. `https://api.workos.com/user_management` does **not** serve OAuth authorization server metadata, so discovery fails against it.
+- Self-hosting: set `PUBLIC_BASE_URL` to your public origin so the OAuth metadata and the server card advertise the right URL (it falls back to `APP_URL`), and `WORKOS_AUTHKIT_DOMAIN` (or `WORKOS_ISSUER`) so clients find the right authorization server. `WORKOS_AUTHKIT_DOMAIN` must be your AuthKit domain. `https://api.workos.com/user_management` does **not** serve OAuth authorization server metadata, so discovery fails against it.
 - Self-hosting: under **Connect > Configuration** in the WorkOS Dashboard, enable **Client ID Metadata Document** (the current MCP standard for client registration) and, for clients that haven't adopted it yet, **Dynamic Client Registration** (deprecated by the 2026-07-28 spec, still fully supported). With neither enabled, clients without pre-registered credentials can't connect: clients using metadata documents find no `client_id_metadata_document_supported` flag, and Dynamic Client Registration clients get `dynamic_client_registration_disabled` from `/oauth2/register`. The server logs an `[mcp-auth]` warning when neither is advertised, so check the web pod's logs when clients say they couldn't register. Alternatively, register an OAuth client in WorkOS manually and paste its client ID into the MCP client's connector settings.

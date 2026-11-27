@@ -89,6 +89,7 @@ export function useToolDescriptions(): Record<string, string> {
       compliance: gt("Controls, the evidence for them and the gaps."),
       "access-review": gt("Who has access to what, with stale and unowned access flagged."),
       "jit-access": gt("Roles granted for a set time, with an approver."),
+      offboarding: gt("Everything tied to someone who is leaving, with a way to revoke each."),
       expiring: gt("Certificates, domains, tokens and passwords that are running out."),
       backups: gt("What is recoverable, and how old the newest backup is."),
       ci: gt("Pipelines on every push and pull request."),

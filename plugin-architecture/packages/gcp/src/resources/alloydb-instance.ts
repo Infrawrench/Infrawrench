@@ -49,6 +49,19 @@ export const AlloyDbInstanceResourceType = rt({
   parentTypeId: "alloydb-cluster",
   supportsCreate: true,
   supportsMetrics: true,
+  // `instance/postgres/average_connections` ("The mean number of active and
+  // idle connections ... across serving nodes") over
+  // `instance/postgres/connections_limit` ("The current limit on the number
+  // of connections per node"), charted as 0..100 under this label:
+  // https://docs.cloud.google.com/monitoring/api/metrics_gcp_a_b, read 2026-11-23
+  capacityMetrics: [
+    {
+      seriesLabel: "Connections Used (per node)",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Connections",
+    },
+  ],
   peerIntegrations: [
     {
       pluginId: "postgres",

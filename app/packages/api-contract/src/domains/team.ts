@@ -124,6 +124,14 @@ export const MeResponse = Schema.Struct({
   role: Schema.NullOr(RoleSummary),
   permissions: Schema.Array(Permission),
   costVisibility: Schema.optionalKey(CostVisibilitySummary),
+  // Deprecated: Git is on for every organisation since 1.135.0. Always true,
+  // kept so a client generated from an earlier spec still decodes the answer.
+  gitEnabled: Schema.optionalKey(
+    Schema.Boolean.annotate({
+      description:
+        "Deprecated: always true. Git (git.infrawrench.com) is available to every organisation; the field will be removed in the next major version.",
+    }),
+  ),
 }).annotate({ identifier: "MeResponse" });
 
 export const PermissionCatalog = Schema.Struct({ permissions: Schema.Array(Permission) }).annotate({

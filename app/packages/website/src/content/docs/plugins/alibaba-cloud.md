@@ -48,7 +48,7 @@ To create, edit, start and stop resources, add the full-access policies of those
 Metrics tabs show CloudMonitor data:
 
 - ECS instances: CPU, memory and load, network and disk throughput, and IOPS. Memory and load need the CloudMonitor agent, which Alibaba's public images install by default.
-- RDS: CPU, memory, disk, IOPS and connection utilisation, network traffic and queries.
+- RDS: CPU, memory, disk, IOPS and connection utilisation, network traffic and queries. Capacity runway tracks the disk and connection utilisation.
 - Tair (Redis): CPU, memory and connection utilisation, requests, hit rate, traffic and key count.
 - CLB: active and new connections, traffic, requests, 5xx responses and response time.
 - ALB: requests, connections, traffic, 5xx responses, request time, unhealthy backends and LCUs.

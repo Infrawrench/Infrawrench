@@ -4,8 +4,9 @@
  *
  * Stripe redelivers anything that does not get a 2xx, so every branch here is
  * idempotent: the subscription writes set absolute values, capacity seats are
- * granted once per Checkout Session (a unique index), and the Revnu report is
- * queued, never sent inline.
+ * granted once per Checkout Session (a unique index), a short username on
+ * git.infrawrench.com is claimed once per session the same way, and the Revnu
+ * report is queued, never sent inline.
  */
 import { eq } from "drizzle-orm";
 import type Stripe from "stripe";
@@ -15,6 +16,10 @@ import {
 } from "@infrawrench/server-core/billing/capacity-slots";
 import { db } from "../../../db/client";
 import { subscriptions } from "../../../db/schema";
+import {
+  isGitUsernameCheckout,
+  settleGitUsernameCheckout,
+} from "../../../services/git-username-checkout";
 import { queuePaidCheckout } from "../../../services/revnu-checkout";
 
 /** Seat quantity from the licensed plan item; metered items carry no quantity. */
@@ -100,6 +105,12 @@ export async function applyStripeEvent(stripe: Stripe, event: Stripe.Event): Pro
     case "checkout.session.async_payment_succeeded":
     case "checkout.session.completed": {
       const session = event.data.object;
+      // A short username on git.infrawrench.com: a person's purchase, not an
+      // organisation's, so nothing below applies to it. Claims once per session.
+      if (isGitUsernameCheckout(session)) {
+        await settleGitUsernameCheckout(stripe, session);
+        return;
+      }
       let purchased = session.payment_status === "paid";
       if (isPaidCapacitySlotSession(session)) {
         purchased = await grantCapacitySlots(stripe, session);

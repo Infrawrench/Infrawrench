@@ -216,7 +216,7 @@ export class VercelClient implements PluginClient {
     }
   }
 
-  /** `VERCEL_TOKEN` for a CI job (`manifest.ciCredential`, ci-credential.ts). */
+  /** `VERCEL_TOKEN` and `VERCEL_API_TOKEN` for a CI job (`manifest.ciCredential`, ci-credential.ts). */
   lendCiCredential(_request: CiCredentialRequest): PluginEffect<CiLentMaterial> {
     return attempt(async () => lendVercelToken(this.accessToken));
   }

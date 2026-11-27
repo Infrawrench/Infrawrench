@@ -13,7 +13,7 @@
 //!          [--keep-installs-unpacked 24h] [--var NAME=value]...
 //!          [--no-task-cache]
 //!          [--download-max-file 256MiB] [--download-max-run 1GiB]
-//!          [--download-max-retention 90d]
+//!          [--download-max-retention 90d] [--spill-disk 20GiB]
 //! ```
 //!
 //! A private repository's token comes from `IWCI_GIT_TOKEN`, never a flag,
@@ -215,11 +215,18 @@ pub(super) fn open_runner(
         .with_internet()
         .with_stall_after(limits.stall_after)
         .with_module_limits(limits.modules);
+    let remote_cache = remote_cache(args, &cache)?;
+    let runtime = match &remote_cache {
+        Some(server) => {
+            runtime.with_local_service(crate::turbo::PORT, server.socket().to_path_buf())
+        }
+        None => runtime,
+    };
     // The server shares each vCPU among `--jobs-per-cpu` jobs; `iwci run`
     // runs a job per vCPU, as many at once as `--cpus`. Either way a job
     // with `cpus:` holds that many vCPUs' slots.
     let per_cpu = if shared_slots { limits.jobs_per_cpu } else { 1 };
-    let machines = machines(args, &cache, limits.stall_after, &runtime)?;
+    let machines = machines(args, &cache, limits, &runtime)?;
     Ok(Runner {
         runtime: Arc::new(runtime),
         store,
@@ -248,19 +255,77 @@ pub(super) fn open_runner(
         #[cfg(target_os = "linux")]
         sandbox: native_sandbox(args, &cache, limits.cpus, per_cpu)?,
         machines,
+        spill: spill(args, &cache)?,
+        remote_cache,
     })
+}
+
+/// `--remote-cache on|off` (default `on`): serves Turborepo's remote cache
+/// to every job with a network, on its gateway ([`crate::turbo`]), from a
+/// Unix socket under the cache directory. Only jobs in a sandbox or a
+/// machine reach a gateway, which only a Linux host has.
+fn remote_cache(
+    args: &mut Args,
+    cache: &std::path::Path,
+) -> Result<Option<Arc<crate::turbo::RemoteCache>>, String> {
+    match args.value("--remote-cache")?.as_deref() {
+        None | Some("on") => {}
+        Some("off") => return Ok(None),
+        Some(other) => return Err(format!("--remote-cache takes on or off, not `{other}`")),
+    }
+    if !cfg!(target_os = "linux") {
+        return Ok(None);
+    }
+    crate::turbo::RemoteCache::start(&cache.join("remote-cache.sock")).map(|c| Some(Arc::new(c)))
+}
+
+/// The most of the runner's disk one isolate job's files may take when
+/// they outgrow memory, as a machine's scratch disk is.
+pub const DEFAULT_SPILL_DISK: u64 = 20 << 30;
+
+/// `--spill-disk <size>` (default 20GiB): an isolate job keeps half its
+/// `memory:` of files in memory and moves the least recently used beyond
+/// that to unlinked files under the cache directory's `spill/`, up to this
+/// much. `--spill-disk 0` keeps every file in memory, held to `memory:`.
+fn spill(args: &mut Args, cache: &std::path::Path) -> Result<Option<schedule::Spill>, String> {
+    let disk_bytes = match args.value("--spill-disk")? {
+        None => DEFAULT_SPILL_DISK,
+        Some(text) => iwci_spec::parse_size(&text).ok_or_else(|| {
+            format!("--spill-disk takes a size such as `20GiB` or `0`, not `{text}`")
+        })?,
+    };
+    if disk_bytes == 0 {
+        return Ok(None);
+    }
+    let dir = cache.join("spill");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    Ok(Some(schedule::Spill { dir, disk_bytes }))
 }
 
 /// `--machines <dir>` (or `IWCI_MACHINES`): the virtual machine images
 /// `platform: linux` jobs run in, as
 /// `ci-runner/images/` builds them. `--machine-cpus <n>` (default 2) is
 /// what each machine gets. Off by default: such jobs then fail, saying so.
+///
+/// `--machine-burst on|off` (default `on`): a Linux machine gets more
+/// vCPUs than its `cpus:` (`iwci_vm::burst_vcpus`) in a cgroup of its own
+/// among the sandboxes, weighted by its `cpus:`, so it uses idle CPUs and
+/// keeps to its share when there are none. It needs the delegated cgroup
+/// subtree the sandboxes use; without one machines keep to their `cpus:`.
 fn machines(
     args: &mut Args,
     cache: &std::path::Path,
-    stall_after: Option<Duration>,
+    limits: &Limits,
     runtime: &iwci_runtime::Runtime,
 ) -> Result<Option<Arc<dyn crate::machines::Machines>>, String> {
+    let burst = match args.value("--machine-burst")?.as_deref() {
+        None | Some("on") => Some(iwci_vm::Burst {
+            host_cpus: u32::try_from(limits.cpus).unwrap_or(u32::MAX),
+            weight_per_cpu: 100 * u64::try_from(limits.jobs_per_cpu).unwrap_or(1),
+        }),
+        Some("off") => None,
+        Some(other) => return Err(format!("--machine-burst takes on or off, not `{other}`")),
+    };
     let cpus = match args.value("--machine-cpus")? {
         None => 2,
         Some(text) => text
@@ -280,7 +345,8 @@ fn machines(
         dir.into(),
         cache.join("machines"),
         cpus,
-        stall_after,
+        burst,
+        limits.stall_after,
         runtime,
     ))
 }
@@ -469,6 +535,7 @@ pub fn run(mut args: Args) -> Result<ExitCode, String> {
             vars
         },
         split: None,
+        notify: None,
     };
     if request.sha.is_none() && request.branch.is_none() {
         return Err("give --sha <commit>, --branch <name>, or both".into());

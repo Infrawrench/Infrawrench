@@ -33,6 +33,8 @@ export interface PaletteAction {
   keywords?: readonly string[];
   /** Shown in the empty state, before anything is typed. */
   suggested?: boolean;
+  /** In beta: the row carries the Beta badge. */
+  beta?: boolean;
   run: () => void;
 }
 
@@ -41,6 +43,7 @@ export interface PaletteTool {
   key: string;
   label: string;
   onClick: () => void;
+  beta?: boolean | undefined;
 }
 
 /**
@@ -219,6 +222,7 @@ export function usePaletteActions(ctx: PaletteActionContext): PaletteAction[] {
           label: gt("Go to {page}", { page: tool.label }),
           group: "go",
           keywords: [tool.label],
+          ...(tool.beta ? { beta: true } : {}),
           run: tool.onClick,
         });
       }

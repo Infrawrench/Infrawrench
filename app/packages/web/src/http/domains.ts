@@ -14,6 +14,7 @@ import { costReportAnomalyAlertsDomain } from "./domains/cost-report-anomaly-ale
 import { costExportsDomain } from "./domains/cost-exports/index";
 import { costExportJobsDomain } from "./domains/cost-export-jobs/index";
 import { budgetsDomain } from "./domains/budgets/index";
+import { offboardingDomain } from "./domains/offboarding/index";
 import { onCallDomain } from "./domains/on-call/index";
 import { queryMonitorsDomain } from "./domains/query-monitors/index";
 import { runbooksDomain } from "./domains/runbooks/index";
@@ -74,6 +75,7 @@ import { eventSubscriptionsDomain } from "./domains/event-subscriptions/index";
 import { jiraDomain } from "./domains/jira/index";
 import { linearDomain } from "./domains/linear/index";
 import { githubIssuesDomain } from "./domains/github-issues/index";
+import { gitDomain } from "./domains/git/index";
 import { workflowsDomain } from "./domains/workflows/index";
 import { workflowApprovalsDomain } from "./domains/workflow-approvals/index";
 import { workflowSecretsDomain } from "./domains/workflow-secrets/index";
@@ -89,6 +91,7 @@ import { calendarFeedDomain } from "./domains/calendar-feed/index";
 import { alertEmailUnsubscribeDomain } from "./domains/alert-email-unsubscribe/index";
 import { anomalyFeedbackLinkDomain } from "./domains/anomaly-feedback-link/index";
 import { githubDomain } from "./domains/github/index";
+import { gitUsernameCheckoutDomain } from "./domains/git-username-checkout/index";
 import { twilioDomain } from "./domains/twilio/index";
 import { pushDomain } from "./domains/push/index";
 import { k8sEfficiencyReportsDomain } from "./domains/k8s-efficiency-reports/index";
@@ -121,6 +124,7 @@ import { starredDomain } from "./domains/starred/index";
 import { productsDomain } from "./domains/products/index";
 import { ciDomain } from "./domains/ci/index";
 import { ciJobsDomain } from "./domains/ci-jobs/index";
+import { ciNotifyDomain } from "./domains/ci-notify/index";
 import { orgConfigDomain } from "./domains/org-config/index";
 import { costVisibilityDomain } from "./domains/cost-visibility/index";
 import { sharingDomain } from "./domains/sharing/index";
@@ -186,6 +190,7 @@ export const DOMAINS: readonly Domain[] = [
   costExportsDomain,
   costExportJobsDomain,
   budgetsDomain,
+  offboardingDomain,
   onCallDomain,
   queryMonitorsDomain,
   runbooksDomain,
@@ -246,6 +251,7 @@ export const DOMAINS: readonly Domain[] = [
   jiraDomain,
   linearDomain,
   githubIssuesDomain,
+  gitDomain,
   workflowsDomain,
   workflowApprovalsDomain,
   workflowSecretsDomain,
@@ -294,6 +300,7 @@ export const DOMAINS: readonly Domain[] = [
   alertEmailUnsubscribeDomain,
   anomalyFeedbackLinkDomain,
   githubDomain,
+  gitUsernameCheckoutDomain,
   twilioDomain,
   pushDomain,
   k8sEfficiencyReportsDomain,
@@ -324,6 +331,7 @@ export const DOMAINS: readonly Domain[] = [
   workflowGitWebhookDomain,
   issueWebhooksDomain,
   ciJobsDomain,
+  ciNotifyDomain,
   internalRelayDomain,
   callbackDomain,
   slackOAuthDomain,

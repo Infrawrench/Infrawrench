@@ -29,6 +29,9 @@ pub struct GitWorkspaces {
     /// Native extensions built ahead of time for `env:ruby`, placed where
     /// Bundler looks for a gem's compiled part.
     pub prebuilt: Arc<dyn iwci_deps::bundler::PrebuiltExtensions>,
+    /// What `install-scripts: true` runs its scripts with: the runner's
+    /// machines and the run's caches.
+    pub scripts: Option<crate::install_scripts::ScriptHost>,
 }
 
 /// Packages' git commits (Composer's, Bundler's), through the run's git
@@ -166,10 +169,18 @@ impl Workspaces for GitWorkspaces {
                     self.ref_hint.as_deref(),
                 )
                 .map_err(|e| format!("fetch: {e}"))?;
+            let head = iwci_git::Head::from_ref(self.ref_hint.as_deref());
+            let checking_out = std::time::Instant::now();
             let checkout = self
                 .remote
-                .checkout_into(&self.commit, &builder, &clone.into)
+                .checkout_repository_into(&self.commit, &builder, &clone.into, &head)
                 .map_err(|e| format!("checkout: {e}"))?;
+            eprintln!(
+                "iwci: workspace {}: checked out {} in {} ms",
+                spec.key,
+                self.commit,
+                checking_out.elapsed().as_millis()
+            );
             for sub in &checkout.submodules {
                 warnings.push(format!(
                     "submodule `{}` was left out of the checkout",
@@ -178,6 +189,7 @@ impl Workspaces for GitWorkspaces {
             }
         }
         for dep in &spec.deps {
+            let installing = std::time::Instant::now();
             let fetcher = self.fetcher.as_ref();
             let threads = self.threads.max(1);
             let (outcome, notes) = match dep.ecosystem {
@@ -334,8 +346,14 @@ impl Workspaces for GitWorkspaces {
                 }
             }
             .map_err(|e| format!("{} in {}: {e}", dep.ecosystem.name(), dep.dir))?;
-            warnings.extend(notes);
-            installs.push(format!(
+            // Install scripts run after all (`install-scripts: true`): the
+            // install's own word that they did not is no longer so.
+            warnings.extend(
+                notes
+                    .into_iter()
+                    .filter(|n| !(spec.install_scripts && n.ends_with(iwci_deps::SCRIPTS_NOT_RUN))),
+            );
+            let line = format!(
                 "{} in {}: {}",
                 dep.ecosystem.name(),
                 dep.dir,
@@ -344,7 +362,16 @@ impl Workspaces for GitWorkspaces {
                     iwci_deps::cache::Outcome::Disk => "cached (disk)",
                     iwci_deps::cache::Outcome::Installed => "installed",
                 }
-            ));
+            );
+            eprintln!(
+                "iwci: workspace {}: {line} in {} ms",
+                spec.key,
+                installing.elapsed().as_millis()
+            );
+            installs.push(line);
+        }
+        if spec.install_scripts {
+            crate::install_scripts::run(self.scripts.as_ref(), &builder, spec, &mut installs)?;
         }
         // The platform a `native: true` install chose, as a file too: a
         // `node` started without the variable reads it there

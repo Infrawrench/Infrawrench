@@ -357,8 +357,13 @@ describe("new metric handlers", () => {
   it("elastiCacheServerlessCacheMetrics uses the lowercase clusterId dimension", async () => {
     const { ctx, calls } = ctxWithData();
     const out = await elastiCacheServerlessCacheMetrics(ctx, res({ name: "sessions" }));
-    expect(out.length).toBe(14);
+    // 14 CloudWatch series plus the derived ECPUs per second.
+    expect(out.length).toBe(15);
     expect(calls[0]![2]).toEqual([{ Name: "clusterId", Value: "sessions" }]);
+    const rate = out.find((s) => s.label === "ECPUs per Second")!;
+    expect(rate.unit).toBe("ECPU/s");
+    // The fake returns 1 ECPU per 60 s period.
+    expect(rate.points[0]!.value).toBeCloseTo(1 / ctx.period);
     expect(out.find((s) => s.label === "Read Latency")!.unit).toBe("μs");
     expect(await elastiCacheServerlessCacheMetrics(ctx, res({}))).toEqual([]);
   });

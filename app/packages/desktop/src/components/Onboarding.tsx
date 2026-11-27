@@ -32,6 +32,11 @@ interface OnboardingProps {
   onSelectOrg: (orgId: string | null) => void;
   /** The flow is finished: mark it complete and unmount. */
   onDone: () => void;
+  /**
+   * Skip the welcome and open the browser sign-in at once (a call to action
+   * the user accepted already made the pitch). Cancelling lands on the welcome.
+   */
+  startWithSignIn?: boolean;
 }
 
 const PERKS: { title: string; description: string; icon: React.ReactNode }[] = [
@@ -83,10 +88,15 @@ function PerkIcon({ d }: { d: string }) {
  * lets the user pick which organization to start in. Skippable at every step:
  * the app is fully usable locally without an account.
  */
-export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps) {
+export function Onboarding({
+  onSignedIn,
+  onSelectOrg,
+  onDone,
+  startWithSignIn = false,
+}: OnboardingProps) {
   const gt = useGT();
   const gtData = useDataString();
-  const [step, setStep] = useState<Step>("welcome");
+  const [step, setStep] = useState<Step>(startWithSignIn ? "signing-in" : "welcome");
   const [orgs, setOrgs] = useState<CloudOrg[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [refreshingOrgs, setRefreshingOrgs] = useState(false);
@@ -101,6 +111,15 @@ export function Onboarding({ onSignedIn, onSelectOrg, onDone }: OnboardingProps)
   }
 
   useEffect(() => stopPolling, []);
+
+  // Once per mount, even under StrictMode's double effect run.
+  const signInStarted = useRef(false);
+  useEffect(() => {
+    if (!startWithSignIn || signInStarted.current) return;
+    signInStarted.current = true;
+    handleSignIn();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
+  }, []);
 
   async function loadOrgs(): Promise<CloudOrg[]> {
     const fetched = await getCloudOrgs();

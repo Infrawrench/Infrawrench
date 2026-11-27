@@ -20,10 +20,15 @@
 
 pub mod agent;
 pub mod archive;
+pub mod fuse;
 mod host;
 pub mod images;
 pub mod link;
 pub mod qemu;
+#[cfg(target_os = "linux")]
+pub mod virtiofs;
 
-pub use host::{Collected, Config, Host, Job, Os, Outcome, windows_env};
+pub use host::{
+    Burst, Collected, Config, Host, Job, Os, Outcome, Scratch, burst_vcpus, windows_env,
+};
 pub use iwci_vm_proto::Shell;

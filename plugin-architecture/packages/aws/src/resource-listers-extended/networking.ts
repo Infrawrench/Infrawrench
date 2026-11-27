@@ -242,6 +242,28 @@ export async function listSecurityGroups(
   });
 }
 
+/**
+ * A subnet's IPv4 addresses in use against the addresses it can hand out.
+ * AWS reserves the first four and the last address of every subnet CIDR
+ * (https://docs.aws.amazon.com/vpc/latest/userguide/subnet-sizing.html,
+ * read 2026-11-23), and DescribeSubnets reports what is left as
+ * `availableIpAddressCount`. An IPv6-only subnet (no IPv4 CIDR) gets
+ * neither field.
+ */
+export function subnetIpUsage(
+  cidrBlock: string,
+  available: unknown,
+): { usableIps?: number; usedIps?: number } {
+  const prefix = /^\d{1,3}(?:\.\d{1,3}){3}\/(\d{1,2})$/.exec(cidrBlock.trim())?.[1];
+  const free = Number(available);
+  if (prefix === undefined || available === undefined || available === "" || !Number.isFinite(free))
+    return {};
+  const bits = Number(prefix);
+  if (bits < 16 || bits > 28) return {};
+  const usableIps = 2 ** (32 - bits) - 5;
+  return { usableIps, usedIps: Math.max(0, usableIps - free) };
+}
+
 export async function listSubnets(
   ctx: ListerContext,
   accountId: string,
@@ -270,6 +292,7 @@ export async function listSubnets(
         availabilityZone: String(sub["availabilityZone"] ?? ""),
         state: String(sub["state"] ?? ""),
         availableIps: Number(sub["availableIpAddressCount"] ?? 0),
+        ...subnetIpUsage(String(sub["cidrBlock"] ?? ""), sub["availableIpAddressCount"]),
         mapPublicIp: String(sub["mapPublicIpOnLaunch"]) === "true",
       },
       resolvedOutputs: {

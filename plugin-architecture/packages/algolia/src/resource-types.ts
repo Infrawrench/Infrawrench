@@ -81,6 +81,17 @@ export const ApplicationResourceType = rt({
       ],
     },
   ],
+  // Usage API `used_search_capacity`: "max used search capacity in percentage
+  // (per server)" (www.algolia.com/doc/rest-api/usage, read 2026-11-23),
+  // charted as "Search Capacity Used" by client.ts `usageSeries`.
+  capacityMetrics: [
+    {
+      seriesLabel: "Search Capacity Used",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Search capacity",
+    },
+  ],
   iconKey: "search",
   supportsDelete: false,
   supportsMetrics: true,

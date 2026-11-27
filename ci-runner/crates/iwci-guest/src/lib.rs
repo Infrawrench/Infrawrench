@@ -26,10 +26,13 @@ pub mod init;
 pub mod plan;
 pub mod platform;
 pub mod port;
+pub mod prefetch;
 pub mod put;
 pub mod root;
 pub mod stamp;
 pub mod tree;
+#[cfg(target_os = "linux")]
+pub mod user;
 
 pub use platform::{Local, Platform};
 pub use root::Root;
@@ -72,6 +75,7 @@ pub fn hello(platform: &dyn Platform, tree: &dyn Tree) -> Hello {
         agent: VERSION.into(),
         image: platform.image(),
         modes: tree.modes(),
+        virtiofs: platform.virtiofs(),
     }
 }
 
@@ -185,6 +189,17 @@ fn setup_machine(
     }
     let written = platform.setup(setup).map_err(Failure::Refused)?;
     tree.track(&written);
+    if let Some(scratch) = &setup.scratch {
+        if !iwci_vm_proto::is_clean_path(&scratch.at) || scratch.at == "/" {
+            return Err(Failure::Refused(format!(
+                "the scratch directory {:?} is not a clean absolute path",
+                scratch.at
+            )));
+        }
+        platform
+            .mount_scratch(&scratch.tag, &tree.path(&scratch.at))
+            .map_err(Failure::Refused)?;
+    }
     Ok(())
 }
 

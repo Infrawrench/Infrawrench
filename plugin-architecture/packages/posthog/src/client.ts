@@ -44,6 +44,7 @@ import {
   mapMember,
   mapProject,
   mapProjectObject,
+  productUsage,
   splitScoped,
   variantKeys,
 } from "./mappers.js";
@@ -191,7 +192,11 @@ export class PostHogClient implements PluginClient {
     ]);
     const num = (v: string | null | undefined) =>
       v === null || v === undefined || v === "" ? undefined : Number(v);
-    const period = billing?.billing_period;
+    // `GET /api/billing/` documents `billing_period` with only its end; PostHog's own
+    // client reads `current_period_start` and `interval` from it too (BillingType in
+    // github.com/PostHog/posthog frontend/src/types.ts, read 2026-11-23).
+    const period = billing?.billing_period as
+      { current_period_start?: string; current_period_end?: string; interval?: string } | undefined;
     return instance(
       accountId,
       "organization",
@@ -209,7 +214,9 @@ export class PostHogClient implements PluginClient {
         projectedTotalUsd: num(
           billing?.projected_total_amount_usd_after_discount ?? billing?.projected_total_amount_usd,
         ),
+        periodStart: period?.current_period_start,
         periodEnd: period?.current_period_end,
+        ...(period?.interval === "year" ? {} : productUsage(billing?.products)),
         region: this.ctx.region,
         createdAt: org.created_at,
       },

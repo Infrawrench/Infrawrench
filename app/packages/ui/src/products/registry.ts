@@ -77,6 +77,7 @@ export const PRODUCTS: readonly ProductDef[] = [
       "compliance",
       "access-review",
       "jit-access",
+      "offboarding",
       "expiring",
       "backups",
     ],
@@ -84,7 +85,7 @@ export const PRODUCTS: readonly ProductDef[] = [
   {
     id: "delivery",
     name: PRODUCT_NAMES.delivery,
-    tools: ["ci", "delivery", "environments", "env-files", "environment-diff"],
+    tools: ["ci", "git", "delivery", "environments", "env-files", "environment-diff"],
   },
   {
     id: "automation",
@@ -107,7 +108,8 @@ interface TabTargetLike {
 /**
  * The org tool a tab belongs to, by the tool's `key`, or undefined for a tab
  * that is not a tool (Home, a dashboard, an account, a resource, chat,
- * settings). Tool keys are the tab kinds.
+ * settings). Tool keys are the tab kinds; `git` is the one tool with no tab,
+ * since it opens git.infrawrench.com in the browser.
  */
 export function toolKeyForTabTarget(target: TabTargetLike | undefined): string | undefined {
   if (!target) return undefined;

@@ -56,6 +56,27 @@ export const PsBranchResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // Derived in `fetchBranchMetrics` from pairs the Metrics API reports
+  // (`planetscale_volume_disk_usage_bytes` / `_volume_capacity_bytes`,
+  // `planetscale_pgbouncer_current_client_connections` / `_settings_max_client_conn`,
+  // `planetscale_replication_slot_max_wal_retained_bytes` /
+  // `planetscale_settings_max_slot_wal_keep_size_bytes`; PlanetScale API spec,
+  // read 2026-11-23). A slot past its keep size is invalidated.
+  capacityMetrics: [
+    { seriesLabel: "Volume Used (highest)", limit: { constant: 100 }, unit: "%", label: "Disk" },
+    {
+      seriesLabel: "PgBouncer Client Connections Used",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "PgBouncer client connections",
+    },
+    {
+      seriesLabel: "Replication Slot WAL Used",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Replication slot WAL",
+    },
+  ],
   iconKey: "branch",
   attachTargets: [
     {

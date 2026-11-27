@@ -22,6 +22,8 @@
  */
 import { runCiStatusPass, runCiUpkeepPass } from "@infrawrench/server-core/ci/pass";
 import { runCiCloudPass } from "@infrawrench/server-core/ci/cloud-jobs";
+import { runGitStoragePass } from "@infrawrench/server-core/git/billing";
+import { runGitTerraformPass } from "@infrawrench/server-core/git-terraform/pass";
 import { eq } from "drizzle-orm";
 import { nextCronOccurrence } from "@infrawrench/client-core";
 import { db } from "@infrawrench/server-core/db/client";
@@ -95,6 +97,7 @@ import {
 } from "@infrawrench/server-core/analytics/retention";
 import { pruneCreditSnapshots } from "@infrawrench/server-core/credits/feed";
 import { pruneQuotaSnapshots } from "@infrawrench/server-core/quotas/feed";
+import { pruneCapacitySnapshots } from "@infrawrench/server-core/capacity/feed";
 import { runQuotaAlerts } from "@infrawrench/server-core/quotas/alerts";
 import { pruneIacStates } from "@infrawrench/server-core/iac/store";
 import { pruneDeployEvents } from "@infrawrench/server-core/dora/load";
@@ -344,6 +347,13 @@ async function runRetention(): Promise<void> {
   } catch (e) {
     console.error("[poller] quota snapshot retention tick failed:", e);
   }
+  // Capacity runway readings keep four months: the longest read is a billing
+  // cycle, and hourly rows for every declared usage are not worth a year.
+  try {
+    await pruneCapacitySnapshots();
+  } catch (e) {
+    console.error("[poller] capacity snapshot retention tick failed:", e);
+  }
   // Org grade readings keep 400 days, a year plus a margin, so "how did we
   // look this time last year" survives a late prune.
   try {
@@ -562,6 +572,17 @@ export const PASSES: readonly Pass[] = [
     run: guarded("[network-flow] flow tick failed:", () => runNetworkFlowPass({ limit: 2 })),
   },
 
+  // Terraform workspaces of git.infrawrench.com: start queued runs nothing
+  // started, link each changed state to the organisation's resources and
+  // price the plans waiting for it. On the gateway because linking and
+  // pricing run every plugin's export mapper and cost estimator.
+  {
+    kind: "periodic",
+    name: "git-terraform",
+    runtime: "gateway",
+    run: guarded("[terraform] forge tick failed:", () => runGitTerraformPass()),
+  },
+
   // AI request attribution: read configured request-log sources (Bedrock
   // invocation logs, AI Gateway logs, LiteLLM, JSONL) one settled day at a
   // time and re-split the day's billed AI spend by caller. Its own pass for
@@ -624,6 +645,16 @@ export const PASSES: readonly Pass[] = [
     runtime: "gateway",
     ownLoopMs: CI_CLOUD_LOOP_MS,
     run: guarded("[ci-cloud] tick failed:", () => runCiCloudPass()),
+  },
+
+  // git.infrawrench.com storage: one sample per organisation per hour (the
+  // unique index makes a second instance's insert a no-op), sent to the
+  // storage meter when one is configured. Postgres and Stripe only.
+  {
+    kind: "periodic",
+    name: "git-storage",
+    runtime: "edge",
+    run: guarded("[git] storage metering failed:", () => runGitStoragePass()),
   },
 
   // Retention: idempotent prunes, at most hourly.

@@ -36,6 +36,12 @@ export const RedshiftClusterResourceType = rt({
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
+  // `redshiftClusterMetrics` charts `PercentageDiskSpaceUsed` (Percent, by
+  // ClusterIdentifier) under this label:
+  // https://docs.aws.amazon.com/redshift/latest/mgmt/metrics-listing.html
+  capacityMetrics: [
+    { seriesLabel: "% Disk Used", limit: { constant: 100 }, unit: "%", label: "Disk" },
+  ],
   peerIntegrations: [
     {
       pluginId: "postgres",

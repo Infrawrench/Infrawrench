@@ -76,6 +76,10 @@ on:
       - "app/packages/workflow-runtime/**"
       - "app/packages/analytics/**"
       - "plugin-architecture/**"
+      # server-core runs the forge's Terraform workspaces with this package
+      # (the generated pipeline, plan and state reading); it has no build step.
+      - "git/packages/terraform/**"
+      - "git/packages/core/**"
       - "infra/docker/**"
       - "pnpm-lock.yaml"
       - ".github/workflows/web-deploy.yml"

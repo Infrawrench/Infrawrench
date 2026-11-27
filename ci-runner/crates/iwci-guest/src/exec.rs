@@ -112,6 +112,14 @@ pub fn run<W: Write + Send + 'static>(
     }
     fs::create_dir_all(ctx.run_dir)
         .map_err(|e| Failure::Refused(format!("making {}: {e}", ctx.run_dir.display())))?;
+    // The job user writes `$IWCI_OUTPUT` beside the scripts, in a directory
+    // the agent made as root.
+    #[cfg(target_os = "linux")]
+    if let (Some(user), Some(dir)) = (crate::user::current(), ctx.run_dir.parent()) {
+        std::os::unix::fs::chown(dir, Some(user.uid), Some(user.gid)).map_err(|e| {
+            Failure::Refused(format!("giving {} to the job user: {e}", dir.display()))
+        })?;
+    }
     let n = SCRIPTS.fetch_add(1, Ordering::Relaxed) + 1;
     let (ext, body) = script_file(exec.shell, &exec.script);
     let file: PathBuf = ctx.run_dir.join(format!("script-{n}.{ext}"));
@@ -139,6 +147,11 @@ pub fn run<W: Write + Send + 'static>(
     #[cfg(target_os = "linux")]
     if let Some(group) = &cgroup {
         group.enter_on_exec(&mut cmd);
+    }
+    // After the cgroup, whose file only root may write.
+    #[cfg(target_os = "linux")]
+    if let Some(user) = crate::user::current() {
+        user.apply(&mut cmd);
     }
     #[cfg(not(target_os = "linux"))]
     let _ = ctx.cgroups;
@@ -343,9 +356,53 @@ mod cgroup {
     }
 }
 
+/// The variables of an `/etc/environment` (pam_env's format): `KEY=value`
+/// lines, the value optionally in double or single quotes, `#` comments
+/// and `export ` tolerated. Nothing is expanded.
+pub fn image_environment(text: &str) -> Vec<(String, String)> {
+    text.lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let line = line.strip_prefix("export ").unwrap_or(line).trim_start();
+            if line.is_empty() || line.starts_with('#') {
+                return None;
+            }
+            let (key, value) = line.split_once('=')?;
+            let valid = !key.is_empty()
+                && !key.starts_with(|c: char| c.is_ascii_digit())
+                && key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+            if !valid {
+                return None;
+            }
+            let value = value.trim();
+            let value = [('"', '"'), ('\'', '\'')]
+                .iter()
+                .find_map(|&(open, close)| {
+                    value.strip_prefix(open).and_then(|v| v.strip_suffix(close))
+                })
+                .unwrap_or(value);
+            Some((key.to_owned(), value.to_owned()))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_images_environment_file_is_read_as_pam_env_reads_it() {
+        let text = "# comment\nPATH=\"/root/.rbenv/shims:/usr/bin\"\n\nNVM_DIR='/root/.nvm'\nexport LANG=C.UTF-8\nbad key=x\n1X=y\nnot a line\n";
+        assert_eq!(
+            image_environment(text),
+            vec![
+                ("PATH".into(), "/root/.rbenv/shims:/usr/bin".into()),
+                ("NVM_DIR".into(), "/root/.nvm".into()),
+                ("LANG".into(), "C.UTF-8".into()),
+            ]
+        );
+        assert!(image_environment("").is_empty());
+    }
 
     #[test]
     fn powershell_scripts_stop_on_errors_and_keep_the_exit_code() {

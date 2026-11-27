@@ -1,0 +1,197 @@
+// git.infrawrench.com. See git/README.md; `src/env.ts` types every binding here.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "infrawrench-git",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-20",
+  // `nodejs_compat` also fills `process.env` from the bindings below, which
+  // is how server-core reads `ENCRYPTION_MASTER_KEY`.
+  // `webcrypto_modern_algorithms` gives the SSH server ML-KEM, so it can offer
+  // the post-quantum key exchange current OpenSSH clients ask for.
+  "compatibility_flags": ["nodejs_compat", "webcrypto_modern_algorithms"],
+  // The site has one origin. A `*.workers.dev` URL, of the Worker or of one
+  // of its versions, would be a second one, outside the `__Host-` cookie and
+  // the origin checks, so both are off.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "git.infrawrench.com", "custom_domain": true }],
+  // Workers Logs record each request's URL. The archive route takes a job
+  // token in its query (`?token=`), so query strings are left out of logs
+  // and traces.
+  "observability": { "enabled": true, "redact_query_string": true },
+  "limits": { "cpu_ms": 300000 },
+  // Next to the app's Postgres (Neon, us-east-2), as the app's own Workers
+  // are: a page of the site makes several queries, and from a data centre
+  // across the Atlantic each one was a round trip of its own (650 ms to
+  // 1.5 s for a list of issues from London). The visitor now pays one round
+  // trip a request instead. The built UI's files are not affected: they
+  // never reach the Worker (`assets` below).
+  "placement": { "region": "aws:us-east-2" },
+
+  // Bundle-time constants. `__INFRAWRENCH_EDGE_PLUGINS__` says this bundle
+  // carries no plugin code: server-core's CI dispatcher, which the queue
+  // consumer calls, then leaves a run that lends something to the app's
+  // gateway and drops the code that lends (`server-core/src/ci/runs.ts`
+  // `lendingCode`). With it nothing here reaches the plugin loader or a
+  // library that cannot run in a Worker, so there is no `alias` map to keep
+  // in step with server-core/edge/gateway-only-modules.json;
+  // `src/__tests__/import-graph.test.ts` bundles the Worker and fails when
+  // that stops being true.
+  "define": {
+    "process.env.NODE_ENV": "\"production\"",
+    "globalThis.__INFRAWRENCH_EDGE_PLUGINS__": "true",
+  },
+
+  // The built UI. The Worker runs first for every request but the UI's own
+  // files, so `/api`, the sign-in routes and the Git paths never fall
+  // through to a file, and every page gets the security headers
+  // (`src/http/router.ts`). The hashed scripts and styles and the favicons
+  // are served by the asset layer in the visitor's own data centre and never
+  // reach the Worker, which `placement` above puts in us-east-2: through it,
+  // each script went there and back. Their headers come from the `_headers`
+  // file the UI's build copies in (`git/packages/web/public/_headers`). A
+  // path with no file is the SPA's: `index.html`.
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/*", "!/assets/*", "!/favicon.svg", "!/favicon.png"],
+  },
+
+  "vars": {
+    "SITE_ORIGIN": "https://git.infrawrench.com",
+    // The host in a repository's SSH clone URL, and the name the Spectrum
+    // application for port 22 is created under: `infra/git/setup.mjs` reads
+    // it from here, so the two cannot disagree. Whether one name can carry
+    // both this Worker's custom domain and a Spectrum application is not
+    // something Cloudflare documents; if the script's `spectrum` step is
+    // refused, make this `ssh.git.infrawrench.com` and run it again
+    // (infra/README.md "git.infrawrench.com").
+    "SSH_HOST": "git.infrawrench.com",
+    // "false" turns Git over SSH off: no SSH clone URLs, no SSH or deploy key pages,
+    // and inbound connections are closed. Off until Spectrum carries port 22
+    // (the zone needs a paid plan; infra/README.md "git.infrawrench.com").
+    "SSH_ENABLED": "false",
+    "APP_ORIGIN": "https://app.infrawrench.com",
+    // WorkOS's custom Authentication API domain, as the app uses. The redirect
+    // URI `https://git.infrawrench.com/auth/callback` and the sign-out
+    // redirect `https://git.infrawrench.com/` are registered in WorkOS.
+    "WORKOS_API_HOSTNAME": "auth-api.infrawrench.com",
+  },
+
+  // Secrets, set with `wrangler secret put` (never in this file):
+  //   WORKOS_API_KEY, WORKOS_CLIENT_ID   the app's WorkOS client
+  //   WORKOS_COOKIE_PASSWORD             this host's own, 32+ characters
+  //   SSH_HOST_KEY                       OpenSSH private key (ed25519), PEM
+  //   GIT_JOB_TOKEN_KEY                  HMAC key for CI job tokens, 32+ characters
+  //   ENCRYPTION_MASTER_KEY              the app's, for `iwk_` API key hashes
+  // Optional, and CI stays off for repositories here without them:
+  //   CI_PROXY_URL, CI_PROXY_KEY         the app's CI proxy (server-core `ci/proxy.ts`)
+  //   APP_URL                            the app's origin, for a status's link to its run
+  // Optional, and review agents do not run without all three:
+  //   CLOUDFLARE_ACCOUNT_ID, AI_GATEWAY_ID, AI_GATEWAY_TOKEN
+  //                                      the app's Cloudflare AI Gateway (server-core `anthropic-client.ts`)
+  "secrets": {
+    "required": [
+      "WORKOS_API_KEY",
+      "WORKOS_CLIENT_ID",
+      "WORKOS_COOKIE_PASSWORD",
+      "SSH_HOST_KEY",
+      "GIT_JOB_TOKEN_KEY",
+      "ENCRYPTION_MASTER_KEY",
+    ],
+  },
+
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "e95b5c1b39ce4188918003909487b125" }],
+  "r2_buckets": [{ "binding": "OBJECTS", "bucket_name": "infrawrench-git" }],
+
+  // One Durable Object per repository (`idFromName(repoId)`) and one per
+  // Terraform workspace (`idFromName(workspaceId)`), both SQLite classes that
+  // `src/index.ts` exports. A class is created by the migration tag that
+  // first names it; never edit a tag that has been deployed, add one.
+  "durable_objects": {
+    "bindings": [
+      { "name": "REPO", "class_name": "RepoDO" },
+      { "name": "TERRAFORM_STATE", "class_name": "TerraformStateDO" },
+    ],
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RepoDO"] },
+    { "tag": "v2", "new_sqlite_classes": ["TerraformStateDO"] },
+  ],
+
+  // How often one caller may ask, by what the request costs
+  // (`src/http/admission.ts`): cheap reads, heavy reads (a diff, a blame, a
+  // comparison, an archive, a clone, a search) and writes. A caller without a
+  // credential is counted by address, one who authenticated by who they are.
+  // The limits are `DEFAULT_RATE_BUDGETS` in `src/http/rate-limit.ts`, which
+  // is what counts where a binding is missing: change the two together.
+  // Counted per Cloudflare location; `period` is 10 or 60 seconds.
+  // `namespace_id` is a number of our choosing, unique in the account:
+  // nothing has to be created for it.
+  "ratelimits": [
+    { "name": "RL_READ_ANON", "namespace_id": "1101", "simple": { "limit": 300, "period": 60 } },
+    {
+      "name": "RL_READ_SIGNED_IN",
+      "namespace_id": "1102",
+      "simple": { "limit": 1200, "period": 60 },
+    },
+    { "name": "RL_HEAVY_ANON", "namespace_id": "1103", "simple": { "limit": 30, "period": 60 } },
+    {
+      "name": "RL_HEAVY_SIGNED_IN",
+      "namespace_id": "1104",
+      "simple": { "limit": 120, "period": 60 },
+    },
+    { "name": "RL_WRITE_ANON", "namespace_id": "1105", "simple": { "limit": 30, "period": 60 } },
+    {
+      "name": "RL_WRITE_SIGNED_IN",
+      "namespace_id": "1106",
+      "simple": { "limit": 120, "period": 60 },
+    },
+  ],
+
+  // The Durable Object sends a push here once the refs have moved
+  // (git/README.md "After a push"). The consumer is this Worker's own `queue`
+  // handler (`src/events/consumer.ts`).
+  //
+  // A review run waits on a queue of its own (`src/review/queue.ts`): one
+  // run an invocation, since a run is minutes of waiting on a model and
+  // would hold up the pushes batched behind it. A few at once, so one large
+  // review does not hold up every other repository's. A message that keeps
+  // failing goes to the same dead letter queue; its run is failed by the
+  // consumer's last try or by the hourly sweep, never left running.
+  "queues": {
+    "producers": [
+      { "binding": "EVENTS", "queue": "infrawrench-git-events" },
+      { "binding": "REVIEWS", "queue": "infrawrench-git-reviews" },
+    ],
+    "consumers": [
+      {
+        "queue": "infrawrench-git-events",
+        "max_batch_size": 10,
+        "max_batch_timeout": 2,
+        "max_retries": 5,
+        "dead_letter_queue": "infrawrench-git-events-dlq",
+      },
+      {
+        "queue": "infrawrench-git-reviews",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_concurrency": 8,
+        "max_retries": 4,
+        "dead_letter_queue": "infrawrench-git-events-dlq",
+      },
+    ],
+  },
+
+  // Local development only; production TCP arrives through a Spectrum
+  // application whose origin is this Worker (README "SSH").
+  // Hourly: versions of branches merged or deleted thirty days ago lose the refs
+  // that kept their commits (`src/review/prune.ts`), and review runs nothing finished are sent again
+  // or failed (`src/review/queue.ts`).
+  // Every two minutes: instructions still waiting for an agent the forge tells itself
+  // (`src/review/instructions.ts` `sweepInstructions`; `src/index.ts` tells the two apart by expression).
+  "triggers": { "crons": ["17 * * * *", "*/2 * * * *"] },
+
+  "connect": [{ "protocol": "tcp", "port": 8788 }],
+}

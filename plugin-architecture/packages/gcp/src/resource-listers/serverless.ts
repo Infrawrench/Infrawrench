@@ -13,6 +13,26 @@ export function cloudRunContainerImages(containers: Array<Record<string, unknown
     .join("\n");
 }
 
+/**
+ * The most instances a Cloud Run service may run. The service-level
+ * `scaling.maxInstanceCount` ("total max instances for the service") and the
+ * revision template's `scaling.maxInstanceCount` (set by the server to 100
+ * when unspecified) both cap it, and when both are set the lower one applies
+ * (https://docs.cloud.google.com/run/docs/reference/rest/v2/projects.locations.services,
+ * .../v2/RevisionScaling and https://cloud.google.com/run/docs/configuring/max-instances,
+ * read 2026-11-23). Manual scaling ignores the maximum, so it states none.
+ */
+export function cloudRunMaxInstances(svc: Record<string, unknown>): number | undefined {
+  const serviceScaling = svc["scaling"] as Record<string, unknown> | undefined;
+  if (serviceScaling?.["scalingMode"] === "MANUAL") return undefined;
+  const template = svc["template"] as Record<string, unknown> | undefined;
+  const revisionScaling = template?.["scaling"] as Record<string, unknown> | undefined;
+  const caps = [serviceScaling?.["maxInstanceCount"], revisionScaling?.["maxInstanceCount"]]
+    .map(Number)
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return caps.length > 0 ? Math.min(...caps) : undefined;
+}
+
 export async function listCloudRunServices(
   ctx: ListerContext,
   accountId: string,
@@ -50,6 +70,7 @@ export async function listCloudRunServices(
     const sourceLocation = String(annotations["client.knative.dev/source-location"] ?? "");
     const traffic = (svc["traffic"] as unknown[] | undefined) ?? [];
     const vpcAccess = template["vpcAccess"] as Record<string, unknown> | undefined;
+    const maxInstances = cloudRunMaxInstances(svc);
 
     return {
       id: ctx.id(accountId, "cloud-run-service", fullName),
@@ -73,6 +94,7 @@ export async function listCloudRunServices(
         deployClientVersion: String(svc["clientVersion"] ?? ""),
         sourceLocation,
         serviceAccount: String(template["serviceAccount"] ?? ""),
+        ...(maxInstances !== undefined ? { maxInstances } : {}),
       },
       resolvedOutputs: {
         url: String(svc["uri"] ?? ""),

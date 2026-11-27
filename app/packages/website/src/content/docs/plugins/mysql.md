@@ -31,6 +31,6 @@ Or pick an output from a PlanetScale branch or a managed MySQL resource.
 
 ## Tips and limits
 
-- **CI jobs:** an admin can lend the connection to [Infrawrench CI](../features/ci.md#connections) jobs: `DATABASE_URL`, `MYSQL_PASSWORD`, and an option group in `~/.my.cnf` that `MYSQL_GROUP_SUFFIX` selects so `mysql` needs no arguments. A managed MySQL database in a cloud account can be lent the same way without connecting it here.
+- **CI jobs:** an admin can lend the connection to [Infrawrench CI](../features/ci.md#connections) jobs: `DATABASE_URL`, `MYSQL_PASSWORD`, an option group in `~/.my.cnf` that `MYSQL_GROUP_SUFFIX` selects so `mysql` needs no arguments, and `MYSQL_ENDPOINT` with `MYSQL_USERNAME` for the MySQL Terraform provider. A managed MySQL database in a cloud account can be lent the same way without connecting it here.
 - MariaDB works too, but features that rely on MySQL 8 specifics may not be available.
 - On PlanetScale (Vitess), cross-shard joins can fail. You'll see the raw error from the database.

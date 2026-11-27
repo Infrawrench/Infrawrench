@@ -548,6 +548,20 @@ export const RdsInstanceResourceType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // CloudMonitor `acs_rds_dashboard` `DiskUsage` / `ConnectionUsage` (MySQL,
+  // SQL Server) or `local_fs_size_usage` / `conn_usgae` (PostgreSQL), each a
+  // percentage of the instance's own storage and connection ceiling
+  // (metrics.ts; https://www.alibabacloud.com/help/en/cms/cloudmonitor-1-0/user-guide/alibaba-cloud-services-and-related-metrics-that-are-supported-in-resource-usage-reports,
+  // read 2026-11-23).
+  capacityMetrics: [
+    { seriesLabel: "Disk Utilization", limit: { constant: 100 }, unit: "%", label: "Storage" },
+    {
+      seriesLabel: "Connection Utilization",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Connections",
+    },
+  ],
 });
 
 export const RedisInstanceResourceType = rt({

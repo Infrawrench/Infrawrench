@@ -1,0 +1,267 @@
+# yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
+#
+# git.infrawrench.com (git/packages/*): its tests, on machines.
+#
+# The forge's suites are written against the programs on the other end of
+# the wire: the real `git`, `ssh` and `ssh-keygen`, `terraform`, workerd and
+# a PostgreSQL. What Infrawrench CI's two kinds of job have of those:
+#
+# - An isolate (`using: env:bash-node`, test.yml's jobs) has Git 2.56 built
+#   for WASIX, which has no `ssh://` transport, so the suites that clone and
+#   push over the SSH server cannot run there at all. `ssh` and `ssh-keygen`
+#   are builtins a job can list, and there is no Terraform and no workerd
+#   (neither has a WebAssembly build). Vite 6, which the UI builds and tests
+#   on, needs Rollup's and esbuild's WebAssembly builds listed in the package.
+# - A machine (`platform: linux`, Ubuntu 24.04) has the real git (2.43), an
+#   OpenSSH client (9.6), unzip, Node 24 with corepack, and Docker. It has no
+#   Terraform, and its git and OpenSSH are older than the suites are written
+#   against (git-tools.sh says what each lacks), so that script builds a
+#   current `git`, `ssh` and `ssh-keygen` and fetches Terraform, each pinned
+#   by sum and cached.
+#
+# So every forge test runs here, on machines, and test.yml's `test` job
+# leaves `git/packages/*` out. Their typechecks (`check`), Prettier and
+# source hashes are still test.yml's: those need nothing but Node, and are
+# task-cached there.
+#
+# A suite skips itself where its program is missing, so that someone without
+# Terraform can still run the rest. Here that would turn a broken image into
+# a green run, so each job ends with no-skips.mjs, which fails on any skipped
+# test outside the files a job names with `--allow`: the suites that need
+# this repository's whole history (the checkout is one commit) and the
+# benchmarks that run only when asked for.
+#
+# A machine job cannot be task-cached, so `paths:` decides what runs: each
+# job lists its packages and what they are built from. The app sends a push
+# the commit the branch moved from and a pull request its base; a new branch
+# or a forced push has neither and runs everything.
+name: Git forge
+
+on:
+  push:
+    branches: [main]
+    paths: &inputs
+      - git/**
+      # The Worker bundles server-core's source (the schema, the database
+      # client, CI's dispatcher) and client-core; the UI is built on ui.
+      - app/packages/server-core/**
+      - app/packages/client-core/**
+      - app/packages/ui/**
+      - app/packages/api-contract/**
+      - plugin-architecture/packages/plugin-base/**
+      - plugin-architecture/packages/appstream-core/**
+      # The schema the database suites run against.
+      - app/packages/web/drizzle.config.ts
+      - app/packages/web/src/db/migrations/**
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tsconfig.base.json
+      - .infrawrench/ci/git.yml
+      - .infrawrench/ci/git-tools.sh
+      - .infrawrench/ci/no-skips.mjs
+  pull-request:
+    paths: *inputs
+
+concurrency:
+  group: git-forge-${{ commit.branch }}
+  cancel-in-progress: true
+
+jobs:
+  # The packages that know nothing of Cloudflare, each against the real
+  # programs: core, ops and protocol against `git` (objects, packs, history,
+  # merges, both transports), ssh against OpenSSH's client and `git` over it,
+  # terraform against the real `terraform` on its state backend, and the
+  # contract, which needs neither but is tested with the rest.
+  #
+  # One machine per package, so the run takes as long as the longest (core,
+  # which indexes packs of a few hundred MiB). None of them has a workspace
+  # dependency outside this list, so the install is these six importers:
+  # seconds, from a restored store.
+  libraries:
+    name: Test git-${{ matrix }}
+    platform: linux
+    matrix: [core, ops, protocol, ssh, terraform, contract]
+    paths:
+      - git/packages/core/**
+      - git/packages/ops/**
+      - git/packages/protocol/**
+      - git/packages/ssh/**
+      - git/packages/terraform/**
+      - git/packages/contract/**
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tsconfig.base.json
+      - .infrawrench/ci/git.yml
+      - .infrawrench/ci/git-tools.sh
+      - .infrawrench/ci/no-skips.mjs
+    cache:
+      - key: git-libraries-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: ["git-libraries-pnpm-"]
+        paths: [/root/.cache/pnpm-store]
+      - &tools-cache
+        key: git-tools-${{ hashFiles('.infrawrench/ci/git-tools.sh') }}
+        paths: [/root/.cache/git-forge-tools]
+    run: |
+      set -euo pipefail
+      root="$PWD"
+      tools=/root/.cache/git-forge-tools
+      allow=()
+      case "${{ matrix }}" in
+        core)
+          .infrawrench/ci/git-tools.sh "$tools" git
+          # This repository's history (needs 200 commits; the checkout has one)
+          # and the throughput figures (GIT_CORE_BENCH).
+          allow=(--allow test/monorepo.test.ts --allow test/bench.test.ts)
+          ;;
+        ops) .infrawrench/ci/git-tools.sh "$tools" git ;;
+        protocol)
+          .infrawrench/ci/git-tools.sh "$tools" git
+          allow=(--allow test/monorepo.test.ts)
+          ;;
+        ssh)
+          .infrawrench/ci/git-tools.sh "$tools" git openssh
+          # The throughput figures (SSH_BENCH).
+          allow=(--allow test/throughput.test.ts)
+          ;;
+        terraform) .infrawrench/ci/git-tools.sh "$tools" terraform ;;
+      esac
+      export PATH="$tools/bin:$PATH"
+
+      pnpm install --frozen-lockfile --store-dir /root/.cache/pnpm-store \
+        --filter @infrawrench/git-core --filter @infrawrench/git-ops \
+        --filter @infrawrench/git-protocol --filter @infrawrench/git-ssh \
+        --filter @infrawrench/git-terraform --filter @infrawrench/git-contract
+
+      cd "git/packages/${{ matrix }}"
+      pnpm exec vitest run --reporter=default --reporter=json --outputFile=/tmp/vitest-report.json
+      node "$root/.infrawrench/ci/no-skips.mjs" /tmp/vitest-report.json "${allow[@]}"
+    # Six machines at once, so each is small: the suites run a file at a time
+    # and most of what they hold is the repositories they build, which a
+    # machine keeps in memory. Not measured on a runner yet; in a container of
+    # the same Ubuntu the longest (core) took 43 s on four CPUs.
+    cpus: 2
+    memory: 6GiB
+    timeout: 20m
+
+  # The Worker: its unit suites, the storage code against the real `git` on
+  # Node stand-ins for R2 and SQLite, the bundle check (`wrangler deploy
+  # --dry-run`: no plugin code, no library that cannot run in a Worker, the
+  # size it was measured at), and the whole Worker in workerd under `wrangler
+  # dev` with the real `git` over HTTPS and SSH (GIT_WORKER_E2E). Then the
+  # database suites against PostgreSQL 18, migrated with the app's own
+  # migrations: a real server, since what they prove (numbering under
+  # concurrency, visibility in SQL) is what a single-backend stand-in cannot.
+  #
+  # The install is the forge's importers, server-core (which the Worker
+  # bundles from source), the libraries those load built output from
+  # (client-core, plugin-base) and web for drizzle-kit. Not server-core's
+  # whole closure: that is every provider plugin, and the Worker reaches none
+  # (the bundle check is what keeps that true).
+  worker:
+    name: Test git-worker (workerd, PostgreSQL)
+    platform: linux
+    paths:
+      - git/packages/**
+      - "!git/packages/web/**"
+      - app/packages/server-core/**
+      - app/packages/client-core/**
+      - plugin-architecture/packages/plugin-base/**
+      - app/packages/web/drizzle.config.ts
+      - app/packages/web/src/db/migrations/**
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tsconfig.base.json
+      - .infrawrench/ci/git.yml
+      - .infrawrench/ci/git-tools.sh
+      - .infrawrench/ci/no-skips.mjs
+    cache:
+      - key: git-worker-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: ["git-worker-pnpm-"]
+        paths: [/root/.cache/pnpm-store]
+      - *tools-cache
+    env:
+      DATABASE_URL: postgres://infrawrench:infrawrench@127.0.0.1:5432/infrawrench
+      WRANGLER_SEND_METRICS: "false"
+    run: |
+      set -euo pipefail
+      root="$PWD"
+      tools=/root/.cache/git-forge-tools
+      .infrawrench/ci/git-tools.sh "$tools" git openssh
+      export PATH="$tools/bin:$PATH"
+
+      # PostgreSQL 18 (production's major), from AWS's mirror of the official
+      # image. Started first: it is ready by the time the install is.
+      docker run -d --name forge-postgres \
+        -e POSTGRES_USER=infrawrench -e POSTGRES_PASSWORD=infrawrench -e POSTGRES_DB=infrawrench \
+        -p 127.0.0.1:5432:5432 public.ecr.aws/docker/library/postgres:18-alpine >/dev/null
+
+      pnpm install --frozen-lockfile --store-dir /root/.cache/pnpm-store --filter . \
+        --filter @infrawrench/git-core --filter @infrawrench/git-ops \
+        --filter @infrawrench/git-protocol --filter @infrawrench/git-ssh \
+        --filter @infrawrench/git-terraform --filter @infrawrench/git-contract \
+        --filter @infrawrench/git-worker --filter @infrawrench/server-core \
+        --filter @infrawrench/client-core --filter @infrawrench/plugin-base \
+        --filter @infrawrench/web
+      # client-core, and plugin-base before it.
+      pnpm exec turbo run build --filter=@infrawrench/client-core --output-logs=errors-only
+
+      cd git/packages/worker
+      GIT_WORKER_E2E=1 pnpm exec vitest run \
+        --reporter=default --reporter=json --outputFile=/tmp/vitest-report.json
+      # The two that measure this repository's history (GIT_WORKER_BENCH).
+      node "$root/.infrawrench/ci/no-skips.mjs" /tmp/vitest-report.json \
+        --allow test/memory.test.ts --allow test/e2e/monorepo.test.ts
+
+      # Over TCP: the image's first, socket-only server answers on its socket
+      # while it is still initialising.
+      for _ in $(seq 1 60); do
+        if docker exec forge-postgres pg_isready -q -h 127.0.0.1 -U infrawrench -d infrawrench; then
+          break
+        fi
+        sleep 1
+      done
+      (cd "$root/app/packages/web" && pnpm exec drizzle-kit migrate)
+      pnpm exec vitest run --config vitest.db.config.ts \
+        --reporter=default --reporter=json --outputFile=/tmp/vitest-db-report.json
+      node "$root/.infrawrench/ci/no-skips.mjs" /tmp/vitest-db-report.json
+    cpus: 4
+    memory: 8GiB
+    timeout: 30m
+
+  # The UI: its tests (jsdom) and the production build the Worker serves as
+  # static assets. .github/workflows/git-deploy.yml is what deploys it; the
+  # Worker's own bundle is built and checked in `worker`, above.
+  web:
+    name: Test and build git-web
+    platform: linux
+    paths:
+      - git/packages/web/**
+      - git/packages/contract/**
+      - app/packages/ui/**
+      - app/packages/api-contract/**
+      - app/packages/client-core/**
+      - plugin-architecture/packages/plugin-base/**
+      - plugin-architecture/packages/appstream-core/**
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      - tsconfig.base.json
+      - .infrawrench/ci/git.yml
+      - .infrawrench/ci/no-skips.mjs
+    cache:
+      - key: git-web-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: ["git-web-pnpm-"]
+        paths: [/root/.cache/pnpm-store]
+    run: |
+      set -euo pipefail
+      root="$PWD"
+      pnpm install --frozen-lockfile --store-dir /root/.cache/pnpm-store --filter . --filter "@infrawrench/git-web..."
+      # ui and what it is built on.
+      pnpm exec turbo run build --filter="@infrawrench/git-web^..." --output-logs=errors-only
+
+      cd git/packages/web
+      pnpm exec vitest run --reporter=default --reporter=json --outputFile=/tmp/vitest-report.json
+      node "$root/.infrawrench/ci/no-skips.mjs" /tmp/vitest-report.json
+      pnpm exec vite build
+    cpus: 4
+    memory: 6GiB
+    timeout: 20m

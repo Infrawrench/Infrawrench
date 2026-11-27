@@ -8,6 +8,8 @@ Someone left in March. Their IAM user is still there. So is the service account 
 
 The access review gives you that answer any time: every principal your connected accounts have synced, in one list, with the ones worth a conversation flagged.
 
+When one person is leaving, [offboarding](./offboarding.md) lines up everything tied to them, these principals included, on one checklist.
+
 ![The Access review tab with the Findings view open, grouped by severity, showing a mix of stale, admin and unowned findings across at least two providers](https://agent-assets.infrawrench.com/docs-screenshots/features/access-review/findings-by-severity.png)
 
 ## Find it

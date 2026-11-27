@@ -16,6 +16,12 @@ export const RDSClusterResourceType = rt({
     f("multiAZ", "Multi-AZ", { kind: "boolean", required: false }),
     f("storageEncrypted", "Encrypted", { kind: "boolean", required: false }),
     f("allocatedStorage", "Storage (GB)", { showcase: true, kind: "number", required: false }),
+    f("maxAcu", "Max Capacity (ACU)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description: "Aurora Serverless v2 maximum capacity per instance, in ACUs",
+    }),
     f("dbClusterMembers", "Members", { kind: "number", required: false }),
     f("dbClusterMemberIds", "Member Instances", {
       required: false,
@@ -55,6 +61,20 @@ export const RDSClusterResourceType = rt({
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
+  // `rdsClusterMetrics` derives "% Volume Used" from `VolumeBytesUsed` and
+  // `AuroraVolumeBytesLeftTotal` (Aurora MySQL only), and charts
+  // `ServerlessDatabaseCapacity` as "Serverless Capacity":
+  // https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.AuroraMonitoring.Metrics.html
+  // (read 2026-11-23).
+  capacityMetrics: [
+    { seriesLabel: "% Volume Used", limit: { constant: 100 }, unit: "%", label: "Cluster Volume" },
+    {
+      seriesLabel: "Serverless Capacity",
+      limit: { field: "maxAcu" },
+      unit: "ACU",
+      label: "Serverless Capacity",
+    },
+  ],
   peerIntegrations: [
     {
       pluginId: "postgres",

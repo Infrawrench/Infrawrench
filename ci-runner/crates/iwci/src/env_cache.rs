@@ -44,6 +44,22 @@ pub fn key(cache: &EnvCacheDecl, job: &str) -> String {
     )
 }
 
+/// The path of the job's `cache:` entry that covers `path`, or that lies
+/// under it, if any. The environment's cache of that directory is then
+/// left to the job's: restored after it, it wrote its own copy over the
+/// files the job's key chose, and its directory, collected back from a
+/// machine to be compared, undid the exact hit that keeps a job cache in
+/// the machine (guava's `~/.m2/repository`, 190 MB in 5,000 files, came
+/// back and was saved again after every warm run, Maven having rewritten
+/// files in it).
+pub fn cached_by_job<'a>(path: &str, caches: &'a [iwci_spec::CacheSpec]) -> Option<&'a str> {
+    caches
+        .iter()
+        .flat_map(|c| c.paths.iter())
+        .find(|p| crate::machines::is_under(path, p) || crate::machines::is_under(p, path))
+        .map(String::as_str)
+}
+
 /// What one entry was when restored, to tell what a run changed.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum Kind {
@@ -124,6 +140,7 @@ pub fn restore(
         Ok(Some(found)) => match fs.apply(&found.entries) {
             Ok(()) => {
                 fs.apply_modes(&found.modes);
+                fs.set_restored_times(&found.entries);
                 lines.push(format!(
                     "env cache `{name}`: restored {}",
                     kib(file_bytes(&found.entries))
@@ -152,7 +169,13 @@ pub fn restore(
 /// a quarter of the job's memory), only what this run wrote is kept, so a cache that has grown with files
 /// no build uses any more starts again from what the last build needed;
 /// when even that is too big, nothing is saved.
-pub fn save(store: &dyn Caches, active: &Active, fs: &JobFs, lines: &mut Vec<String>) {
+pub fn save(
+    store: &dyn Caches,
+    active: &Active,
+    fs: &JobFs,
+    lines: &mut Vec<String>,
+    saves: &mut crate::saves::Saves,
+) {
     let name = &active.decl.name;
     let entries = fs.entries_under(&[&active.decl.path]);
     let now: BTreeMap<PathBuf, Kind> = entries.iter().map(kind).collect();
@@ -168,10 +191,19 @@ pub fn save(store: &dyn Caches, active: &Active, fs: &JobFs, lines: &mut Vec<Str
         // would come back next run.
         let emptied = active.restored.values().any(|k| !matches!(k, Kind::Dir));
         if emptied {
-            match store.save(&active.key, &[], &entries) {
-                Ok(()) => lines.push(format!("env cache `{name}`: emptied")),
-                Err(e) => lines.push(format!("env cache `{name}`: could not save ({e})")),
-            }
+            let shown = name.clone();
+            queue(
+                store,
+                active,
+                entries,
+                Vec::new(),
+                lines,
+                saves,
+                Box::new(move |saved| match saved {
+                    Ok(_) => format!("env cache `{shown}`: emptied"),
+                    Err(e) => format!("env cache `{shown}`: could not save ({e})"),
+                }),
+            );
         } else {
             lines.push(format!("env cache `{name}`: nothing to save"));
         }
@@ -223,11 +255,83 @@ pub fn save(store: &dyn Caches, active: &Active, fs: &JobFs, lines: &mut Vec<Str
             ),
         )
     };
-    match store.save_with_modes(&active.key, &[], &kept, &fs.modes_of(&kept)) {
-        Ok(()) => lines.push(format!(
-            "env cache `{name}`: saved {}{note}",
-            kib(file_bytes(&kept))
-        )),
-        Err(e) => lines.push(format!("env cache `{name}`: could not save ({e})")),
+    let modes = fs.modes_of(&kept);
+    let shown = name.clone();
+    let size = kib(file_bytes(&kept));
+    queue(
+        store,
+        active,
+        kept,
+        modes,
+        lines,
+        saves,
+        Box::new(move |saved| match saved {
+            Ok(_) => format!("env cache `{shown}`: saved {size}{note}"),
+            Err(e) => format!("env cache `{shown}`: could not save ({e})"),
+        }),
+    );
+}
+
+/// Saves `entries` under the cache's key now, or after the job
+/// ([`crate::saves`]). One made after the job claims its key first, as a
+/// job cache's save does, so a restore of it waits for the upload; a key
+/// another job of this runner is saving is left to that save.
+#[allow(clippy::too_many_arguments)]
+fn queue(
+    store: &dyn Caches,
+    active: &Active,
+    entries: Vec<Entry>,
+    modes: Vec<(PathBuf, u32)>,
+    lines: &mut Vec<String>,
+    saves: &mut crate::saves::Saves,
+    line: Box<dyn FnOnce(Result<std::time::Duration, String>) -> String + Send>,
+) {
+    let name = &active.decl.name;
+    if saves.is_deferred() && !store.claim(&active.key) {
+        lines.push(format!("env cache `{name}`: being saved by another job"));
+        return;
+    }
+    let save = crate::saves::Save {
+        key: active.key.clone(),
+        restore_keys: Vec::new(),
+        pending: format!(
+            "env cache `{name}`: saving {} after the job",
+            kib(file_bytes(&entries))
+        ),
+        entries,
+        modes,
+        line,
+    };
+    saves.save(store, save, lines);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::cached_by_job;
+
+    fn caches(paths: &[&str]) -> Vec<iwci_spec::CacheSpec> {
+        vec![iwci_spec::CacheSpec {
+            key: "k".into(),
+            restore_keys: Vec::new(),
+            paths: paths.iter().map(|p| p.to_string()).collect(),
+        }]
+    }
+
+    #[test]
+    fn a_job_cache_over_under_or_at_the_directory_takes_it() {
+        let m2 = "/root/.m2/repository";
+        assert_eq!(cached_by_job(m2, &caches(&[m2])), Some(m2));
+        assert_eq!(
+            cached_by_job(m2, &caches(&["/root/.m2"])),
+            Some("/root/.m2")
+        );
+        assert_eq!(
+            cached_by_job(m2, &caches(&["/root/.m2/repository/org"])),
+            Some("/root/.m2/repository/org")
+        );
+        // A sibling, or a name that only starts the same, is not it.
+        assert_eq!(cached_by_job(m2, &caches(&["/root/.m2/wrapper"])), None);
+        assert_eq!(cached_by_job(m2, &caches(&["/root/.m2/repository2"])), None);
+        assert_eq!(cached_by_job(m2, &[]), None);
     }
 }

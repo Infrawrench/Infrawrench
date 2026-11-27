@@ -14,7 +14,7 @@ Connect Datadog to see what you spend and manage your monitors, downtimes, hosts
 - **Dashboards**: listed with their author and layout. Open one in Datadog with one click, or delete it.
 - **SLOs**: target, warning threshold, timeframe and monitors. The Metrics tab charts the SLI with good and bad events for metric SLOs, and up/down state for monitor and time-slice SLOs.
 - **Synthetic tests**: API, browser, mobile and network tests with their target and locations. **Run now** runs the test from every configured location. **Pause** and **Resume** toggle it. The Metrics tab charts response time per location and failed runs. Browser tests chart duration per location, errors and failed runs instead.
-- **Hosts**: every host reporting to Datadog, with its Agent version, platform, integrations, CPU, I/O wait and load. Mute or unmute a host, and chart CPU, load, memory, the fullest disk and network traffic.
+- **Hosts**: every host reporting to Datadog, with its Agent version, platform, integrations, CPU, I/O wait and load. Mute or unmute a host, and chart CPU, load, memory, the fullest disk and network traffic. For a host pinned to a dashboard, capacity runway tracks its fullest disk against 100%.
 - **Users**: members and service accounts with their roles, MFA and last login. **Disable** removes a user's access. The [access review](../features/access-review.md) offers the same action as its Revoke button.
 - **API keys** and **application keys**: names, last four characters, creator or owner, scopes and last use. Datadog only shows a key's secret when it's created, so you see metadata here. Deleting a key revokes it at once.
 

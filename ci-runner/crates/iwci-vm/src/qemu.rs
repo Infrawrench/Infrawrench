@@ -9,10 +9,16 @@
 //! every machine (the image's root, and the workspace's files when the
 //! job has a clone); what the job writes goes to a tmpfs inside it.
 //!
-//! virtio-mmio devices reach the guest in the reverse of the order QEMU is
-//! given them (each new transport bus is put at the head of QEMU's list),
-//! so the root disk comes last to be `vda`, and the agent finds the
-//! workspace disk by its serial (`iwci-ws`) rather than its name.
+//! The root disk has to be `vda` (`root=/dev/vda`). How virtio-mmio
+//! devices are numbered differs by machine: `virt` (aarch64) lists them in
+//! its device tree in the reverse of the order QEMU is given them (each
+//! new transport bus goes at the head of QEMU's list), so there the root
+//! disk comes last; `microvm` (x86_64) plugs them into its transports in
+//! command-line order and names them so on the kernel's command line, so
+//! there it comes first. ci-1's first machine with a workspace disk found
+//! that the hard way: `vda` was the workspace and init was not there. The
+//! agent finds the workspace disk by its serial (`iwci-ws`), never its
+//! name.
 //!
 //! **Windows** is Windows 11 on Arm under the aarch64 `virt` machine with
 //! UEFI, on PCI virtio devices (virtio-win's ARM64 drivers), its disk a
@@ -24,16 +30,29 @@
 //! its frames dropped instead.
 //!
 //! No machine has a display, a monitor, a serial port of the host's, or
-//! any host file system: the agent's virtio-serial port and the network
-//! link are its only ways out, both sockets the runner holds.
+//! any host file system: the agent's virtio-serial port, the network link
+//! and (Linux) the run's `/tmp/workflow` over virtio-fs are its only ways
+//! out, all sockets the runner holds. The last is served from the
+//! runner's memory (`virtiofs.rs`), never from a directory of the host's;
+//! a vhost-user device needs the guest's memory shared with its back end,
+//! so a machine that has it gets its memory from a `memfd` QEMU shares.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use iwci_vm_proto::{AGENT_PORT, GUEST_MAC};
+use iwci_vm_proto::{AGENT_PORT, GUEST_MAC, SCRATCH_SERIAL};
 
 /// The serial the workspace disk carries, which the guest looks for.
 pub const WORKSPACE_SERIAL: &str = "iwci-ws";
+/// The MTU a Linux machine's network device offers (virtio-net's
+/// `VIRTIO_NET_F_MTU`, which the guest's driver takes as the interface's):
+/// the gateway's (`iwci_sandbox::net::MTU`), as a sandbox's link has. The
+/// link never leaves the host, so nothing on it fragments, and a large
+/// frame carries a download in a fortieth of the frames 1,500 bytes take:
+/// on a c8i, 2 GB downloaded through the gateway cost the runner half the
+/// CPU time (2.3 s against 4.9 s) and the runner and the emulator together
+/// a fifth less.
+pub const GUEST_MTU: u16 = 65_000;
 
 /// The host's architecture, which is the machine's (KVM runs only the
 /// host's own).
@@ -77,6 +96,12 @@ pub struct Sockets {
     pub net: Option<PathBuf>,
     /// The guest's console (`hvc0` on Linux), for when it does not start.
     pub console: PathBuf,
+    /// The run's `/tmp/workflow` as a virtio-fs device (Linux): the
+    /// runner listens, QEMU connects.
+    pub scratch: Option<PathBuf>,
+    /// The job's own files as a read-only virtio-fs device (Linux), in
+    /// place of a workspace disk image and an archive of the rest.
+    pub files: Option<PathBuf>,
 }
 
 /// A Linux micro VM.
@@ -87,9 +112,18 @@ pub struct Linux<'a> {
     pub rootfs: &'a Path,
     /// The workspace's erofs image, when the job has files.
     pub workspace: Option<&'a Path>,
+    /// This job's scratch disk, formatted as ext4 by the guest and mounted
+    /// as the writable layer. Sparse on the host, deleted with the run dir.
+    pub scratch_disk: Option<&'a Path>,
     pub memory_mib: u64,
     pub cpus: u32,
     pub sockets: &'a Sockets,
+    /// Back the machine's shared memory with 2 MiB huge pages (`hugetlb`):
+    /// see [`linux_args`].
+    pub huge_pages: bool,
+    /// The uid the agent runs scripts as ([`iwci_vm_proto::USER_ARG`]),
+    /// or `None` for root.
+    pub user: Option<u32>,
 }
 
 fn push(args: &mut Vec<OsString>, items: &[&str]) {
@@ -104,15 +138,72 @@ fn path_arg(prefix: &str, path: &Path) -> OsString {
 
 /// The kernel's command line: the agent is init, the root the read-only
 /// image, and the network (when there is one) configured by the kernel
-/// itself, IPv4 only.
-pub fn kernel_cmdline(network: bool) -> String {
+/// itself, IPv4 only. IPv6 is on, as on GitHub's runners, so `::1` and
+/// link-local addresses work (Node resolves `localhost` to `::1` first, and
+/// a test of scoped IPv6 addresses needs them); with no IPv6 address or
+/// route outside the machine, nothing leaves it that way.
+///
+/// Two settings the kernel applies itself before the agent starts
+/// (`sysctl.*`, Linux 5.8 and later), so they need no new image:
+///
+/// - `vm.watermark_scale_factor=500`: the kernel's background reclaim
+///   starts when free memory falls below 5% of the machine rather than
+///   0.1%, and frees that much ahead of demand. A job whose files and
+///   processes outgrow its memory lives on swap, and when a burst of
+///   allocations (eight test workers, a dev server compiling a page) finds
+///   no free pages, each allocating thread reclaims for itself; the kernel
+///   kills the largest process when that keeps failing, whether or not
+///   swap has room. On shadcn/ui's `pnpm test` (8 GiB, up to 16.1 GiB of
+///   swap in use), threads reclaimed for themselves 204 to 497 times a run
+///   with it against 1,756 to 5,118 without, in the same run time.
+/// - `kernel.printk=5`: warnings reach the console as well as errors, so
+///   what the kernel says when it runs out of memory (the allocation that
+///   found none, the swap left, the process killed) is there for the
+///   report ([`oom_report`]). Boot is still quiet: the setting applies
+///   after it.
+pub fn kernel_cmdline(network: bool, files: bool, user: Option<u32>) -> String {
     let mut line = String::from(
-        "console=hvc0 root=/dev/vda ro rootfstype=erofs init=/usr/local/sbin/iwci-guest reboot=t panic=-1 quiet ipv6.disable=1",
+        "console=hvc0 root=/dev/vda ro rootfstype=erofs init=/usr/local/sbin/iwci-guest reboot=t panic=-1 quiet \
+         sysctl.vm.watermark_scale_factor=500 sysctl.kernel.printk=5",
     );
     if network {
         line.push_str(" ip=10.0.2.15::10.0.2.2:255.255.255.0:iwci:eth0:off");
     }
+    if files {
+        line.push_str(&format!(" iwci.files={}", iwci_vm_proto::FILES_TAG));
+    }
+    if let Some(uid) = user {
+        line.push_str(&format!(" {}={uid}", iwci_vm_proto::USER_ARG));
+    }
     line
+}
+
+/// What the machine's kernel said on its console when it ran out of
+/// memory: which allocation found none, how much swap was left, and which
+/// process it killed for it, without the timestamps. At most the first `MAX` of each, since a
+/// job that keeps running out says the same thing over and over.
+pub fn oom_report(console: &str) -> Vec<String> {
+    const MAX: usize = 3;
+    let (mut invoked, mut swap, mut killed) = (Vec::new(), Vec::new(), Vec::new());
+    for line in console.lines() {
+        // `[  312.123456] text`: the text after the timestamp.
+        let text = match line.trim_start().strip_prefix('[') {
+            Some(rest) => rest.split_once("] ").map_or(line, |(_, text)| text),
+            None => line,
+        }
+        .trim();
+        if text.contains(" invoked oom-killer: ") && invoked.len() < MAX {
+            invoked.push(text.to_string());
+        } else if (text.starts_with("Free swap ") || text.starts_with("Total swap "))
+            && invoked.len() > swap.len() / 2
+            && swap.len() < 2 * MAX
+        {
+            swap.push(text.to_string());
+        } else if text.starts_with("Out of memory: Killed process") && killed.len() < MAX {
+            killed.push(text.to_string());
+        }
+    }
+    invoked.into_iter().chain(swap).chain(killed).collect()
 }
 
 fn common(args: &mut Vec<OsString>, memory_mib: u64, cpus: u32) {
@@ -147,7 +238,10 @@ fn agent_port(args: &mut Vec<OsString>, sockets: &Sockets, bus: &str) {
     args.push(format!("virtserialport,chardev=agent,name={AGENT_PORT}").into());
 }
 
-fn net(args: &mut Vec<OsString>, path: &Path, device: &str) {
+/// The network device and its link to the runner. `mtu` is offered to the
+/// guest; a Windows machine gets none, since its saved states were made
+/// with the device as it is.
+fn net(args: &mut Vec<OsString>, path: &Path, device: &str, mtu: Option<u16>) {
     args.push("-netdev".into());
     args.push(path_arg(
         "stream,id=net0,server=off,addr.type=unix,addr.path=",
@@ -155,27 +249,54 @@ fn net(args: &mut Vec<OsString>, path: &Path, device: &str) {
     ));
     let mac = GUEST_MAC.map(|b| format!("{b:02x}")).join(":");
     args.push("-device".into());
-    args.push(format!("{device},netdev=net0,mac={mac}").into());
+    let mtu = mtu.map(|m| format!(",host_mtu={m}")).unwrap_or_default();
+    args.push(format!("{device},netdev=net0,mac={mac}{mtu}").into());
 }
 
 /// The arguments for a Linux machine.
 pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
     let mut args = Vec::new();
-    match m.arch {
-        Arch::X86_64 => push(
-            &mut args,
-            &[
-                "-M",
-                "microvm,acpi=off,x-option-roms=off,pit=off,pic=off,isa-serial=off,rtc=off",
-            ],
-        ),
-        Arch::Aarch64 => push(&mut args, &["-M", "virt,gic-version=host"]),
+    let mut machine = match m.arch {
+        Arch::X86_64 => {
+            // The RTC stays: without one the kernel waits out two reads of
+            // the legacy CMOS clock (the PM trace read and `rtc_cmos`), 3.4
+            // of a 3.5 s boot measured on ci-1; with it the kernel reaches
+            // init in 0.15 s.
+            "microvm,acpi=off,x-option-roms=off,pit=off,pic=off,isa-serial=off,rtc=on".to_string()
+        }
+        Arch::Aarch64 => "virt,gic-version=host".to_string(),
+    };
+    if m.sockets.scratch.is_some() || m.sockets.files.is_some() {
+        // A vhost-user device's back end reads and writes the guest's
+        // memory itself, so it is a shared memfd. In 4 KiB pages that
+        // costs the guest's boot dearly (measured on ci-1: init at 0.61 s
+        // for 2 GiB and 1.86 s for 8 GiB, against 0.15 s in QEMU's own
+        // memory), in 2 MiB huge pages nothing (0.16 s and 0.19 s). The
+        // pages are reserved when QEMU maps them, so a host without them
+        // fails QEMU's start, never a running job, and the runner starts
+        // it again without (`Host::run`).
+        machine.push_str(",memory-backend=mem");
+        args.push("-object".into());
+        let huge = if m.huge_pages {
+            ",hugetlb=on,hugetlbsize=2M"
+        } else {
+            ""
+        };
+        args.push(
+            format!(
+                "memory-backend-memfd,id=mem,size={}M,share=on{huge}",
+                m.memory_mib
+            )
+            .into(),
+        );
     }
+    args.push("-M".into());
+    args.push(machine.into());
     common(&mut args, m.memory_mib, m.cpus);
     args.push("-kernel".into());
     args.push(m.kernel.into());
     args.push("-append".into());
-    args.push(kernel_cmdline(m.sockets.net.is_some()).into());
+    args.push(kernel_cmdline(m.sockets.net.is_some(), m.sockets.files.is_some(), m.user).into());
 
     // The console and the agent share one virtio-serial device.
     agent_port(&mut args, m.sockets, "virtio-serial-device");
@@ -184,22 +305,66 @@ pub fn linux_args(m: &Linux<'_>) -> Vec<OsString> {
     push(&mut args, &["-device", "virtconsole,chardev=console"]);
 
     if let Some(path) = &m.sockets.net {
-        net(&mut args, path, "virtio-net-device");
+        net(&mut args, path, "virtio-net-device", Some(GUEST_MTU));
     }
     push(&mut args, &["-device", "virtio-rng-device"]);
-    // The workspace first and the root last: see the module's note.
+    if let Some(path) = &m.sockets.files {
+        args.push("-chardev".into());
+        args.push(path_arg("socket,id=files,path=", path));
+        args.push("-device".into());
+        args.push(
+            format!(
+                "vhost-user-fs-device,chardev=files,tag={}",
+                iwci_vm_proto::FILES_TAG
+            )
+            .into(),
+        );
+    }
+    if let Some(path) = &m.sockets.scratch {
+        args.push("-chardev".into());
+        args.push(path_arg("socket,id=scratch,path=", path));
+        args.push("-device".into());
+        args.push(
+            format!(
+                "vhost-user-fs-device,chardev=scratch,tag={}",
+                iwci_vm_proto::SCRATCH_TAG
+            )
+            .into(),
+        );
+    }
+    // The root disk where the machine makes it `vda`: see the module's
+    // note.
+    let root = |args: &mut Vec<OsString>| {
+        args.push("-drive".into());
+        args.push(path_arg(
+            "if=none,id=root,format=raw,readonly=on,file=",
+            m.rootfs,
+        ));
+        push(args, &["-device", "virtio-blk-device,drive=root"]);
+    };
+    if m.arch == Arch::X86_64 {
+        root(&mut args);
+    }
     if let Some(ws) = m.workspace {
         args.push("-drive".into());
         args.push(path_arg("if=none,id=ws,format=raw,readonly=on,file=", ws));
         args.push("-device".into());
         args.push(format!("virtio-blk-device,drive=ws,serial={WORKSPACE_SERIAL}").into());
     }
-    args.push("-drive".into());
-    args.push(path_arg(
-        "if=none,id=root,format=raw,readonly=on,file=",
-        m.rootfs,
-    ));
-    push(&mut args, &["-device", "virtio-blk-device,drive=root"]);
+    // Before the aarch64 root: adding a block device after it would move
+    // `vda` off the root disk. The guest finds this one by its serial.
+    if let Some(disk) = m.scratch_disk {
+        args.push("-drive".into());
+        args.push(path_arg(
+            "if=none,id=rw,format=raw,cache=unsafe,file=",
+            disk,
+        ));
+        args.push("-device".into());
+        args.push(format!("virtio-blk-device,drive=rw,serial={SCRATCH_SERIAL}").into());
+    }
+    if m.arch == Arch::Aarch64 {
+        root(&mut args);
+    }
     args
 }
 
@@ -247,7 +412,7 @@ pub fn windows_args(m: &Windows<'_>) -> Vec<OsString> {
         .net
         .as_deref()
         .expect("a Windows machine always has its network device");
-    net(&mut args, net_path, "virtio-net-pci");
+    net(&mut args, net_path, "virtio-net-pci", None);
     agent_port(&mut args, m.sockets, "virtio-serial-pci");
     push(
         &mut args,
@@ -301,7 +466,156 @@ mod tests {
             agent: "/m/agent.sock".into(),
             net: net.then(|| "/m/net.sock".into()),
             console: "/m/console.log".into(),
+            scratch: None,
+            files: None,
         }
+    }
+
+    #[test]
+    fn shared_memory_is_in_huge_pages_when_asked() {
+        let s = Sockets {
+            scratch: Some("/m/scratch.sock".into()),
+            ..sockets(false)
+        };
+        let linux = |huge_pages| Linux {
+            arch: Arch::X86_64,
+            kernel: Path::new("/img/vmlinux"),
+            rootfs: Path::new("/img/rootfs.erofs"),
+            workspace: None,
+            scratch_disk: None,
+            memory_mib: 2048,
+            cpus: 1,
+            sockets: &s,
+            huge_pages,
+            user: None,
+        };
+        let huge = strings(&linux_args(&linux(true))).join(" ");
+        assert!(
+            huge.contains(
+                "memory-backend-memfd,id=mem,size=2048M,share=on,hugetlb=on,hugetlbsize=2M"
+            ),
+            "{huge}"
+        );
+        let plain = strings(&linux_args(&linux(false))).join(" ");
+        assert!(
+            plain.contains("size=2048M,share=on ") && !plain.contains("hugetlb"),
+            "{plain}"
+        );
+    }
+
+    #[test]
+    fn a_linux_machine_can_have_its_own_files_streamed_in() {
+        let s = Sockets {
+            files: Some("/m/files.sock".into()),
+            ..sockets(false)
+        };
+        let args = strings(&linux_args(&Linux {
+            arch: Arch::Aarch64,
+            kernel: Path::new("/img/Image"),
+            rootfs: Path::new("/img/rootfs.erofs"),
+            workspace: None,
+            scratch_disk: None,
+            memory_mib: 512,
+            cpus: 1,
+            sockets: &s,
+            huge_pages: false,
+            user: None,
+        }));
+        let text = args.join(" ");
+        for want in [
+            "memory-backend-memfd,id=mem,size=512M,share=on",
+            "virt,gic-version=host,memory-backend=mem",
+            "socket,id=files,path=/m/files.sock",
+            "vhost-user-fs-device,chardev=files,tag=iwci-files",
+            "iwci.files=iwci-files",
+        ] {
+            assert!(text.contains(want), "{want} not in {text}");
+        }
+        assert!(!text.contains("iwci-ws"));
+        assert!(!kernel_cmdline(false, false, None).contains("iwci.files"));
+        assert!(!kernel_cmdline(false, true, None).contains("iwci.user"));
+        assert!(kernel_cmdline(false, true, Some(1001)).ends_with(" iwci.user=1001"));
+    }
+
+    #[test]
+    fn the_kernel_reclaims_ahead_and_says_why_it_ran_out() {
+        let line = kernel_cmdline(false, false, None);
+        assert!(
+            line.contains(" quiet sysctl.vm.watermark_scale_factor=500 "),
+            "{line}"
+        );
+        assert!(line.contains(" sysctl.kernel.printk=5"), "{line}");
+        assert!(!line.contains("  "), "{line}");
+    }
+
+    #[test]
+    fn an_oom_report_is_the_kernels_own_lines() {
+        let console = "\
+[    0.222845] genirq: Flags mismatch irq 8. 00200000 (rtc0) vs. 00200080 (virtio4)
+[  312.004211] next-server invoked oom-killer: gfp_mask=0x140dca(GFP_HIGHUSER_MOVABLE|__GFP_COMP|__GFP_ZERO), order=0, oom_score_adj=0
+[  312.004300] CPU: 3 UID: 1001 PID: 4242 Comm: next-server Not tainted 6.18.63 #1
+[  312.010001] Free swap  = 0kB
+[  312.010002] Total swap = 20971516kB
+[  312.019000] Out of memory: Killed process 4242 (next-server) total-vm:23450000kB, anon-rss:1650000kB, file-rss:0kB, shmem-rss:0kB, UID:1001 pgtables:9000kB oom_score_adj:0
+iwci-guest: read ahead 7056 files, 51055 KiB, in 490 ms
+";
+        assert_eq!(
+            oom_report(console),
+            vec![
+                "next-server invoked oom-killer: gfp_mask=0x140dca(GFP_HIGHUSER_MOVABLE|__GFP_COMP|__GFP_ZERO), order=0, oom_score_adj=0",
+                "Free swap  = 0kB",
+                "Total swap = 20971516kB",
+                "Out of memory: Killed process 4242 (next-server) total-vm:23450000kB, anon-rss:1650000kB, file-rss:0kB, shmem-rss:0kB, UID:1001 pgtables:9000kB oom_score_adj:0",
+            ]
+        );
+        let many = "[1.0] Out of memory: Killed process 1 (a) x\n".repeat(5);
+        assert_eq!(oom_report(&many).len(), 3);
+        assert!(oom_report("").is_empty());
+    }
+
+    #[test]
+    fn a_linux_machine_with_the_scratch_over_virtio_fs_shares_its_memory() {
+        let s = Sockets {
+            scratch: Some("/m/scratch.sock".into()),
+            ..sockets(false)
+        };
+        let args = strings(&linux_args(&Linux {
+            arch: Arch::X86_64,
+            kernel: Path::new("/img/vmlinux"),
+            rootfs: Path::new("/img/rootfs.erofs"),
+            workspace: None,
+            scratch_disk: None,
+            memory_mib: 1024,
+            cpus: 1,
+            sockets: &s,
+            huge_pages: false,
+            user: None,
+        }));
+        let text = args.join(" ");
+        for want in [
+            "-object memory-backend-memfd,id=mem,size=1024M,share=on",
+            ",memory-backend=mem",
+            "-m 1024M",
+            "socket,id=scratch,path=/m/scratch.sock",
+            "vhost-user-fs-device,chardev=scratch,tag=iwci-scratch",
+        ] {
+            assert!(text.contains(want), "{want} not in {text}");
+        }
+        // Without it, the memory is QEMU's own.
+        let plain = strings(&linux_args(&Linux {
+            arch: Arch::X86_64,
+            kernel: Path::new("/img/vmlinux"),
+            rootfs: Path::new("/img/rootfs.erofs"),
+            workspace: None,
+            scratch_disk: None,
+            memory_mib: 1024,
+            cpus: 1,
+            sockets: &sockets(false),
+            huge_pages: false,
+            user: None,
+        }))
+        .join(" ");
+        assert!(!plain.contains("memfd") && !plain.contains("vhost-user"));
     }
 
     #[test]
@@ -312,9 +626,12 @@ mod tests {
             kernel: Path::new("/img/vmlinux"),
             rootfs: Path::new("/img/rootfs.erofs"),
             workspace: Some(Path::new("/cache/ws.erofs")),
+            scratch_disk: None,
             memory_mib: 2048,
             cpus: 2,
             sockets: &s,
+            huge_pages: false,
+            user: None,
         }));
         let text = args.join(" ");
         assert!(text.starts_with("-M microvm,acpi=off,"), "{text}");
@@ -325,7 +642,7 @@ mod tests {
             "socket,id=agent,server=off,path=/m/agent.sock",
             "virtserialport,chardev=agent,name=org.infrawrench.iwci.agent",
             "stream,id=net0,server=off,addr.type=unix,addr.path=/m/net.sock",
-            "virtio-net-device,netdev=net0,mac=52:54:00:12:34:56",
+            "virtio-net-device,netdev=net0,mac=52:54:00:12:34:56,host_mtu=65000",
             "virtio-blk-device,drive=ws,serial=iwci-ws",
         ] {
             assert!(text.contains(want), "{want} not in {text}");
@@ -333,12 +650,51 @@ mod tests {
         let append = &args[args.iter().position(|a| a == "-append").unwrap() + 1];
         assert!(append.contains("init=/usr/local/sbin/iwci-guest"));
         assert!(append.contains("ip=10.0.2.15::10.0.2.2:255.255.255.0:iwci:eth0:off"));
-        // The root disk is the last device, so the guest names it vda.
-        assert_eq!(args.last().unwrap(), "virtio-blk-device,drive=root");
+        // microvm numbers its devices in command-line order: the root
+        // disk comes before the workspace's, so the guest names it vda.
         assert!(
-            text.find("drive=ws").unwrap() < text.find("drive=root").unwrap(),
+            text.find("drive=root").unwrap() < text.find("drive=ws").unwrap(),
             "{text}"
         );
+    }
+
+    #[test]
+    fn the_scratch_disk_does_not_move_the_root_disk() {
+        let s = sockets(true);
+        for (arch, kernel) in [
+            (Arch::X86_64, "/img/vmlinux"),
+            (Arch::Aarch64, "/img/Image"),
+        ] {
+            let args = strings(&linux_args(&Linux {
+                arch,
+                kernel: Path::new(kernel),
+                rootfs: Path::new("/img/rootfs.erofs"),
+                workspace: Some(Path::new("/cache/ws.erofs")),
+                scratch_disk: Some(Path::new("/m/scratch.img")),
+                memory_mib: 2048,
+                cpus: 2,
+                sockets: &s,
+                huge_pages: false,
+                user: None,
+            }));
+            let text = args.join(" ");
+            assert!(
+                text.contains("if=none,id=rw,format=raw,cache=unsafe,file=/m/scratch.img"),
+                "{text}"
+            );
+            assert!(
+                text.contains("virtio-blk-device,drive=rw,serial=iwci-rw"),
+                "{text}"
+            );
+            let root = text.find("drive=root").unwrap();
+            let rw = text.find("drive=rw").unwrap();
+            // `root=/dev/vda`: microvm numbers devices in command-line
+            // order, virt on aarch64 in reverse.
+            match arch {
+                Arch::X86_64 => assert!(root < rw, "{text}"),
+                Arch::Aarch64 => assert!(rw < root, "{text}"),
+            }
+        }
     }
 
     #[test]
@@ -349,9 +705,12 @@ mod tests {
             kernel: Path::new("/img/Image"),
             rootfs: Path::new("/img/rootfs.erofs"),
             workspace: None,
+            scratch_disk: None,
             memory_mib: 512,
             cpus: 1,
             sockets: &s,
+            huge_pages: false,
+            user: None,
         }));
         let text = args.join(" ");
         assert!(text.starts_with("-M virt,gic-version=host"));
@@ -408,6 +767,14 @@ mod tests {
             assert!(text.contains(want), "{want} not in {text}");
         }
         assert!(!text.contains("-kernel"));
+        // The saved states were made with the device as it was.
+        assert!(!text.contains("host_mtu"), "{text}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_machine_link_has_the_gateway_mtu() {
+        assert_eq!(usize::from(GUEST_MTU), iwci_sandbox::net::MTU);
     }
 
     #[test]

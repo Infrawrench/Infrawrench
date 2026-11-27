@@ -59,6 +59,9 @@ resource "terraform_data" "host" {
     file("${path.module}/files/install.sh"),
     each.value.tunnel_token == null ? "" : sha256(each.value.tunnel_token),
     each.value.zram == null ? "" : each.value.zram,
+    # The sizing script is on every host (it holds the huge page rule).
+    file("${path.module}/files/iwci-size"),
+    each.value.size == null ? "" : each.value.size,
     # A new sandbox service is installed where it is used.
     local.service_sha256[each.key],
     coalesce(each.value.native_sandbox, false) ? file("${path.module}/files/iwci-sandbox-spawn.socket") : "",
@@ -113,6 +116,15 @@ resource "terraform_data" "host" {
   provisioner "file" {
     content     = each.value.zram == null ? "" : each.value.zram
     destination = "/tmp/iwci-zram"
+  }
+  # The sizing script, and whether it sizes the host at every boot.
+  provisioner "file" {
+    source      = "${path.module}/files/iwci-size"
+    destination = "/tmp/iwci-size.upload"
+  }
+  provisioner "file" {
+    content     = each.value.size == null ? "" : each.value.size
+    destination = "/tmp/iwci-size"
   }
   provisioner "file" {
     content     = coalesce(each.value.native_sandbox, false) ? "true" : "false"

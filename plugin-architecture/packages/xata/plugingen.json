@@ -36,6 +36,7 @@
     "/organizations/{organizationID}/invitations/{invitationID}": ["delete"],
     "/organizations/{organizationID}/invitations/{invitationID}/resend": ["post"],
     "/organizations/{organizationID}/membership-limits": ["get"],
+    "/organizations/{organizationID}/billing/customer": ["get"],
     "/organizations/{organizationID}/billing/invoices": ["get"],
     "/organizations/{organizationID}/billing/invoices/upcoming": ["get"],
     "/organizations/{organizationID}/regions": ["get"],

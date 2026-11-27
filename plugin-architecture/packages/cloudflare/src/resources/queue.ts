@@ -17,6 +17,18 @@ export const QueueResourceType = rt({
   outputs: [o("queueId", "Queue ID"), o("queueName", "Queue Name")],
   supportsCreate: true,
   supportsMetrics: true,
+  // The "Backlog Bytes" series from `queueBacklogAdaptiveGroups`
+  // (metric-series.ts). A queue whose backlog reaches 25 GB is refused new
+  // messages with `Storage Limit Exceeded`
+  // (https://developers.cloudflare.com/queues/platform/limits/, read 2026-11-23).
+  capacityMetrics: [
+    {
+      seriesLabel: "Backlog Bytes",
+      limit: { constant: 25 * 1000 ** 3 },
+      unit: "bytes",
+      label: "Backlog",
+    },
+  ],
   iconKey: "queue",
   secretExportTemplates: [
     {

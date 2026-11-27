@@ -1,4 +1,5 @@
 import { hostClient, hostPlugin } from "@infrawrench/plugin-base/effect";
+import { capacityDeclarations, resolveCapacityLimit } from "@infrawrench/plugin-base";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HerokuClient } from "../client.js";
 import { invoiceRows, periodDay } from "../cost-data.js";
@@ -98,6 +99,10 @@ describe("mappers", () => {
     const [a] = await client().listResources("app", ACCOUNT);
     expect(a!.fields).toMatchObject({ region: "eu", team: "acme", acm: true, slugSizeMb: 52 });
     expect(a!.resolvedOutputs["hostname"]).toBe("shop-api-0123456789ab.herokuapp.com");
+    const type = plugin.resourceTypes.find((t) => t.id === "app")!;
+    const [decl] = capacityDeclarations(type);
+    expect(decl!.valueKey).toBe("slugSizeMb");
+    expect(resolveCapacityLimit(decl!.declaration.limit, a!.fields)?.limit).toBe(1000);
   });
 
   it("lists config var keys without values and marks add-on owned vars", async () => {

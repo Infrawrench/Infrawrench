@@ -18,6 +18,8 @@ export interface SidebarToolDef {
   label: string;
   icon: React.ReactNode;
   onClick: () => void;
+  /** In beta: its rows carry the Beta badge. */
+  beta?: boolean;
 }
 
 const GRID_COLUMNS = 4;

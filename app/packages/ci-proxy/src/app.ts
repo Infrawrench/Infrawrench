@@ -7,8 +7,8 @@
 // | `GET /v1/artifacts/{owner}/{repo-id}/{run}/{object}?n=&e=&s=` | a job's download, by a link the app signed (no bearer key); see `artifacts.ts` |
 // | `GET`, `PUT /v1/runners` | the runners runs go to (`{ "runners": [{ "name", "url" }] }`, replaced whole) |
 // | `GET /v1/capacity` | every runner's slots, job memory and platforms, and the pool's total slots |
-// | `POST /v1/runs[?wait=true]` | runs a request on the runner where it is expected to finish soonest, among those with every platform its `platforms` names when any is up (`takePlatforms`, never sent on), and offers it to the others as helpers (`placeRun`); a manual run (`"event": "manual"`, `pipeline-file`, `inputs`) passes through like a push |
-// | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through |
+// | `POST /v1/runs[?wait=true]` | runs a request on the runner where it is expected to finish soonest, among those with every platform its `platforms` names when any is up (`takePlatforms`, never sent on), and offers it to the others as helpers (`placeRun`); its `notify` goes to the runner that has it when that runner takes the field (`takeNotify`), never to a helper; a manual run (`"event": "manual"`, `pipeline-file`, `inputs`) passes through like a push |
+// | `GET /v1/runs/{id}` and `/v1/runs/{id}/logs` | from the runner that has the run; logs stream through. With `?owner=`, a finished run's status comes from the report in the store when that runner does not answer or is no longer in the list (`storedRun`) |
 // | `POST /v1/runs/{id}/cancel` | cancels the run, or some of its pipelines, on the runner that has it |
 // | `GET /v1/runs/{id}/jobs[/{job}]` | a run's cloud jobs and their state, from the runner that has it |
 // | `POST /v1/runs/{id}/jobs/{job}/claim`, `/log`, `/finish` | the executor's side of a cloud job, on the runner that has it |
@@ -139,6 +139,51 @@ export function takePlatforms(request: Record<string, unknown>): string[] | Resp
   return [...new Set(value as string[])];
 }
 
+/** Where a runner tells the caller that a run changed (`notify` in a run request). */
+export interface NotifyTarget {
+  url: string;
+  token: string;
+}
+
+/** The longest `notify.url` and `notify.token` the runners take. */
+const MAX_NOTIFY_URL = 2048;
+const MAX_NOTIFY_TOKEN = 512;
+
+/**
+ * Takes `notify` out of a run request: where the runner that has the run
+ * posts each change of its state (the runner's README, "HTTP API"). It is
+ * sent on only to that runner, and only when it says `"notify": true` in
+ * `/v1/capacity`, since an older runner refuses a request with a field it
+ * does not know; a runner that does not take it is followed by polling as
+ * before. Never to a helper, whose run nobody follows. The runner checks
+ * the URL itself (`https` to a name); anything but a URL and a token of
+ * the sizes it takes is a 400 here.
+ */
+export function takeNotify(request: Record<string, unknown>): NotifyTarget | null | Response {
+  const value = request.notify;
+  delete request.notify;
+  if (value === undefined || value === null) return null;
+  const { url, token } = (typeof value === "object" && !Array.isArray(value) ? value : {}) as {
+    url?: unknown;
+    token?: unknown;
+  };
+  if (
+    typeof url !== "string" ||
+    !url.startsWith("https://") ||
+    url.length > MAX_NOTIFY_URL ||
+    typeof token !== "string" ||
+    token.length === 0 ||
+    token.length > MAX_NOTIFY_TOKEN ||
+    Object.keys(value as object).length !== 2
+  ) {
+    return error(
+      400,
+      `\`notify\` is { "url": an https URL of up to ${MAX_NOTIFY_URL} characters, "token": up to ${MAX_NOTIFY_TOKEN} characters }`,
+    );
+  }
+  return { url, token };
+}
+
 /**
  * The platforms a registered schedule's pipeline needs, as the runner read
  * it: the names it lists other than `wasm`, as `takePlatforms` would take
@@ -166,17 +211,20 @@ const HELP_TIMEOUT_MS = 5000;
  * `"split": { "runner": <its name> }` in the request, and every other such
  * runner (up to `MAX_HELPERS`) is then sent the same request, without its
  * `secrets` and `lent`, with
- * `"split": { "of": <the run's id there>, "runner": <its name> }`. A
- * helper only runs jobs that are given no secret and lent nothing, so it
- * is sent none: an offer sits on a runner for the whole of a run it may
- * never be asked to help. The `token` stays, since a helper fetches the
- * commit. That is an offer, not a run: the runner that has the run asks for help
+ * `"split": { "of": <the run's id there>, "runner": <its name> }`. An
+ * offer sits on a runner for the whole of a run it may never be asked to
+ * help, so it carries no secret: a helper that joins gets them sealed to
+ * a key of its own (below), and never runs a job that is lent anything.
+ * The `token` stays, since a helper fetches the commit, which it does as
+ * soon as it is offered one the request names. That is an offer, not a run: the runner that has the run asks for help
  * through the store they share when its queue backs up, and a helper
  * takes jobs only while it has slots and memory its own runs do not
  * want. So the proxy offers every time and decides nothing: it cannot
- * see whether a pipeline says `split:`, how long a run's queue is, or
- * what a helper will have free a minute from now, and both runners can.
- * A pipeline that does not say `split:` is not shared whatever is sent.
+ * see which jobs a pipeline has, how long a run's queue is, or what a
+ * helper will have free a minute from now, and both runners can. Every
+ * pipeline may be shared, but a run stays on its runner while that runner
+ * has room; a helper that joins is sent the run's secrets by the runner
+ * that has it, sealed through the store, never through an offer.
  *
  * Nothing is kept about the run: a helper that refuses, is down or
  * answers late is one helper fewer, and cancelling, status and logs go to
@@ -188,15 +236,18 @@ const HELP_TIMEOUT_MS = 5000;
  *
  * `platforms` (from `takePlatforms`) narrows where the run is placed, not
  * who is offered it: which jobs a helper may take is the runners' to say.
+ * `notify` (from `takeNotify`) goes to the runner that has the run when it
+ * takes the field, and to no helper: the caller follows the one run.
  */
 async function placeRun(
   deps: Deps,
   search: string,
   request: Record<string, unknown>,
   platforms: readonly string[] = [],
+  notify: NotifyTarget | null = null,
 ): Promise<Placed | null> {
   // `platforms` is the proxy's alone: no runner is ever sent it.
-  const { split: _split, platforms: _platforms, ...rest } = request;
+  const { split: _split, platforms: _platforms, notify: _notify, ...rest } = request;
   // What a helper is sent: nothing secret but the token to fetch with.
   const { secrets: _secrets, lent: _lent, ...offer } = rest;
   const waits = new URLSearchParams(search).get("wait") === "true";
@@ -205,9 +256,11 @@ async function placeRun(
   const placed = await deps.pool.place(
     `/v1/runs${search}`,
     (runner, others) =>
-      JSON.stringify(
-        helpers(runner, others).length > 0 ? { ...rest, split: { runner: runner.name } } : rest,
-      ),
+      JSON.stringify({
+        ...rest,
+        ...(helpers(runner, others).length > 0 ? { split: { runner: runner.name } } : {}),
+        ...(notify && runner.notify ? { notify } : {}),
+      }),
     platforms,
   );
   if (!placed?.response.ok) return placed;
@@ -267,6 +320,38 @@ async function relay(runner: string, response: Response): Promise<Response> {
   const retry = response.headers.get("Retry-After");
   if (retry) headers["Retry-After"] = retry;
   return json(response.status, body, headers);
+}
+
+/**
+ * A status that says the runner could not be reached rather than what it
+ * said about the run: a gateway's (502 to 504) or Cloudflare's for an
+ * origin or tunnel that is down (520 to 530).
+ */
+function unreachable(status: number): boolean {
+  return (status >= 502 && status <= 504) || (status >= 520 && status <= 530);
+}
+
+/**
+ * `GET /v1/runs/{runner}.{id}?owner=` answered from the report the runner
+ * stored when the run finished (`runs/{owner}/{id}.json`), as any runner
+ * answers it for a run it no longer has; null when there is no store, no
+ * `owner`, or no report (the run is still going, or never finished).
+ */
+async function storedRun(deps: Deps, id: string, url: URL): Promise<Response | null> {
+  const bucket = deps.downloads?.bucket;
+  const owner = url.searchParams.get("owner");
+  const match = /^([a-z0-9][a-z0-9-]{0,39})\.([0-9a-f]{32})$/.exec(id);
+  if (!bucket || !owner || !isId(owner) || !match) return null;
+  const [, runner = "", runId = ""] = match;
+  try {
+    const object = await bucket.get(`runs/${owner}/${runId}.json`);
+    if (!object) return null;
+    const body = JSON.parse(await new Response(object.body).text()) as unknown;
+    if (typeof body !== "object" || body === null || Array.isArray(body)) return null;
+    return relay(runner, json(200, body));
+  } catch {
+    return null;
+  }
 }
 
 function summary(row: ScheduleRow): Record<string, unknown> {
@@ -456,6 +541,8 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
         // Whether it can share a run or help one, and how many it helps.
         split: r.split,
         runs_helping: r.runsHelping,
+        // Whether it takes `notify`, to tell the caller as a run changes.
+        notify: r.notify,
         // What it runs jobs on (`wasm`, and `linux` with VMs).
         platforms: r.platforms,
         // What placement ranks by: the cores a new run could expect here,
@@ -473,19 +560,22 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     const body = await readBody(request);
     if (body instanceof Response) return body;
     let text = body.text;
-    const named = "platforms" in body.value;
+    const named = "platforms" in body.value || "notify" in body.value;
     const platforms = takePlatforms(body.value);
     if (platforms instanceof Response) return platforms;
+    const notify = takeNotify(body.value);
+    if (notify instanceof Response) return notify;
     if (path === "/v1/runs") {
       const withValues = await withStoredValues(deps, body.value);
       if (withValues instanceof Response) return withValues;
-      const placed = await placeRun(deps, url.search, withValues, platforms);
+      const placed = await placeRun(deps, url.search, withValues, platforms, notify);
       if (!placed) return full();
       return relay(placed.runner, placed.response);
     }
     if (named || "trusted" in body.value || "lent" in body.value) {
-      // Preparing runs no job, so it needs neither `trusted` nor `lent`;
-      // `platforms` was the proxy's and is already out.
+      // Preparing runs no job, so it needs neither `trusted` nor `lent`,
+      // and nobody follows it, so no `notify`; `platforms` was the proxy's.
+      // Both are already out.
       const { trusted: _, lent: _lent, ...rest } = body.value;
       text = JSON.stringify(rest);
     }
@@ -503,12 +593,14 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
     // read variables, never secrets, so only variables are added.
     const body = await readBody(request);
     if (body instanceof Response) return body;
-    // They place nothing, so `platforms` is dropped too.
+    // They place nothing and start no run, so `platforms` and `notify` are
+    // dropped too.
     const {
       trusted: _trusted,
       secrets: _secrets,
       lent: _lent,
       platforms: _platforms,
+      notify: _notify,
       ...rest
     } = body.value;
     const { owner, repoId } = identify(rest);
@@ -557,14 +649,24 @@ export async function handle(request: Request, deps: Deps): Promise<Response> {
   ) {
     if (parts.length === 4 && parts[3] !== "logs") return error(404, "no such route");
     const run = parseRunId(third, deps.pool);
-    if (!run) return error(404, "no such run");
+    // A finished run's report is in the store the runners share, so its
+    // status does not depend on the runner that ran it still being there
+    // (a spot host reclaimed straight after a run, or one taken out of the
+    // list).
+    const stored = parts.length === 3 ? () => storedRun(deps, third, url) : null;
+    if (!run) return (await stored?.()) ?? error(404, "no such run");
     const tail = parts.length === 4 ? "/logs" : "";
+    let response: Response;
     try {
-      const response = await deps.pool.call(run.runner, `/v1/runs/${run.id}${tail}${url.search}`);
-      return relay(run.runner, response);
+      response = await deps.pool.call(run.runner, `/v1/runs/${run.id}${tail}${url.search}`);
     } catch {
-      return error(502, "the runner with that run did not answer");
+      return (await stored?.()) ?? error(502, "the runner with that run did not answer");
     }
+    if (stored && unreachable(response.status)) {
+      const report = await stored();
+      if (report) return report;
+    }
+    return relay(run.runner, response);
   }
 
   if (

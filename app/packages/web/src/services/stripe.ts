@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { GIT_SHORT_USERNAME_LOOKUP_KEY } from "@infrawrench/client-core";
 
 let _stripe: Stripe | null = null;
 
@@ -41,6 +42,17 @@ export function getStripeCiPriceIds(): string[] {
 }
 
 /**
+ * Metered price for private storage on git.infrawrench.com, bound to the
+ * meter `INFRAWRENCH_STRIPE_GIT_STORAGE_METER_EVENT` names (GiB-hours above
+ * the plan's included storage, see `server-core/src/git/billing.ts`).
+ * Optional: without it the line is left off subscriptions and that storage
+ * goes unbilled.
+ */
+export function getStripeGitStoragePriceId(): string | null {
+  return process.env["STRIPE_GIT_STORAGE_PRICE_ID"] || null;
+}
+
+/**
  * One-time price of a single prepaid capacity slot: a seat bought outright for
  * a fixed term rather than rented monthly (see
  * `server-core/billing/capacity-slots.ts`).
@@ -52,6 +64,29 @@ export function getStripeCiPriceIds(): string[] {
  */
 export function getStripeCapacitySlotPriceId(): string | null {
   return process.env["STRIPE_CAPACITY_SLOT_PRICE_ID"] || null;
+}
+
+let _gitShortUsernamePriceId: string | null = null;
+
+/**
+ * One-time price of a short username on git.infrawrench.com (client-core
+ * `git-forge.ts`): `STRIPE_GIT_SHORT_USERNAME_PRICE_ID` when it is set, else
+ * the active price whose `lookup_key` is `git_short_username`, which exists
+ * in live and in test mode, so a deployment needs no id of its own. Looked up
+ * once per process. Null when the account has no such price: the payment
+ * route then sends the person back to the forge instead of to Stripe.
+ */
+export async function getStripeGitShortUsernamePriceId(): Promise<string | null> {
+  const configured = process.env["STRIPE_GIT_SHORT_USERNAME_PRICE_ID"];
+  if (configured) return configured;
+  if (_gitShortUsernamePriceId !== null) return _gitShortUsernamePriceId;
+  const found = await getStripe().prices.list({
+    lookup_keys: [GIT_SHORT_USERNAME_LOOKUP_KEY],
+    active: true,
+    limit: 1,
+  });
+  _gitShortUsernamePriceId = found.data[0]?.id ?? null;
+  return _gitShortUsernamePriceId;
 }
 
 export function getStripeWebhookSecret(): string {

@@ -152,6 +152,16 @@ interface SeriesSpec {
   scale?: number;
   /** Extra filter clause ANDed onto the resource scope (metric labels). */
   filter?: string;
+  /**
+   * A limit metric to divide by: each point becomes this spec's value over
+   * the limit's value at the same instant, times `scale`. Cloud Monitoring
+   * reports several usages only beside a separate limit gauge (Cloud SQL's
+   * `storage_auto_increase_limit`, MySQL's `max_connections`, AlloyDB's
+   * `connections_limit`), and the limit follows a resize or a flag change
+   * where a stored field would not. Instants without a positive limit are
+   * dropped, so an unset limit (reported as 0) yields no series.
+   */
+  per?: { metric: string; reducer?: SeriesSpec["reducer"] };
 }
 
 /** DELTA or CUMULATIVE counter charted as a per-second rate summed across labels. */
@@ -184,6 +194,20 @@ const gauge = (
 
 /** Fractional (0..1) utilization gauges are charted as 0..100 percent. */
 const PERCENT = 100;
+
+/**
+ * GAUGE usage charted as a percentage of a GAUGE limit (see `SeriesSpec.per`).
+ * A limit is never summed across labels: its largest value is the ceiling.
+ */
+const percentOf = (metric: string, limitMetric: string, label: string): SeriesSpec => ({
+  metric,
+  label,
+  unit: "%",
+  aligner: "ALIGN_MEAN",
+  reducer: "REDUCE_SUM",
+  scale: PERCENT,
+  per: { metric: limitMetric, reducer: "REDUCE_MAX" },
+});
 
 /**
  * Alignment period scaled to the window so long ranges stay around 300
@@ -229,6 +253,18 @@ function metricPlan(
           rate(m("disk/write_ops_count"), "Disk Write Ops", "ops/s"),
           // Only populated for e2 machine types.
           gauge(m("memory/balloon/ram_used"), "Memory Used", "bytes"),
+          // Ops Agent only: `used / (free + used + reserved)`, 0..100, one
+          // series per partition, so the fullest one is what fills first.
+          // Loop devices are read-only snap images that always read 100%;
+          // agents before 2.0 report devices without the `/dev/` prefix.
+          gauge("agent.googleapis.com/disk/percent_used", "Disk Used (fullest volume)", "%", {
+            reducer: "REDUCE_MAX",
+            filter: [
+              'metric.labels.state="used"',
+              'metric.labels.device!=starts_with("/dev/loop")',
+              'metric.labels.device!=starts_with("loop")',
+            ].join(" AND "),
+          }),
         ],
       };
     }
@@ -355,10 +391,20 @@ function metricPlan(
           gauge(m("memory/utilization"), "Memory Utilization", "%", { scale: PERCENT }),
           gauge(m("disk/utilization"), "Disk Utilization", "%", { scale: PERCENT }),
           gauge(m("disk/bytes_used"), "Disk Used", "bytes"),
+          // `disk/storage_auto_increase_limit` ("Storage auto increase limit
+          // in bytes"): the size automatic storage increases stop at, the
+          // real ceiling of a disk that grows on its own. 0 when unlimited.
+          percentOf(
+            m("disk/bytes_used"),
+            m("disk/storage_auto_increase_limit"),
+            "Disk Used of Auto-Increase Limit",
+          ),
           // MySQL and SQL Server report `network/connections`, PostgreSQL
           // reports `postgresql/num_backends`; whichever is empty is dropped.
           gauge(m("network/connections"), "Connections", "connections"),
           gauge(m("postgresql/num_backends"), "PostgreSQL Connections", "connections"),
+          // `mysql/max_connections` is the configured limit, default or flag.
+          percentOf(m("network/connections"), m("mysql/max_connections"), "MySQL Connections Used"),
           rate(m("disk/read_ops_count"), "Disk Read IO", "ops/s"),
           rate(m("disk/write_ops_count"), "Disk Write IO", "ops/s"),
           rate(m("network/received_bytes_count"), "Network Received", "bytes/s"),
@@ -421,6 +467,13 @@ function metricPlan(
             reducer: "REDUCE_MIN",
           }),
           gauge(m("postgres/total_connections"), "Connections", "connections"),
+          // `connections_limit` is per node, so it is compared with the mean
+          // per node rather than the instance-wide total.
+          percentOf(
+            m("postgres/average_connections"),
+            m("postgres/connections_limit"),
+            "Connections Used (per node)",
+          ),
           rate(m("postgresql/new_connections_count"), "New Connections", "connections/s"),
           rate(m("postgres/transaction_count"), "Transactions", "tx/s"),
         ],
@@ -468,6 +521,12 @@ function metricPlan(
         series: [
           gauge(m("cpu/average_utilization"), "CPU Utilization", "%", mean),
           gauge(m("memory/average_utilization"), "Memory Utilization", "%", mean),
+          // The node closest to its maxmemory is the one that fails writes or
+          // evicts first; the average hides it.
+          gauge(m("memory/maximum_utilization"), "Memory Utilization (busiest node)", "%", {
+            reducer: "REDUCE_MAX",
+            scale: PERCENT,
+          }),
           gauge(m("memory/total_used_memory"), "Used Memory", "bytes"),
           gauge(m("clients/total_connected_clients"), "Connected Clients", "clients"),
           rate(m("commandstats/total_calls_count"), "Commands", "ops/s"),
@@ -587,6 +646,13 @@ function metricPlan(
           // Per-database CPU; the sum is the instance's utilization.
           gauge(m("instance/cpu/utilization"), "CPU Utilization", "%", { scale: PERCENT }),
           gauge(m("instance/storage/used_bytes"), "Storage Used", "bytes"),
+          // "Storage used as a fraction of storage limit", one series per
+          // storage class (SSD, HDD); the fuller class is the one that stops
+          // writes. The limit follows the instance's compute capacity.
+          gauge(m("instance/storage/utilization"), "Storage Utilization", "%", {
+            reducer: "REDUCE_MAX",
+            scale: PERCENT,
+          }),
           gauge(m("instance/node_count"), "Nodes", "nodes"),
           gauge(m("instance/processing_units"), "Processing Units", "PU"),
           gauge(m("instance/session_count"), "Sessions", "sessions"),
@@ -756,6 +822,17 @@ function metricPlan(
             reducer: "REDUCE_MEAN",
             scale: PERCENT,
           }),
+          // "Disk quota usage ratio (from 0.0 to 1.0) of the database
+          // instance": the Airflow metadata database.
+          gauge(m("database/disk/utilization"), "Database Disk Utilization", "%", {
+            reducer: "REDUCE_MAX",
+            scale: PERCENT,
+          }),
+          percentOf(
+            m("database/network/connections"),
+            m("database/network/max_connections"),
+            "Database Connections Used",
+          ),
         ],
       };
     }
@@ -792,35 +869,60 @@ export async function fetchMetricSeries(
   const plan = metricPlan(resourceTypeId, resource.fields, ctx.project);
   if (!plan) return [];
 
+  /** One aggregated series, oldest point first; empty when Monitoring has none. */
+  const query = async (
+    metric: string,
+    aligner: NonNullable<SeriesSpec["aligner"]>,
+    reducer: NonNullable<SeriesSpec["reducer"]>,
+    filter?: string,
+  ): Promise<Array<{ timestamp: number; value: number }>> => {
+    const url = new URL(`https://monitoring.googleapis.com/v3/projects/${ctx.project}/timeSeries`);
+    const clauses = [`metric.type="${metric}"`, ...plan.scope];
+    if (filter) clauses.push(filter);
+    url.searchParams.set("filter", clauses.join(" AND "));
+    url.searchParams.set("interval.startTime", startTime);
+    url.searchParams.set("interval.endTime", endTime);
+    url.searchParams.set("aggregation.alignmentPeriod", period);
+    url.searchParams.set("aggregation.perSeriesAligner", aligner);
+    url.searchParams.set("aggregation.crossSeriesReducer", reducer);
+
+    const resp = await ctx.get<GcpTimeSeriesResponse>(url.toString());
+    // The API returns newest first; charts want oldest first.
+    return (resp.timeSeries?.[0]?.points ?? [])
+      .map((p) => ({
+        timestamp: new Date(p.interval.endTime).getTime(),
+        value: p.value.doubleValue ?? Number(p.value.int64Value ?? 0),
+      }))
+      .sort((a, b) => a.timestamp - b.timestamp);
+  };
+
   const fetchSeries = async (spec: SeriesSpec): Promise<MetricSeries | null> => {
     try {
-      const url = new URL(
-        `https://monitoring.googleapis.com/v3/projects/${ctx.project}/timeSeries`,
-      );
-      const clauses = [`metric.type="${spec.metric}"`, ...plan.scope];
-      if (spec.filter) clauses.push(spec.filter);
-      url.searchParams.set("filter", clauses.join(" AND "));
-      url.searchParams.set("interval.startTime", startTime);
-      url.searchParams.set("interval.endTime", endTime);
-      url.searchParams.set("aggregation.alignmentPeriod", period);
-      url.searchParams.set("aggregation.perSeriesAligner", spec.aligner ?? "ALIGN_MEAN");
-      url.searchParams.set("aggregation.crossSeriesReducer", spec.reducer ?? "REDUCE_SUM");
-
-      const resp = await ctx.get<GcpTimeSeriesResponse>(url.toString());
-      const points = resp.timeSeries?.[0]?.points ?? [];
-      if (points.length === 0) return null;
       const scale = spec.scale ?? 1;
-      return {
-        label: spec.label,
-        unit: spec.unit,
-        // The API returns newest first; charts want oldest first.
-        points: points
-          .map((p) => ({
-            timestamp: new Date(p.interval.endTime).getTime(),
-            value: (p.value.doubleValue ?? Number(p.value.int64Value ?? 0)) * scale,
-          }))
-          .sort((a, b) => a.timestamp - b.timestamp),
-      };
+      const aligner = spec.aligner ?? "ALIGN_MEAN";
+      const reducer = spec.reducer ?? "REDUCE_SUM";
+      let points: Array<{ timestamp: number; value: number }>;
+      if (spec.per) {
+        const [used, limit] = await Promise.all([
+          query(spec.metric, aligner, reducer, spec.filter),
+          query(spec.per.metric, "ALIGN_MEAN", spec.per.reducer ?? "REDUCE_MAX"),
+        ]);
+        const limitAt = new Map(limit.map((p) => [p.timestamp, p.value]));
+        points = [];
+        for (const p of used) {
+          const max = limitAt.get(p.timestamp);
+          if (max !== undefined && max > 0) {
+            points.push({ timestamp: p.timestamp, value: (p.value / max) * scale });
+          }
+        }
+      } else {
+        points = (await query(spec.metric, aligner, reducer, spec.filter)).map((p) => ({
+          timestamp: p.timestamp,
+          value: p.value * scale,
+        }));
+      }
+      if (points.length === 0) return null;
+      return { label: spec.label, unit: spec.unit, points };
     } catch {
       return null;
     }

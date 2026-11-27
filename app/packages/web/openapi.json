@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Infrawrench API",
-    "version": "1.124.0",
+    "version": "1.135.0",
     "description": "REST API for the Infrawrench cloud SaaS. Plugin and resource type IDs are enumerated from the live plugin registry at spec-build time, so this document always matches what the running server actually accepts.",
     "license": {
       "name": "BUSL-1.1",
@@ -388,6 +388,9 @@
       "name": "Budgets"
     },
     {
+      "name": "Offboarding"
+    },
+    {
       "name": "Heartbeats"
     },
     {
@@ -431,6 +434,9 @@
     },
     {
       "name": "Weekly digest"
+    },
+    {
+      "name": "Git"
     },
     {
       "name": "IaC"
@@ -1119,6 +1125,7 @@
           "file",
           "file-search-document",
           "file-search-store",
+          "filestore-instance",
           "filesystem",
           "fine-tune",
           "fine-tuning-job",
@@ -11466,6 +11473,1005 @@
         ],
         "description": "The basis `actualCents` and `forecastCents` were measured on."
       },
+      "OffboardingActionResult": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/OffboardingItem",
+            "description": "The row after the action. A provider that refused leaves it `failed` with `lastError`; the call itself still answers 200, because the checklist recorded the outcome."
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the provider said happens next, when it said anything."
+          }
+        },
+        "required": [
+          "item",
+          "message"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingActionId": {
+        "type": "string",
+        "enum": [
+          "revoke",
+          "remove",
+          "remove-seat",
+          "remove-member",
+          "revoke-api-key",
+          "delete-ssh-key",
+          "transfer-ownership",
+          "reassign-on-call",
+          "remove-from-rotation",
+          "cancel-cover",
+          "cancel-lease",
+          "revoke-jit"
+        ],
+        "description": "`revoke` runs the plugin's declared revoke action (`principalRole.revokeActionId`); `remove` deletes a principal whose plugin declares `offboardByDelete` (a membership, a personal token); `remove-seat` removes a paid seat through the provider; `transfer-ownership` and `reassign-on-call` need a `targetUserId`."
+      },
+      "OffboardingActionInput": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/OffboardingActionId"
+          },
+          "targetUserId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The member taking over, for `transfer-ownership` and `reassign-on-call`."
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "member",
+              "api-key",
+              "ssh-key",
+              "principal",
+              "seat",
+              "resource",
+              "on-call",
+              "on-call-cover",
+              "lease",
+              "jit-grant"
+            ],
+            "description": "What the row is: their Infrawrench membership, API key or SSH key; a cloud principal (an IAM user, a membership, a personal key); a paid seat; another synced resource that names them or that they own; an on-call rotation or a cover they have not served; a lease they set; a just-in-time grant they hold."
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pluginId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "providerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Provider display name; null for Infrawrench's own records."
+          },
+          "accountId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accountName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceTypeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "alias",
+              "possible"
+            ],
+            "description": "`exact`: their email. `alias`: a handle or address listed on the offboarding. `possible`: something weaker (the part of the email before the `@`, the same name at another domain, their full name) that a person has to confirm before any action is offered."
+          },
+          "matchReason": {
+            "type": "string",
+            "description": "Why the sweep thinks this is theirs."
+          },
+          "matchState": {
+            "type": "string",
+            "enum": [
+              "matched",
+              "unconfirmed",
+              "confirmed",
+              "rejected"
+            ],
+            "description": "`unconfirmed` possible matches offer no action; `rejected` rows (not them) leave the checklist's progress but stay in the export."
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffboardingActionId"
+            },
+            "description": "What can be done from Infrawrench. Empty: do it in the provider, then mark the row done."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "done",
+              "skipped",
+              "failed",
+              "gone"
+            ],
+            "description": "`gone` means a later scan no longer found the row: removed outside Infrawrench, or no longer reported by the provider."
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The action that resolved the row, `\"manual\"`, or `\"gone\"`."
+          },
+          "lastError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolvedByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resolvedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "firstSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "detail",
+          "pluginId",
+          "providerName",
+          "accountId",
+          "accountName",
+          "resourceId",
+          "resourceTypeId",
+          "confidence",
+          "matchReason",
+          "matchState",
+          "actions",
+          "status",
+          "resolution",
+          "lastError",
+          "note",
+          "resolvedByName",
+          "resolvedAt",
+          "firstSeenAt",
+          "lastSeenAt"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingItemPatchInput": {
+        "type": "object",
+        "properties": {
+          "matchState": {
+            "type": "string",
+            "enum": [
+              "confirmed",
+              "rejected",
+              "unconfirmed"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "done",
+              "skipped",
+              "open"
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "Offboarding": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "description": "Lower-cased.",
+            "examples": [
+              "jane@example.com"
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "userId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Their Infrawrench user id, when they had an account."
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Handles and other addresses providers know them by, normalized."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "completed",
+              "canceled"
+            ],
+            "description": "`open` while the checklist is being worked through; `completed` and `canceled` freeze it as evidence (a rescan no longer changes it)."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "directory"
+            ],
+            "description": "`manual` when somebody started it; `directory` when an identity directory reported the person deprovisioned."
+          },
+          "sourceDetail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastScannedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scanTruncated": {
+            "type": "boolean",
+            "description": "The last scan matched more synced resources than one scan reads, so some may be missing."
+          },
+          "progress": {
+            "$ref": "#/components/schemas/OffboardingProgress"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffboardingItem"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "name",
+          "userId",
+          "aliases",
+          "status",
+          "source",
+          "sourceDetail",
+          "startedByName",
+          "note",
+          "createdAt",
+          "updatedAt",
+          "completedAt",
+          "lastScannedAt",
+          "scanTruncated",
+          "progress",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingProgress": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Rows on the checklist, rejected matches excluded."
+          },
+          "resolved": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Done, skipped or gone."
+          },
+          "open": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "unconfirmed": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Possible matches still waiting for a person to confirm or reject them."
+          }
+        },
+        "required": [
+          "total",
+          "resolved",
+          "open",
+          "failed",
+          "unconfirmed"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingPatchInput": {
+        "type": "object",
+        "properties": {
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "maxItems": 20
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "completed",
+              "canceled"
+            ],
+            "description": "`open` while the checklist is being worked through; `completed` and `canceled` freeze it as evidence (a rescan no longer changes it)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "OffboardingMembers": {
+        "type": "object",
+        "properties": {
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffboardingMember"
+            }
+          }
+        },
+        "required": [
+          "members"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingMember": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingPreview": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffboardingCandidate"
+            }
+          },
+          "scanTruncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "email",
+          "aliases",
+          "candidates",
+          "scanTruncated"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingCandidate": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "member",
+              "api-key",
+              "ssh-key",
+              "principal",
+              "seat",
+              "resource",
+              "on-call",
+              "on-call-cover",
+              "lease",
+              "jit-grant"
+            ],
+            "description": "What the row is: their Infrawrench membership, API key or SSH key; a cloud principal (an IAM user, a membership, a personal key); a paid seat; another synced resource that names them or that they own; an on-call rotation or a cover they have not served; a lease they set; a just-in-time grant they hold."
+          },
+          "title": {
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pluginId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "providerName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accountId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "accountName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "resourceTypeId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "exact",
+              "alias",
+              "possible"
+            ],
+            "description": "`exact`: their email. `alias`: a handle or address listed on the offboarding. `possible`: something weaker (the part of the email before the `@`, the same name at another domain, their full name) that a person has to confirm before any action is offered."
+          },
+          "matchReason": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffboardingActionId"
+            }
+          }
+        },
+        "required": [
+          "key",
+          "kind",
+          "title",
+          "detail",
+          "pluginId",
+          "providerName",
+          "accountId",
+          "accountName",
+          "resourceId",
+          "resourceTypeId",
+          "confidence",
+          "matchReason",
+          "actions"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingPreviewInput": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "maxItems": 20
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingStartResponse": {
+        "type": "object",
+        "properties": {
+          "offboarding": {
+            "$ref": "#/components/schemas/Offboarding"
+          },
+          "created": {
+            "type": "boolean",
+            "description": "False when an open offboarding for this person already existed."
+          }
+        },
+        "required": [
+          "offboarding",
+          "created"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingStartInput": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "description": "The email address the person signed in with."
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "maxItems": 20,
+            "description": "Handles and other addresses providers know them by (a GitHub login, an old domain)."
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingList": {
+        "type": "object",
+        "properties": {
+          "offboardings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OffboardingSummary"
+            }
+          }
+        },
+        "required": [
+          "offboardings"
+        ],
+        "additionalProperties": false
+      },
+      "OffboardingSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "description": "Lower-cased.",
+            "examples": [
+              "jane@example.com"
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "userId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Their Infrawrench user id, when they had an account."
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Handles and other addresses providers know them by, normalized."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "completed",
+              "canceled"
+            ],
+            "description": "`open` while the checklist is being worked through; `completed` and `canceled` freeze it as evidence (a rescan no longer changes it)."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "directory"
+            ],
+            "description": "`manual` when somebody started it; `directory` when an identity directory reported the person deprovisioned."
+          },
+          "sourceDetail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "startedByName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastScannedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scanTruncated": {
+            "type": "boolean",
+            "description": "The last scan matched more synced resources than one scan reads, so some may be missing."
+          },
+          "progress": {
+            "$ref": "#/components/schemas/OffboardingProgress"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "name",
+          "userId",
+          "aliases",
+          "status",
+          "source",
+          "sourceDetail",
+          "startedByName",
+          "note",
+          "createdAt",
+          "updatedAt",
+          "completedAt",
+          "lastScannedAt",
+          "scanTruncated",
+          "progress"
+        ],
+        "additionalProperties": false
+      },
       "OnCallOverride": {
         "type": "object",
         "properties": {
@@ -16335,6 +17341,23 @@
               }
             ]
           },
+          "vars": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "description": "Substitutions laid over the file's `[vars]` and `[vars.<environment>]`, like the CLI's `--var`.",
+            "examples": [
+              {
+                "stage": "dev"
+              }
+            ]
+          },
           "sourceName": {
             "type": "string",
             "maxLength": 512,
@@ -16406,15 +17429,29 @@
       "InfraenvResourceDescription": {
         "type": "object",
         "properties": {
+          "ref": {
+            "type": "string",
+            "description": "client-core `infraenvReferenceKey` of the expanded reference: how an editor matches a row to its description."
+          },
           "resourceId": {
-            "type": "string"
+            "type": "string",
+            "description": "The resource named by id, or the one a by-name reference found."
+          },
+          "match": {
+            "$ref": "#/components/schemas/InfraenvResourceMatch"
+          },
+          "matches": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "For a by-name reference, how many resources matched; only 1 resolves."
           },
           "output": {
             "type": "string"
           },
           "found": {
             "type": "boolean",
-            "description": "False when the organization has no such resource (deleted, or a typo)."
+            "description": "False when the organization has no such resource (deleted, a typo, or a name that matches several)."
           },
           "displayName": {
             "type": "string"
@@ -16449,13 +17486,37 @@
           }
         },
         "required": [
-          "resourceId",
+          "ref",
           "output",
           "found",
           "outputKnown",
           "sensitive"
         ],
         "additionalProperties": false
+      },
+      "InfraenvResourceMatch": {
+        "type": "object",
+        "properties": {
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "account": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "pluginId",
+          "resourceTypeId",
+          "name"
+        ],
+        "additionalProperties": false,
+        "description": "For a by-name reference, what it matched on, substitutions filled in."
       },
       "InfraenvDescribeRequest": {
         "type": "object",
@@ -16466,6 +17527,23 @@
             "description": "The `.infraenv` file's text.",
             "examples": [
               "[env]\nDATABASE_URL = resource(\"neon:<account>:br-1\", \"connectionString\")\n"
+            ]
+          },
+          "vars": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "maxLength": 256
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "description": "Substitutions laid over the file's `[vars]` and `[vars.<environment>]`, like the CLI's `--var`.",
+            "examples": [
+              {
+                "stage": "dev"
+              }
             ]
           }
         },
@@ -25013,6 +26091,9 @@
           "ci:write",
           "ci:approve",
           "ci-access:write",
+          "git:read",
+          "git:write",
+          "git:admin",
           "incidents:read",
           "incidents:write",
           "tag-policy:override",
@@ -25147,6 +26228,10 @@
           },
           "costVisibility": {
             "$ref": "#/components/schemas/CostVisibilitySummary"
+          },
+          "gitEnabled": {
+            "type": "boolean",
+            "description": "Deprecated: always true. Git (git.infrawrench.com) is available to every organisation; the field will be removed in the next major version."
           }
         },
         "required": [
@@ -29355,13 +30440,25 @@
         "properties": {
           "enabled": {
             "type": "boolean",
-            "description": "Whether the poller sends quota alerts for this organization at all."
+            "description": "Whether the poller sends quota and capacity runway alerts for this organization at all."
           },
           "threshold": {
             "type": "number",
             "minimum": 0.5,
             "maximum": 0.99,
             "description": "Utilisation fraction at or above which a quota alerts. Default 0.8. Bounded below at 0.5 (a lower threshold makes every quota critical) and above at 0.99 (at 1.0 the provider is already refusing requests, so the alert reports an outage rather than warning about one). Values outside the range are rejected, not clamped."
+          },
+          "runwayDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90,
+            "description": "Capacity runway: alert when a resource will reach its limit within this many days on a clean trend. Default 14, from 1 to 90."
+          },
+          "allowanceThreshold": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 0.99,
+            "description": "Capacity runway: alert when a monthly allowance is at this fraction of its limit, or is projected past the whole of it before the cycle resets. Default 0.8, from 0.5 to 0.99."
           },
           "lastNotifiedAt": {
             "anyOf": [
@@ -29379,6 +30476,8 @@
         "required": [
           "enabled",
           "threshold",
+          "runwayDays",
+          "allowanceThreshold",
           "lastNotifiedAt"
         ],
         "additionalProperties": false
@@ -29393,8 +30492,529 @@
             "type": "number",
             "minimum": 0.5,
             "maximum": 0.99
+          },
+          "runwayDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 90
+          },
+          "allowanceThreshold": {
+            "type": "number",
+            "minimum": 0.5,
+            "maximum": 0.99
           }
         },
+        "additionalProperties": false
+      },
+      "ResourceRunwayResponse": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResourceRunwayRow"
+            }
+          },
+          "runwayDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The organization's runway alert threshold, in days."
+          },
+          "allowanceThreshold": {
+            "type": "number",
+            "description": "The organization's monthly allowance alert threshold, as a fraction."
+          },
+          "windowDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How far back the trend looks, in days."
+          }
+        },
+        "required": [
+          "rows",
+          "runwayDays",
+          "allowanceThreshold",
+          "windowDays"
+        ],
+        "additionalProperties": false
+      },
+      "ResourceRunwayRow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The usage's key within the resource: a field or output key, or `metric:<series>`.",
+            "examples": [
+              "storageBytes"
+            ]
+          },
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "resourceName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "$ref": "#/components/schemas/ResourceTypeId"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "label": {
+            "type": "string",
+            "examples": [
+              "Storage"
+            ]
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What both numbers count. `bytes` is a byte count; anything else is a word."
+          },
+          "used": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "utilization": {
+            "type": "number",
+            "description": "used / limit, not clamped at 1."
+          },
+          "limitSource": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "plan",
+              "constant"
+            ],
+            "description": "Whose number the limit is: `provider` (read from the resource itself, so it follows resizes), `plan` (the provider's published allowance for the plan in `plan`), or `constant` (a fixed documented ceiling)."
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "runway",
+              "allowance"
+            ],
+            "description": "`allowance` resets every month; `runway` accumulates until it hits the limit."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "field",
+              "output",
+              "metric"
+            ]
+          },
+          "observedAt": {
+            "type": "string",
+            "description": "When the current reading was taken.",
+            "format": "date-time"
+          },
+          "forecast": {
+            "$ref": "#/components/schemas/RunwayForecast"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunwayCycle"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "full",
+              "critical",
+              "watch",
+              "ok"
+            ],
+            "description": "Where the usage sits: `full` (used >= limit now), `critical` (alerting: reaches the limit within the organization's runway days on a clean trend, or a monthly allowance is past the allowance threshold or projected past its limit before the cycle resets), `watch` (inside the runway days but the trend is too noisy to alert on), or `ok`."
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunwayPoint"
+            },
+            "description": "The readings the projection used: the trend window for a runway row, the current cycle for an allowance."
+          }
+        },
+        "required": [
+          "key",
+          "resourceId",
+          "resourceName",
+          "resourceTypeId",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "label",
+          "unit",
+          "used",
+          "limit",
+          "utilization",
+          "limitSource",
+          "plan",
+          "kind",
+          "source",
+          "observedAt",
+          "forecast",
+          "cycle",
+          "status",
+          "history"
+        ],
+        "additionalProperties": false
+      },
+      "RunwayPoint": {
+        "type": "object",
+        "properties": {
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "used": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "observedAt",
+          "used",
+          "limit"
+        ],
+        "additionalProperties": false
+      },
+      "RunwayCycle": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "end": {
+            "type": "string",
+            "description": "When the allowance resets.",
+            "format": "date-time"
+          },
+          "projectedUsed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Usage projected at the end of the cycle at the current rate."
+          },
+          "projectedUtilization": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "projectedUsed",
+          "projectedUtilization"
+        ],
+        "additionalProperties": false
+      },
+      "RunwayForecast": {
+        "type": "object",
+        "properties": {
+          "perDay": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Change in usage per day, in the row's unit. A Theil-Sen slope (the median of every pairwise slope) over the recorded readings, or for a monthly allowance with too few readings this cycle, the average since the cycle started. Null without a rate."
+          },
+          "daysLeft": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Days until usage reaches the limit at that rate. Null when flat or falling, when already full, when the crossing is more than 365 days out, or (for an allowance) when the cycle resets first."
+          },
+          "fullAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The crossing, when `daysLeft` is set."
+          },
+          "method": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "trend",
+                  "cycle-average"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "noisy",
+              "short"
+            ],
+            "description": "`short`: fewer than 3 readings or less than a day of history, so no projection. `noisy`: the scatter around the trend is as large as the change it explains. `ok` otherwise."
+          },
+          "points": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Readings the fit used."
+          }
+        },
+        "required": [
+          "perDay",
+          "daysLeft",
+          "fullAt",
+          "method",
+          "confidence",
+          "points"
+        ],
+        "additionalProperties": false
+      },
+      "RunwayListResponse": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunwayRow"
+            },
+            "description": "Every declared usage with a reading, soonest to run out first."
+          },
+          "runwayDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The organization's runway alert threshold, in days."
+          },
+          "allowanceThreshold": {
+            "type": "number",
+            "description": "The organization's monthly allowance alert threshold, as a fraction."
+          },
+          "windowDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How far back the trend looks, in days."
+          }
+        },
+        "required": [
+          "rows",
+          "runwayDays",
+          "allowanceThreshold",
+          "windowDays"
+        ],
+        "additionalProperties": false
+      },
+      "RunwayRow": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "The usage's key within the resource: a field or output key, or `metric:<series>`.",
+            "examples": [
+              "storageBytes"
+            ]
+          },
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "resourceName": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "$ref": "#/components/schemas/ResourceTypeId"
+          },
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "$ref": "#/components/schemas/PluginId"
+          },
+          "label": {
+            "type": "string",
+            "examples": [
+              "Storage"
+            ]
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What both numbers count. `bytes` is a byte count; anything else is a word."
+          },
+          "used": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "utilization": {
+            "type": "number",
+            "description": "used / limit, not clamped at 1."
+          },
+          "limitSource": {
+            "type": "string",
+            "enum": [
+              "provider",
+              "plan",
+              "constant"
+            ],
+            "description": "Whose number the limit is: `provider` (read from the resource itself, so it follows resizes), `plan` (the provider's published allowance for the plan in `plan`), or `constant` (a fixed documented ceiling)."
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "runway",
+              "allowance"
+            ],
+            "description": "`allowance` resets every month; `runway` accumulates until it hits the limit."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "field",
+              "output",
+              "metric"
+            ]
+          },
+          "observedAt": {
+            "type": "string",
+            "description": "When the current reading was taken.",
+            "format": "date-time"
+          },
+          "forecast": {
+            "$ref": "#/components/schemas/RunwayForecast"
+          },
+          "cycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunwayCycle"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "full",
+              "critical",
+              "watch",
+              "ok"
+            ],
+            "description": "Where the usage sits: `full` (used >= limit now), `critical` (alerting: reaches the limit within the organization's runway days on a clean trend, or a monthly allowance is past the allowance threshold or projected past its limit before the cycle resets), `watch` (inside the runway days but the trend is too noisy to alert on), or `ok`."
+          }
+        },
+        "required": [
+          "key",
+          "resourceId",
+          "resourceName",
+          "resourceTypeId",
+          "accountId",
+          "accountName",
+          "pluginId",
+          "label",
+          "unit",
+          "used",
+          "limit",
+          "utilization",
+          "limitSource",
+          "plan",
+          "kind",
+          "source",
+          "observedAt",
+          "forecast",
+          "cycle",
+          "status"
+        ],
         "additionalProperties": false
       },
       "QuotaListResponse": {
@@ -42552,6 +44172,318 @@
         "additionalProperties": false,
         "description": "What an installation has **accepted**. An installation made before issue filing existed shows `issues: none` until an owner of the GitHub account approves the app's updated permissions."
       },
+      "GitForgeRepositoryList": {
+        "type": "object",
+        "properties": {
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GitForgeRepository"
+            }
+          }
+        },
+        "required": [
+          "repositories"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeRepository": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string",
+            "description": "`namespace/name`."
+          },
+          "url": {
+            "type": "string",
+            "description": "The repository's page on the forge."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/GitForgeVisibility"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "isFork": {
+            "type": "boolean"
+          },
+          "defaultBranch": {
+            "type": "string"
+          },
+          "pushedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null until something is pushed."
+          },
+          "openBranches": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The repository's open branch pages: its branches under review, and the ones forks propose to it."
+          },
+          "openIssues": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "sizeBytes": {
+            "type": "number"
+          },
+          "ci": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "description": "A CI run status (`passed`, `failed`, `running`, ...)."
+                  },
+                  "runId": {
+                    "type": "string"
+                  },
+                  "sha": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "status",
+                  "runId",
+                  "sha"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The latest CI run of the default branch. Null when CI has not run there."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "fullName",
+          "url",
+          "description",
+          "visibility",
+          "archived",
+          "isFork",
+          "defaultBranch",
+          "pushedAt",
+          "openBranches",
+          "openIssues",
+          "sizeBytes",
+          "ci"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeNamespace": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "The first path segment of every repository URL, as its owner spelled it."
+          },
+          "url": {
+            "type": "string",
+            "description": "The namespace's page on the forge."
+          },
+          "defaultVisibility": {
+            "$ref": "#/components/schemas/GitForgeVisibility"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "renamedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "slug",
+          "url",
+          "defaultVisibility",
+          "createdAt",
+          "renamedAt"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeVisibility": {
+        "type": "string",
+        "enum": [
+          "public",
+          "private"
+        ],
+        "description": "What a new repository starts as, unless its creator says otherwise."
+      },
+      "GitForgeSettingsInput": {
+        "type": "object",
+        "properties": {
+          "defaultVisibility": {
+            "$ref": "#/components/schemas/GitForgeVisibility"
+          }
+        },
+        "required": [
+          "defaultVisibility"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeNamespaceInput": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 39,
+            "description": "Letters, digits, dots, dashes and underscores; starts with a letter, digit or underscore; does not end in `.git`; not one of the forge's reserved names."
+          }
+        },
+        "required": [
+          "slug"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeOverview": {
+        "type": "object",
+        "properties": {
+          "forgeUrl": {
+            "type": "string",
+            "description": "The forge's origin."
+          },
+          "namespace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GitForgeNamespace"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null until someone with `git:admin` claims one."
+          },
+          "plan": {
+            "type": "string",
+            "enum": [
+              "free",
+              "paid"
+            ]
+          },
+          "limits": {
+            "$ref": "#/components/schemas/GitForgeLimits"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/GitForgeUsage"
+          },
+          "reservedNamesAllowed": {
+            "type": "boolean",
+            "description": "The caller may claim a name on the reserved list: a platform admin, for Infrawrench's own organisation."
+          }
+        },
+        "required": [
+          "forgeUrl",
+          "namespace",
+          "plan",
+          "limits",
+          "usage"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeUsage": {
+        "type": "object",
+        "properties": {
+          "repositories": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "publicRepositories": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "privateRepositories": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "storageBytes": {
+            "type": "number",
+            "description": "Bytes of every repository's packs."
+          },
+          "privateStorageBytes": {
+            "type": "number",
+            "description": "The part private repositories hold: what the limits count."
+          }
+        },
+        "required": [
+          "repositories",
+          "publicRepositories",
+          "privateRepositories",
+          "storageBytes",
+          "privateStorageBytes"
+        ],
+        "additionalProperties": false
+      },
+      "GitForgeLimits": {
+        "type": "object",
+        "properties": {
+          "privateRepositories": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many private repositories the plan allows. Null is no limit."
+          },
+          "privateStorageBytes": {
+            "type": "number",
+            "description": "Bytes of private repositories at which pushes to them are refused."
+          },
+          "includedStorageBytes": {
+            "type": "number",
+            "description": "Bytes of private repositories that cost nothing. Storage between this and `privateStorageBytes` is metered; where the two are equal nothing is."
+          }
+        },
+        "required": [
+          "privateRepositories",
+          "privateStorageBytes",
+          "includedStorageBytes"
+        ],
+        "additionalProperties": false
+      },
       "WorkflowMetric": {
         "type": "object",
         "properties": {
@@ -43780,6 +45712,13 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "managedBy": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IacManagedBy"
+            },
+            "description": "The Terraform workspaces on git.infrawrench.com whose current state holds this resource. Independent of `status`, which is about uploaded state documents. A workspace of a private repository is listed only for a caller with `git:read` (or more) in the organization. Empty when none matched, or none the caller may see."
           }
         },
         "required": [
@@ -43787,7 +45726,40 @@
           "stateId",
           "stateLabel",
           "terraformAddress",
-          "driftFieldCount"
+          "driftFieldCount",
+          "managedBy"
+        ],
+        "additionalProperties": false
+      },
+      "IacManagedBy": {
+        "type": "object",
+        "properties": {
+          "repository": {
+            "type": "string",
+            "description": "`<namespace>/<repository>` on git.infrawrench.com."
+          },
+          "rootPath": {
+            "type": "string",
+            "description": "The Terraform root, relative to the repository. Empty for its top."
+          },
+          "workspace": {
+            "type": "string"
+          },
+          "address": {
+            "type": "string",
+            "description": "The resource's address in that workspace's state."
+          },
+          "url": {
+            "type": "string",
+            "description": "The workspace's page on git.infrawrench.com."
+          }
+        },
+        "required": [
+          "repository",
+          "rootPath",
+          "workspace",
+          "address",
+          "url"
         ],
         "additionalProperties": false
       },
@@ -57409,6 +59381,7 @@
               "compliance",
               "access-review",
               "jit-access",
+              "offboarding",
               "backups",
               "home",
               "wallboard",
@@ -57492,6 +59465,13 @@
             ]
           },
           "sloId": {
+            "type": "string",
+            "format": "uuid",
+            "examples": [
+              "00000000-0000-0000-0000-000000000000"
+            ]
+          },
+          "offboardingId": {
             "type": "string",
             "format": "uuid",
             "examples": [
@@ -66529,7 +68509,20 @@
             ]
           },
           "githubUrl": {
-            "type": "string"
+            "type": "string",
+            "description": "The commit or pull request on the repository's forge: the same link as `sourceUrl`, under the name it had when GitHub was the only one."
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "github",
+              "git"
+            ],
+            "description": "Where the repository lives: `github` (reached through the GitHub App) or `git` (git.infrawrench.com)."
+          },
+          "sourceUrl": {
+            "type": "string",
+            "description": "The commit or pull request on the repository's forge."
           },
           "retryOfRunId": {
             "anyOf": [
@@ -66889,7 +68882,7 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991,
-            "description": "The GitHub App installation of the account that runs CI for the repository."
+            "description": "The GitHub App installation of the account that runs CI for the repository, or `0` for a repository on git.infrawrench.com, as `GET /ci/manual` lists it."
           },
           "repoFullName": {
             "type": "string",
@@ -76834,6 +78827,9 @@
           "repo": {
             "type": "string"
           },
+          "gitWork": {
+            "$ref": "#/components/schemas/AgentGitWork"
+          },
           "projectName": {
             "type": "string"
           },
@@ -76938,6 +78934,36 @@
           "fields"
         ],
         "additionalProperties": false
+      },
+      "AgentGitWork": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "The repository's namespace on the forge."
+          },
+          "repo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "The repository's name on the forge."
+          },
+          "branch": {
+            "type": "string",
+            "description": "The branch page's key: the branch's name (`work/fix-login`), or `<name>~<n>` for an earlier page of a name used again, as the forge writes it in the page's address.",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "branch"
+        ],
+        "additionalProperties": false,
+        "description": "Terminal sessions only: work on this branch of one of the organization's repositories on git.infrawrench.com, whose page is open. The session clones that repository, checks out the branch, can push that branch and nothing else (a job token bound to the branch that lasts at most 6 hours, renewed when the session is opened), starts the coding tool with the page's title and description as its first prompt, and is recorded as the page's agent. `repo` is ignored. Needs `git:write`. A branch page that is missing, closed, from a fork or not the organization's is one refusal (400)."
       },
       "AgentLinkableScopes": {
         "type": "object",
@@ -79183,6 +81209,10 @@
           "hasSchedule": {
             "type": "boolean",
             "description": "The type flags a field as the schedule it runs on, so a heartbeat can watch it."
+          },
+          "hasCapacityRunway": {
+            "type": "boolean",
+            "description": "The type declares a usage with a limit, so the resource has a capacity runway (`GET /api/org/{orgId}/quotas/runway/resource`)."
           }
         },
         "required": [
@@ -88992,6 +91022,716 @@
         "operationId": "postOrgOrgIdBudgetsIdEventsEventIdNote"
       }
     },
+    "/api/org/{orgId}/offboardings": {
+      "get": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offboardings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffboardingList"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every offboarding checklist, newest first, with progress.\n\n_Requires permission: `team:remove`._",
+        "summary": "List offboardings",
+        "x-required-permission": "team:remove",
+        "operationId": "getOrgOrgIdOffboardings"
+      },
+      "post": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offboarding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffboardingStartResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Start the checklist for someone leaving, by email plus any aliases, and sweep for everything tied to them: their Infrawrench membership, API keys and SSH keys; cloud principals and other synced resources that carry their email or an alias in any field or that the ownership records name them owner of; paid seats; on-call rotations and covers; leases they set; just-in-time grants they hold. The sweep reads synced state only and makes no provider calls.\n\nStarting again for somebody who already has an open offboarding returns that one, with any new aliases merged in.\n\n_Requires permission: `team:remove`._",
+        "summary": "Start an offboarding",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffboardingStartInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "team:remove",
+        "operationId": "postOrgOrgIdOffboardings"
+      }
+    },
+    "/api/org/{orgId}/offboardings/preview": {
+      "post": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the sweep found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffboardingPreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "What starting an offboarding would find for a person, without saving anything.\n\n_Requires permission: `team:remove`._",
+        "summary": "Preview an offboarding sweep",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffboardingPreviewInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "team:remove",
+        "operationId": "postOrgOrgIdOffboardingsPreview"
+      }
+    },
+    "/api/org/{orgId}/offboardings/members": {
+      "get": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The members",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffboardingMembers"
+                }
+              }
+            }
+          }
+        },
+        "description": "The organization's members, for picking who takes over a resource or an on-call slot.\n\n_Requires permission: `team:remove`._",
+        "summary": "Members who can take something over",
+        "x-required-permission": "team:remove",
+        "operationId": "getOrgOrgIdOffboardingsMembers"
+      }
+    },
+    "/api/org/{orgId}/offboardings/{id}": {
+      "get": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offboarding with its checklist",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Offboarding"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get an offboarding",
+        "x-required-permission": "team:remove",
+        "operationId": "getOrgOrgIdOffboardingsId",
+        "description": "_Requires permission: `team:remove`._"
+      },
+      "patch": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offboarding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Offboarding"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Change the aliases (which rescans), the note, or the status: `completed` or `canceled` closes the checklist, `open` reopens it.\n\n_Requires permission: `team:remove`._",
+        "summary": "Edit an offboarding",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffboardingPatchInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "team:remove",
+        "operationId": "patchOrgOrgIdOffboardingsId"
+      }
+    },
+    "/api/org/{orgId}/offboardings/{id}/rescan": {
+      "post": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offboarding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Offboarding"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Sweep again. Rows already dealt with keep their outcome; a row no longer found is marked `gone`. A closed offboarding is returned unchanged.\n\n_Requires permission: `team:remove`._",
+        "summary": "Rescan an offboarding",
+        "x-required-permission": "team:remove",
+        "operationId": "postOrgOrgIdOffboardingsIdRescan"
+      }
+    },
+    "/api/org/{orgId}/offboardings/{id}/export": {
+      "get": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "csv",
+                "json"
+              ],
+              "description": "Defaults to \"csv\"."
+            },
+            "required": false
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The offboarding as an attachment",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Offboarding"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "The checklist as a download, one row per item, rejected matches included and labelled. CSV cells are all quoted and spreadsheet formulas neutralised. Exports are recorded in the audit log.\n\n_Requires permission: `team:remove`._",
+        "summary": "Export an offboarding as evidence",
+        "x-required-permission": "team:remove",
+        "operationId": "getOrgOrgIdOffboardingsIdExport"
+      }
+    },
+    "/api/org/{orgId}/offboardings/{id}/items/{itemId}": {
+      "patch": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffboardingItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Confirm or reject a possible match, mark a row done (handled in the provider) or skipped (not needed), reopen it, or leave a note.\n\n_Requires permission: `team:remove`._",
+        "summary": "Confirm a match or mark a row by hand",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffboardingItemPatchInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "team:remove",
+        "operationId": "patchOrgOrgIdOffboardingsIdItemsItemId"
+      }
+    },
+    "/api/org/{orgId}/offboardings/{id}/items/{itemId}/action": {
+      "post": {
+        "tags": [
+          "Offboarding"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The row after the action",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OffboardingActionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "423": {
+            "description": "Blocked by an active change freeze. Retry with the `x-change-freeze-override: true` header if you hold `freezes:override`; both blocks and overrides are audit-logged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangeFreezeBlocked"
+                }
+              }
+            }
+          }
+        },
+        "description": "Run one of the row's `actions`. Each needs the permission its own surface asks for on top of `team:remove` (403 otherwise), and the ones that reach a provider (`revoke`, `remove`, `remove-seat`, `revoke-jit`) are blocked by an active change freeze (423). Refused (409) for an unconfirmed or rejected match, a closed offboarding, or an action the row does not offer. Every attempt is recorded in the audit log.\n\n_Requires permission: `team:remove`._",
+        "summary": "Act on a checklist row",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OffboardingActionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "team:remove",
+        "operationId": "postOrgOrgIdOffboardingsIdItemsItemIdAction"
+      }
+    },
     "/api/org/{orgId}/on-call/now": {
       "get": {
         "tags": [
@@ -93989,7 +96729,7 @@
             }
           }
         },
-        "description": "Parses the file and looks up every reference it makes: which resource, account and output each `resource()` names, and whether each `secret()` exists. Returns no values and calls no provider.\n\n_Requires permission: `resources:read`._",
+        "description": "Parses the file and looks up every reference it makes, once per environment with that environment's substitutions filled in: which resource, account and output each `resource()` names or finds by name, and whether each `secret()` exists. Returns no values and calls no provider.\n\n_Requires permission: `resources:read`._",
         "summary": "Check an .infraenv file",
         "requestBody": {
           "content": {
@@ -94047,7 +96787,7 @@
             }
           }
         },
-        "description": "Resolves every variable of one environment: literals as written, `resource()` through the resource's provider, `secret()` from the organization's secrets. Returns the values in plaintext along with the generated `.env` text, and records an audit entry naming the variables (never their values). A variable that does not resolve is reported in `problems` and left out. A file with syntax errors answers 400.\n\n_Requires permission: `secrets:read`._",
+        "description": "Resolves every variable of one environment: literals as written, `resource()` (by id, or by plugin, type and name in this organization, after `${var}` substitution) through the resource's provider, `secret()` from the organization's secrets. Returns the values in plaintext along with the generated `.env` text, and records an audit entry naming the variables (never their values). A variable that does not resolve is reported in `problems` and left out. A file with syntax errors answers 400.\n\n_Requires permission: `secrets:read`._",
         "summary": "Resolve an .infraenv file into .env values",
         "requestBody": {
           "content": {
@@ -103887,6 +106627,90 @@
         "operationId": "getOrgOrgIdQuotas"
       }
     },
+    "/api/org/{orgId}/quotas/runway": {
+      "get": {
+        "tags": [
+          "Quota radar"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Runway rows, soonest to run out first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunwayListResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "Every usage a plugin declares on a resource type (a disk's used bytes against its size, a database against its plan's storage cap, connections against `max_connections`, a monthly allowance of compute hours or sends) with when it reaches its limit at the current rate, soonest first. Monthly allowances report the usage projected at the end of the billing cycle instead of a far-off crossing. A read over stored readings: the sync records each declared usage hourly, so no provider API calls are made here.\n\n_Requires permission: `resources:read`._",
+        "summary": "List capacity runway across the organization's resources",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdQuotasRunway"
+      }
+    },
+    "/api/org/{orgId}/quotas/runway/resource": {
+      "get": {
+        "tags": [
+          "Quota radar"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          },
+          {
+            "name": "resourceId",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/ResourceId"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The resource's runway rows with history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceRunwayResponse"
+                }
+              }
+            }
+          }
+        },
+        "description": "The runway rows for one resource, each with the readings the projection used, for the resource page's runway chart. An empty `rows` means the resource's type declares no usage, or no reading with a resolvable limit has been recorded yet.\n\n_Requires permission: `resources:read`._",
+        "summary": "Get one resource's capacity runway with its readings",
+        "x-required-permission": "resources:read",
+        "operationId": "getOrgOrgIdQuotasRunwayResource"
+      }
+    },
     "/api/org/{orgId}/quotas/settings": {
       "get": {
         "tags": [
@@ -103919,7 +106743,7 @@
             }
           }
         },
-        "description": "The threshold feeds both the feed's severity buckets and the poller's daily alert scan. An organization that never saved reads the shipped defaults (enabled, 0.8).\n\n_Requires permission: `org:settings:write`._",
+        "description": "The threshold feeds both the feed's severity buckets and the poller's daily alert scan; the runway thresholds feed the capacity runway the same way. An organization that never saved reads the shipped defaults (enabled, 0.8, 14 days, 0.8).\n\n_Requires permission: `org:settings:write`._",
         "summary": "Get the organization's quota alert settings",
         "x-required-permission": "org:settings:write",
         "operationId": "getOrgOrgIdQuotasSettings"
@@ -114403,6 +117227,218 @@
         },
         "x-required-permission": "github-issues:write",
         "operationId": "postOrgOrgIdGithubIssuesPullRequests"
+      }
+    },
+    "/api/org/{orgId}/git": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Namespace, limits and usage",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitForgeOverview"
+                }
+              }
+            }
+          }
+        },
+        "description": "The namespace (null until claimed), the plan's limits for private repositories and their storage, and what the namespace uses. Public repositories are free and count toward no limit.\n\n_Requires permission: `git:read`._",
+        "summary": "The organisation's namespace on git.infrawrench.com and its usage",
+        "x-required-permission": "git:read",
+        "operationId": "getOrgOrgIdGit"
+      }
+    },
+    "/api/org/{orgId}/git/namespace": {
+      "put": {
+        "tags": [
+          "Git"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The namespace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitForgeNamespace"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "Claims the namespace when the organisation has none, renames it otherwise. A rename moves no repository, and URLs under the old name stop resolving. A first claim needs a paid plan. 400 when the name breaks the forge's rules or is reserved, or when an organisation that is not on a paid plan claims one; 409 when someone has it.\n\n_Requires permission: `git:admin`._",
+        "summary": "Claim or rename the organisation's namespace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitForgeNamespaceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "git:admin",
+        "operationId": "putOrgOrgIdGitNamespace"
+      }
+    },
+    "/api/org/{orgId}/git/settings": {
+      "put": {
+        "tags": [
+          "Git"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The namespace",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitForgeNamespace"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "description": "404 until the organisation has claimed a namespace.\n\n_Requires permission: `git:admin`._",
+        "summary": "Set what a new repository starts as",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitForgeSettingsInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "x-required-permission": "git:admin",
+        "operationId": "putOrgOrgIdGitSettings"
+      }
+    },
+    "/api/org/{orgId}/git/repositories": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "parameters": [
+          {
+            "name": "orgId",
+            "in": "path",
+            "schema": {
+              "type": "string",
+              "description": "Organization id",
+              "format": "uuid",
+              "examples": [
+                "00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Repositories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitForgeRepositoryList"
+                }
+              }
+            }
+          }
+        },
+        "description": "Most recently pushed first, private ones included, each with its open pull requests and the latest CI run of its default branch. At most 500; the forge lists the rest.\n\n_Requires permission: `git:read`._",
+        "summary": "The organisation's repositories on git.infrawrench.com",
+        "x-required-permission": "git:read",
+        "operationId": "getOrgOrgIdGitRepositories"
       }
     },
     "/api/org/{orgId}/workflows": {

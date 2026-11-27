@@ -240,6 +240,10 @@ app_env = {
   # org on a paid plan. The GitHub App's webhook must subscribe to "Push",
   # "Pull request", "Check run" and "Check suite", with "Checks: write".
   # Without the two check events GitHub's Re-run buttons do nothing.
+  # CI_PROXY_KEY also keys the tokens runners send with a run's notices
+  # (APP_URL/api/ci-notify/runs/<id>, on the edge), which bring a finished run
+  # into the app and onto GitHub within a second; rotating it leaves the runs
+  # going at the time to the poller.
   CI_PROXY_URL = "https://ci-proxy.example.com"
   CI_PROXY_KEY = "<the proxy's PROXY_KEY>"
   # Optional: signs the links a CI run's downloads (`downloads:`) are fetched
@@ -247,6 +251,26 @@ app_env = {
   # ARTIFACT_SIGNING_KEY Worker secret (`openssl rand -base64 32`). Without it
   # runs list their downloads but cannot hand out a link to one.
   CI_ARTIFACT_SIGNING_KEY = "<the proxy's ARTIFACT_SIGNING_KEY>"
+  # Optional: CI for repositories on git.infrawrench.com (the forge in git/).
+  # GIT_JOB_TOKEN_KEY signs the short-lived job tokens runners clone those
+  # repositories with (read-only; the app reads a branch's head, an
+  # `env-file:` and a cloud job's source archive with one too), the write
+  # token a Terraform workspace's run uses the forge's state backend with,
+  # and the token the gateway's pass reads a workspace's state with to link
+  # it to the organisation's resources, and the branch token an agent session
+  # working on a pull request pushes with (without it such a session clones
+  # anonymously and cannot push). At least 32 characters
+  # (`openssl rand -base64 48`). The forge's deploy (git-deploy) uploads it as
+  # the Worker's GIT_JOB_TOKEN_KEY secret, which checks them, so this is the
+  # one place the value lives. Without it runs of those repositories stay
+  # queued, saying the key is missing, and the forge's deploy stops; GitHub
+  # repositories run as before. To rotate it, change it here, apply, and run
+  # git-deploy again: runs being cloned in between fail; retry them.
+  GIT_JOB_TOKEN_KEY = "<openssl rand -base64 48>"
+  # Optional: where the forge is served, which runners clone from and a run's
+  # commit and pull request links open. Without it,
+  # https://git.infrawrench.com.
+  GIT_BASE_URL = "https://git.infrawrench.com"
   # Optional: billing CI. Each meter reports its unit (decimals allowed) and
   # its price carries the unit price; an unset pair goes unbilled. Checkout
   # attaches the prices to new subscriptions, and ticking Run CI for a GitHub
@@ -257,6 +281,28 @@ app_env = {
   STRIPE_CI_VCPU_PRICE_ID                   = "price_..."
   STRIPE_CI_MEMORY_PRICE_ID                 = "price_..."
   STRIPE_CI_STORAGE_PRICE_ID                = "price_..."
+  # Optional: billing storage on git.infrawrench.com. The meter reports
+  # GiB-hours of private repositories above the paid plan's included 10 GiB
+  # (sampled hourly per organization) and the price carries the unit price.
+  # Unset, the hours are still sampled for Settings > Git but nothing is
+  # billed, and turning it on later never bills the past. Checkout attaches
+  # the price to new subscriptions; claiming a namespace in Settings > Git
+  # adds it to a subscription that lacks it, and the poller's git-storage
+  # pass adds it wherever it is still missing (a namespace claimed on
+  # git.infrawrench.com itself).
+  INFRAWRENCH_STRIPE_GIT_STORAGE_METER_EVENT = "git_storage_gib_hours"
+  STRIPE_GIT_STORAGE_PRICE_ID                = "price_..."
+  # Optional, and normally left empty: the one-time price of a short username
+  # on git.infrawrench.com (6 characters or fewer, $50, a person's own
+  # purchase). Without it the app finds the active one-time price whose
+  # lookup_key is `git_short_username` on the Stripe account, which is how
+  # production runs; set it only to name another price. It needs
+  # STRIPE_SECRET_KEY, the `checkout.session.completed` webhook event, and
+  # GIT_JOB_TOKEN_KEY shared with the forge Worker (it signs the token the
+  # forge sends the browser to the app with). Without a price, short usernames
+  # cannot be paid for and the forge says payments are unavailable; longer
+  # usernames are unaffected.
+  STRIPE_GIT_SHORT_USERNAME_PRICE_ID         = ""
 
   # Optional: egress proxy Worker (app/packages/egress-proxy) for workflow
   # fetch(), the chat agent's web_fetch, the poller's provider status-feed
@@ -296,6 +342,9 @@ app_env = {
   # with AI Gateway credits loaded) and AI_GATEWAY_TOKEN (a Cloudflare API
   # token with the AI Gateway Run permission). ANTHROPIC_API_KEY is not read;
   # remove it from app_env.
+  #
+  # git.infrawrench.com's review agents use the same three (git-deploy passes
+  # them to the forge's Worker). Without them review agents do not run there.
   # Optional
   # AI_GATEWAY_ID        = "infrawrench"
   # AI_GATEWAY_TOKEN     = "..."

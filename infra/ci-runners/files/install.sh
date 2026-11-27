@@ -21,6 +21,41 @@ install -o root -g iwci -m 0640 /tmp/iwci.env /etc/iwci/iwci.env
 install -o root -g root -m 0644 /tmp/iwci.service /etc/systemd/system/iwci.service
 rm -f /tmp/iwci.env /tmp/iwci.service
 
+# The sizing script (files/iwci-size) goes on every host: it holds the one
+# rule for the huge page cap (machines, below). With `size = "auto"` it
+# also runs at every boot, from iwci-size.service, before zram and the
+# runner, and sets the runner's CPUs and memory (IWCI_CPUS and IWCI_MEMORY
+# above, which Terraform leaves out), the zram size and that cap from the
+# hardware: an image of this host then serves any instance type it boots
+# on. It runs here too, so the runner started below has them now.
+install -o root -g root -m 0755 /tmp/iwci-size.upload /usr/local/sbin/iwci-size
+size="$(cat /tmp/iwci-size 2>/dev/null || true)"
+rm -f /tmp/iwci-size /tmp/iwci-size.upload
+if [[ "$size" == "auto" ]]; then
+  cat >/etc/systemd/system/iwci-size.service <<'UNIT'
+# Written by the iwci install script (infra/ci-runners); edits here are overwritten.
+[Unit]
+Description=Size the CI runner from this machine's CPUs and memory
+Before=iwci-zram.service iwci.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/iwci-size boot
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable iwci-size >/dev/null
+  /usr/local/sbin/iwci-size boot
+elif [[ -f /etc/systemd/system/iwci-size.service ]]; then
+  systemctl disable iwci-size >/dev/null 2>&1 || true
+  rm -f /etc/systemd/system/iwci-size.service /etc/iwci/zram.env
+  systemctl daemon-reload
+  echo "sizing at boot removed: the host's cpus and memory apply"
+fi
+
 # Native jobs (Bun) run in a gVisor sandbox per job (crates/iwci-sandbox):
 # off unless the host's `native_sandbox` is set. It needs the pinned gVisor
 # release, a cgroup subtree of the runner's own for each sandbox's memory,
@@ -54,6 +89,10 @@ if [[ "$native" == "true" ]]; then
   fi
   gvisor_dir="/opt/iwci/lib/gvisor-$gvisor_release"
   if [[ ! -x "$gvisor_dir/gvisor-bin/gvisor_sentry" ]]; then
+    # The release is a .tar.bz2, and a minimal Ubuntu image has no bzip2.
+    if ! command -v bzip2 >/dev/null; then
+      DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends bzip2
+    fi
     tmp="$(mktemp -d)"
     curl -fsSL --retry 3 -o "$tmp/gvisor.tar.bz2" \
       "https://storage.googleapis.com/gvisor/releases/release/$gvisor_release/$gvisor_arch/gvisor.tar.bz2"
@@ -138,6 +177,16 @@ if [[ "$machines" == "true" ]]; then
   getent group kvm >/dev/null || groupadd --system kvm
   usermod -aG kvm iwci
   install -d -o root -g iwci -m 0750 /var/lib/iwci/machines
+  # 2 MiB huge pages for machines' memory, made when a machine maps it and
+  # given back when it stops (an upper bound, not a reservation). A machine
+  # with a virtio-fs device has its memory in a shared memfd, which in
+  # 4 KiB pages costs its boot 0.5 s at 2 GiB and 1.7 s at 8 GiB (measured
+  # on ci-1); the runner falls back to them when the pages are not there.
+  # The cap (vm.nr_overcommit_hugepages, in 60-iwci-machines.conf) is the
+  # smaller of the memory jobs may reserve and three quarters of the host:
+  # iwci-size has the rule and why, and sets it again at every boot on a
+  # host with `size = "auto"`.
+  /usr/local/sbin/iwci-size huge-pages
   if [[ ! -e /dev/kvm ]]; then
     echo "warning: no /dev/kvm: the runner will run no virtual machines here (x86_64 needs VT-x or AMD-V, Graviton a .metal instance)" >&2
   fi
@@ -204,8 +253,20 @@ fi
 #   the kernel's, not the unit's: `MemoryMax` plus a third of the zram size
 #   has to stay under the host's memory, and `MemorySwapMax=0` would take
 #   the net away.
+#
+# `zram = "auto"` (with `size = "auto"`) leaves the size to iwci-size, which
+# writes it to /etc/iwci/zram.env at every boot, before the unit starts.
 zram_size="$(cat /tmp/iwci-zram 2>/dev/null || true)"
 rm -f /tmp/iwci-zram
+if [[ "$zram_size" == "auto" && "$size" != "auto" ]]; then
+  echo "error: zram = \"auto\" needs size = \"auto\"" >&2
+  exit 1
+fi
+if [[ "$zram_size" == "auto" ]]; then
+  zram_environment="EnvironmentFile=/etc/iwci/zram.env"
+else
+  zram_environment="Environment=IWCI_ZRAM_SIZE=$zram_size"
+fi
 if [[ -n "$zram_size" ]]; then
   if ! modinfo zram >/dev/null 2>&1; then
     # Ubuntu's cloud kernels keep zram in the extra modules package.
@@ -231,7 +292,19 @@ case "${1:-}" in
       echo "zram swap already in use: $(devices | tr '\n' ' ')"
       exit 0
     fi
-    device="$(zramctl --find --size "$IWCI_ZRAM_SIZE" --algorithm zstd)"
+    # Right after modprobe, udev may still hold the new device, and
+    # `zramctl --find` fails to reset it ("Device or resource busy", seen
+    # on a fresh 7.0 kernel): wait for udev, and try a few times.
+    udevadm settle --timeout=10 || true
+    device=""
+    for attempt in 1 2 3 4 5; do
+      if device="$(zramctl --find --size "$IWCI_ZRAM_SIZE" --algorithm zstd)"; then
+        break
+      fi
+      device=""
+      sleep 1
+    done
+    [[ -n "$device" ]] || { echo "no zram device could be set up" >&2; exit 1; }
     mkswap --label iwci-zram "$device" >/dev/null
     swapon --priority 100 "$device"
     echo "zram swap on $device ($IWCI_ZRAM_SIZE, zstd)"
@@ -258,7 +331,7 @@ Before=iwci.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-Environment=IWCI_ZRAM_SIZE=$zram_size
+$zram_environment
 ExecStart=/usr/local/sbin/iwci-zram start
 ExecStop=/usr/local/sbin/iwci-zram stop
 

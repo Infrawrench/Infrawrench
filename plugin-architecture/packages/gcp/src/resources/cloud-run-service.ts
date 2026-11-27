@@ -27,6 +27,13 @@ export const CloudRunServiceResourceType = rt({
       required: false,
       description: "Email of the service account the revision template runs as",
     }),
+    f("maxInstances", "Max Instances", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description:
+        "Most instances the service scales out to (the lower of its service and revision limits)",
+    }),
     f("network", "VPC Network", {
       kind: "association",
       required: false,
@@ -54,4 +61,25 @@ export const CloudRunServiceResourceType = rt({
   runningImages: { imageKeys: ["containerImages", "image"] },
   supportsCreate: true,
   supportsMetrics: true,
+  capacityMetrics: [
+    // `container/instance_count` summed across states, against the scaling
+    // maximum: past it, requests queue and then fail.
+    {
+      seriesLabel: "Container Instances",
+      limit: { field: "maxInstances" },
+      unit: "instances",
+      label: "Instances",
+    },
+    // `run.googleapis.com/container/memory/utilizations` ("Container memory
+    // utilization distribution across all container instances", a fraction of
+    // each container's memory limit), charted as its p95 0..100; an instance
+    // that reaches its limit is stopped:
+    // https://docs.cloud.google.com/monitoring/api/metrics_gcp_p_z, read 2026-11-23
+    {
+      seriesLabel: "Memory Utilization (p95)",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Memory",
+    },
+  ],
 });

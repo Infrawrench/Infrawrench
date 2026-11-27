@@ -35,6 +35,16 @@ export const OrganizationType = rt({
     f("usageTier", "Usage Tier", ro),
     f("marketplace", "Billed Through", ro),
     f("memberCount", "Members", { showcase: true, kind: "number", ...ro }),
+    // The active credits' spent amount against what they started at
+    // (`credit_details` on GET /organizations/{organizationID}/billing/customer,
+    // Xata API, read 2026-11-23). Usage is billed to the card once they run out.
+    f("creditsUsed", "Credits Used (USD)", {
+      kind: "number",
+      ...ro,
+      usage: { limit: { field: "creditsGranted" }, unit: "USD", label: "Credits" },
+    }),
+    f("creditsGranted", "Credits Granted (USD)", { kind: "number", ...ro }),
+    f("creditsExpireAt", "Credits Expire", ro),
     f("createdAt", "Created At", { ...ro, showcase: true }),
   ],
   outputs: [o("organizationId", "Organization ID")],
@@ -182,6 +192,16 @@ export const BranchType = rt({
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
+  // The fullest instance's `disk` (bytes, POST .../branches/{branchID}/metrics,
+  // Xata API, read 2026-11-23) against the branch's storage size in GiB.
+  capacityMetrics: [
+    {
+      seriesLabel: "Disk Used (highest)",
+      limit: { field: "storageGb", scale: 1024 ** 3 },
+      unit: "bytes",
+      label: "Disk",
+    },
+  ],
   iconKey: "branch",
 });
 

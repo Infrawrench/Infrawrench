@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useGT } from "gt-react";
+import { BetaBadge } from "../components/BetaBadge.js";
 import type { SidebarToolDef } from "../components/sidebar/SidebarTools.js";
 import { ProductIcon, SettingsGlyph } from "./ProductIcon.js";
 import { useProductCopy, useToolDescriptions, type ProductCopy } from "./copy.js";
@@ -254,7 +255,10 @@ function ToolList({ tools }: { tools: SidebarToolDef[] }) {
               {tool.icon}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm text-on-surface">{tool.label}</span>
+              <span className="flex items-center gap-2 text-sm text-on-surface">
+                {tool.label}
+                {tool.beta && <BetaBadge />}
+              </span>
               {descriptions[tool.key] && (
                 <span className="mt-0.5 block text-xs text-on-surface-muted">
                   {descriptions[tool.key]}

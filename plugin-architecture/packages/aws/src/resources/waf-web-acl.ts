@@ -14,7 +14,14 @@ export const WAFWebACLResourceType = rt({
       required: false,
       enumValues: ["ALLOW", "BLOCK"],
     }),
-    f("capacity", "Capacity (WCU)", { kind: "number", required: false }),
+    // A web ACL holds at most 5,000 WCUs, a fixed quota (past 1,500 costs
+    // extra): https://docs.aws.amazon.com/waf/latest/developerguide/limits.html
+    // (read 2026-11-23).
+    f("capacity", "Capacity (WCU)", {
+      kind: "number",
+      required: false,
+      usage: { limit: { constant: 5_000 }, unit: "WCU", label: "Rule Capacity" },
+    }),
   ],
   outputs: [o("webAclArn", "Web ACL ARN"), o("webAclId", "Web ACL ID")],
   iconKey: "firewall",

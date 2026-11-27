@@ -18,5 +18,18 @@ export const FirewallResourceType = rt({
     { fieldKey: "resourceGroup", targetTypeId: "azure-resource-group", label: "in resource group" },
   ],
   supportsMetrics: true,
+  // `fetchAzureMetricSeries` labels a series with Azure Monitor's display name:
+  // "SNAT port utilization" for `SNATPortUtilization` ("Percentage of outbound SNAT
+  // ports currently in use", Percent) at
+  // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-network-azurefirewalls-metrics
+  // (read 2026-11-23)
+  capacityMetrics: [
+    {
+      seriesLabel: "SNAT port utilization",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "SNAT ports",
+    },
+  ],
   iconKey: "firewall",
 });

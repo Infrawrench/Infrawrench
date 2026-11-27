@@ -2,6 +2,7 @@ import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { ElasticCloudClient, sourcesToRules, thresholdsToAlerts } from "../client.js";
+import { fullestDiskPercent } from "../mappers.js";
 import { chartToSeries } from "../metrics.js";
 import { parseStatusFeed, regionIdsForComponent } from "../status-feed.js";
 import { makeHttp, type Recorded, type Reply } from "./helpers.js";
@@ -436,12 +437,24 @@ describe("ElasticCloudClient listing", () => {
       hotSizeGb: 8,
       hotZones: "2",
       totalMemoryGb: 16,
+      diskUsedPercent: 25,
       tags: "env:prod",
       trafficFilterIds: "rs1",
       esEndpoint: "https://search-prod.es.example.cloud.es.io",
       kibanaUrl: "https://search-prod.kb.example.cloud.es.io",
     });
     expect(d!.resolvedOutputs["cloudId"]).toBe("search-prod:abc");
+  });
+
+  it("keeps the fullest instance's disk use, and nothing when no instance reports its size", () => {
+    expect(
+      fullestDiskPercent([
+        { disk: { disk_space_used: 100, disk_space_available: 1000 } },
+        { disk: { disk_space_used: 600, disk_space_available: 1000 } },
+        { disk: { disk_space_used: 50 } },
+      ]),
+    ).toBe(60);
+    expect(fullestDiskPercent([{ disk: { disk_space_used: 50 } }, {}])).toBeUndefined();
   });
 
   it("lists projects of every type and skips types the key cannot read", async () => {

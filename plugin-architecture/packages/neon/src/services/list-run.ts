@@ -3,7 +3,7 @@ import {
   type ResourceInstance,
   type UnreadListPart,
 } from "@infrawrench/plugin-base";
-import type { Api, Branch, ProjectListItem } from "@neondatabase/api-client";
+import type { Api, Branch, Project, ProjectListItem } from "@neondatabase/api-client";
 import { flatMapPooled, PollBudget, rotationStart, SharedRead, throughBudget } from "../pool.js";
 import {
   httpStatus,
@@ -137,8 +137,14 @@ export function projectUnread(accountId: string, project: ProjectParent): Unread
   return { parentResourceIds: [resourceId(accountId, "neon-project", project.id)] };
 }
 
-export type ProjectParent = { id: string };
-export type ProjectBranch = BranchRef & { branch: Branch };
+/**
+ * A project to read children of. Read from the project list, it carries the
+ * per-branch logical size limit Neon reports there, which each branch's row
+ * stores beside its logical size; a single project read alone has none.
+ */
+export type ProjectParent = Pick<ProjectListItem, "id"> &
+  Partial<Pick<ProjectListItem, "branch_logical_size_limit_bytes">>;
+export type ProjectBranch = BranchRef & { branch: Branch; logicalSizeLimitBytes?: number };
 
 /**
  * The reads every list hangs off, for one pass over the account: the requests go through
@@ -152,13 +158,49 @@ export class ListRun {
   private readonly projectRead = new SharedRead<ProjectListItem[]>();
   private readonly branchRead = new SharedRead<ChildRead<ProjectBranch>>();
 
-  /** @param onlyProject Read this project's children alone, without listing the projects. */
+  /**
+   * @param onlyProject Read this project's children alone, without listing the projects.
+   * @param detailOf Read the full record of this project alone, for a lookup of one.
+   */
   constructor(
     api: Api<unknown>,
     readonly budget: PollBudget,
     private readonly onlyProject?: string,
+    private readonly detailOf?: string,
   ) {
     this.api = throughBudget(api, budget);
+  }
+
+  /**
+   * The full record of each project in reach (`GET /projects/{project_id}`), for the
+   * consumption counters and billing period the list leaves out (Neon API
+   * reference, `Project`, read 2026-11-23). Best effort: a project past the budget, or
+   * whose read fails for any reason, is simply missing from the map, and its row keeps
+   * every other field. Waits for the branch read, like the other per-project reads.
+   */
+  async projectDetails(
+    projects: readonly Pick<ProjectListItem, "id">[],
+  ): Promise<Map<string, Project>> {
+    const wanted = this.detailOf ? projects.filter((p) => p.id === this.detailOf) : projects;
+    await this.branchRead.settled();
+    const details = new Map<string, Project>();
+    let started = 0;
+    await flatMapPooled(
+      wanted,
+      async (p) => {
+        if (started >= this.budget.maxEnumeratedProjects || !this.budget.hasRoom()) return [];
+        started++;
+        try {
+          details.set(p.id, (await this.api.getProject(p.id)).data.project);
+        } catch {
+          // Optional: no reading is not a zero, and must not cost the row.
+        }
+        return [];
+      },
+      this.budget.slots,
+      rotationStart(wanted.length),
+    );
+    return details;
   }
 
   /** Every project. This has no parent to name, so it is read whole or it throws. */
@@ -189,7 +231,13 @@ export class ListRun {
         this.budget,
         async (p) => {
           const branches = await listBranchesOfProject(this.api, p.id);
-          return branches.map((branch) => ({ projectId: p.id, branchId: branch.id, branch }));
+          const limit = p.branch_logical_size_limit_bytes;
+          return branches.map((branch) => ({
+            projectId: p.id,
+            branchId: branch.id,
+            branch,
+            ...(typeof limit === "number" && limit > 0 ? { logicalSizeLimitBytes: limit } : {}),
+          }));
         },
         (p) => projectUnread(accountId, p),
         { maxParents: this.budget.maxEnumeratedProjects },

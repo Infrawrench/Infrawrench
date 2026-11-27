@@ -62,6 +62,11 @@ export interface Capacity {
   /** The runs of other runners it is helping now. */
   runsHelping: number;
   /**
+   * Whether it takes `notify` in a run request, to tell the caller as the
+   * run changes. A runner older than the field refuses a request with it.
+   */
+  notify: boolean;
+  /**
    * The platforms it runs jobs on: always `wasm`, and `linux` when it has
    * the machines for it. `["wasm"]` from a runner older than
    * the field; empty for a runner that did not answer.
@@ -318,6 +323,7 @@ export class Pool {
           v8LostHeap: null,
           split: false,
           runsHelping: 0,
+          notify: false,
           platforms: [],
         };
         try {
@@ -339,6 +345,7 @@ export class Pool {
             version?: string;
             split?: unknown;
             runs_helping?: unknown;
+            notify?: unknown;
             platforms?: unknown;
           };
           return {
@@ -358,6 +365,7 @@ export class Pool {
             v8LostHeap: bytes(body.v8_lost_heap),
             split: body.split === true,
             runsHelping: bytes(body.runs_helping) ?? 0,
+            notify: body.notify === true,
             platforms: platformsOf(body.platforms),
           };
         } catch {

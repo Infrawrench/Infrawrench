@@ -8,7 +8,7 @@ Connect a PostHog organization to manage its flags, experiments and data pipelin
 
 ## What you can manage
 
-- **Organization**: plan, members, projects, and this billing period's spend and projection. Its Metrics tab charts daily spend by product.
+- **Organization**: plan, members, projects, and this billing period's spend and projection. Its Metrics tab charts daily spend by product. Capacity runway tracks this period's events, session recordings, feature flag requests, exceptions and survey responses against the limit where PostHog stops ingesting (your free allocation or billing limit).
 - **Projects**: time zone and whether events are arriving. The project API key and host are outputs (export them as `POSTHOG_API_KEY` and `POSTHOG_HOST`). The Metrics tab charts events per hour, and the **SQL Editor** tab runs HogQL.
 - **Feature flags**: create flags with a rollout percentage, edit the description, rollout and tags, **Turn on / Turn off**, **Roll out to everyone**, or delete. The Metrics tab charts how often each flag is evaluated.
 - **Experiments**: **Launch**, **Pause**, **Resume**, **End** and **Archive**, edit the name and description, or delete.

@@ -880,7 +880,8 @@ pub fn install(
         };
         if package.has_install_script && lock.trusted_dependencies.contains(&package.name) {
             warnings.push(format!(
-                "{ident} is in trustedDependencies, but its install scripts were not run: nothing here runs them"
+                "{ident} is in trustedDependencies, but its install scripts were not run: {}",
+                crate::SCRIPTS_NOT_RUN
             ));
         }
         // Only for the isolate, and only for what a registry serves: a

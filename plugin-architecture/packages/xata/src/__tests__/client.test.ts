@@ -1,8 +1,18 @@
 import { hostClient } from "@infrawrench/plugin-base/effect";
 import { describe, expect, it } from "vitest";
 import type { HostServices } from "@infrawrench/plugin-base";
+import { capacityDeclarations, resolveCapacityLimit } from "@infrawrench/plugin-base";
 import { statusOf, XataApiError } from "../api.js";
-import { hostOf, pgDescriptor, projectPatch, withSsl, XataClient } from "../client.js";
+import {
+  creditFields,
+  DISK_HIGHEST_LABEL,
+  hostOf,
+  pgDescriptor,
+  projectPatch,
+  withSsl,
+  XataClient,
+} from "../client.js";
+import { BranchType, OrganizationType } from "../resource-types.js";
 import { coveredMonthStart, fetchXataCostData } from "../cost-data.js";
 import { renderDetail } from "../render.js";
 import { mapComponent } from "../status-feed.js";
@@ -714,5 +724,78 @@ describe("an id with a part missing", () => {
       }),
     ).rejects.toThrow("incomplete");
     expect(calls).toEqual([]);
+  });
+});
+
+describe("capacity runway", () => {
+  it("stores the active credits spent against what they started at", async () => {
+    const { client } = fake([
+      on("GET", `${API}/organizations`, { organizations: [org] }),
+      on("GET", `${API}/organizations/org1/billing/customer`, {
+        billing_email: "b@example.com",
+        marketplace: null,
+        collection_method: "charge_automatically",
+        can_collect_payment: true,
+        has_payment_method: true,
+        default_payment_method: null,
+        credits: [],
+        credit_details: {
+          total_lifetime_credits: 300,
+          active_credits: [
+            { id: "c1", balance: 40, maximum_initial_balance: 100, status: "active" },
+            { id: "c2", balance: 150, maximum_initial_balance: 200, status: "active" },
+          ],
+          last_active_credit_expiry: "2027-06-01T00:00:00Z",
+          total_active_credits: 190,
+        },
+      }),
+    ]);
+    const [o] = await client.listResources("xata-organization", ACCOUNT);
+    expect(o!.fields).toMatchObject({
+      creditsGranted: 300,
+      creditsUsed: 110,
+      creditsExpireAt: "2027-06-01T00:00:00Z",
+    });
+    const decl = capacityDeclarations(OrganizationType).find((d) => d.key === "creditsUsed");
+    expect(resolveCapacityLimit(decl!.declaration.limit, o!.fields)?.limit).toBe(300);
+  });
+
+  it("leaves credits out when there are none or the read fails", async () => {
+    expect(creditFields({ active_credits: [] })).toEqual({});
+    expect(creditFields(undefined)).toEqual({});
+    const { client } = fake([on("GET", `${API}/organizations`, { organizations: [org] })]);
+    const [o] = await client.listResources("xata-organization", ACCOUNT);
+    expect(o!.fields).not.toHaveProperty("creditsUsed");
+  });
+
+  it("charts the fullest instance's disk in bytes for the storage size", async () => {
+    const at = (value: number) => [{ timestamp: "2026-11-23T10:00:00Z", value }];
+    const { client } = fake([
+      on("POST", `${API}/organizations/org1/projects/p1/branches/b1/metrics`, {
+        start: "",
+        end: "",
+        results: [
+          {
+            metric: "disk",
+            unit: "bytes",
+            series: [
+              { instanceID: "i1", aggregation: "avg", values: at(2 * 1024 ** 3) },
+              { instanceID: "i2", aggregation: "avg", values: at(3 * 1024 ** 3) },
+            ],
+          },
+        ],
+      }),
+    ]);
+    const series = await client.fetchMetricSeries(
+      "xata-branch",
+      `${ACCOUNT}:xata-branch:org1/p1/b1`,
+      ACCOUNT,
+    );
+    const disk = series.find((s) => s.label === DISK_HIGHEST_LABEL);
+    expect(disk?.points.map((p) => p.value)).toEqual([3 * 1024 ** 3]);
+    expect(BranchType.capacityMetrics?.map((m) => m.seriesLabel)).toEqual([DISK_HIGHEST_LABEL]);
+    expect(
+      resolveCapacityLimit(BranchType.capacityMetrics![0]!.limit, { storageGb: 10 })?.limit,
+    ).toBe(10 * 1024 ** 3);
   });
 });

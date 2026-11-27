@@ -114,7 +114,9 @@ export * from "./domains/environments";
 export * from "./domains/event-subscriptions";
 export * from "./domains/expiring";
 export * from "./domains/extended-support";
+export * from "./domains/git-username-checkout";
 export * from "./domains/github";
+export * from "./domains/git";
 export * from "./domains/github-issues";
 export * from "./domains/iac";
 export * from "./domains/idle-findings";
@@ -125,6 +127,7 @@ export * from "./domains/invitations";
 export * from "./domains/invoices";
 export * from "./domains/issue-webhooks";
 export * from "./domains/ci-jobs";
+export * from "./domains/ci-notify";
 export * from "./domains/jira";
 export * from "./domains/jit-access";
 export * from "./domains/k8s-efficiency-reports";
@@ -137,6 +140,7 @@ export * from "./domains/metric-alerts";
 export * from "./domains/moment";
 export * from "./domains/msteams";
 export * from "./domains/network-flows";
+export * from "./domains/offboarding";
 export * from "./domains/on-call";
 export * from "./domains/org-config";
 export * from "./domains/orgs";
@@ -276,7 +280,9 @@ import { EnvironmentsApi } from "./domains/environments";
 import { EventSubscriptionsApi } from "./domains/event-subscriptions";
 import { ExpiringApi } from "./domains/expiring";
 import { ExtendedSupportApi } from "./domains/extended-support";
+import { GitUsernameCheckoutApi } from "./domains/git-username-checkout";
 import { GithubApi } from "./domains/github";
+import { GitForgeApi } from "./domains/git";
 import { GithubIssuesApi } from "./domains/github-issues";
 import { IacApi } from "./domains/iac";
 import { IdleFindingsApi } from "./domains/idle-findings";
@@ -287,6 +293,7 @@ import { InvitationsApi } from "./domains/invitations";
 import { InvoicesApi } from "./domains/invoices";
 import { IssueWebhooksApi } from "./domains/issue-webhooks";
 import { CiJobsApi } from "./domains/ci-jobs";
+import { CiNotifyApi } from "./domains/ci-notify";
 import { JiraApi } from "./domains/jira";
 import { JitAccessApi } from "./domains/jit-access";
 import { KubernetesEfficiencyReportsApi } from "./domains/k8s-efficiency-reports";
@@ -299,6 +306,7 @@ import { MetricAlertsApi } from "./domains/metric-alerts";
 import { MomentApi } from "./domains/moment";
 import { MsTeamsApi } from "./domains/msteams";
 import { NetworkFlowsApi } from "./domains/network-flows";
+import { OffboardingApi } from "./domains/offboarding";
 import { OnCallApi } from "./domains/on-call";
 import { OrgConfigApi } from "./domains/org-config";
 import { OrgsApi } from "./domains/orgs";
@@ -444,7 +452,9 @@ export const API_DEFINITIONS = {
   "event-subscriptions": EventSubscriptionsApi,
   expiring: ExpiringApi,
   "extended-support": ExtendedSupportApi,
+  "git-username-checkout": GitUsernameCheckoutApi,
   github: GithubApi,
+  git: GitForgeApi,
   "github-issues": GithubIssuesApi,
   heartbeats: HeartbeatsApi,
   iac: IacApi,
@@ -456,6 +466,7 @@ export const API_DEFINITIONS = {
   invoices: InvoicesApi,
   "issue-webhooks": IssueWebhooksApi,
   "ci-jobs": CiJobsApi,
+  "ci-notify": CiNotifyApi,
   jira: JiraApi,
   "jit-access": JitAccessApi,
   "k8s-efficiency-reports": KubernetesEfficiencyReportsApi,
@@ -469,6 +480,7 @@ export const API_DEFINITIONS = {
   moment: MomentApi,
   msteams: MsTeamsApi,
   "network-flows": NetworkFlowsApi,
+  offboarding: OffboardingApi,
   "on-call": OnCallApi,
   "org-config": OrgConfigApi,
   orgs: OrgsApi,

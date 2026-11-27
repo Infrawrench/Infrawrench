@@ -203,6 +203,12 @@ export const HostResourceType = rt({
   ],
   outputs: [o("hostName", "Host Name")],
   supportsMetrics: true,
+  // `hostSeries` charts `max:system.disk.in_use{host}*100`: `system.disk.in_use` is the disk
+  // space in use as a fraction of the total (docs.datadoghq.com/integrations/disk/, read
+  // 2026-11-23), so the fullest disk reaches its ceiling at 100.
+  capacityMetrics: [
+    { seriesLabel: "Disk in use (fullest)", limit: { constant: 100 }, unit: "%", label: "Disk" },
+  ],
   iconKey: "server",
 });
 

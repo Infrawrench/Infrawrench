@@ -12,7 +12,10 @@ import {
   type QuotaListResponse,
   type QuotaRow,
   type QuotaSeverity,
+  type RunwayListResponse,
+  type RunwayRow,
 } from "@infrawrench/client-core";
+import { RunwaySection } from "./RunwaySection.js";
 
 /**
  * Every URL on this screen originates in a plugin (a quota's `docsUrl`, the
@@ -47,6 +50,15 @@ export interface QuotasSectionProps {
   onRetry?: (() => void) | undefined;
   /** Open a provider docs/increase page. Omitted, the link is not rendered. */
   onOpenExternal?: ((url: string) => void) | undefined;
+  /**
+   * The capacity runway feed, or null while loading. Omitted (undefined), the
+   * runway section is not rendered at all.
+   */
+  runway?: RunwayListResponse | null | undefined;
+  runwayError?: string | null | undefined;
+  onRetryRunway?: (() => void) | undefined;
+  /** Open the resource a runway row belongs to. */
+  onOpenResource?: ((row: RunwayRow) => void) | undefined;
 }
 
 type GroupBy = "account" | "service" | "severity";
@@ -259,7 +271,16 @@ function CoverageNotes({
  * discovered mid-incident: the provider does not warn you, and the console
  * shows the limit only if you go looking for it per-service per-region.
  */
-export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSectionProps) {
+export function QuotasSection({
+  data,
+  error,
+  onRetry,
+  onOpenExternal,
+  runway,
+  runwayError,
+  onRetryRunway,
+  onOpenResource,
+}: QuotasSectionProps) {
   const gt = useGT();
   const gtData = useDataString();
   const [groupBy, setGroupBy] = useState<GroupBy>("account");
@@ -517,6 +538,14 @@ export function QuotasSection({ data, error, onRetry, onOpenExternal }: QuotasSe
             </>
           )}
         </>
+      )}
+      {runway !== undefined && (
+        <RunwaySection
+          data={runway}
+          error={runwayError}
+          onRetry={onRetryRunway}
+          onOpenResource={onOpenResource}
+        />
       )}
     </div>
   );

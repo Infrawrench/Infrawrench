@@ -39,7 +39,80 @@ export const OrganizationResourceType = rt({
       editable: false,
     }),
     f("projectedTotalUsd", "Projected (USD)", { kind: "number", required: false, editable: false }),
+    f("periodStart", "Period Starts", { required: false, editable: false }),
     f("periodEnd", "Period Ends", { required: false, editable: false }),
+    // Each product's `current_usage` against its `usage_limit` from `GET /api/billing/`
+    // (BillingProductV2Type in github.com/PostHog/posthog frontend/src/types.ts, read
+    // 2026-11-23): ingestion stops at the limit until the period resets. Annual plans
+    // leave these out, since their period is a year.
+    f("eventsUsed", "Events This Period", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "eventsLimit" },
+        unit: "events",
+        cycle: { period: "monthly", startField: "periodStart", endField: "periodEnd" },
+        label: "Events",
+      },
+    }),
+    f("eventsLimit", "Events Limit", { kind: "number", required: false, editable: false }),
+    f("recordingsUsed", "Recordings This Period", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "recordingsLimit" },
+        unit: "recordings",
+        cycle: { period: "monthly", startField: "periodStart", endField: "periodEnd" },
+        label: "Session recordings",
+      },
+    }),
+    f("recordingsLimit", "Recordings Limit", { kind: "number", required: false, editable: false }),
+    f("flagRequestsUsed", "Flag Requests This Period", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "flagRequestsLimit" },
+        unit: "requests",
+        cycle: { period: "monthly", startField: "periodStart", endField: "periodEnd" },
+        label: "Feature flag requests",
+      },
+    }),
+    f("flagRequestsLimit", "Flag Requests Limit", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
+    f("exceptionsUsed", "Exceptions This Period", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "exceptionsLimit" },
+        unit: "exceptions",
+        cycle: { period: "monthly", startField: "periodStart", endField: "periodEnd" },
+        label: "Exceptions",
+      },
+    }),
+    f("exceptionsLimit", "Exceptions Limit", { kind: "number", required: false, editable: false }),
+    f("surveyResponsesUsed", "Survey Responses This Period", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "surveyResponsesLimit" },
+        unit: "responses",
+        cycle: { period: "monthly", startField: "periodStart", endField: "periodEnd" },
+        label: "Survey responses",
+      },
+    }),
+    f("surveyResponsesLimit", "Survey Responses Limit", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
     { ...REGION, showcase: true },
     CREATED,
   ],

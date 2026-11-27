@@ -1,0 +1,38 @@
+{
+  "name": "@infrawrench/git-worker",
+  "version": "0.1.0",
+  "license": "BUSL-1.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "bundle": "mkdir -p ../web/dist && wrangler deploy --dry-run --outdir .wrangler/bundle",
+    "check:startup": "mkdir -p ../web/dist && wrangler check startup --outfile .wrangler/startup.cpuprofile",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:db": "vitest run --config vitest.db.config.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
+    "@infrawrench/client-core": "workspace:*",
+    "@infrawrench/git-contract": "workspace:*",
+    "@infrawrench/git-core": "workspace:*",
+    "@infrawrench/git-ops": "workspace:*",
+    "@infrawrench/git-protocol": "workspace:*",
+    "@infrawrench/git-ssh": "workspace:*",
+    "@infrawrench/git-terraform": "workspace:*",
+    "@infrawrench/server-core": "workspace:*",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "drizzle-orm": "^0.45.2",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260808.1",
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@types/node": "^22.20.1",
+    "typescript": "catalog:",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.120.0"
+  }
+}

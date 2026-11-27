@@ -28,7 +28,7 @@ Each account covers one **organization** or one **enterprise**, and opens on its
   2. What it applies to: the organization or enterprise, a repository, a cost centre, one user, or every user.
   3. The amount, whether to stop usage when it's exceeded, and who to alert.
 
-  Each budget shows this month's spend against it. You can edit the amount, the stop-usage setting, the alerts and (for user budgets) the expiry, or delete it.
+  Each budget shows this month's spend against it. You can edit the amount, the stop-usage setting, the alerts and (for user budgets) the expiry, or delete it. Capacity runway tracks the month's spend against each budget that stops usage when reached.
 
 - **Cost centres** (enterprise accounts): each cost centre with its users, organizations, repositories and enterprise teams, and this month's spend. Create, rename and delete them, and edit the member lists to move members in or out.
 

@@ -579,4 +579,56 @@
 // take optional `vars`; a resource description names a by-name reference's
 // `match` and `matches`); `env-files` joins the workspace `TabTarget` enum.
 // Additive.
-export const API_VERSION = "1.124.0";
+// 1.125.0: capacity runway under `/api/org/:orgId/quotas`: `GET /runway` and
+// `GET /runway/resource?resourceId=` with their `Runway*` schemas, and
+// `runwayDays` and `allowanceThreshold` on `QuotaAlertSettings` and its
+// update body; `filestore-instance` joins the `resourceTypeId` enum (the GCP
+// type was implemented but never registered). Additive.
+// 1.126.0: offboarding sweeps under `/api/org/:orgId/offboardings`: list,
+// start, preview, members, get, edit, rescan, export, confirm or mark a row,
+// and act on a row, with their `Offboarding*` schemas; `offboarding` joins the
+// TabTarget kind enum. Additive.
+// 1.127.0: a CI run says where its repository lives. `CiRun` gains `source`
+// (`github` or `git`, for git.infrawrench.com) and `sourceUrl`, the commit or
+// pull request on that forge; `githubUrl` stays and carries the same link.
+// Schedules, manual pipelines and `startRun` name a git.infrawrench.com
+// repository with `installationId` 0. Additive.
+// 1.128.0: the `git:read`, `git:write` and `git:admin` permissions join the
+// `Permission` enum, for the organization's namespace on git.infrawrench.com
+// (the forge's own API is not part of this document). Additive.
+// 1.129.0: the organization's side of git.infrawrench.com under
+// `/api/org/:orgId/git`: `GET /` (namespace, plan limits and usage), `PUT
+// /namespace` (claim or rename, `git:admin`), `PUT /settings` (the default
+// visibility of new repositories) and `GET /repositories`, with their
+// `GitForge*` schemas. Additive.
+// 1.130.0: `GET /org/{orgId}/iac/resource` answers `managedBy`, the Terraform
+// workspaces on git.infrawrench.com whose current state holds the resource
+// (repository, root path, workspace, address and a link). Additive.
+// 1.130.1: `managedBy` on `GET /org/{orgId}/iac/resource` lists a workspace of a
+// private repository only for a caller with `git:read` (or more) in the
+// organization. No shape changes.
+// 1.131.0: Git is behind a per-organization flag a platform admin turns on
+// (temporary). `GET /org/{orgId}/team/me` answers
+// `gitEnabled`, and the `/api/org/:orgId/git` routes answer 404 while it is
+// false. Additive.
+// 1.132.0: `GET /org/{orgId}/git` answers `reservedNamesAllowed`, true for a
+// platform admin, who may claim a reserved namespace name. Additive.
+// 1.133.0: `POST /org/{orgId}/agents/sessions` takes `gitWork` (`AgentGitWork`:
+// `owner`, `repo`, `pull`), a pull request on git.infrawrench.com for a
+// terminal session to work on, with `git:write`. Additive.
+// 1.134.0: git.infrawrench.com has branch pages, not pull requests.
+// `AgentGitWork` names the page by its key, `branch` (`work/fix-login`, or
+// `work/fix-login~2` for an earlier page of a name used again), in place of
+// `pull`, and `GitForgeRepository.openPullRequests` is `openBranches`. A
+// minor bump by decision: both shipped days ago behind a per-organization
+// flag, and the only client of `gitWork` is the forge's own start link.
+// 1.135.0: Git is on for every organization (the per-organization flag is
+// gone, Git is in beta). The `/api/org/:orgId/git` routes no longer answer 404
+// for an organization without the flag, so `GET /org/{orgId}/git`, `GET
+// /org/{orgId}/git/repositories` and `PUT /org/{orgId}/git/namespace` drop
+// their 404 response. `gitEnabled` on `GET /org/{orgId}/team/me` is deprecated
+// and always true; it stays until the next major version. The platform-admin
+// `PUT /admin/organizations/{orgId}/git` and `AdminOrganization.git` are
+// removed. A minor bump by decision: the admin route was the flag's own
+// switch, usable only by platform admins from the app's `/admin` page.
+export const API_VERSION = "1.135.0";

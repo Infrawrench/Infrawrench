@@ -62,11 +62,6 @@ on:
 # Every package's declarations are kept for the run.
 scratch: 2GiB
 
-# Another runner may take jobs this run's runner has no slot or memory for
-# (ci-runner/README.md, "Split runs"). Safe here: no job uses the shared
-# /tmp/workflow; everything is handed on through artifacts and outputs.
-split: true
-
 workspace:
   deps:
     - pnpm
@@ -173,10 +168,14 @@ jobs:
   # depends on. The runner's installer writes no node_modules/.bin, so
   # `vitest` in the script runs as its entry point.
   #
-  # Every package's: plugingen's run real git, which every environment has
-  # (ci-runner/README.md, "Git"). A package taken off this job goes back on
-  # GitHub Actions, in a Vitest job of test.yml's that runs exactly the
-  # packages left out here.
+  # Every package's but the forge's: plugingen's run real git, which every
+  # environment has (ci-runner/README.md, "Git"). The forge's suites
+  # (git/packages/*) drive git over SSH, OpenSSH's client, Terraform, workerd
+  # and a PostgreSQL, which an isolate does not have, so they run on machines
+  # in git.yml, which says what each kind of job has. Left on this job they
+  # would pass by skipping themselves. Any other package taken off this job
+  # goes back on GitHub Actions, in a Vitest job of test.yml's that runs
+  # exactly the packages left out here.
   #
   # Native code with no WebAssembly build in the same package, and what the
   # runner's Node does not do yet:
@@ -233,7 +232,7 @@ jobs:
     name: Test ${{ package.name }}
     packages:
       scripts: { test: "*vitest run*" }
-      only: ["**", "!app/packages/web", "!app/packages/server-core"]
+      only: ["**", "!app/packages/web", "!app/packages/server-core", "!git/packages/*"]
     needs: &test-needs [prep, bundle, reads, "^bundle", "^source"]
     using: env:bash-node@24.0.18
     env: &test-env
@@ -447,9 +446,9 @@ jobs:
     run: |
       shopt -s dotglob nullglob
       paths=()
-      for p in * app/* plugin-architecture/*; do
+      for p in * app/* plugin-architecture/* git/*; do
         case "$p" in
-          app | plugin-architecture | app/packages | plugin-architecture/packages | plugingen | node_modules | .git) ;;
+          app | plugin-architecture | git | app/packages | plugin-architecture/packages | git/packages | plugingen | node_modules | .git) ;;
           *) paths+=("$p") ;;
         esac
       done
@@ -468,6 +467,7 @@ jobs:
         - "**"
         - "!app/packages/*/**"
         - "!plugin-architecture/packages/*/**"
+        - "!git/packages/*/**"
         - "!plugingen/**"
         - "!terraform-provider-infrawrench/docs/**"
         - "!**/*.rs"

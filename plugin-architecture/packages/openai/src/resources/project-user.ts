@@ -32,6 +32,8 @@ export const ProjectUserResourceType = rt({
     parentKey: "email",
     adminIndicatorKey: "role",
     adminValues: ["owner"],
+    // DELETE /v1/organization/projects/{project_id}/users/{user_id}.
+    offboardByDelete: true,
   },
   parentTypeId: "project",
   showInSidebar: true,

@@ -31,7 +31,7 @@
  * (`ci_schedules.manual`), which is what the CI tab offers to start by hand
  * (`manual.ts`).
  */
-import { and, asc, eq, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lt, lte, or, sql } from "drizzle-orm";
 import {
   CI_INPUT_TYPES,
   CI_MAX_INPUTS,
@@ -44,17 +44,20 @@ import {
   type CiSchedules,
 } from "@infrawrench/client-core";
 
+import type { PgSelect } from "drizzle-orm/pg-core";
+
 import { db } from "../db/client.js";
 import {
   ciAccounts,
+  ciGitRepositories,
   ciRuns,
   ciSchedules,
   type CiManualEntry,
   type CiScheduleEntry,
 } from "../db/schema.js";
 import { planAccess } from "../entitlements.js";
-import { getInstallationToken } from "../github/app.js";
-import { ownerKey, repoKey } from "./events.js";
+import { repoKey } from "./events.js";
+import { cloneToken, cloneUrl, sourceOwnerKey, tokenRefusal } from "./source.js";
 import { CiProxyError, proxyJson } from "./proxy.js";
 
 type ScheduleRow = typeof ciSchedules.$inferSelect;
@@ -83,7 +86,9 @@ const MAX_CRONS = 16;
 /** Registers a repository the app has seen a delivery for; `refreshNow` for a push to its default branch. */
 export async function noteRepository(input: {
   organizationId: string;
+  /** `GIT_SOURCE_INSTALLATION_ID` with `gitRepositoryId`, for a repository on git.infrawrench.com. */
   installationId: number;
+  gitRepositoryId?: string | null;
   repoFullName: string;
   defaultBranch: string;
   refreshNow: boolean;
@@ -95,6 +100,7 @@ export async function noteRepository(input: {
       id: crypto.randomUUID(),
       organizationId: input.organizationId,
       installationId: input.installationId,
+      gitRepositoryId: input.gitRepositoryId ?? null,
       repoFullName: input.repoFullName,
       defaultBranch: input.defaultBranch,
       refreshAfter: now,
@@ -103,11 +109,41 @@ export async function noteRepository(input: {
       target: [ciSchedules.installationId, ciSchedules.repoFullName],
       set: {
         organizationId: input.organizationId,
+        gitRepositoryId: input.gitRepositoryId ?? null,
         defaultBranch: input.defaultBranch,
         ...(input.refreshNow ? { refreshAfter: now } : {}),
       },
     });
 }
+
+/**
+ * Joins a query over `ci_schedules` to what says its organization still
+ * runs CI for the repository: the GitHub account's `ci_accounts` row, or
+ * the forge repository's switch (`ci_git_repositories`, on). With
+ * {@link stillRunsCi} in its `where`, the query keeps only those rows.
+ */
+export function runningCi<T extends PgSelect>(query: T) {
+  return query
+    .leftJoin(
+      ciAccounts,
+      and(
+        isNull(ciSchedules.gitRepositoryId),
+        eq(ciAccounts.installationId, ciSchedules.installationId),
+        eq(ciAccounts.organizationId, ciSchedules.organizationId),
+      ),
+    )
+    .leftJoin(
+      ciGitRepositories,
+      and(
+        eq(ciGitRepositories.gitRepositoryId, ciSchedules.gitRepositoryId),
+        eq(ciGitRepositories.organizationId, ciSchedules.organizationId),
+        eq(ciGitRepositories.ciEnabled, true),
+      ),
+    );
+}
+
+/** See {@link runningCi}. */
+export const stillRunsCi = () => or(isNotNull(ciAccounts.id), isNotNull(ciGitRepositories.id));
 
 /** `POST /v1/schedules/read` as the runner answers it. */
 interface ReadReply {
@@ -201,9 +237,9 @@ async function readSchedules(row: ScheduleRow): Promise<void> {
 
   let token: string;
   try {
-    token = await getInstallationToken(row.installationId);
+    token = await cloneToken(row, "schedules");
   } catch (err) {
-    await failed(`GitHub refused an installation token: ${String(err)}`);
+    await failed(tokenRefusal(row, err));
     return;
   }
   let reply: ReadReply;
@@ -211,10 +247,10 @@ async function readSchedules(row: ScheduleRow): Promise<void> {
     reply = await proxyJson<ReadReply>("/v1/schedules/read", {
       method: "POST",
       body: JSON.stringify({
-        repo: `https://github.com/${row.repoFullName}.git`,
+        repo: cloneUrl(row),
         branch: row.defaultBranch,
         "default-branch": row.defaultBranch,
-        owner: ownerKey(row.repoFullName),
+        owner: sourceOwnerKey(row),
         "repo-id": repoKey(row.repoFullName),
         token,
       }),
@@ -302,23 +338,16 @@ export function dueRuns(
  */
 export async function fireDueSchedules(now = new Date()): Promise<number> {
   const minute = Math.floor(now.getTime() / MINUTE_MS) * MINUTE_MS;
-  const rows = await db
-    .select({ schedule: ciSchedules })
-    .from(ciSchedules)
-    .innerJoin(
-      ciAccounts,
-      and(
-        eq(ciAccounts.installationId, ciSchedules.installationId),
-        eq(ciAccounts.organizationId, ciSchedules.organizationId),
-      ),
-    )
-    .where(
-      and(
-        sql`${ciSchedules.sha} IS NOT NULL`,
-        sql`jsonb_array_length(${ciSchedules.pipelines}) > 0`,
-        or(isNull(ciSchedules.firedThrough), lt(ciSchedules.firedThrough, new Date(minute))),
-      ),
-    );
+  const rows = await runningCi(
+    db.select({ schedule: ciSchedules }).from(ciSchedules).$dynamic(),
+  ).where(
+    and(
+      stillRunsCi(),
+      sql`${ciSchedules.sha} IS NOT NULL`,
+      sql`jsonb_array_length(${ciSchedules.pipelines}) > 0`,
+      or(isNull(ciSchedules.firedThrough), lt(ciSchedules.firedThrough, new Date(minute))),
+    ),
+  );
 
   const allowed = new Map<string, Promise<boolean>>();
   const mayRun = (organizationId: string) => {
@@ -345,8 +374,9 @@ export async function fireDueSchedules(now = new Date()): Promise<number> {
             id: crypto.randomUUID(),
             organizationId: row.organizationId,
             installationId: row.installationId,
+            gitRepositoryId: row.gitRepositoryId,
             repoFullName: row.repoFullName,
-            ownerKey: ownerKey(row.repoFullName),
+            ownerKey: sourceOwnerKey(row),
             repoKey: repoKey(row.repoFullName),
             event: "schedule",
             pipelineFile: pipeline.file,
@@ -379,17 +409,8 @@ export async function fireDueSchedules(now = new Date()): Promise<number> {
 
 /** The organization's repositories that run CI, as the last read of each one's default branch left them. */
 async function ciRepositoryRows(organizationId: string): Promise<ScheduleRow[]> {
-  const rows = await db
-    .select({ schedule: ciSchedules })
-    .from(ciSchedules)
-    .innerJoin(
-      ciAccounts,
-      and(
-        eq(ciAccounts.installationId, ciSchedules.installationId),
-        eq(ciAccounts.organizationId, ciSchedules.organizationId),
-      ),
-    )
-    .where(eq(ciSchedules.organizationId, organizationId))
+  const rows = await runningCi(db.select({ schedule: ciSchedules }).from(ciSchedules).$dynamic())
+    .where(and(stillRunsCi(), eq(ciSchedules.organizationId, organizationId)))
     .orderBy(asc(ciSchedules.repoFullName));
   return rows.map(({ schedule }) => schedule);
 }

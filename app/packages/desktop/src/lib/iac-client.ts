@@ -6,6 +6,7 @@ import {
 } from "@infrawrench/ui";
 import type {
   IacImportPlanResponse,
+  IacManagedBy,
   IacReconciliationResponse,
   IacStateSummary,
 } from "@infrawrench/client-core";
@@ -81,4 +82,16 @@ export function createDesktopIacClient(): IacClient {
       return rows.map((a) => ({ id: a.id, displayName: a.displayName }));
     },
   };
+}
+
+/**
+ * The forge workspaces that manage one resource, for the resource page's
+ * "Managed by" line. Cloud mode only, like the rest of IaC; a server from
+ * before the field answers none.
+ */
+export async function fetchDesktopManagedBy(resourceId: string): Promise<IacManagedBy[]> {
+  const orgId = useUIStore.getState().activeCloudOrgId;
+  if (!orgId) return [];
+  const res = await runRpc(iac().resource({ params: { orgId }, query: { resourceId } }));
+  return [...((res as { managedBy?: readonly IacManagedBy[] }).managedBy ?? [])];
 }

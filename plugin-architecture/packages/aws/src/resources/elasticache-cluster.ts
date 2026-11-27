@@ -56,6 +56,13 @@ export const ElastiCacheClusterResourceType = rt({
   iconKey: "cache",
   supportsCreate: true,
   supportsMetrics: true,
+  // `elastiCacheClusterMetrics` charts `DatabaseMemoryUsagePercentage`
+  // (Valkey and Redis OSS; evictions start at 100) as "Memory Used":
+  // https://docs.aws.amazon.com/AmazonElastiCache/latest/dg/CacheMetrics.Redis.html
+  // (read 2026-11-23).
+  capacityMetrics: [
+    { seriesLabel: "Memory Used", limit: { constant: 100 }, unit: "%", label: "Memory" },
+  ],
   peerIntegrations: [
     {
       // Valkey speaks the Redis protocol, so the Redis plugin drives it.

@@ -41,6 +41,8 @@ Pinecone keeps no history, so Infrawrench records the current values each time i
 - For every index type: records, namespaces, and fullness for pod-based and dedicated indexes.
 - For serverless and BYOC indexes, when the project is set: stored bytes, upsert, query, fetch, update, delete and list counts, query and upsert time, read and write units, read-node CPU, memory and storage fullness, and scheduled-backup failures. Counts and units are running totals.
 
+Capacity runway tracks the fullness of pod-based indexes, and the storage and memory fullness of dedicated indexes, for indexes whose metrics are recorded.
+
 <insert [Pinecone index detail page with the Metrics tab showing records and read units over a week] here>
 
 ## Quotas

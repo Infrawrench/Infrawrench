@@ -14,8 +14,21 @@ export const AppGatewayResourceType = rt({
     f("capacity", "Capacity", { kind: "number", required: false }),
     f("provisioningState", "Provisioning State", { showcase: true }),
     f("operationalState", "Operational State", { required: false }),
-    f("backendPoolCount", "Backend Pools", { showcase: true, kind: "number", required: false }),
-    f("httpListenerCount", "HTTP Listeners", { showcase: true, kind: "number", required: false }),
+    // "Backend address pools: 100" and "HTTP listeners: 200" (of which 100 may route
+    // traffic) for every Application Gateway SKU, read 2026-11-23 at
+    // https://learn.microsoft.com/azure/azure-resource-manager/management/azure-subscription-service-limits#azure-application-gateway-limits
+    f("backendPoolCount", "Backend Pools", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      usage: { limit: { constant: 100 }, unit: "pools" },
+    }),
+    f("httpListenerCount", "HTTP Listeners", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      usage: { limit: { constant: 200 }, unit: "listeners" },
+    }),
     f("publicIpNames", "Frontend Public IPs", { required: false }),
     f("subnetRefs", "Subnets", { required: false }),
     f("keyVaults", "Certificate Key Vaults", {

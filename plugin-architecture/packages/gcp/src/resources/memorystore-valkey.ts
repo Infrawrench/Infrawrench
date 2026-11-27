@@ -93,6 +93,17 @@ export const MemorystoreValkeyResourceType = rt({
   // protection: the fields instances.patch accepts in its updateMask.
   supportsUpdate: true,
   supportsMetrics: true,
+  // `instance/memory/maximum_utilization` ("Maximum memory utilization
+  // across the instance from 0.0 to 1.0"), charted as 0..100 under this label:
+  // https://docs.cloud.google.com/monitoring/api/metrics_gcp_i_o, read 2026-11-23
+  capacityMetrics: [
+    {
+      seriesLabel: "Memory Utilization (busiest node)",
+      limit: { constant: 100 },
+      unit: "%",
+      label: "Memory",
+    },
+  ],
   secretExportTemplates: [
     {
       id: "valkey-connection",

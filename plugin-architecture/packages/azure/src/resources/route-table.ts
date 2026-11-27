@@ -9,7 +9,15 @@ export const RouteTableResourceType = rt({
     f("resourceGroup", "Resource Group"),
     f("location", "Location", { showcase: true }),
     f("provisioningState", "Provisioning State", { showcase: true, required: false }),
-    f("routeCount", "Routes", { showcase: true, kind: "number", required: false }),
+    // "User-defined routes per route table: 1,000" (Networking limits, Azure Resource
+    // Manager), read 2026-11-23 at
+    // https://learn.microsoft.com/azure/azure-resource-manager/management/azure-subscription-service-limits#azure-resource-manager-virtual-networking-limits
+    f("routeCount", "Routes", {
+      showcase: true,
+      kind: "number",
+      required: false,
+      usage: { limit: { constant: 1000 }, unit: "routes" },
+    }),
     f("subnetCount", "Associated Subnets", { showcase: true, kind: "number", required: false }),
   ],
   outputs: [o("resourceId", "Resource ID")],

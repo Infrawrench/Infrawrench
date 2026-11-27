@@ -30,6 +30,12 @@ export const EFSFileSystemResourceType = rt({
   outputs: [o("fileSystemArn", "File System ARN"), o("fileSystemId", "File System ID")],
   supportsCreate: true,
   supportsMetrics: true,
+  // `efsFileSystemMetrics` charts `PercentIOLimit` (General Purpose mode
+  // only; I/O is throttled at 100) as "% I/O Limit":
+  // https://docs.aws.amazon.com/efs/latest/ug/efs-metrics.html (read 2026-11-23).
+  capacityMetrics: [
+    { seriesLabel: "% I/O Limit", limit: { constant: 100 }, unit: "%", label: "I/O Limit" },
+  ],
   iconKey: "storage",
   secretExportTemplates: [
     {

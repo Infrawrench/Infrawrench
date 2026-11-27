@@ -37,6 +37,7 @@ export {
 export { CredentialHygieneSection } from "./CredentialHygieneSection.js";
 export { FreezesSection } from "./FreezesSection.js";
 export { TagPolicySection } from "./TagPolicySection.js";
+export { GitSection } from "./GitSection.js";
 export { TagKeysSection } from "./TagKeysSection.js";
 export { BillingRulesSection } from "./BillingRulesSection.js";
 export { CostCentresSection } from "./CostCentresSection.js";
@@ -55,6 +56,7 @@ export { GithubIssuesSection } from "./GithubIssuesSection.js";
 export { PrChecksSection } from "./PrChecksSection.js";
 export { ExpiryAlertsSection } from "./ExpiryAlertsSection.js";
 export { ExtendedSupportAlertsSection } from "./ExtendedSupportAlertsSection.js";
+export { QuotaAlertsSection } from "./QuotaAlertsSection.js";
 export { WeeklyDigestSection } from "./WeeklyDigestSection.js";
 export { BillingSection } from "./BillingSection.js";
 export { AuditLogSection } from "./AuditLogSection.js";

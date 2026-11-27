@@ -1359,6 +1359,118 @@
       "when": 1795184464737,
       "tag": "0193_migration_estimates",
       "breakpoints": true
+    },
+    {
+      "idx": 194,
+      "version": "7",
+      "when": 1795430303333,
+      "tag": "0194_capacity_runway",
+      "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "7",
+      "when": 1795592925274,
+      "tag": "0195_offboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "7",
+      "when": 1795642746427,
+      "tag": "0196_ci_git_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 197,
+      "version": "7",
+      "when": 1795644073167,
+      "tag": "0197_git_terraform",
+      "breakpoints": true
+    },
+    {
+      "idx": 198,
+      "version": "7",
+      "when": 1795645136065,
+      "tag": "0198_git_forge",
+      "breakpoints": true
+    },
+    {
+      "idx": 199,
+      "version": "7",
+      "when": 1795647081992,
+      "tag": "0199_git_forge_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 200,
+      "version": "7",
+      "when": 1795650642326,
+      "tag": "0200_forge_default_visibility_storage_samples",
+      "breakpoints": true
+    },
+    {
+      "idx": 201,
+      "version": "7",
+      "when": 1795652996133,
+      "tag": "0201_git_terraform_runtime",
+      "breakpoints": true
+    },
+    {
+      "idx": 202,
+      "version": "7",
+      "when": 1795689758408,
+      "tag": "0202_git_feature_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 203,
+      "version": "7",
+      "when": 1795698524046,
+      "tag": "0203_git_repository_languages",
+      "breakpoints": true
+    },
+    {
+      "idx": 204,
+      "version": "7",
+      "when": 1795709510223,
+      "tag": "0204_git_agent_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 205,
+      "version": "7",
+      "when": 1795728337480,
+      "tag": "0205_git_review_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 206,
+      "version": "7",
+      "when": 1795731105306,
+      "tag": "0206_git_needs_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 207,
+      "version": "7",
+      "when": 1795740096024,
+      "tag": "0207_personal_workspace",
+      "breakpoints": true
+    },
+    {
+      "idx": 208,
+      "version": "7",
+      "when": 1795741769239,
+      "tag": "0208_drop_git_feature_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 209,
+      "version": "7",
+      "when": 1795743302153,
+      "tag": "0209_short_usernames",
+      "breakpoints": true
     }
   ]
 }

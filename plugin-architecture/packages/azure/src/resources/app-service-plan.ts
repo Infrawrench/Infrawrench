@@ -22,7 +22,11 @@ export const AppServicePlanResourceType = rt({
       kind: "number",
       required: false,
       description: "Instances currently assigned to the plan",
+      usage: { limit: { field: "maximumWorkers" }, unit: "instances" },
     }),
+    // `numberOfWorkers` against `maximumNumberOfWorkers` ("Maximum number of
+    // instances that can be assigned to this App Service plan").
+    // https://learn.microsoft.com/rest/api/appservice/app-service-plans/get (read 2026-11-23)
     f("maximumWorkers", "Max Instances", { kind: "number", required: false }),
     f("operatingSystem", "Operating System", {
       required: false,
@@ -33,9 +37,34 @@ export const AppServicePlanResourceType = rt({
       kind: "number",
       required: false,
       description: "Web apps and function apps assigned to the plan",
+      // "Apps per Azure App Service plan": Free 10, Shared 100, unlimited above
+      // (so no row), read 2026-11-23 at https://learn.microsoft.com/azure/azure-resource-manager/management/azure-subscription-service-limits#azure-app-service-limits
+      usage: {
+        limit: { plan: { field: "tier", allowances: { Free: 10, Shared: 100 } } },
+        unit: "apps",
+      },
     }),
     f("status", "Status", { showcase: true, required: false }),
     f("provisioningState", "Provisioning State", { required: false }),
+    // The plan's `FileSystemStorage` usage: content of every app in the plan against
+    // the tier's storage (Free 1 GB to Isolated 1 TB).
+    // https://learn.microsoft.com/rest/api/appservice/app-service-plans/list-usages
+    // https://learn.microsoft.com/azure/azure-resource-manager/management/azure-subscription-service-limits#azure-app-service-limits (read 2026-11-23)
+    f("fileSystemUsedBytes", "File System Storage Used", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: {
+        limit: { field: "fileSystemLimitBytes" },
+        unit: "bytes",
+        label: "File system storage",
+      },
+    }),
+    f("fileSystemLimitBytes", "File System Storage Limit", {
+      kind: "number",
+      required: false,
+      editable: false,
+    }),
   ],
   outputs: [o("resourceId", "Resource ID")],
   dependsOn: [

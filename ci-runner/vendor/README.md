@@ -1539,6 +1539,25 @@ does. bash searches PATH itself and is not helped (README, "Known
 limitations"). `builtins/test.sh`'s `bash-node/path-dir-passes` is the
 check.
 
+**A socket pair asked for close-on-exec is close-on-exec (#1377).**
+wasix-libc before v2026-10-02.1 (wasix-org/wasix-libc#143) hands
+`sock_pair` the type `socketpair` is given, `SOCK_CLOEXEC` (0x2000) and
+`SOCK_NONBLOCK` (0x4000) included, and applies neither, and `sock_pair`
+took such a type for an unknown one and made a plain pair. libuv makes a
+child's stdio pipes with `socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC,
+...)`, so every child a Node process spawned got the parent's ends of every
+earlier child's stdio pipes, and a child holding a copy of another child's
+pipe kept it open after the parent closed it or exited: the other child saw
+EOF only when every holder had gone. `sock_pair` now takes the two bits out
+of the type and gives both ends what they ask for as it makes them, so no
+spawn on another thread finds them without it. A later C library clears
+the bits and sets the flags itself, which comes to the same. Edge.js links
+v2026-07-30.1, and the fix in the runtime covers whatever else links an
+older release too. That release also made `fcntl(F_SETFD, 0)` clear the
+flag, which older ones set instead; nothing tells that call apart from one
+that asks for the flag, so it is left alone. `iwci-runtime`'s
+`a_child_does_not_inherit_descriptors_made_close_on_exec` is the check.
+
 **Remove it** when a wasmer-wasix release after 0.705.0 has #6958 and
 #6982 (a non-blocking wait for any child), 2fc27ff21, #7076, a standard stream
 that is not a terminal does not say it is one while pipes and socket pairs
@@ -1567,7 +1586,7 @@ stack before its side modules' TLS is set up, the closure calls and
 `call_dynamic` answer bad input with an errno, one write to a pipe is one
 send, a passed environment replaces the inherited one, a command's environment is defaults for every spawn, dead inodes are
 swept in proportion to the table, a link under a moved directory resolves
-from its new place, inode numbers are exact as JavaScript numbers, AF_UNIX stream sockets work on a path, `getcwd` leaves room for the NUL, a PATH search passes over a directory, a blocking read of a pipe or socket pair ends for a signal (the
+from its new place, inode numbers are exact as JavaScript numbers, AF_UNIX stream sockets work on a path, `getcwd` leaves room for the NUL, a PATH search passes over a directory, a socket pair's type can carry `SOCK_CLOEXEC` and `SOCK_NONBLOCK` (or every environment links wasix-libc v2026-10-02.1 or later), a blocking read of a pipe or socket pair ends for a signal (the
 linker's `Sigwakeup` included) and starts over, and such a wait (and a
 socket's) also ends for a pending link operation, WASIX has file locks a C library calls (and
 `builtins/environments/python/build.sh` is dropped for a CPython built on
@@ -1620,6 +1639,7 @@ and `rmdir-passes` (bash and bash-node), `bash/git-passes`,
 `a_pipe_write_is_one_send_and_writing_nothing_is_not_a_broken_pipe`,
 `a_variable_removed_from_the_environment_is_not_set_in_a_child`,
 `a_thread_blocked_reading_a_pipe_lets_another_thread_dlopen`,
+`a_child_does_not_inherit_descriptors_made_close_on_exec`,
 `a_name_racing_lookups_removals_and_exclusive_creates_is_listed_only_while_it_is_there` and
 `a_command_a_subshell_started_outlives_the_subshell`.
 
@@ -1668,13 +1688,34 @@ half done. A store spinning in Wasm is trapped by the next interrupt the
 runner sends. One thing this gives up: a guest blocked in a
 `memory.atomic.wait` libcall is no longer trapped out of it (which left its
 lock taken), so it waits until it is notified; no guest the runner ships
-waits that way (WASIX's futexes are syscalls). Linux only: elsewhere no
-segment is recorded and the handler behaves as before.
+waits that way (WASIX's futexes are syscalls).
 
 `crates/iwci-runtime`'s `killing_a_syscall_spinner_leaves_its_threads_whole`
 is the check: without this patch it failed ten runs in ten (aborts on a null
 pointer dereference, a segfault, `RefCell already borrowed`, deadlocks), and
 with it ten in ten pass.
+
+**And: the same on macOS (#1332).** The segments above were recorded on
+Linux only, so on macOS the handler still trapped host code on the Wasm
+stack. The test binary hung there once at 0% CPU, its compiles waiting on
+the frame-info lock and its traps on the `backtrace` crate's mutex, with no
+thread holding either: a host function returning to an interrupted store
+builds its `Trap::lib` on the Wasm stack, which captures a backtrace, and
+a second interrupt landing inside that abandoned the mutex (or libunwind's
+lock on its unwind tables, which every compile takes to register its own)
+in a coroutine stack that was then reset. A thread whose trace held the
+frame-info lock while it waited for the mutex then stopped every compile
+in the process. On macOS `record_host_code` now asks dyld for the
+executable segments of every image (`_dyld_register_func_for_add_image`,
+which also reports the ones loaded later). The system libraries all come
+from dyld's shared cache, several hundred of them once Security.framework
+is linked, so those are kept as one span from the lowest to the highest:
+the cache lives in the shared region, which the kernel reserves for it, so
+no compiled Wasm is mapped inside that span. A reproduction (the spinner
+test with compiles beside it) failed every run on macOS before, mostly
+with `RefCell already borrowed` and sometimes hanging exactly as described,
+and passes every run with it; `interrupts_beside_compiles_leave_no_lock_taken`
+and the spinner test now run on macOS too.
 
 **And: a host call takes no process-wide lock on its way back (#994).**
 Every host function's return path asks `interrupt_registry::is_interrupted`
@@ -1776,6 +1817,17 @@ and `iwci-runtime`'s `an_exception_is_caught_in_code_loaded_where_code_was_freed
 throws through modules loaded and freed in turn, in engines of their own.
 The same sequence, run as a program of its own against the unpatched
 crate on Ubuntu 24.04, lost an exception at step 1144.
+
+**And: one of the crate's own tests holds its lock (#1333).**
+`tls_stack_returns_to_pool_on_thread_exit` let go of the test suite's
+`GLOBAL_STATE` while its worker thread ran, so another test could drain
+`STACK_POOL` before the worker's thread exit put its stack there and the
+test's pop found nothing (about half of `cargo test --lib` runs on an
+M-series Mac), or the push landed in another test's checks; the panic,
+under the lock, then poisoned it for the tests after. The test now holds
+the lock from start to end, as upstream's does since wasmerio/wasmer#7086
+(a6e75eb4e0, after 7.5.0 and in no release yet); it goes with the rest of
+this patch.
 
 **Remove it** when a wasmer-vm release has the interrupt handler leave host
 code alone (wasmerio/wasmer `main` still traps on the stack pointer alone as
@@ -1947,13 +1999,69 @@ here, in the in-memory file system of the job's own layer:
 `renames_onto_and_of_linked_names` and
 `an_open_linked_file_outlives_its_names` are the checks.
 
+**Why (#1408).** `mem_fs` kept a directory's entries in a `Vec` and found a
+name by reading the node of every entry in turn, so filling, walking,
+renaming in or emptying a directory of n entries took time in n². Applying
+what a machine sent back (`machines::apply`) and walking it again
+(`JobFs::entries_under`) took 12.9 s and 9.6 s for 40,000 files of 16 KiB in
+one directory, and a machine job that wrote 51,200 files into one
+directory spent about 170 s in the runner after its script ended. A
+directory's entries are now `Children` (`mem_fs/mod.rs`), a hash map from
+a hash of each entry's name (keyed at random once per process, so a job
+cannot pick names that collide) to the entries under it, each with a
+position: a number it is given when added, which only grows. Names are not
+stored twice: entries whose names share a hash share a list, and the
+lookups compare the node's name as they did. Listing sorts by position, so
+a directory lists in the order upstream's `Vec` had it (a renamed entry
+keeps its place). Lookups, creates, removes and renames go through the
+index. The position `remove_child_from_node` and `unlink_file_inode` take
+is that number rather than an index into the `Vec`, so they take the
+entry's name too, and an open file's `unlink` asks each directory's index
+for the file's name rather than reading every entry of every directory.
+Upstream lets a rename of a file onto a directory's name leave two entries
+of one name; both are kept, and a lookup takes the earlier, as the search
+did. An entry costs about 60 bytes more (`iwci-vfs`'s
+`tests/accounts_memory.rs`: 401 bytes a file before, 460 after, under
+the 520 a job is charged). Upstream `main` still searches (checked November
+2026, at 29e67da7ca). `iwci-vfs`'s
+`tests/directory_index.rs` is the check: 50,000 files in one directory
+applied, walked, half renamed and all removed took 240 s in a release build
+on the build host before and take 0.4 s after (1 s in a debug build), and
+its other tests look names up after renames, removals, unlinks through a
+handle and hard links. The crate's own `mem_fs` tests pass too (the patch
+also adds the commas four patterns in `test_metadata` lacked since the hard
+link hunks): with an empty file at
+`ci-runner/wasmer-test-files/examples/python--python@3.13.5.webc`, which
+`webc_volume_fs.rs` includes, `cargo test --lib` in `vendor/virtual-fs`
+passes everything but the seven tests that read that file.
+
+**And: files that outgrow memory spill to disk.** An isolate job's files
+were all in memory, so a large install either fit in the job's `memory:`
+or failed with a full disk. `mem_fs/spill.rs` (new) and `File` in
+`mem_fs/file.rs` let a `mem_fs` file system given a `SpillConfig`
+(`FileSystem::set_spill`, `TmpFileSystem::set_spill`) keep file contents in
+memory up to `resident_max` bytes. Past that, `FileSystemInner::spill_over`,
+called after every write and `set_len`, moves the least recently read or
+written files, whole, to regions of one file in the config's directory
+(unlinked as soon as it is made) until under three quarters of the limit.
+One file for all of them: with one each, a restored package store spilled
+tens of thousands and the runner ran out of descriptors. A file on disk is
+read and written in its region with `pread`/`pwrite`, moves to a new region
+twice the size when it outgrows its own (regions are not reused; the file
+goes with the file system), and comes back to memory when it is truncated
+to nothing; a file that cannot be moved stays where it was. Without a config nothing changes. Upstream has nothing like it:
+`OffloadedFile` maps journals, it does not evict. This hunk stays when the
+rest goes; `iwci-vfs`'s `tests/spill.rs` is the check.
+
 **Remove it** when a virtual-fs release after 0.705.0 has #7039, a
 `create_dir` that looks up under its write lock, a `set_len` that copies
 up first, an open file's `unlink` and `create_symlink` that look up
-under their write lock, and hard links in `mem_fs` whose names report one
-number and their count (and a `Deref` impl that forwards `hard_link`):
-delete `vendor/virtual-fs*` and its `[patch.crates-io]` entry. A release
-with only some of them is still worth taking with the other hunks kept.
+under their write lock, hard links in `mem_fs` whose names report one
+number and their count (and a `Deref` impl that forwards `hard_link`),
+and directories in `mem_fs` that find a name without reading every entry:
+delete `vendor/virtual-fs*` and its `[patch.crates-io]` entry, keeping
+the spill hunks (above) as a patch of their own. A release with only some
+of them is still worth taking with the other hunks kept.
 
 To regenerate after editing: `diff -u` each changed file against the crate
 from crates.io with `a/` and `b/` labels.

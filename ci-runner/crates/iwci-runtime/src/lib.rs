@@ -623,6 +623,22 @@ impl Runtime {
         self
     }
 
+    /// Offers the runner's own service listening on the Unix socket `path`
+    /// to every job with a network, as `port` of its gateway's address
+    /// (`iwci_sandbox::net::GATEWAY_V4`): the remote caches build tools are
+    /// pointed at. Native jobs and machines reach it; nothing else does.
+    pub fn with_local_service(mut self, port: u16, path: PathBuf) -> Self {
+        self.wasix.local.retain(|(p, _)| *p != port);
+        self.wasix.local.push((port, path));
+        self
+    }
+
+    /// The services [`Runtime::with_local_service`] offers, for anything
+    /// else that gives a job a gateway (a machine's link).
+    pub fn local_services(&self) -> Vec<(u16, PathBuf)> {
+        self.wasix.local.clone()
+    }
+
     /// Where jobs may connect and how names resolve, as one policy object
     /// for anything else that gives a job a network: a virtual machine's
     /// link goes through the same gateway a sandbox's does, so every kind

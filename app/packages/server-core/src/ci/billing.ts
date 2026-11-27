@@ -24,8 +24,15 @@ import type { CiUsage } from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
 import { organizations } from "../db/core-schema.js";
-import { ciAccounts, ciRuns, ciStorageSamples, subscriptions } from "../db/schema.js";
+import {
+  ciAccounts,
+  ciGitRepositories,
+  ciRuns,
+  ciStorageSamples,
+  subscriptions,
+} from "../db/schema.js";
 import { accountOwnerKey } from "./events.js";
+import { gitOwnerKey } from "./source.js";
 import { proxyJson } from "./proxy.js";
 
 const GIB = 1024 ** 3;
@@ -42,10 +49,13 @@ export function ciBillingConfigured(): boolean {
   );
 }
 
-type Customer = { kind: "bill"; id: string } | { kind: "never" } | { kind: "unknown" };
+export type Customer = { kind: "bill"; id: string } | { kind: "never" } | { kind: "unknown" };
 
-/** Who to bill: the org's Stripe customer, never (complimentary), or not yet known. */
-async function customerOf(organizationId: string): Promise<Customer> {
+/**
+ * Who to bill: the org's Stripe customer, never (complimentary), or not yet
+ * known. Shared with the forge's storage meter (`git/billing.ts`).
+ */
+export async function customerOf(organizationId: string): Promise<Customer> {
   const [org] = await db
     .select({ complimentary: organizations.complimentary })
     .from(organizations)
@@ -60,7 +70,7 @@ async function customerOf(organizationId: string): Promise<Customer> {
   return sub?.stripeCustomerId ? { kind: "bill", id: sub.stripeCustomerId } : { kind: "unknown" };
 }
 
-async function sendMeterEvent(
+export async function sendMeterEvent(
   eventName: string,
   identifier: string,
   customerId: string,
@@ -89,7 +99,7 @@ async function sendMeterEvent(
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     if (res.status === 400 && text.includes("resource_already_exists")) return;
-    throw new Error(`Stripe rejected the CI meter event ${identifier} (${res.status}).`);
+    throw new Error(`Stripe rejected the meter event ${identifier} (${res.status}).`);
   }
 }
 
@@ -162,19 +172,39 @@ function hourStart(at: Date): Date {
   return d;
 }
 
-/** Records this hour's storage (caches and downloads) for every GitHub account that runs CI. */
+/**
+ * Records this hour's storage (caches and downloads) for every owner that
+ * runs CI: each GitHub account, and each namespace of git.infrawrench.com
+ * an organization has a repository in.
+ */
 export async function sampleStorage(): Promise<number> {
   if (!meter("STORAGE")) return 0;
   const hour = hourStart(new Date());
-  const owners = await db
+  const githubOwners = await db
     .selectDistinct({
       organizationId: ciAccounts.organizationId,
       accountLogin: ciAccounts.accountLogin,
     })
     .from(ciAccounts);
+  const gitOwners = await db
+    .selectDistinct({
+      organizationId: ciGitRepositories.organizationId,
+      namespace: ciGitRepositories.namespace,
+    })
+    .from(ciGitRepositories);
+  const owners = [
+    ...githubOwners.map((o) => ({
+      organizationId: o.organizationId,
+      ownerKey: accountOwnerKey(o.accountLogin),
+    })),
+    ...gitOwners.map((o) => ({
+      organizationId: o.organizationId,
+      ownerKey: gitOwnerKey(o.namespace),
+    })),
+  ];
   let sampled = 0;
   for (const owner of owners) {
-    const ownerKey = accountOwnerKey(owner.accountLogin);
+    const { ownerKey } = owner;
     const [existing] = await db
       .select({ id: ciStorageSamples.id })
       .from(ciStorageSamples)

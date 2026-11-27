@@ -6,10 +6,12 @@
 //! read; this writes that into the job's files and the scratch, as the
 //! job's own writes, and reports the machine's run as the job's execution.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use iwci_spec::{Action, VmOs};
+use iwci_vfs::Entry;
 use iwci_vm::{Host, Os, Shell};
 
 use crate::machines::{Collected, MachineRun, Machines, apply};
@@ -52,6 +54,71 @@ impl Machines for VmMachines {
         self.host.overhead(os(vm))
     }
 
+    fn env_caches(&self, vm: VmOs) -> Vec<crate::env_cache::EnvCacheDecl> {
+        let Some((image, caches)) = self.host.caches(os(vm)) else {
+            return Vec::new();
+        };
+        caches
+            .iter()
+            .map(|c| crate::env_cache::EnvCacheDecl {
+                name: c.name.clone(),
+                path: c.path.clone(),
+                max_bytes: c.max_bytes,
+                // Kept across rebuilds of the image, which keep its
+                // libraries' ABI (the same Ubuntu release); a cache is
+                // never read by another image.
+                environment: format!("machine:{image}"),
+            })
+            .collect()
+    }
+
+    fn run_script(
+        &self,
+        run: crate::machines::ScriptRun<'_>,
+    ) -> Result<crate::machines::ScriptOutcome, String> {
+        // No `/tmp/workflow`: an empty one, copied in and out.
+        let scratch = iwci_vfs::SnapshotBuilder::new().freeze().fork();
+        let settle = || Ok(());
+        let never = || false;
+        let outcome = self.host.run(iwci_vm::Job {
+            id: run.id,
+            os: Os::Linux,
+            memory_bytes: run.memory_bytes,
+            cpus: None,
+            timeout: run.timeout,
+            network: true,
+            shell: Shell::Bash,
+            script: run.script,
+            env: run.env,
+            cwd: run.cwd,
+            workspace: Some((run.workspace_key.as_str(), run.workspace)),
+            fs: run.fs,
+            scratch: iwci_vm::Scratch {
+                live: None,
+                files: &scratch,
+                settle: &settle,
+            },
+            scratch_at: iwci_spec::SCRATCH_PATH,
+            collect: run.collect,
+            repository: None,
+            output: None,
+            cancelled: &never,
+            stall_after: self.stall_after,
+            output_cap: iwci_runtime::DEFAULT_OUTPUT_CAP,
+        })?;
+        let mut stderr = outcome.stderr;
+        for note in outcome.notes {
+            stderr.push_str(&format!("[iwci] {note}\n"));
+        }
+        Ok(crate::machines::ScriptOutcome {
+            exit_code: outcome.exited.map(|e| e.code),
+            stdout: outcome.stdout,
+            stderr,
+            boot_ms: outcome.boot_ms,
+            collected: collected(outcome.files),
+        })
+    }
+
     fn run(&self, run: MachineRun<'_>) -> Result<Execution, String> {
         let Action::Script { script } = &run.job.action else {
             return Err("a job on a virtual machine runs a `run:` script".into());
@@ -66,6 +133,8 @@ impl Machines for VmMachines {
                 sink(err, data);
             }
         };
+        let scratch = run.scratch;
+        let settle = move || scratch.settle();
         let outcome = self.host.run(iwci_vm::Job {
             id: &run.job.id,
             os: os(run.vm.os),
@@ -80,7 +149,15 @@ impl Machines for VmMachines {
             cwd: &run.cwd,
             workspace: Some((run.workspace_key.as_str(), run.workspace)),
             fs: run.fs,
-            scratch: run.scratch,
+            // Served to the machine as the job's view when it can be: it
+            // then waits for another runner's file only when the job opens
+            // it, and what the job writes is shared as it is closed. A
+            // copy otherwise, which needs everything here first.
+            scratch: iwci_vm::Scratch {
+                live: Some(run.scratch.as_dyn()),
+                files: run.scratch.fs(),
+                settle: &settle,
+            },
             scratch_at: iwci_spec::SCRATCH_PATH,
             collect: &run.collect.paths,
             repository: run.collect.repository.as_deref(),
@@ -98,9 +175,23 @@ impl Machines for VmMachines {
                 "what the machine sent back could not all be kept: {e}"
             ));
         }
-        if let Err(e) = apply(run.scratch, &collected(outcome.scratch), &["/".into()]) {
+        let scratch = collected(outcome.scratch);
+        if let Err(e) = apply(run.scratch.fs(), &scratch, &["/".into()]) {
             notes.push(format!("/tmp/workflow: {e}"));
         }
+        // The job's own writes, for the other runners of a split run.
+        run.scratch
+            .wrote(
+                scratch
+                    .deleted
+                    .iter()
+                    .map(PathBuf::as_path)
+                    .chain(scratch.entries.iter().map(|(entry, _)| match entry {
+                        Entry::Dir { path }
+                        | Entry::File { path, .. }
+                        | Entry::Symlink { path, .. } => path.as_path(),
+                    })),
+            );
         let exited = outcome.exited.unwrap_or_default();
         let mut stderr = outcome.stderr;
         for note in notes {
@@ -150,6 +241,7 @@ pub fn open(
     dir: std::path::PathBuf,
     cache: std::path::PathBuf,
     cpus: u32,
+    burst: Option<iwci_vm::Burst>,
     stall_after: Option<Duration>,
     runtime: &iwci_runtime::Runtime,
 ) -> Option<Arc<dyn Machines>> {
@@ -163,8 +255,11 @@ pub fn open(
         mkfs_erofs: std::env::var_os("IWCI_MKFS_EROFS").map(Into::into),
         cpus,
         workspace_cache_bytes: 16 << 30,
+        burst,
         #[cfg(target_os = "linux")]
         outside: runtime.outside(),
+        #[cfg(target_os = "linux")]
+        local: runtime.local_services(),
     });
     for problem in host.problems() {
         eprintln!("iwci: machines: {problem}");

@@ -34,6 +34,7 @@ export const BUILTIN_EVIDENCE_SOURCE_IDS = [
   "incidents",
   "scorecards",
   "leaked-credentials",
+  "offboarding",
 ] as const;
 export type BuiltinEvidenceSourceId = (typeof BUILTIN_EVIDENCE_SOURCE_IDS)[number];
 
@@ -170,6 +171,15 @@ export const EVIDENCE_SOURCES: Record<BuiltinEvidenceSourceId, EvidenceSourceDef
     kind: "snapshot",
     permission: "resources:read",
     surface: "Services > Scorecards",
+  },
+  offboarding: {
+    id: "offboarding",
+    label: "Offboarding",
+    description:
+      "For each person offboarded during the period: everything tied to them across connected providers and Infrawrench, what was revoked, removed or handed over, by whom and when, and what is still open.",
+    kind: "period",
+    permission: "team:remove",
+    surface: "Offboarding",
   },
   "leaked-credentials": {
     id: "leaked-credentials",

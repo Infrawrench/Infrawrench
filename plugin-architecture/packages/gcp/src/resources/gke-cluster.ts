@@ -33,6 +33,13 @@ export const GkeClusterResourceType = rt({
       required: false,
       sizing: "node-count",
     }),
+    f("maxNodeCount", "Autoscaler Max Nodes", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description:
+        "Most nodes the cluster autoscaler may run across every node pool; empty for Autopilot, node auto-provisioning or a pool without autoscaling",
+    }),
     f("serviceAccount", "Node Service Account", {
       required: false,
       description:
@@ -98,6 +105,16 @@ export const GkeClusterResourceType = rt({
   extendedSupport: GKE_EXTENDED_SUPPORT,
   supportsCreate: true,
   supportsMetrics: true,
+  // "Node Count" counts the cluster's `kubernetes.io/node/*` series (one per
+  // node); a cluster at its autoscaler maximum cannot add capacity.
+  capacityMetrics: [
+    {
+      seriesLabel: "Node Count",
+      limit: { field: "maxNodeCount" },
+      unit: "nodes",
+      label: "Nodes",
+    },
+  ],
   peerIntegrations: [
     {
       pluginId: "kubernetes",

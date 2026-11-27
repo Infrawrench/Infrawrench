@@ -19,7 +19,14 @@ impl JournalEffector {
         fd1: Fd,
         fd2: Fd,
     ) -> anyhow::Result<()> {
-        crate::syscalls::sock_pair_internal(ctx, Some(fd1), Some(fd2)).map_err(|err| {
+        crate::syscalls::sock_pair_internal(
+            ctx,
+            Some(fd1),
+            Some(fd2),
+            Fdflags::empty(),
+            Fdflagsext::empty(),
+        )
+        .map_err(|err| {
             anyhow::format_err!("journal restore error: failed to create socket pair - {err}")
         })?;
         Ok(())

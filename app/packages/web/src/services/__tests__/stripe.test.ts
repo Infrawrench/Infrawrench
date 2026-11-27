@@ -43,6 +43,38 @@ describe("stripe service", () => {
     expect(getStripePriceId()).toBe("price_1");
   });
 
+  it("finds the short username price by its lookup key, once", async () => {
+    process.env["STRIPE_SECRET_KEY"] = "sk_test_123";
+    delete process.env["STRIPE_GIT_SHORT_USERNAME_PRICE_ID"];
+    const list = vi.fn().mockResolvedValue({ data: [{ id: "price_by_lookup" }] });
+    StripeCtor.mockImplementation(function () {
+      return { prices: { list } };
+    });
+    const { getStripeGitShortUsernamePriceId } = await import("../stripe");
+    expect(await getStripeGitShortUsernamePriceId()).toBe("price_by_lookup");
+    expect(await getStripeGitShortUsernamePriceId()).toBe("price_by_lookup");
+    expect(list).toHaveBeenCalledTimes(1);
+    expect(list).toHaveBeenCalledWith({
+      lookup_keys: ["git_short_username"],
+      active: true,
+      limit: 1,
+    });
+  });
+
+  it("prefers a configured short username price id, and answers null when there is no price", async () => {
+    process.env["STRIPE_SECRET_KEY"] = "sk_test_123";
+    const list = vi.fn().mockResolvedValue({ data: [] });
+    StripeCtor.mockImplementation(function () {
+      return { prices: { list } };
+    });
+    const { getStripeGitShortUsernamePriceId } = await import("../stripe");
+    process.env["STRIPE_GIT_SHORT_USERNAME_PRICE_ID"] = "price_configured";
+    expect(await getStripeGitShortUsernamePriceId()).toBe("price_configured");
+    expect(list).not.toHaveBeenCalled();
+    delete process.env["STRIPE_GIT_SHORT_USERNAME_PRICE_ID"];
+    expect(await getStripeGitShortUsernamePriceId()).toBeNull();
+  });
+
   it("getStripeWebhookSecret throws when missing", async () => {
     delete process.env["STRIPE_WEBHOOK_SECRET"];
     const { getStripeWebhookSecret } = await import("../stripe");

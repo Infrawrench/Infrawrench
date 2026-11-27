@@ -44,10 +44,13 @@ const SETTINGS_RULES: Array<{ methods: string[]; pattern: RegExp }> = [
   {
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     pattern: new RegExp(
-      `${ORG}/(team|api-keys|agent-registrations|agent-links|ssh-keys|ssh-host-keys|session-recordings|access-requests|jit-access|credential-hygiene|bastions|change-freezes|tag-policy|tag-keys|currency|cost-centres|cost-visibility|sharing|billing-rules|virtual-tags|cost-exports|ai-attribution|custom-cost-sources|config|twilio|msteams|event-subscriptions|slack|push|digest|alert-rules|on-call|paging-providers|jira|linear|github-issues|pr-checks)(\\/|$|\\?)`,
+      `${ORG}/(team|api-keys|agent-registrations|agent-links|ssh-keys|ssh-host-keys|session-recordings|access-requests|jit-access|credential-hygiene|bastions|change-freezes|tag-policy|tag-keys|currency|cost-centres|cost-visibility|sharing|billing-rules|virtual-tags|cost-exports|ai-attribution|custom-cost-sources|config|twilio|msteams|event-subscriptions|slack|push|digest|alert-rules|on-call|paging-providers|jira|linear|github-issues|pr-checks|git)(\\/|$|\\?)`,
     ),
   },
   { methods: ["GET"], pattern: new RegExp(`${ORG}/audit-logs(\\?|$)`) },
+  // Team: "Start offboarding" on a member starts their checklist (the tab
+  // itself reaches the `offboarding` domain through the contract).
+  { methods: ["POST"], pattern: new RegExp(`${ORG}/offboardings$`) },
   // SSH Keys: which keys are lent to CI jobs, and lending one's own (also on
   // the `ci` domain's derived surface; listed so the section's calls are
   // written out here like the rest).
@@ -67,6 +70,7 @@ const SETTINGS_RULES: Array<{ methods: string[]; pattern: RegExp }> = [
   { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/changes/alert-settings$`) },
   { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/expiring/settings$`) },
   { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/extended-support/settings$`) },
+  { methods: ["GET", "PUT"], pattern: new RegExp(`${ORG}/quotas/settings$`) },
   // Saved-filter picker on the Cost Visibility page.
   { methods: ["GET"], pattern: new RegExp(`${ORG}/saved-cost-filters$`) },
   // Customer picker on the Billing Rules page (tiered and expression rules).

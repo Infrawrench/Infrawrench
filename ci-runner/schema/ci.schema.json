@@ -78,15 +78,12 @@
       ]
     },
     "split": {
-      "description": "Lets another runner take jobs of a run when the runner that has it is short of slots or memory. `true`, or `{ artifacts }` to set how large a job's artifacts may be for them to be sent to the other runner when the task cache does not hold them. Off by default: a pipeline whose jobs share `/tmp/workflow` must not turn it on, because that directory does not cross runners.",
-      "oneOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "$ref": "#/$defs/split"
-        }
-      ]
+      "deprecated": true,
+      "description": "No longer used: runs are shared between runners whenever that helps. Ignored, so pipelines that still say it keep working."
+    },
+    "install-scripts": {
+      "type": "boolean",
+      "description": "Run the install scripts the project's package manager would run (postinstall, native builds; pnpm's allowBuilds, npm's allowScripts and Bun's trustedDependencies decide which) after the runner's own install of `deps:`, in a Linux virtual machine. Nothing starts when there are none to run."
     },
     "jobs": {
       "type": "object",
@@ -966,17 +963,6 @@
           "type": "boolean",
           "default": false,
           "description": "A new run cancels the pipelines in this group of the run in progress, instead of waiting for it."
-        }
-      }
-    },
-    "split": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "artifacts": {
-          "type": "string",
-          "default": "4MiB",
-          "description": "The most one job's artifacts may be, as a size such as `8MiB` (at most 256MiB), for them to be sent to another runner when the task cache does not hold them. A job that keeps more runs its dependents on the runner that ran it. `0MiB` sends none."
         }
       }
     }

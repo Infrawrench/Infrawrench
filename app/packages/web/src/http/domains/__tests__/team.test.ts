@@ -104,6 +104,8 @@ describe("Team routes", () => {
     expect(body.userId).toBe("user-1");
     expect(body.role.systemKey).toBe("admin");
     expect(body.permissions).toEqual(["*"]);
+    // Deprecated and always true: Git is on for every organisation.
+    expect(body.gitEnabled).toBe(true);
   });
 
   it("GET /permissions returns the catalog", async () => {

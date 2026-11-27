@@ -42,7 +42,9 @@ export function chartSeries(metrics: Record<string, Chart>): MetricSeries[] {
     const chart = metrics[key];
     const rows = chart?.data?.rows ?? [];
     if (!rows.length) continue;
+    // A node with no sample at a timestamp answers `null`: no reading, not zero.
     const points = rows
+      .filter((r) => r[1] != null)
       .map((r) => ({ timestamp: Date.parse(String(r[0])), value: Number(r[1]) }))
       .filter((p) => Number.isFinite(p.timestamp) && Number.isFinite(p.value));
     if (points.length) out.push({ label, ...(unit ? { unit } : {}), points });

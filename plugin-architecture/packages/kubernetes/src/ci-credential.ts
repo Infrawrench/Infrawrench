@@ -1,7 +1,10 @@
 /**
  * Lending a cluster to a CI job: a self-contained kubeconfig with one
  * cluster, one user and one context, written to `/root/.kube/<alias>.yaml`
- * with `KUBECONFIG` pointing at it.
+ * with `KUBECONFIG` pointing at it, which kubectl, Helm and client-go read.
+ * `KUBE_CONFIG_PATH` names the same file: Terraform's `hashicorp/kubernetes`
+ * and `hashicorp/helm` providers read that for `config_path` and do not
+ * read `KUBECONFIG` (their documentation, read November 2026).
  *
  * A job has no credential plugins (`aws eks get-token`,
  * `gke-gcloud-auth-plugin`, `kubelogin`) and no local files, so what it gets
@@ -276,7 +279,7 @@ export async function lendKubeconfig(
   }
   const path = `/root/.kube/${request.alias}.yaml`;
   return {
-    env: { KUBECONFIG: [{ text: path }] },
+    env: { KUBECONFIG: [{ text: path }], KUBE_CONFIG_PATH: [{ text: path }] },
     files: [{ path, mode: "600", content: lentKubeconfig(ctx, creds, request.alias, namespace) }],
     ...(expiresAt ? { expiresAt } : {}),
     summary,

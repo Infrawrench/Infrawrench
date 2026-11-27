@@ -121,7 +121,16 @@ export const KafkaClusterResourceType = rt({
     f("bootstrapEndpoint", "Bootstrap Endpoint", { required: false, editable: false }),
     f("restEndpoint", "REST Endpoint", { required: false, editable: false }),
     f("topics", "Topics", { kind: "number", required: false, editable: false }),
-    f("partitions", "Partitions", { kind: "number", required: false, editable: false }),
+    // `io.confluent.kafka.server/partition_count` ("The number of partitions",
+    // the Metrics API descriptor) against the limit the mapper works out from
+    // the cluster type and its eCKUs or CKUs (mappers.ts `partitionLimit`).
+    f("partitions", "Partitions", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "partitionLimit" }, unit: "partitions" },
+    }),
+    f("partitionLimit", "Partition Limit", { kind: "number", required: false, editable: false }),
     f("retainedBytes", "Retained Bytes", { kind: "number", required: false, editable: false }),
     f("bytesIn7d", "Bytes In (7 days)", { kind: "number", required: false, editable: false }),
     f("bytesOut7d", "Bytes Out (7 days)", { kind: "number", required: false, editable: false }),
@@ -144,6 +153,18 @@ export const KafkaClusterResourceType = rt({
   supportsUpdate: true,
   supportsDelete: true,
   supportsMetrics: true,
+  // An elastic cluster scales up to `config.max_ecku` and is throttled past
+  // it (cmk v2, https://docs.confluent.io/cloud/current/clusters/update-cluster.html).
+  // "eCKUs" charts `io.confluent.kafka.server/elastic_cku_count`, so it reads
+  // against the stored ceiling. Dedicated clusters have neither.
+  // "CKU utilization" charts `io.confluent.kafka.server/cluster_load_percent`
+  // ("A measure of the utilization of the cluster. The value is between 0.0
+  // and 1.0", Dedicated only: Metrics API descriptor, read 2026-11-23) as a
+  // percent.
+  capacityMetrics: [
+    { seriesLabel: "eCKUs", limit: { field: "maxEcku" }, unit: "eCKUs" },
+    { seriesLabel: "CKU utilization", limit: { constant: 100 }, unit: "%", label: "Cluster load" },
+  ],
   peerIntegrations: [
     {
       // The existing Kafka plugin's topic browser, consumer groups and
@@ -228,7 +249,15 @@ export const FlinkComputePoolResourceType = rt({
       description:
         "The most Confluent Flink Units the pool may scale to. Statements are billed per CFU-minute actually used, up to this ceiling.",
     }),
-    f("currentCfu", "Current CFUs", { kind: "number", required: false, editable: false }),
+    // `status.current_cfu` is the CFUs allocated now; `spec.max_cfu` is the
+    // ceiling the pool auto-scales to (fcpm v2,
+    // https://docs.confluent.io/cloud/current/ccloud/get-fcpm-v-2-compute-pool/).
+    f("currentCfu", "Current CFUs", {
+      kind: "number",
+      required: false,
+      editable: false,
+      usage: { limit: { field: "maxCfu" }, unit: "CFUs", label: "Compute" },
+    }),
     f("cloud", "Cloud", { showcase: true, required: false, editable: false }),
     f("region", "Region", { showcase: true, required: false, editable: false }),
     f("phase", "Status", { showcase: true, required: false, editable: false }),
@@ -276,6 +305,12 @@ export const KsqlClusterResourceType = rt({
   dependsOn: [{ fieldKey: "kafkaClusterId", targetTypeId: "kafka-cluster", label: "reads from" }],
   supportsDelete: true,
   supportsMetrics: true,
+  // `io.confluent.kafka.ksql/storage_utilization` (a 0..1 fraction, charted
+  // as a percent). At 100% ksqlDB stops processing records:
+  // https://docs.confluent.io/cloud/current/ksqldb/monitoring-ksqldb.html
+  capacityMetrics: [
+    { seriesLabel: "Storage utilization", limit: { constant: 100 }, unit: "%", label: "Storage" },
+  ],
   iconKey: "stream",
 });
 
@@ -301,6 +336,19 @@ export const SchemaRegistryResourceType = rt({
   ],
   outputs: [o("registryId", "Schema Registry ID"), o("endpoint", "Endpoint")],
   supportsMetrics: true,
+  // "Schemas" charts `io.confluent.kafka.schema_registry/schema_count`. The
+  // Advanced package enforces a default cap of 20,000 schemas (every version,
+  // soft-deleted ones included); Essentials enforces none and bills past its
+  // included 100 instead, so it has no row ("Schema limits, included counts,
+  // and overrides", docs.confluent.io/cloud/current/stream-governance/packages.html,
+  // read 2026-11-23). Confluent can approve a higher effective limit.
+  capacityMetrics: [
+    {
+      seriesLabel: "Schemas",
+      limit: { plan: { field: "package", allowances: { ADVANCED: 20_000 } } },
+      unit: "schemas",
+    },
+  ],
   iconKey: "layers",
 });
 

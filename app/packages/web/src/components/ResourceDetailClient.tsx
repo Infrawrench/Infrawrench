@@ -37,9 +37,11 @@ import {
   ResourceSchedulePanel,
   ResourceLeasePanel,
   ResourceOwnershipPanel,
+  ResourceRunwayPanel,
+  type ResourceRunwayResponse,
   CloseIcon,
 } from "@infrawrench/ui";
-import { ServiceAnnotation } from "@infrawrench/ui/services";
+import { ManagedByAnnotation, ServiceAnnotation } from "@infrawrench/ui/services";
 import { ResourceHeartbeatPanel } from "@infrawrench/ui/heartbeats/ResourceHeartbeatPanel";
 import { createWebHeartbeatsClient } from "@/lib/heartbeats-client";
 import type {
@@ -101,6 +103,7 @@ import { createWebSchedulesClient } from "@/lib/schedules-client";
 import { createWebLeasesClient } from "@/lib/leases-client";
 import { createWebOwnershipClient } from "@/lib/ownership-client";
 import { fetchWebServicesForResource } from "@/lib/services-client";
+import { fetchWebManagedBy } from "@/lib/iac-client";
 import { createWebBlastRadiusClient } from "@/lib/blast-radius-client";
 import { webInstancePricingQuery } from "@/lib/instance-pricing";
 import { SftpBrowser } from "@/components/SftpBrowser";
@@ -189,6 +192,8 @@ interface Props {
   schedulable?: boolean | undefined;
   /** The type flags the field holding the schedule it runs on: offer the Heartbeat tab. */
   hasSchedule?: boolean | undefined;
+  /** The type declares a usage with a limit: the Metrics tab carries runway charts. */
+  hasCapacityRunway?: boolean | undefined;
   resourceFields?: Record<string, string | number | boolean> | undefined;
   parentResourceId?: string | undefined;
 }
@@ -239,6 +244,7 @@ export function ResourceDetailClient({
   supportsMetrics,
   schedulable,
   hasSchedule,
+  hasCapacityRunway,
   resourceFields,
   parentResourceId,
 }: Props) {
@@ -1622,6 +1628,20 @@ export function ResourceDetailClient({
                   }
                 : {})}
               metricSeries={metricSeries}
+              {...(hasCapacityRunway
+                ? {
+                    renderRunway: () => (
+                      <ResourceRunwayPanel
+                        key={resourceId}
+                        load={() =>
+                          apiGet<ResourceRunwayResponse>(
+                            `/api/org/${encodeURIComponent(orgId)}/quotas/runway/resource?resourceId=${encodeURIComponent(resourceId)}`,
+                          )
+                        }
+                      />
+                    ),
+                  }
+                : {})}
               renderChangesTab={() => (
                 <ResourceChangesPanel orgId={orgId} resourceId={resourceId} />
               )}
@@ -1668,6 +1688,10 @@ export function ResourceDetailClient({
                         mode: "pin",
                       })
                     }
+                  />
+                  <ManagedByAnnotation
+                    load={() => fetchWebManagedBy(orgId, resourceId)}
+                    onOpen={(url) => window.open(url, "_blank", "noopener,noreferrer")}
                   />
                   <ResourceOwnershipPanel
                     client={ownershipClient}

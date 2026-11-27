@@ -19,7 +19,7 @@
 //! the ordering, skipping, output and change-policy rules are tested on
 //! their own.
 //!
-//! A run may be shared with other runners (`split:`): see [`Split`] and
+//! A run may be shared with other runners: see [`Split`] and
 //! the `split` module, which holds everything about it but the few places
 //! below where a job is claimed, deferred or reported.
 //!
@@ -45,6 +45,11 @@ use serde::Serialize;
 #[path = "schedule_split.rs"]
 mod split;
 pub use split::{Claim, Done, Helping, Joined, Kept, Seen, Split, Timing};
+
+#[path = "schedule_scratch.rs"]
+mod scratch;
+use scratch::Published;
+pub use scratch::{Layer, LayerEntry, Scratch, ScratchView, object_name as scratch_object_name};
 
 #[path = "schedule_inflight.rs"]
 mod inflight;
@@ -79,6 +84,7 @@ pub trait Workspaces: Send + Sync {
     fn checkout(&self, spec: &WorkspaceSpec) -> Result<Snapshot, String> {
         self.build(&WorkspaceSpec {
             deps: Vec::new(),
+            install_scripts: false,
             ..spec.clone()
         })
         .map(|w| w.snapshot)
@@ -196,7 +202,18 @@ impl LockIndexes {
 
 impl LazyWorkspace<'_> {
     fn built(&self) -> &Result<BuiltWorkspace, String> {
-        self.built.get_or_init(|| self.workspaces.build(self.spec))
+        self.built.get_or_init(|| {
+            let started = Instant::now();
+            let built = self.workspaces.build(self.spec);
+            // Every job of the workspace waits for this, in the runner's
+            // log so a slow one is seen.
+            eprintln!(
+                "iwci: workspace {} built in {} ms",
+                self.spec.key,
+                started.elapsed().as_millis()
+            );
+            built
+        })
     }
 
     fn files(&self) -> &Result<Snapshot, String> {
@@ -241,8 +258,9 @@ fn sandbox_need<T: Tools>(tools: &T, job: &PlannedJob) -> Option<u64> {
 pub struct Invocation<'a> {
     pub job: &'a PlannedJob,
     pub fs: &'a JobFs,
-    /// The run's shared `/tmp/workflow`, the same one for every job.
-    pub scratch: &'a JobFs,
+    /// The run's shared `/tmp/workflow`, the same one for every job, as
+    /// this job sees it: in a split run, with what the other runners wrote.
+    pub scratch: &'a ScratchView,
     /// The job's own `env:` over the workspace's, over the runner's `IWCI_*`.
     pub env: Vec<(String, String)>,
     /// The workspace's command directories, to go first on `PATH`.
@@ -306,7 +324,7 @@ pub enum LogEvent {
         /// Replayed from the task cache rather than run.
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         cached: bool,
-        /// The runner that ran it, when another one did (`split:`).
+        /// The runner that ran it, when another one did.
         #[serde(skip_serializing_if = "Option::is_none")]
         remote: Option<String>,
     },
@@ -722,6 +740,14 @@ impl RunReport {
     }
 }
 
+/// Where isolate jobs' files spill to: a directory on the runner's disk,
+/// and how much of it one job may fill (`--spill-disk`).
+#[derive(Debug, Clone)]
+pub struct Spill {
+    pub dir: std::path::PathBuf,
+    pub disk_bytes: u64,
+}
+
 pub struct Options {
     /// Jobs running at once. Each is single-threaded wasm, so the host's
     /// core count is the natural ceiling.
@@ -763,7 +789,7 @@ pub struct Options {
     /// by the shape of the plan alone and reserves every job's `memory:`.
     pub durations: Option<Arc<dyn Durations>>,
     /// What this run shares with other runners, when it is split across
-    /// them; only a pipeline that says `split:` uses it.
+    /// them.
     pub split: Option<Arc<dyn Split>>,
     /// The helper jobs running on this runner, every run's together, so
     /// its own runs can have their slots and memory back.
@@ -775,6 +801,14 @@ pub struct Options {
     /// The runner's virtual machines, for `platform: linux` jobs; `None`
     /// fails such jobs, saying so.
     pub machines: Option<Arc<dyn crate::machines::Machines>>,
+    /// Where an isolate job's files go once they outgrow its memory
+    /// (`--spill-disk`); `None` keeps them all in memory, held to `memory:`.
+    pub spill: Option<Spill>,
+    /// What points a job's build tools at the runner's remote cache for
+    /// this run ([`crate::turbo`]), when it serves one: given to every job
+    /// with a network that does not name a remote cache of its own, the
+    /// token masked like a secret.
+    pub remote_cache: Option<crate::turbo::JobEnv>,
 }
 
 impl Options {
@@ -1010,6 +1044,16 @@ pub trait Caches: Send + Sync {
         entries: &[iwci_vfs::Entry],
         modes: &[(std::path::PathBuf, u32)],
     ) -> Result<(), String>;
+    /// Whether an entry is saved under exactly `key` where this run saves.
+    fn has(&self, _key: &str) -> bool {
+        false
+    }
+    /// Claims `key` for a save this job is about to make: `false` while
+    /// another job of this runner is saving it, so the same files are not
+    /// compressed and uploaded twice at once. The save releases it.
+    fn claim(&self, _key: &str) -> bool {
+        true
+    }
     /// Saves `entries` with no modes (the durations record, tests).
     fn save(
         &self,
@@ -1087,7 +1131,9 @@ fn hash_files(snapshot: &Snapshot, root: Option<&str>, globs: &[String]) -> Stri
             .map(|g| g.compile_matcher())
             .collect();
         let prefix = format!("{}/", root.trim_end_matches('/'));
-        for path in snapshot.list_files(root) {
+        // The clone's `.git` names the commit, so any glob that reached it
+        // would change the key on every commit.
+        for path in snapshot.list_files_skipping(root, |name| name == ".git") {
             let text = path.display().to_string();
             let Some(rel) = text.strip_prefix(&prefix) else {
                 continue;
@@ -1446,6 +1492,27 @@ impl MemoryBudget {
         self.wake_all();
     }
 
+    /// Lowers a lease to `bytes` once its job has ended but still holds
+    /// that much (its cache saves, [`crate::saves`]), giving the rest back
+    /// and waking every run waiting. [`MemoryBudget::release`] gives back
+    /// what is left.
+    fn shrink(&self, lease: &Lease, bytes: u64) {
+        {
+            let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
+            let Some(running) = leases.running.iter_mut().find(|r| r.id == lease.id) else {
+                return;
+            };
+            let reserved = lease.bytes.load(Ordering::SeqCst);
+            if bytes >= reserved {
+                return;
+            }
+            lease.bytes.store(bytes, Ordering::SeqCst);
+            running.bytes = bytes;
+            self.take_back(reserved - bytes);
+        }
+        self.wake_all();
+    }
+
     /// Gives `bytes` back and wakes every run waiting for memory.
     pub fn give(&self, bytes: u64) {
         self.take_back(bytes);
@@ -1688,6 +1755,16 @@ struct JobBudget {
     /// Told what the job's files come to, when its reservation follows
     /// what it holds.
     gauge: Option<Arc<Gauge>>,
+    /// The most of the job's files kept in memory, when the rest spill to
+    /// disk ([`Spill`]): what of `used` counts as memory.
+    resident_cap: Option<u64>,
+}
+
+impl JobBudget {
+    /// What of `bytes` of files is in memory.
+    fn in_memory(&self, bytes: u64) -> u64 {
+        self.resident_cap.map_or(bytes, |cap| bytes.min(cap))
+    }
 }
 
 impl WriteBudget for JobBudget {
@@ -1700,7 +1777,7 @@ impl WriteBudget for JobBudget {
         if let Ok(before) = taken {
             self.peak.fetch_max(before + bytes, Ordering::SeqCst);
             if let Some(gauge) = &self.gauge {
-                gauge.files(before + bytes);
+                gauge.files(self.in_memory(before + bytes));
             }
         }
         let ok = taken.is_ok();
@@ -1728,7 +1805,7 @@ struct Finished {
     /// What the key's `artifacts:` kept, every matrix entry's together.
     artifacts: Arc<Vec<Entry>>,
     /// Some of what it, or a job it needed, kept is not on this runner
-    /// (`split:`), so nothing that needs it can run here.
+    /// (a split run), so nothing that needs it can run here.
     elsewhere: bool,
     /// It, or a job it needed, read a secret or was lent something: what
     /// it left (artifacts, outputs) may carry that, so a job handed it
@@ -1930,6 +2007,31 @@ struct State<'p> {
     /// Task-cached jobs that missed while another run computes the same
     /// key, waiting for its entry; counted in `running`.
     awaiting: Vec<inflight::Awaiting<'p>>,
+    /// Finished jobs' cache saves, for the savers to make.
+    saves: Vec<QueuedSaves>,
+    /// Jobs whose saves are queued or being made, or about to be queued:
+    /// the run does not end while there are any.
+    saves_outstanding: usize,
+}
+
+/// A finished job's cache saves ([`crate::saves`]), with the memory they
+/// hold of its reservation.
+struct QueuedSaves {
+    key: String,
+    job_id: String,
+    saves: Vec<crate::saves::Save>,
+    lease: Option<Arc<Lease>>,
+}
+
+/// Threads making finished jobs' cache saves, per run.
+const SAVERS: usize = 4;
+
+/// Hands a finished job's saves to the savers.
+fn queue_saves(state: &Mutex<State<'_>>, wake: &Wake, queued: Option<QueuedSaves>) {
+    if let Some(queued) = queued {
+        state.lock().unwrap().saves.push(queued);
+        wake.notify_all();
+    }
 }
 
 /// A job on its way to a task cache lookup.
@@ -2187,6 +2289,8 @@ pub fn run<T: Tools>(
         arrived: Vec::new(),
         secretive: HashSet::new(),
         awaiting: Vec::new(),
+        saves: Vec::new(),
+        saves_outstanding: 0,
     });
     let wake = Arc::new(Wake::default());
     if let Some(budget) = &options.memory {
@@ -2204,18 +2308,28 @@ pub fn run<T: Tools>(
     activate(&mut state.lock().unwrap(), plan, options);
     // One scratch directory for the whole run, held to `scratch:` as a
     // job's files are held to its `memory:`.
-    let scratch = iwci_vfs::SnapshotBuilder::new()
-        .freeze()
-        .fork_limited(Arc::new(JobBudget {
-            cap: plan.scratch_bytes,
-            used: AtomicU64::new(0),
-            peak: AtomicU64::new(0),
-            refused: AtomicBool::new(false),
-            gauge: None,
-        }));
+    // In a split run every runner keeps its own and sends the others what
+    // its jobs write (`schedule_scratch.rs`).
+    let scratch = Scratch::new(
+        iwci_vfs::SnapshotBuilder::new()
+            .freeze()
+            .fork_limited(Arc::new(JobBudget {
+                cap: plan.scratch_bytes,
+                used: AtomicU64::new(0),
+                peak: AtomicU64::new(0),
+                refused: AtomicBool::new(false),
+                gauge: None,
+                resident_cap: None,
+            })),
+        sharing.is_some(),
+    );
     let lent_values = options.access.lent.secret_values();
     let mask = Arc::new(Masker::new(
-        options.secrets.values().chain(lent_values.iter()),
+        options
+            .secrets
+            .values()
+            .chain(lent_values.iter())
+            .chain(options.remote_cache.iter().map(|r| &r.token)),
     ));
     let artifact_bytes = AtomicU64::new(0);
     let measured = Mutex::new(History::default());
@@ -2346,11 +2460,15 @@ pub fn run<T: Tools>(
             scope.spawn(|| inflight::watch(inflight, &state, &wake, plan, options));
         }
         // A split run: one thread follows what the other runners write,
-        // and a few read in the jobs they finished.
+        // a few read in the jobs they finished, and a few the files they
+        // wrote to `/tmp/workflow`. The first stops the last when it ends.
         if let Some(sharing) = sharing {
-            scope.spawn(|| split::watch(sharing, &state, &wake, plan, options));
+            scope.spawn(|| split::watch(sharing, &state, &wake, plan, options, &shared));
             for _ in 0..split::FETCHERS {
                 scope.spawn(|| split::fetch(sharing, &state, &wake, plan, options, &shared));
+            }
+            for _ in 0..scratch::SCRATCH_FETCHERS {
+                scope.spawn(|| scratch.fetch(sharing.split, plan.scratch_bytes));
             }
         }
         // Cloud jobs: each waits for its executor on a thread of its own,
@@ -2386,6 +2504,57 @@ pub fn run<T: Tools>(
                         run_external(&job, plan, options, &shared, inherited, &mut kept)
                     };
                     complete(&state, &wake, plan, options, template, report, kept);
+                }
+            });
+        }
+        // Jobs' cache saves, made after the jobs are reported: the run
+        // ends once they have ([`crate::saves`]). A helper makes its own
+        // before its job ends.
+        for _ in 0..if options.caches.is_some() && !helper {
+            SAVERS
+        } else {
+            0
+        } {
+            scope.spawn(|| {
+                loop {
+                    let queued = {
+                        let mut s = state.lock().unwrap();
+                        loop {
+                            let seen = wake.seen();
+                            if let Some(queued) = s.saves.pop() {
+                                break queued;
+                            }
+                            if s.done && s.saves_outstanding == 0 {
+                                return;
+                            }
+                            s = wake.wait(s, &state, seen);
+                        }
+                    };
+                    let store = options.caches.as_ref().expect("savers need a cache store");
+                    for save in queued.saves {
+                        let pending = save.pending.clone();
+                        // A save that panics is a line, as a failed one is,
+                        // not a run that never ends.
+                        let line = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            save.run(store.as_ref())
+                        }))
+                        .unwrap_or_else(|_| {
+                            let subject = pending.split(": saving").next().unwrap_or_default();
+                            format!("{subject}: could not save (the save panicked)")
+                        });
+                        amend_cache_line(&state, &queued.key, &queued.job_id, &pending, line);
+                    }
+                    if let (Some(lease), Some(budget)) = (&queued.lease, &options.memory) {
+                        budget.release(lease);
+                    }
+                    eprintln!(
+                        "iwci: pipeline {}: job {}'s caches saved at {} ms",
+                        plan.name,
+                        queued.job_id,
+                        millis(started.elapsed())
+                    );
+                    state.lock().unwrap().saves_outstanding -= 1;
+                    wake.notify_all();
                 }
             });
         }
@@ -2640,10 +2809,31 @@ pub fn run<T: Tools>(
                         sharing.running.fetch_add(1, Ordering::SeqCst);
                     }
                     lookup.lease = reserved.clone();
+                    // `/tmp/workflow` as the job sees it. What a job whose
+                    // files may carry a secret writes there never leaves
+                    // this runner; a wait for another runner's file ends
+                    // with the job.
+                    let view = shared.scratch.view(
+                        handed || !split::secret_free(&job),
+                        cancel.clone(),
+                        Some(
+                            Instant::now()
+                                + job.timeout.saturating_mul(2)
+                                + Duration::from_secs(60),
+                        ),
+                    );
+                    let began = millis(started.elapsed());
+                    // A helper saves before its job ends ([`crate::saves`]).
+                    let mut saves = if helper {
+                        crate::saves::Saves::now()
+                    } else {
+                        crate::saves::Saves::deferred()
+                    };
                     let mut report = run_job(
                         &job, plan, &workspace, tools, executor, committer, options, &shared,
-                        &inherited, lookup, cancel, &mut kept, &mut saved,
+                        &inherited, lookup, cancel, &mut kept, &mut saved, &view, &mut saves,
                     );
+                    let ran = millis(started.elapsed());
                     report.queued_ms = queued_ms;
                     report.cpus = job.cpus;
                     if let Some(sharing) = sharing {
@@ -2651,19 +2841,52 @@ pub fn run<T: Tools>(
                     }
                     drop(helped);
                     drop(slot);
+                    // Its cache saves are made after it is reported, on a
+                    // thread of the run's own: until they end, it holds
+                    // what they hold of its memory, and the run does not
+                    // end (the scope waits for them).
+                    let queued_saves = saves.take();
                     if let (Some(lease), Some(budget)) = (&reserved, &options.memory) {
-                        budget.release(lease);
+                        if queued_saves.is_empty() {
+                            budget.release(lease);
+                        } else {
+                            budget.shrink(lease, crate::saves::held_bytes(&queued_saves));
+                        }
                     }
+                    let mut after = (!queued_saves.is_empty()).then(|| {
+                        // Counted before the job completes, so the run
+                        // cannot end between that and the saves' queueing.
+                        state.lock().unwrap().saves_outstanding += 1;
+                        QueuedSaves {
+                            key: template.key.clone(),
+                            job_id: job.id.clone(),
+                            saves: queued_saves,
+                            lease: reserved.clone(),
+                        }
+                    });
                     // After its entry was saved, if it was: a run waiting
                     // for it reads the entry as soon as the marker goes.
                     let ended = inflight::ended(&report, saved.as_deref());
                     if let Some(sharing) = sharing {
-                        if sharing.hands_back(&report) {
+                        // What it wrote to `/tmp/workflow`, for the jobs that
+                        // need it on other runners.
+                        let scratch = publish_scratch(sharing, &shared);
+                        // A helper gives back a job whose files it could not
+                        // send, one that wanted a file only the primary has,
+                        // and any once it has dropped files unsent: the
+                        // primary runs it with everything there.
+                        let scratch_back = sharing.helper
+                            && (scratch.is_err()
+                                || view.withheld().is_some()
+                                || view.kept_back()
+                                || shared.scratch.spoiled());
+                        if sharing.hands_back(&report) || scratch_back {
                             if let Some(marker) = marker {
                                 marker.end(Ended::Stopped);
                             }
                             // Stopped, or not run at all: the primary
                             // takes it, and this run waits for its word.
+                            queue_saves(&state, &wake, after.take());
                             sharing.hand_back(&job.id);
                             let mut s = state.lock().unwrap();
                             s.remote.insert(
@@ -2679,9 +2902,26 @@ pub fn run<T: Tools>(
                             );
                             continue;
                         }
-                        sharing.publish(&job, &mut report, &kept, saved.as_deref(), handed, &mask);
+                        sharing.publish(
+                            &job,
+                            &mut report,
+                            &kept,
+                            saved.as_deref(),
+                            handed,
+                            &mask,
+                            scratch,
+                        );
                     }
+                    // Where a pipeline's time goes around its jobs, in the
+                    // runner's log: from the pipeline's start.
+                    eprintln!(
+                        "iwci: pipeline {}: job {} queued {queued_ms} ms, ran from {began} to {ran} ms, reported at {} ms",
+                        plan.name,
+                        report.id,
+                        millis(started.elapsed())
+                    );
                     complete(&state, &wake, plan, options, template, report, kept);
+                    queue_saves(&state, &wake, after.take());
                     // After its entry was saved, if it was, and after the
                     // jobs that need it here are on their way: a run
                     // waiting for it reads the entry once the marker goes,
@@ -2694,6 +2934,7 @@ pub fn run<T: Tools>(
         }
     });
 
+    let jobs_done = millis(started.elapsed());
     let mut state = state.into_inner().unwrap();
     let mut warnings: Vec<String> = Vec::new();
     let mut installs: Vec<String> = Vec::new();
@@ -2712,6 +2953,11 @@ pub fn run<T: Tools>(
             durations.save_history(&plan.name, &kept);
         }
     }
+    eprintln!(
+        "iwci: pipeline {}: every job done at {jobs_done} ms, finished at {} ms",
+        plan.name,
+        millis(started.elapsed())
+    );
     RunReport {
         pipeline: plan.name.clone(),
         jobs,
@@ -2801,6 +3047,33 @@ fn complete<'p>(
     }
     drop(s);
     wake.notify_all();
+}
+
+/// Replaces job `job_id`'s `caches` line `pending` with `line`, once the
+/// save it stood for is made ([`crate::saves`]): in the key's reports
+/// still open (a matrix not all finished) or finished.
+fn amend_cache_line(
+    state: &Mutex<State<'_>>,
+    key: &str,
+    job_id: &str,
+    pending: &str,
+    line: String,
+) {
+    let mut s = state.lock().unwrap();
+    let s = &mut *s;
+    let reports = s
+        .open
+        .get_mut(key)
+        .map(|open| &mut open.reports)
+        .into_iter()
+        .chain(s.reports.get_mut(key))
+        .flat_map(|reports| reports.iter_mut());
+    for report in reports.filter(|r| r.id == job_id) {
+        if let Some(at) = report.caches.iter().position(|l| l == pending) {
+            report.caches[at] = line;
+            return;
+        }
+    }
 }
 
 /// Moves every waiting key whose needs have all finished to the queue, or
@@ -2947,10 +3220,13 @@ fn activate<'p>(s: &mut State<'p>, plan: &'p Plan, options: &Options) {
                         ..rank
                     };
                     // A job in a sandbox stays on the runner that has the
-                    // run: a helper may not offer one.
+                    // run: a helper may not offer one. Nor one whose
+                    // workspace runs install scripts, which takes a virtual
+                    // machine the helper may not have.
                     if let Some(sharing) = sharing.as_ref().filter(|_| helper)
                         && (!split::runs_here(sharing, template, &job, &s.finished, options)
-                            || (s.sandbox)(&job).is_some())
+                            || (s.sandbox)(&job).is_some()
+                            || plan.workspaces[job.workspace].install_scripts)
                     {
                         // Only the primary runs it; this run waits to hear
                         // how it went.
@@ -3066,9 +3342,36 @@ fn key_report(template: &JobTemplate, status: Status, blocks: bool) -> JobReport
     }
 }
 
+/// Sends what a job that just ended wrote to `/tmp/workflow`, a few times
+/// if the store does not take it: this runner's layers that hold it, or
+/// why it could not be sent. A helper that may send no more drops what
+/// it has not sent.
+fn publish_scratch(sharing: &split::Sharing<'_>, shared: &RunShared<'_>) -> Result<u64, String> {
+    let mut last = String::new();
+    for wait in [0u64, 50, 200] {
+        std::thread::sleep(Duration::from_millis(wait));
+        match shared
+            .scratch
+            .publish(sharing.split, shared.mask, sharing.scratch_cap)
+        {
+            Published::Nothing | Published::Layer(_) => return Ok(shared.scratch.layers()),
+            Published::TooMuch => {
+                shared.scratch.forget_unsent();
+                sharing.unfit.store(true, Ordering::SeqCst);
+                return Err(format!(
+                    "more than the {} KiB this runner may send",
+                    sharing.scratch_cap.div_ceil(1024)
+                ));
+            }
+            Published::Failed(e) => last = e,
+        }
+    }
+    Err(last)
+}
+
 /// What every job of one run shares.
 struct RunShared<'a> {
-    scratch: &'a JobFs,
+    scratch: &'a Scratch,
     mask: &'a Arc<Masker>,
     /// Bytes of artifacts kept so far, held to the run's `scratch:` limit:
     /// both live in memory for the whole run.
@@ -3190,6 +3493,8 @@ fn run_job<T: Tools>(
     cancel: Option<iwci_runtime::Cancel>,
     kept: &mut Vec<Entry>,
     saved_key: &mut Option<String>,
+    scratch: &ScratchView,
+    saves: &mut crate::saves::Saves,
 ) -> JobReport {
     let started = Instant::now();
     // The task cache was looked up before the job was queued (`look_up`);
@@ -3276,15 +3581,31 @@ fn run_job<T: Tools>(
 
     // The job's files live in memory, so its writes are held to its
     // `memory:` too (and to the runner's budget), or a job could write its
-    // way past any limit.
+    // way past any limit. With a spill directory (`--spill-disk`), only half
+    // its `memory:` of them stays in memory, the least recently used
+    // beyond that move to the runner's disk, and what it writes is held to
+    // the disk allowance instead.
+    let resident_cap = options.spill.as_ref().map(|_| job.memory_bytes / 2);
     let write_budget = Arc::new(JobBudget {
-        cap: job.memory_bytes,
+        cap: options.spill.as_ref().map_or(job.memory_bytes, |spill| {
+            spill.disk_bytes.max(job.memory_bytes)
+        }),
         used: AtomicU64::new(0),
         peak: AtomicU64::new(0),
         refused: AtomicBool::new(false),
         gauge: gauge.clone(),
+        resident_cap,
     });
-    let fs = workspace.snapshot.fork_limited(write_budget.clone());
+    let fs = match (&options.spill, resident_cap) {
+        (Some(spill), Some(resident_max)) => workspace.snapshot.fork_spilling(
+            write_budget.clone(),
+            iwci_vfs::SpillConfig {
+                dir: spill.dir.clone(),
+                resident_max,
+            },
+        ),
+        _ => workspace.snapshot.fork_limited(write_budget.clone()),
+    };
     if let Err(e) = fs.create_for_job(OUTPUT_PATH) {
         return errored(
             job,
@@ -3385,6 +3706,7 @@ fn run_job<T: Tools>(
             Err(e) => return errored(job, format!("cache restore-keys: {e}"), started.elapsed()),
         };
         let mut exact = false;
+        let restoring = Instant::now();
         match options
             .caches
             .as_ref()
@@ -3394,11 +3716,13 @@ fn run_job<T: Tools>(
             Some(Ok(Some(restored))) => match fs.apply(&restored.entries) {
                 Ok(()) => {
                     fs.apply_modes(&restored.modes);
+                    fs.set_restored_times(&restored.entries);
                     exact = restored.exact;
+                    let took = seconds(restoring.elapsed());
                     cache_lines.push(if restored.exact {
-                        format!("cache `{key}`: restored")
+                        format!("cache `{key}`: restored in {took}")
                     } else {
-                        format!("cache `{key}`: restored `{}`", restored.key)
+                        format!("cache `{key}`: restored `{}` in {took}", restored.key)
                     });
                 }
                 Err(e) => cache_lines.push(format!(
@@ -3410,14 +3734,40 @@ fn run_job<T: Tools>(
                 "cache `{key}`: could not read the cache ({e}); starting cold"
             )),
         }
-        cache_keys.push((key, restore_keys, exact, cache.paths.clone()));
+        // An entry under the exact key that did not restore (a runner of
+        // another archive format wrote it) is one this job's save replaces;
+        // otherwise an entry there at save time is a sibling's (below).
+        let unreadable = !exact && options.caches.as_ref().is_some_and(|c| c.has(&key));
+        cache_keys.push((key, restore_keys, exact, unreadable, cache.paths.clone()));
     }
-    // The environment's own caches, which `env-cache:` can turn off.
-    let env_caches: Vec<crate::env_cache::Active> = match (&options.caches, &tool) {
-        (Some(store), Some(tool)) => tools
-            .env_caches(tool)
+    // The environment's own caches, which `env-cache:` can turn off: an
+    // isolate's environment's, or a machine image's.
+    let env_decls = match (&job.vm, &options.machines, &tool) {
+        (Some(vm), Some(machines), _) => machines.env_caches(vm.os),
+        (None, _, Some(tool)) => tools.env_caches(tool),
+        _ => Vec::new(),
+    };
+    // One whose directory a `cache:` entry of the job's covers, or lies
+    // under, is left to that entry: the job keys it itself.
+    let env_decls: Vec<_> = env_decls
+        .into_iter()
+        .filter(|c| job.env_cache.keeps(&c.name))
+        .filter(
+            |c| match crate::env_cache::cached_by_job(&c.path, &job.caches) {
+                Some(path) if options.caches.is_some() => {
+                    cache_lines.push(format!(
+                        "env cache `{}`: left to the job's cache of `{path}`",
+                        c.name
+                    ));
+                    false
+                }
+                _ => true,
+            },
+        )
+        .collect();
+    let env_caches: Vec<crate::env_cache::Active> = match &options.caches {
+        Some(store) => env_decls
             .into_iter()
-            .filter(|c| job.env_cache.keeps(&c.name))
             .map(|c| {
                 crate::env_cache::restore(
                     store.as_ref(),
@@ -3466,6 +3816,12 @@ fn run_job<T: Tools>(
         secret_vars.push((entry.key.clone(), value));
     }
     merge_env(&mut env, &secret_vars);
+    // The runner's remote cache, which only a job with a network reaches.
+    if let Some(cache) = &options.remote_cache
+        && job.network
+    {
+        cache.add_to(&mut env);
+    }
 
     // A service gets the runner's variables and its own, never the job's:
     // its secrets are its own `env:`'s, masked like the job's.
@@ -3517,6 +3873,16 @@ fn run_job<T: Tools>(
         let sink: OutputSink = Arc::new(move |stderr: bool, data: &[u8]| sink.push(stderr, data));
         sink
     });
+    // The paths of the caches this job may save, the only ones a machine
+    // sends back: one that restored its exact key is not saved again.
+    let saved_cache_paths: Vec<String> = match &options.caches {
+        Some(_) => cache_keys
+            .iter()
+            .filter(|(_, _, exact, _, _)| !*exact)
+            .flat_map(|(_, _, _, _, paths)| paths.iter().cloned())
+            .collect(),
+        None => Vec::new(),
+    };
     let executed = match (&job.vm, &tool, &options.machines) {
         (Some(vm), _, Some(machines)) => machines.run(crate::machines::MachineRun {
             job,
@@ -3528,14 +3894,15 @@ fn run_job<T: Tools>(
                 plan.workspaces[job.workspace].key
             ),
             fs: &fs,
-            scratch: shared.scratch,
+            scratch,
             env,
             cwd: job.cwd.clone(),
             collect: crate::machines::collect_paths(
                 job,
                 root.as_deref(),
                 OUTPUT_PATH,
-                options.caches.is_some(),
+                &saved_cache_paths,
+                &env_caches.iter().map(|c| c.path()).collect::<Vec<_>>(),
             ),
             log,
             cancel,
@@ -3548,7 +3915,7 @@ fn run_job<T: Tools>(
             Invocation {
                 job,
                 fs: &fs,
-                scratch: shared.scratch,
+                scratch,
                 env,
                 path: &workspace.path,
                 log,
@@ -3604,9 +3971,17 @@ fn run_job<T: Tools>(
                 matches!(c, Change::Added { .. })
                     && c.path().to_str().is_some_and(|p| rules.ignored(p, false))
             };
+            // The clone's `.git` is the runner's, not the repository's: a
+            // `git status` that refreshes its index changed nothing.
+            let git_dir = std::path::Path::new(root).join(".git");
             fs.changes(root)
                 .into_iter()
-                .filter(|c| !under_cache(c.path()) && !restored.contains(c.path()) && !ignored(c))
+                .filter(|c| {
+                    !under_cache(c.path())
+                        && !restored.contains(c.path())
+                        && !ignored(c)
+                        && !c.path().starts_with(&git_dir)
+                })
                 .collect()
         }
         _ => Vec::new(),
@@ -3669,11 +4044,18 @@ fn run_job<T: Tools>(
         Status::Failed { reason: memory }
     } else if execution.exit_code != 0 && write_budget.refused.load(Ordering::SeqCst) {
         Status::Failed {
-            reason: format!(
-                "exited with {} after a write was refused: the files it wrote used up its {} MiB memory limit",
-                execution.exit_code,
-                job.memory_bytes >> 20
-            ),
+            reason: match &options.spill {
+                Some(_) => format!(
+                    "exited with {} after a write was refused: the files it wrote used up its {} MiB of disk",
+                    execution.exit_code,
+                    write_budget.cap >> 20
+                ),
+                None => format!(
+                    "exited with {} after a write was refused: the files it wrote used up its {} MiB memory limit",
+                    execution.exit_code,
+                    job.memory_bytes >> 20
+                ),
+            },
         }
     } else if execution.exit_code != 0 {
         Status::Failed {
@@ -3772,13 +4154,20 @@ fn run_job<T: Tools>(
         }
     }
 
-    // Save caches only after a pass, and only when the job did not start
-    // from an exact hit (that entry is already what it would save).
+    // Save job caches only after a pass, and only when the job did not
+    // start from an exact hit (that entry is already what it would save).
     if status == Status::Passed
         && let Some(store) = &options.caches
     {
-        for (key, restore_keys, exact, paths) in &cache_keys {
+        for (key, restore_keys, exact, unreadable, paths) in &cache_keys {
             if *exact {
+                continue;
+            }
+            // A key is saved once: when another job of the run (a matrix
+            // sharing a package store) saved it while this one ran, saving
+            // it again would compress and upload the same files for nothing.
+            if !*unreadable && store.has(key) {
+                cache_lines.push(format!("cache `{key}`: already saved"));
                 continue;
             }
             // Never a lent credential, whatever path the cache names.
@@ -3801,22 +4190,59 @@ fn run_job<T: Tools>(
                     _ => 0,
                 })
                 .sum();
-            match store.save_with_modes(key, restore_keys, &entries, &fs.modes_of(&entries)) {
-                Ok(()) => {
-                    cache_lines.push(format!("cache `{key}`: saved {} KiB", bytes.div_ceil(1024)))
-                }
-                Err(e) => cache_lines.push(format!("cache `{key}`: could not save ({e})")),
+            if !store.claim(key) {
+                cache_lines.push(format!("cache `{key}`: being saved by another job"));
+                continue;
             }
+            let kib = bytes.div_ceil(1024);
+            let shown = key.clone();
+            let modes = fs.modes_of(&entries);
+            saves.save(
+                store.as_ref(),
+                crate::saves::Save {
+                    key: key.clone(),
+                    restore_keys: restore_keys.clone(),
+                    entries,
+                    modes,
+                    pending: format!("cache `{key}`: saving {kib} KiB after the job"),
+                    line: Box::new(move |saved| match saved {
+                        Ok(took) => {
+                            format!("cache `{shown}`: saved {kib} KiB in {}", seconds(took))
+                        }
+                        Err(e) => format!("cache `{shown}`: could not save ({e})"),
+                    }),
+                },
+                &mut cache_lines,
+            );
         }
+    }
+
+    // Environment caches hold toolchains and packages keyed by version,
+    // not test results: a job whose tests failed still filled them, and
+    // saving them is what makes its next run warm. Only a script that ended
+    // on its own counts: one stopped mid-write (timed out, stalled, out of
+    // memory, a write refused, cancelled) may leave half an install behind,
+    // which the next run would take for a whole one.
+    let ended_on_its_own = !execution.cancelled
+        && execution.service_failure.is_none()
+        && !execution.timed_out
+        && execution.stalled_after.is_none()
+        && !execution.out_of_memory
+        && !write_budget.refused.load(Ordering::SeqCst);
+    if matches!(status, Status::Passed | Status::Failed { .. })
+        && ended_on_its_own
+        && let Some(store) = &options.caches
+    {
         for active in &env_caches {
-            crate::env_cache::save(store.as_ref(), active, &fs, &mut cache_lines);
+            crate::env_cache::save(store.as_ref(), active, &fs, &mut cache_lines, saves);
         }
     }
 
     // How long it took, for the next run's order and for the task cache's
     // record, which a hit then counts as: the same number in both.
     let ran_ms = millis(started.elapsed());
-    let files_peak = write_budget.peak.load(Ordering::SeqCst);
+    // Only what of its files was in memory counts toward what it held.
+    let files_peak = write_budget.in_memory(write_budget.peak.load(Ordering::SeqCst));
     let peak_memory_mib = execution
         .peak_memory_bytes
         .saturating_add(files_peak)
@@ -4822,6 +5248,11 @@ fn stalled_reason(secs: u64, timeout: u64) -> String {
 }
 
 /// Later entries replace earlier ones with the same key, keeping order.
+/// A duration as a job's report gives one: `0.4 s`, `12.3 s`.
+fn seconds(d: Duration) -> String {
+    format!("{:.1} s", d.as_secs_f64())
+}
+
 fn merge_env(into: &mut Vec<(String, String)>, from: &[(String, String)]) {
     for (k, v) in from {
         into.retain(|(existing, _)| existing != k);

@@ -47,6 +47,7 @@ import { getClientForResource } from "../peer-clients.js";
 import { loadPlugins } from "../plugin-loader.js";
 import { ciPeerClient, credentialInfoOf, executorInfoOf, peerOptionsOf } from "./peers.js";
 import { CiInputError } from "./runs.js";
+import { isGitGrantRepoName } from "./source.js";
 
 const SECRET_VALUE_OUTPUT = CI_SECRET_VALUE_OUTPUT;
 
@@ -59,13 +60,18 @@ async function pluginsById(): Promise<Map<string, HostPlugin>> {
   return new Map(loaded.map((l) => [l.plugin.manifest.id, l.plugin]));
 }
 
-/** A repository list as sent: null for every repository, else `owner/name`s. */
+/**
+ * A repository list as sent: null for every repository, else `owner/name`s
+ * (GitHub) and `git.infrawrench.com/namespace/name`s (`grantRepoName`).
+ */
 export function cleanRepos(repos: readonly string[] | null | undefined): string[] | null {
   if (repos === null || repos === undefined) return null;
   const out = [...new Set(repos.map((r) => r.trim()).filter((r) => r.length > 0))];
   if (out.length > MAX_REPOS) throw new CiInputError(`At most ${MAX_REPOS} repositories.`, 400);
   for (const r of out) {
-    if (!REPO.test(r)) throw new CiInputError(`Not a repository (owner/name): ${r}`, 400);
+    if (!REPO.test(r) && !isGitGrantRepoName(r)) {
+      throw new CiInputError(`Not a repository (owner/name): ${r}`, 400);
+    }
   }
   return out;
 }

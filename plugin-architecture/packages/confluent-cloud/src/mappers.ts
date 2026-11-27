@@ -134,6 +134,29 @@ export interface ClusterUsage {
   bytesOut7d?: number;
 }
 
+/**
+ * Partitions (pre-replication) per eCKU or CKU, and the cap per cluster, from
+ * the cluster limits tables of "Kafka Cluster Types in Confluent Cloud"
+ * (docs.confluent.io/cloud/current/clusters/cluster-types.html, read
+ * 2026-11-23). Partitions are one of the "dimensions with fixed limits that
+ * you cannot exceed". An elastic cluster's limit follows the eCKU it may scale
+ * to (`config.max_ecku`), a Dedicated cluster's its CKUs.
+ */
+const PARTITION_LIMITS: Readonly<Record<string, { perUnit: number; cap: number }>> = {
+  Basic: { perUnit: 30, cap: 1_500 },
+  Standard: { perUnit: 250, cap: 2_500 },
+  Enterprise: { perUnit: 3_000, cap: 96_000 },
+  Dedicated: { perUnit: 4_500, cap: 100_000 },
+  Freight: { perUnit: 3_000, cap: 50_000 },
+};
+
+/** The cluster's partition limit, or undefined when its type or size is not known. */
+export function partitionLimit(kind: string, units: number | undefined): number | undefined {
+  const row = PARTITION_LIMITS[kind];
+  if (!row || units === undefined || !Number.isFinite(units) || units <= 0) return undefined;
+  return Math.min(row.perUnit * units, row.cap);
+}
+
 export function mapKafkaCluster(
   accountId: string,
   c: CcKafkaCluster,
@@ -147,9 +170,11 @@ export function mapKafkaCluster(
   const kind = config?.kind ?? "";
   const fields: Fields = {};
   put(fields, "name", spec.display_name ?? id);
-  if (config?.kind === "Dedicated") put(fields, "cku", c.status?.cku ?? config.cku);
-  else put(fields, "maxEcku", config?.max_ecku);
+  const units = config?.kind === "Dedicated" ? (c.status?.cku ?? config.cku) : config?.max_ecku;
+  if (config?.kind === "Dedicated") put(fields, "cku", units);
+  else put(fields, "maxEcku", units);
   put(fields, "clusterType", kind);
+  put(fields, "partitionLimit", partitionLimit(kind, units));
   put(fields, "availability", spec.availability);
   put(fields, "cloud", spec.cloud);
   put(fields, "region", spec.region);

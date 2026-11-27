@@ -1,0 +1,2 @@
+ALTER TABLE "git_review_findings" ADD COLUMN "needs_code" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "git_trace_entries" ADD COLUMN "needs_code" boolean DEFAULT false NOT NULL;

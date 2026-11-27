@@ -215,14 +215,58 @@ impl Overlay {
     }
 }
 
-/// The overlay's lower layers.
-struct Lowers<'a>(&'a [PathBuf]);
+/// The overlay's lower layers, and the paths found in none of them.
+///
+/// The top lower layer is the job's files over virtio-fs, where every
+/// lookup is a round trip to the runner. A collect looks up each path the
+/// job wrote, and a cold install writes tens of thousands below a
+/// directory no lower layer has (a package store), so a path under one
+/// already found absent is absent without asking: the lower layers do not
+/// change while the job runs.
+struct Lowers<'a> {
+    layers: &'a [PathBuf],
+    absent: std::cell::RefCell<std::collections::HashSet<String>>,
+}
 
-impl Lowers<'_> {
+impl<'a> Lowers<'a> {
+    fn new(layers: &'a [PathBuf]) -> Self {
+        Lowers {
+            layers,
+            absent: Default::default(),
+        }
+    }
+
     fn find(&self, unix: &str) -> Option<Metadata> {
-        self.0
+        if self.under_absent(unix) {
+            return None;
+        }
+        let found = self
+            .layers
             .iter()
-            .find_map(|lower| fs::symlink_metadata(Root::Dir(lower.clone()).native(unix)).ok())
+            .find_map(|lower| fs::symlink_metadata(Root::Dir(lower.clone()).native(unix)).ok());
+        if found.is_none() {
+            self.absent.borrow_mut().insert(unix.to_owned());
+        }
+        found
+    }
+
+    /// Whether a directory above `unix` is known to be in no lower layer.
+    fn under_absent(&self, unix: &str) -> bool {
+        let absent = self.absent.borrow();
+        if absent.is_empty() {
+            return false;
+        }
+        let mut path = unix;
+        while let Some(slash) = path.rfind('/') {
+            path = &path[..slash];
+            if path.is_empty() {
+                return false;
+            }
+            if absent.contains(path) {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -276,7 +320,7 @@ impl Tree for Overlay {
             view: &self.upper,
             job: &self.root,
             tracked: &self.tracked,
-            origin: &Lowers(&self.lowers),
+            origin: &Lowers::new(&self.lowers),
             probe: &*self.probe,
             skip: &OVERLAY_SKIP,
         }

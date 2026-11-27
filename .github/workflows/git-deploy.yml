@@ -1,0 +1,171 @@
+name: Deploy git.infrawrench.com
+
+# Builds the forge's UI (git/packages/web) and deploys the `infrawrench-git`
+# Worker (git/packages/worker), which serves it as static assets. Its tests
+# are Infrawrench CI's (.infrawrench/ci/git.yml); this only ships.
+#
+# The Worker reads the app's Postgres through the app's Hyperdrive, and its
+# tables come from the app's migrations, which web-deploy's `migrate` job
+# applies. Both workflows start from the same push, so this one waits until
+# the newest migration in the commit is in the database before it deploys:
+# a Worker that reads a column the database does not have yet answers 500.
+#
+# Secrets are not kept in GitHub. The values the Worker shares with the app
+# (the WorkOS client, the master key, the job token key, the CI proxy) are
+# read from terraform's edge-env secret in AWS Secrets Manager
+# (infra/terraform/lambda.tf), as web-deploy's deploy-edge does, so the two
+# can never disagree; only the keys the Worker needs are passed on. The two
+# that are this Worker's alone (WORKOS_COOKIE_PASSWORD, SSH_HOST_KEY) are set
+# once by infra/git/setup.mjs and never leave Cloudflare: a deploy adds to a
+# Worker's secrets and removes none. git/packages/worker/README.md lists
+# every one and what breaks without it.
+#
+# Required repo variables:
+#   GIT_DEPLOY_ENABLED     - "true" once infra/README.md ("git.infrawrench.com")
+#                            has been followed: the bucket, the queues and the
+#                            Worker's own two secrets exist. Unset, the job is
+#                            skipped, so merging the forge deploys nothing.
+#   AWS_LAMBDA_CI_ROLE_ARN - terraform output lambda_ci_role_arn (as web-deploy)
+#   AWS_REGION             - defaults to us-east-2
+#   LAMBDA_FUNCTION_PREFIX - defaults to infrawrench-prod-lambda
+# Required `production` environment secrets:
+#   CLOUDFLARE_API_TOKEN   - web-deploy's, with these added for this Worker:
+#                            Workers Scripts, Workers R2 Storage and Queues
+#                            (account, edit), Hyperdrive (account, read) and
+#                            Workers Routes (zone infrawrench.com, edit) for
+#                            the custom domain.
+#   PROD_DATABASE_URL      - web-deploy's; read here, never written.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "git/**"
+      # Bundled into the Worker from source: the schema, the database client,
+      # CI's dispatcher and what they import.
+      - "app/packages/server-core/src/**"
+      - "app/packages/client-core/**"
+      # The UI's components and tokens, and what ui is built on.
+      - "app/packages/ui/**"
+      - "app/packages/api-contract/**"
+      - "plugin-architecture/packages/plugin-base/**"
+      - "plugin-architecture/packages/appstream-core/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/git-deploy.yml"
+  workflow_dispatch:
+
+# One deploy at a time, and never cancelled halfway through an upload.
+concurrency:
+  group: git-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy to Cloudflare
+    if: github.ref == 'refs/heads/main' && vars.GIT_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+
+      - name: Enable corepack (pinned pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The UI is built on ui (and what ui is built on); the Worker loads
+      # client-core's built output. Then the UI itself, into
+      # git/packages/web/dist, which wrangler.jsonc names as the assets.
+      - name: Build
+        run: |
+          pnpm exec turbo run build --filter="@infrawrench/git-web^..." --filter=@infrawrench/client-core
+          pnpm --filter @infrawrench/git-web build
+
+      # What the upload is made of, before anything is uploaded: no plugin
+      # code, no library that cannot run in a Worker, the size it was measured
+      # at. Seconds, and the one test whose failure means "do not ship this".
+      - name: Check the bundle
+        run: pnpm --filter @infrawrench/git-worker exec vitest run src/__tests__/import-graph.test.ts
+
+      # web-deploy's `migrate` job applies them, from the same push. Up to
+      # twenty minutes; after that the migration failed or was never started,
+      # and deploying would break the forge rather than leave it a commit
+      # behind.
+      - name: Wait for this commit's migrations
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          newest="$(jq -r '.entries | max_by(.when) | "\(.when) \(.tag)"' app/packages/web/src/db/migrations/meta/_journal.json)"
+          want="${newest%% *}"
+          tag="${newest#* }"
+          for attempt in $(seq 1 80); do
+            have="$(psql "$DATABASE_URL" -X -q -At -v ON_ERROR_STOP=1 \
+              -c 'select coalesce(max(created_at), 0) from drizzle.__drizzle_migrations')"
+            if [ "$have" -ge "$want" ]; then
+              echo "The database has $tag."
+              exit 0
+            fi
+            echo "Waiting for $tag to be applied (web-deploy's migrate job), attempt $attempt."
+            sleep 15
+          done
+          echo "::error::$tag was not applied within 20 minutes. Check web-deploy's migrate job, then run this workflow again."
+          exit 1
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_LAMBDA_CI_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-2' }}
+
+      # Only the keys this Worker reads, so it holds nothing it has no use for
+      # (the app's database URL, Stripe, the plugins' OAuth clients). The step
+      # names keys and never prints a value.
+      - name: Read the Worker's share of the edge environment
+        env:
+          FUNCTION_PREFIX: ${{ vars.LAMBDA_FUNCTION_PREFIX || 'infrawrench-prod-lambda' }}
+        run: |
+          umask 077
+          aws secretsmanager get-secret-value --secret-id "$FUNCTION_PREFIX/edge-env" \
+            --query SecretString --output text > "$RUNNER_TEMP/edge-secrets.json"
+          jq '{WORKOS_API_KEY, WORKOS_CLIENT_ID, ENCRYPTION_MASTER_KEY, GIT_JOB_TOKEN_KEY,
+               CI_PROXY_URL, CI_PROXY_KEY, APP_URL,
+               CLOUDFLARE_ACCOUNT_ID, AI_GATEWAY_ID, AI_GATEWAY_TOKEN}
+              | with_entries(select(.value != null and .value != ""))' \
+            "$RUNNER_TEMP/edge-secrets.json" > "$RUNNER_TEMP/git-secrets.json"
+          rm -f "$RUNNER_TEMP/edge-secrets.json"
+          missing="$(jq -r '["WORKOS_API_KEY", "WORKOS_CLIENT_ID", "ENCRYPTION_MASTER_KEY", "GIT_JOB_TOKEN_KEY"]
+                            - keys | join(", ")' "$RUNNER_TEMP/git-secrets.json")"
+          if [ -n "$missing" ]; then
+            echo "::error::The edge-env secret has no value for: $missing. Add them to app_env (infra/terraform/terraform.tfvars.example) and apply."
+            exit 1
+          fi
+          optional="$(jq -r '["CI_PROXY_URL", "CI_PROXY_KEY", "APP_URL"] - keys | join(", ")' "$RUNNER_TEMP/git-secrets.json")"
+          if [ -n "$optional" ]; then
+            echo "::warning::Not set in edge-env, so CI for repositories here is partly off: $optional (git/packages/worker/README.md)."
+          fi
+          review="$(jq -r '["CLOUDFLARE_ACCOUNT_ID", "AI_GATEWAY_ID", "AI_GATEWAY_TOKEN"] - keys | join(", ")' "$RUNNER_TEMP/git-secrets.json")"
+          if [ -n "$review" ]; then
+            echo "::warning::Not set in edge-env, so review agents do not run: $review (git/packages/worker/README.md)."
+          fi
+
+      # --old-asset-ttl keeps the previous build's hashed assets servable for a
+      # day, so a tab opened before the deploy can still lazy-load its chunks.
+      # A first deploy fails here, naming them, until WORKOS_COOKIE_PASSWORD
+      # and SSH_HOST_KEY are set (infra/git/setup.mjs `secrets`).
+      - name: Deploy the Worker
+        run: >
+          pnpm --filter @infrawrench/git-worker exec wrangler deploy
+          --secrets-file "$RUNNER_TEMP/git-secrets.json" --old-asset-ttl 86400
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+      - name: Remove secrets files
+        if: always()
+        run: rm -f "$RUNNER_TEMP/edge-secrets.json" "$RUNNER_TEMP/git-secrets.json"

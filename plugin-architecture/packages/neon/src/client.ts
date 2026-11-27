@@ -33,7 +33,9 @@ import {
   type Database,
   type DataAPIReponse,
   type Endpoint,
+  type Project,
   type ProjectListItem,
+  type ProjectQuota,
   type Role,
   EndpointType,
   BucketAccessLevel,
@@ -280,7 +282,10 @@ export class NeonClient implements PluginClient {
    * every child type's id starts with its project, so that is all it needs to read.
    */
   private runForOne(typeId: string, resourceId: string): ListRun {
-    const projectId = typeId === "neon-project" ? "" : externalIdOf(resourceId).split("/")[0];
+    if (typeId === "neon-project") {
+      return new ListRun(this.api, PollBudget.forLookup(), undefined, externalIdOf(resourceId));
+    }
+    const projectId = externalIdOf(resourceId).split("/")[0];
     return new ListRun(this.api, PollBudget.forLookup(), projectId || undefined);
   }
 
@@ -1199,7 +1204,7 @@ export class NeonClient implements PluginClient {
             ...(retention ? { history_retention_seconds: Number(retention) } : {}),
           },
         });
-        return this.buildProjectResource(accountId, response.data.project);
+        return this.buildProjectResource(accountId, response.data.project, response.data.project);
       }
 
       if (typeId === "neon-branch") {
@@ -1606,7 +1611,7 @@ export class NeonClient implements PluginClient {
               : {}),
           },
         });
-        return this.buildProjectResource(accountId, resp.data.project);
+        return this.buildProjectResource(accountId, resp.data.project, resp.data.project);
       }
 
       if (typeId === "neon-branch") {
@@ -1741,7 +1746,8 @@ export class NeonClient implements PluginClient {
 
   private async listProjects(run: ListRun, accountId: string): Promise<ResourceInstance[]> {
     const projects = await run.projectList();
-    return projects.map((p) => this.buildProjectResource(accountId, p));
+    const details = await run.projectDetails(projects);
+    return projects.map((p) => this.buildProjectResource(accountId, p, details.get(p.id)));
   }
 
   private buildProjectResource(
@@ -1753,9 +1759,14 @@ export class NeonClient implements PluginClient {
       Partial<
         Pick<
           ProjectListItem,
-          "org_id" | "proxy_host" | "compute_last_active_at" | "history_retention_seconds"
+          | "org_id"
+          | "proxy_host"
+          | "compute_last_active_at"
+          | "history_retention_seconds"
+          | "settings"
         >
       >,
+    detail?: Project,
   ): ResourceInstance {
     return {
       id: `${accountId}:neon-project:${p.id}`,
@@ -1773,6 +1784,7 @@ export class NeonClient implements PluginClient {
         ...(p.history_retention_seconds !== undefined
           ? { historyRetentionSeconds: p.history_retention_seconds }
           : {}),
+        ...projectConsumptionFields(p.settings?.quota, detail),
         createdAt: p.created_at,
       },
       resolvedOutputs: {},
@@ -1785,10 +1797,17 @@ export class NeonClient implements PluginClient {
 
   private async listAllBranches(run: ListRun, accountId: string): Promise<ResourceInstance[]> {
     const branches = await run.branches(accountId);
-    return branches.map((b) => this.buildBranchResource(accountId, b.projectId, b.branch));
+    return branches.map((b) =>
+      this.buildBranchResource(accountId, b.projectId, b.branch, b.logicalSizeLimitBytes),
+    );
   }
 
-  private buildBranchResource(accountId: string, projectId: string, b: Branch): ResourceInstance {
+  private buildBranchResource(
+    accountId: string,
+    projectId: string,
+    b: Branch,
+    logicalSizeLimitBytes?: number,
+  ): ResourceInstance {
     return {
       id: `${accountId}:neon-branch:${projectId}/${b.id}`,
       pluginId: "neon",
@@ -1802,6 +1821,7 @@ export class NeonClient implements PluginClient {
         primary: isDefaultBranch(b),
         currentState: b.current_state,
         ...(b.logical_size !== undefined ? { logicalSize: b.logical_size } : {}),
+        ...(logicalSizeLimitBytes !== undefined ? { logicalSizeLimit: logicalSizeLimitBytes } : {}),
         initSource: b.init_source ?? "",
         lastResetAt: b.last_reset_at ?? "",
         protected: b.protected === true,
@@ -2667,4 +2687,47 @@ function mapNeonState(state: string): ResourceStatus {
     default:
       return "info";
   }
+}
+
+/** A positive finite number, else nothing: a quota of 0 is Neon's "no limit". */
+function positive(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+/**
+ * The project's consumption this billing period from its full record, and the
+ * quotas set on it (`Project` and `ProjectQuota`, Neon API reference, read
+ * 2026-11-23). `compute_time_seconds` is weighted by compute size, so it is
+ * CU-seconds, stored here as CU-hours (/ 3600, Neon's "Usage and cost
+ * calculations"). Every counter resets at `consumption_period_start`. Without the
+ * record (past the poll's budget, or a failed read) the counters are left out.
+ */
+export function projectConsumptionFields(
+  quota: ProjectQuota | undefined,
+  detail: Project | undefined,
+): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  const activeQuota = positive(quota?.active_time_seconds);
+  const writtenQuota = positive(quota?.written_data_bytes);
+  if (activeQuota !== undefined) out["activeTimeQuotaSeconds"] = activeQuota;
+  if (writtenQuota !== undefined) out["writtenDataQuotaBytes"] = writtenQuota;
+  if (!detail) return out;
+  const plan = detail.owner?.subscription_type;
+  if (plan) out["plan"] = plan;
+  if (detail.consumption_period_start)
+    out["consumptionPeriodStart"] = detail.consumption_period_start;
+  if (detail.consumption_period_end) out["consumptionPeriodEnd"] = detail.consumption_period_end;
+  if (typeof detail.compute_time_seconds === "number") {
+    out["computeCuHours"] = Math.round((detail.compute_time_seconds / 3600) * 1000) / 1000;
+  }
+  if (typeof detail.active_time_seconds === "number") {
+    out["activeTimeSeconds"] = detail.active_time_seconds;
+  }
+  if (typeof detail.data_transfer_bytes === "number") {
+    out["dataTransferBytes"] = detail.data_transfer_bytes;
+  }
+  if (typeof detail.written_data_bytes === "number") {
+    out["writtenDataBytes"] = detail.written_data_bytes;
+  }
+  return out;
 }

@@ -30,6 +30,8 @@ Pick the **EU** region only for an EU regional subuser. With a parent account's 
 
 Your email credits for the current period appear on the [Quotas](../features/quota-radar.md) page, with a trend and an alert before you run out. Accounts without a credit limit show nothing there.
 
+Capacity runway tracks the credits used in each period against the period's total, from SendGrid's last reset date to its next one.
+
 ## Costs
 
 SendGrid has no billing API, so SendGrid spend doesn't appear on the Costs page.

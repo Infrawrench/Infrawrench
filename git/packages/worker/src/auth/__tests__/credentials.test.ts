@@ -1,0 +1,507 @@
+import { signGitJobToken } from "@infrawrench/client-core";
+import { ACCESS_TOKEN_PREFIX as CONTRACT_PREFIX } from "@infrawrench/git-contract";
+import { describe, expect, it } from "vitest";
+import type { Env } from "../../env";
+import { apiAcceptsRefTokens, authenticateRequest } from "../authenticate";
+import {
+  ACCESS_TOKEN_PREFIX,
+  parseAuthorization,
+  presentedCredential,
+  presentsCredentials,
+} from "../credentials";
+import { timingSafeEqual, timingSafeEqualText, toBase64, utf8 } from "../encoding";
+import { JOB_TOKEN_MAX_TTL_SECONDS, mintJobToken, verifyJobToken } from "../job-token";
+import {
+  type StoredAccessToken,
+  hashAccessToken,
+  looksLikeAccessToken,
+  mintAccessToken,
+  normalizeScopes,
+  verifyAccessToken,
+} from "../tokens";
+
+const basic = (username: string, password: string) =>
+  `Basic ${toBase64(utf8(`${username}:${password}`))}`;
+
+describe("parseAuthorization", () => {
+  it("reads Basic and Bearer, whatever the scheme's case", () => {
+    expect(parseAuthorization(basic("git", "secret"))).toEqual({
+      scheme: "basic",
+      username: "git",
+      password: "secret",
+    });
+    expect(parseAuthorization("bearer abc")).toEqual({ scheme: "bearer", token: "abc" });
+    expect(parseAuthorization("BASIC " + toBase64(utf8("a:b")))).toMatchObject({ username: "a" });
+  });
+
+  it("keeps colons in the password", () => {
+    expect(parseAuthorization(basic("user", "a:b:c"))).toMatchObject({ password: "a:b:c" });
+  });
+
+  it("answers null for anything else", () => {
+    for (const header of [null, undefined, "", "Basic", "Basic !!!", "Digest abc", "Bearer "]) {
+      expect(parseAuthorization(header)).toBe(null);
+    }
+    // Valid base64, but no colon inside.
+    expect(parseAuthorization(`Basic ${toBase64(utf8("nocolon"))}`)).toBe(null);
+    // Not UTF-8.
+    expect(parseAuthorization(`Basic ${toBase64(new Uint8Array([0xff, 0x3a, 0xfe]))}`)).toBe(null);
+  });
+});
+
+describe("presentedCredential", () => {
+  it("takes the password, whatever the username", () => {
+    for (const username of ["astrid", "x-access-token", "git", ""]) {
+      expect(presentedCredential(basic(username, "iwg_abc"))).toEqual({
+        kind: "access-token",
+        secret: "iwg_abc",
+      });
+    }
+  });
+
+  it("falls back to the username when the password is not a credential", () => {
+    expect(presentedCredential(basic("iwg_abc", ""))?.secret).toBe("iwg_abc");
+    expect(presentedCredential(basic("iwg_abc", "x-oauth-basic"))?.secret).toBe("iwg_abc");
+  });
+
+  it("tells the three kinds apart by prefix", () => {
+    expect(presentedCredential("Bearer iwg_a")?.kind).toBe("access-token");
+    expect(presentedCredential("Bearer iwk_a")?.kind).toBe("api-key");
+    expect(presentedCredential("Bearer iwj_a")?.kind).toBe("job-token");
+    expect(presentedCredential(basic("git", "iwk_a"))?.kind).toBe("api-key");
+  });
+
+  it("answers null for a password that is nobody's token", () => {
+    expect(presentedCredential(basic("astrid", "hunter2"))).toBe(null);
+    expect(presentedCredential("Bearer eyJhbGciOi")).toBe(null);
+  });
+
+  it("knows a refused attempt from no attempt", () => {
+    expect(presentsCredentials(null)).toBe(false);
+    expect(presentsCredentials("")).toBe(false);
+    expect(presentsCredentials(basic("astrid", "hunter2"))).toBe(true);
+  });
+
+  it("uses the contract's token prefix", () => {
+    expect(ACCESS_TOKEN_PREFIX).toBe(CONTRACT_PREFIX);
+  });
+});
+
+describe("timingSafeEqual", () => {
+  it("compares bytes", () => {
+    expect(timingSafeEqual(utf8("abc"), utf8("abc"))).toBe(true);
+    expect(timingSafeEqual(utf8("abc"), utf8("abd"))).toBe(false);
+    expect(timingSafeEqual(utf8("abc"), utf8("abcd"))).toBe(false);
+    expect(timingSafeEqual(utf8(""), utf8(""))).toBe(true);
+    expect(timingSafeEqualText("a", "a")).toBe(true);
+    // A longer input that starts with the shorter one, padded with zeros, is still different.
+    expect(timingSafeEqual(new Uint8Array([1, 0]), new Uint8Array([1]))).toBe(false);
+  });
+});
+
+describe("personal access tokens", () => {
+  const stored = (hash: string, overrides: Partial<StoredAccessToken> = {}): StoredAccessToken => ({
+    id: "tok_1",
+    userId: "user_1",
+    hashedToken: hash,
+    scopes: ["repo:read", "repo:write"],
+    expiresAt: null,
+    revokedAt: null,
+    ...overrides,
+  });
+
+  it("mints a token whose hash is its SHA-256 and whose prefix shows eight characters", async () => {
+    const minted = await mintAccessToken();
+    expect(minted.secret.startsWith("iwg_")).toBe(true);
+    expect(looksLikeAccessToken(minted.secret)).toBe(true);
+    expect(minted.prefix).toBe(minted.secret.slice(0, 12));
+    expect(minted.hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(minted.hash).toBe(await hashAccessToken(minted.secret));
+    expect((await mintAccessToken()).secret).not.toBe(minted.secret);
+  });
+
+  it("hashes with plain SHA-256", async () => {
+    expect(await hashAccessToken("abc")).toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+  });
+
+  it("verifies a live token and reports its scopes", async () => {
+    const minted = await mintAccessToken();
+    const verified = await verifyAccessToken(minted.secret, async (hash) =>
+      hash === minted.hash ? stored(minted.hash) : null,
+    );
+    expect(verified).toEqual({
+      id: "tok_1",
+      userId: "user_1",
+      scopes: ["repo:read", "repo:write"],
+    });
+  });
+
+  it("refuses unknown, revoked and expired tokens alike", async () => {
+    const minted = await mintAccessToken();
+    const now = new Date("2026-11-25T12:00:00Z");
+    const find = (row: StoredAccessToken | null) => async () => row;
+    expect(await verifyAccessToken(minted.secret, find(null), now)).toBe(null);
+    expect(
+      await verifyAccessToken(minted.secret, find(stored(minted.hash, { revokedAt: now })), now),
+    ).toBe(null);
+    expect(
+      await verifyAccessToken(
+        minted.secret,
+        find(stored(minted.hash, { expiresAt: new Date("2026-11-25T11:59:59Z") })),
+        now,
+      ),
+    ).toBe(null);
+    expect(
+      await verifyAccessToken(minted.secret, find(stored(minted.hash, { expiresAt: now })), now),
+    ).toBe(null);
+    expect(
+      await verifyAccessToken(
+        minted.secret,
+        find(stored(minted.hash, { expiresAt: new Date("2026-11-25T12:00:01Z") })),
+        now,
+      ),
+    ).not.toBe(null);
+  });
+
+  it("refuses a row whose stored hash is not the token's", async () => {
+    const minted = await mintAccessToken();
+    expect(await verifyAccessToken(minted.secret, async () => stored("0".repeat(64)))).toBe(null);
+  });
+
+  it("does not query for something that cannot be a token", async () => {
+    let asked = 0;
+    const find = async () => {
+      asked++;
+      return null;
+    };
+    for (const junk of [
+      "",
+      "iwg_",
+      "iwg_short",
+      "iwk_" + "a".repeat(43),
+      "iwg_" + "!".repeat(43),
+    ]) {
+      expect(await verifyAccessToken(junk, find)).toBe(null);
+    }
+    expect(asked).toBe(0);
+  });
+
+  it("drops scopes it does not know", () => {
+    expect(normalizeScopes(["repo:write", "admin", "repo:read", "repo:read"])).toEqual([
+      "repo:read",
+      "repo:write",
+    ]);
+    expect(normalizeScopes([])).toEqual([]);
+  });
+});
+
+describe("CI job tokens", () => {
+  const KEY = "k".repeat(48);
+  const NOW = 1_800_000_000;
+
+  it("round-trips its claims", async () => {
+    const token = await mintJobToken(KEY, {
+      repositoryId: "repo_1",
+      write: true,
+      runId: "run_1",
+      now: NOW,
+    });
+    expect(token.startsWith("iwj_")).toBe(true);
+    expect(await verifyJobToken(KEY, token, NOW + 10)).toEqual({
+      repositoryId: "repo_1",
+      write: true,
+      runId: "run_1",
+      expiresAt: NOW + 3600,
+      workspaceId: null,
+      ref: null,
+    });
+  });
+
+  it("is read-only unless minted for writing, and names no run unless given one", async () => {
+    const token = await mintJobToken(KEY, { repositoryId: "repo_1", write: false, now: NOW });
+    expect(await verifyJobToken(KEY, token, NOW)).toMatchObject({ write: false, runId: null });
+  });
+
+  it("expires", async () => {
+    const token = await mintJobToken(KEY, {
+      repositoryId: "repo_1",
+      write: false,
+      ttlSeconds: 60,
+      now: NOW,
+    });
+    expect(await verifyJobToken(KEY, token, NOW + 59)).not.toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW + 60)).toBe(null);
+  });
+
+  it("clamps the lifetime", async () => {
+    const token = await mintJobToken(KEY, {
+      repositoryId: "repo_1",
+      write: false,
+      ttlSeconds: 10 * 24 * 3600,
+      now: NOW,
+    });
+    expect((await verifyJobToken(KEY, token, NOW))?.expiresAt).toBe(
+      NOW + JOB_TOKEN_MAX_TTL_SECONDS,
+    );
+  });
+
+  it("refuses another key's token", async () => {
+    const token = await mintJobToken(KEY, { repositoryId: "repo_1", write: true, now: NOW });
+    expect(await verifyJobToken("x".repeat(48), token, NOW)).toBe(null);
+  });
+
+  it("refuses altered claims", async () => {
+    const token = await mintJobToken(KEY, { repositoryId: "repo_1", write: false, now: NOW });
+    const [, tag] = token.slice(4).split(".");
+    const forged = toBase64(
+      utf8(JSON.stringify({ v: 1, repo: "repo_2", w: true, exp: NOW + 3600 })),
+    )
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    expect(await verifyJobToken(KEY, `iwj_${forged}.${tag}`, NOW)).toBe(null);
+  });
+
+  it("refuses malformed tokens", async () => {
+    for (const junk of ["", "iwj_", "iwj_a", "iwj_a.b", "iwj_a.b.c", "iwg_a.b", "iwj_.abc"]) {
+      expect(await verifyJobToken(KEY, junk, NOW)).toBe(null);
+    }
+  });
+
+  it("refuses to work with a short key", async () => {
+    await expect(mintJobToken("short", { repositoryId: "repo_1", write: false })).rejects.toThrow(
+      /job token key/,
+    );
+  });
+
+  it("refuses a token that would live longer than the longest lifetime", async () => {
+    // A minter whose clock runs two hours ahead signs a six-hour token.
+    const ahead = NOW + 2 * 3600;
+    const token = await signGitJobToken(
+      KEY,
+      {
+        repositoryId: "repo_1",
+        access: "read",
+        runId: "run_1",
+        expiresAt: ahead + JOB_TOKEN_MAX_TTL_SECONDS,
+      },
+      ahead * 1000,
+    );
+    expect(await verifyJobToken(KEY, token, NOW)).toBe(null);
+    expect(await verifyJobToken(KEY, token, ahead)).not.toBe(null);
+  });
+
+  it("takes a commit's archive token for that commit's archive only", async () => {
+    const commit = "c".repeat(40);
+    const token = await signGitJobToken(
+      KEY,
+      { repositoryId: "repo_1", access: "read", runId: "run_1", expiresAt: NOW + 600, commit },
+      NOW * 1000,
+    );
+    expect(await verifyJobToken(KEY, token, NOW)).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { commit: "d".repeat(40) })).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { commit })).toMatchObject({
+      repositoryId: "repo_1",
+    });
+    // Not a way into a workspace either.
+    expect(await verifyJobToken(KEY, token, NOW, { workspace: true })).toBe(null);
+  });
+
+  it("takes a workspace's token where workspaces are served, and nowhere else", async () => {
+    const token = await mintJobToken(KEY, {
+      repositoryId: "repo_1",
+      write: true,
+      runId: "run_1",
+      workspaceId: "ws_1",
+      now: NOW,
+    });
+    expect(await verifyJobToken(KEY, token, NOW)).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { commit: "c".repeat(40) })).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { workspace: true })).toMatchObject({
+      repositoryId: "repo_1",
+      write: true,
+      runId: "run_1",
+      workspaceId: "ws_1",
+    });
+    // And a token that names no workspace is not one a workspace takes.
+    const plain = await mintJobToken(KEY, { repositoryId: "repo_1", write: true, now: NOW });
+    expect(await verifyJobToken(KEY, plain, NOW, { workspace: true })).toBe(null);
+  });
+
+  it("takes a branch's token only where the push is confined to the branch", async () => {
+    const ref = "refs/heads/work/fix";
+    const token = await mintJobToken(KEY, {
+      repositoryId: "repo_1",
+      write: true,
+      runId: "agent:session_1",
+      ref,
+      now: NOW,
+    });
+    expect(await verifyJobToken(KEY, token, NOW)).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { commit: "c".repeat(40) })).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { workspace: true })).toBe(null);
+    expect(await verifyJobToken(KEY, token, NOW, { ref: true })).toMatchObject({
+      repositoryId: "repo_1",
+      write: true,
+      workspaceId: null,
+      ref,
+    });
+    // A plain token is not refused where branch tokens are taken.
+    const plain = await mintJobToken(KEY, { repositoryId: "repo_1", write: true, now: NOW });
+    expect(await verifyJobToken(KEY, plain, NOW, { ref: true })).toMatchObject({ ref: null });
+  });
+});
+
+describe("authenticateRequest before any credential is looked up", () => {
+  const env = { SITE_ORIGIN: "https://git.example.test", GIT_JOB_TOKEN_KEY: "k".repeat(48) } as Env;
+  const request = (headers: Record<string, string>, method = "POST") =>
+    new Request("https://git.example.test/acme/infra.git/git-receive-pack", { method, headers });
+  const token = `Basic ${toBase64(utf8(`git:iwg_${"a".repeat(43)}`))}`;
+
+  it("refuses a write a page elsewhere sent, whichever credential it carries", async () => {
+    for (const from of [
+      { origin: "https://elsewhere.example" },
+      { "sec-fetch-site": "cross-site" },
+      { "sec-fetch-site": "same-site" },
+    ]) {
+      for (const credential of [
+        { authorization: token },
+        { cookie: "__Host-iwg-session=v1.a.b.c" },
+      ]) {
+        const result = await authenticateRequest(request({ ...from, ...credential }), env);
+        expect(result, JSON.stringify(from)).toMatchObject({ refused: true });
+        expect(result.principal.kind).toBe("anonymous");
+      }
+    }
+  });
+
+  it("refuses a cookie on a write that does not say where it came from", async () => {
+    const result = await authenticateRequest(
+      request({ cookie: "__Host-iwg-session=v1.a.b.c" }),
+      env,
+    );
+    expect(result).toMatchObject({ refused: true });
+  });
+
+  it("never reads the development cookie over HTTPS", async () => {
+    const result = await authenticateRequest(
+      new Request("https://git.example.test/api/session", {
+        headers: { cookie: "iwg-session=v1.a.b.c" },
+      }),
+      env,
+    );
+    expect(result).toMatchObject({ refused: false, setCookies: [] });
+    expect(result.principal.kind).toBe("anonymous");
+  });
+
+  it("does not fall back to the cookie when the Authorization header is refused", async () => {
+    const result = await authenticateRequest(
+      new Request("https://git.example.test/api/session", {
+        headers: { authorization: "Bearer nothing-of-ours", cookie: "__Host-iwg-session=x" },
+      }),
+      env,
+    );
+    expect(result).toMatchObject({ refused: true });
+  });
+
+  it("takes a job token from a client that sends no browser headers", async () => {
+    const job = await mintJobToken(env.GIT_JOB_TOKEN_KEY, { repositoryId: "repo_1", write: true });
+    const result = await authenticateRequest(
+      request({ authorization: `Basic ${toBase64(utf8(`x-access-token:${job}`))}` }),
+      env,
+    );
+    expect(result).toMatchObject({
+      refused: false,
+      principal: { kind: "job", repositoryId: "repo_1", write: true },
+    });
+  });
+
+  it("refuses a Terraform run's token on every route but Terraform's", async () => {
+    const job = await mintJobToken(env.GIT_JOB_TOKEN_KEY, {
+      repositoryId: "repo_1",
+      write: true,
+      runId: "run_1",
+      workspaceId: "ws_1",
+    });
+    const basic = { authorization: `Basic ${toBase64(utf8(`x-access-token:${job}`))}` };
+    const bearer = { authorization: `Bearer ${job}` };
+    // A push, a clone, a raw file, an archive, the API: a refused credential, so a 401.
+    for (const [method, path] of [
+      ["POST", "/acme/infra.git/git-receive-pack"],
+      ["GET", "/acme/infra.git/info/refs?service=git-receive-pack"],
+      ["POST", "/acme/infra.git/git-upload-pack"],
+      ["GET", "/acme/infra/raw/main/main.tf"],
+      ["GET", `/acme/infra/archive/${"c".repeat(40)}.tar.gz`],
+      ["POST", `/api/repos/acme/infra/statuses/${"c".repeat(40)}`],
+      ["GET", "/api/repos/acme/infra/ci/runs"],
+    ] as const) {
+      for (const headers of [basic, bearer]) {
+        const result = await authenticateRequest(
+          new Request(`https://git.example.test${path}`, { method, headers }),
+          env,
+        );
+        expect(result, path).toMatchObject({ refused: true, principal: { kind: "anonymous" } });
+      }
+    }
+    // The state backend and the plan route ask for it.
+    const taken = await authenticateRequest(
+      new Request("https://git.example.test/acme/infra/terraform/prod/state", { headers: basic }),
+      env,
+      { workspaceTokens: true },
+    );
+    expect(taken).toMatchObject({
+      refused: false,
+      principal: { kind: "job", repositoryId: "repo_1", write: true, workspaceId: "ws_1" },
+    });
+  });
+
+  it("takes an agent's branch token on smart HTTP and its API paths, and nowhere else", async () => {
+    const ref = "refs/heads/work/fix";
+    const job = await mintJobToken(env.GIT_JOB_TOKEN_KEY, {
+      repositoryId: "repo_1",
+      write: true,
+      runId: "agent:session_1",
+      ref,
+    });
+    const basic = { authorization: `Basic ${toBase64(utf8(`x-access-token:${job}`))}` };
+    const bearer = { authorization: `Bearer ${job}` };
+    // Without `refTokens` (the archive, raw files, Terraform): a refused credential.
+    for (const options of [{}, { workspaceTokens: true }]) {
+      for (const headers of [basic, bearer]) {
+        const result = await authenticateRequest(
+          new Request("https://git.example.test/acme/infra/terraform/prod/state", { headers }),
+          env,
+          options,
+        );
+        expect(result).toMatchObject({ refused: true, principal: { kind: "anonymous" } });
+      }
+    }
+    const taken = await authenticateRequest(
+      request({ ...basic, "git-protocol": "version=2" }),
+      env,
+      { refTokens: true },
+    );
+    expect(taken).toMatchObject({
+      refused: false,
+      principal: { kind: "job", repositoryId: "repo_1", write: true, ref },
+    });
+    // The API takes it on the trace and instructions paths, never on statuses.
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/traces")).toBe(true);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/branches/work%2Fa/instructions")).toBe(true);
+    expect(
+      apiAcceptsRefTokens("/api/repos/acme/infra/branches/work%2Fa/instructions/i_1/answered"),
+    ).toBe(true);
+    expect(apiAcceptsRefTokens(`/api/repos/acme/infra/statuses/${"c".repeat(40)}`)).toBe(false);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/branches/work%2Fa/merge")).toBe(false);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/branches/work%2Fa/instructionsx")).toBe(
+      false,
+    );
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/branches/work%2Fa/findings")).toBe(false);
+    // The key is one segment: a path that spreads it over several is no instructions path.
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/branches/work/a/instructions")).toBe(false);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/branches")).toBe(false);
+    expect(apiAcceptsRefTokens("/api/repos/acme/infra/ci/runs")).toBe(false);
+  });
+});

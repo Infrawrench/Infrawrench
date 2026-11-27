@@ -45,6 +45,13 @@ export const NeptuneClusterResourceType = rt({
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
+  // `neptuneClusterMetrics` derives "% Volume Used" from `VolumeBytesUsed`
+  // and `VolumeBytesLeftTotal` (zero when the 128 TiB volume is full):
+  // https://docs.aws.amazon.com/neptune/latest/userguide/cw-metrics.html
+  // (read 2026-11-23).
+  capacityMetrics: [
+    { seriesLabel: "% Volume Used", limit: { constant: 100 }, unit: "%", label: "Cluster Volume" },
+  ],
   secretExportTemplates: [
     {
       id: "neptune-connection",

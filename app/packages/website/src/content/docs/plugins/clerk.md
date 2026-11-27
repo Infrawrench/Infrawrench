@@ -18,6 +18,8 @@ Each Clerk account you add is one Clerk instance: the development or production 
 - Machines for machine-to-machine tokens (create, edit, which machines each may call, rotate the secret key)
 - Allowlist and blocklist entries, invitations and redirect URLs
 
+Capacity runway tracks each organization's members against its member limit, when it has one.
+
 ## Connect an instance
 
 1. In the [Clerk Dashboard](https://dashboard.clerk.com), open your application and choose the instance (Development or Production).

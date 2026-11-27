@@ -65,27 +65,37 @@ export function resetCiStatusClocks(): void {
 
 export async function runCiStatusPass(now: () => number = Date.now): Promise<void> {
   if (!ciProxyConfigured()) return;
+  // Where a slow pass's time went: a finished run is only noticed between
+  // passes, and runs were seen finishing 7 to 24 s after their runner did.
+  const started = now();
+  const phases: string[] = [];
+  const phase = (name: string, since: number) => phases.push(`${name} ${now() - since} ms`);
   // Scheduled pipelines due this minute become queued runs first, so this
   // same pass dispatches them. Only a few repositories are re-read per pass;
   // a read clones a branch.
-  if (now() - schedulesAt >= SCHEDULES_EVERY_MS) {
-    schedulesAt = now();
+  if (started - schedulesAt >= SCHEDULES_EVERY_MS) {
+    schedulesAt = started;
     await fireDueSchedules().catch((err) => console.warn("[ci] firing schedules failed:", err));
     await refreshSchedules().catch((err) => console.warn("[ci] reading schedules failed:", err));
+    phase("schedules", started);
   }
   // Nothing waiting or going is the usual pass, and this is all of it.
   if (!(await anyLiveRun())) {
     jobChecksAt.clear();
+    reportSlowPass(started, now(), phases);
     return;
   }
   // Runs waiting for a concurrency group, oldest first and one at a time,
   // so the one whose group came free first goes first.
+  let at = now();
   for (const row of await pendingRuns(20)) {
     await admitRun(row).catch((err) => console.warn(`[ci] admitting ${row.id} failed:`, err));
   }
   await runWithConcurrency(await dueQueuedRunIds(20), CI_RUN_CONCURRENCY, (id) =>
     dispatchRun(id).catch((err) => console.warn(`[ci] dispatching ${id} failed:`, err)),
   );
+  phase("admit and dispatch", at);
+  at = now();
   const running = await runningRuns(50);
   const ids = new Set(running.map((row) => row.id));
   for (const id of jobChecksAt.keys()) if (!ids.has(id)) jobChecksAt.delete(id);
@@ -97,6 +107,16 @@ export async function runCiStatusPass(now: () => number = Date.now): Promise<voi
       console.warn(`[ci] syncing ${row.id} failed:`, err),
     );
   });
+  phase(`following ${running.length} run(s)`, at);
+  reportSlowPass(started, now(), phases);
+}
+
+/** A status pass longer than this says where its time went. */
+export const SLOW_STATUS_PASS_MS = 3_000;
+
+function reportSlowPass(started: number, ended: number, phases: string[]): void {
+  if (ended - started < SLOW_STATUS_PASS_MS) return;
+  console.warn(`[ci] status pass took ${ended - started} ms: ${phases.join(", ") || "no phase"}`);
 }
 
 export async function runCiUpkeepPass(): Promise<void> {

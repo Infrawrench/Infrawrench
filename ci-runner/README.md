@@ -34,7 +34,8 @@ workspace, outside the pnpm workspace and `turbo.json`, with its own CI
    modules (a `GOMODCACHE`), Cargo crates (a `vendor/` directory), Python
    wheels (the interpreter's user site) and Composer packages (`vendor/`
    and its autoloader). No package manager runs and no install script
-   executes; Rollup and esbuild are installed as their WebAssembly builds
+   executes (unless [`install-scripts: true`](#install-scripts) runs them
+   in a Linux machine afterwards); Rollup and esbuild are installed as their WebAssembly builds
    (see [Tools and environments](#tools-and-environments)). Both its
    results are cached: see [Caching](#caching).
 4. **Resolve tools** (`iwci-store`). Each `using:` resolves to a manifest
@@ -99,15 +100,15 @@ JSON Schema for editors (`# yaml-language-server: $schema=...`).
 
 ### Top level
 
-| Key           | Meaning                                                                                                                                                                        |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `name`        | Required.                                                                                                                                                                      |
-| `on`          | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, `schedule` and `manual` (below). Omitted: every push.                                           |
-| `workspace`   | `clone` and `deps` shared by every job unless it overrides them, and `services` every job starts with.                                                                         |
-| `scratch`     | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.                                                               |
-| `concurrency` | A group name, or `{ group, cancel-in-progress }`: at most one run of the repository per group is in progress. See [Concurrency](#concurrency).                                 |
-| `split`       | `true`, or `{ artifacts: 8MiB }`: other runners may take jobs of a run when the runner that has it is short of slots or memory. Off by default. See [Split runs](#split-runs). |
-| `jobs`        | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                                                                           |
+| Key               | Meaning                                                                                                                                                                                                                |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`            | Required.                                                                                                                                                                                                              |
+| `on`              | `push` and/or `pull-request`, each with optional `branches` and `paths` globs, `schedule` and `manual` (below). Omitted: every push.                                                                                   |
+| `workspace`       | `clone` and `deps` shared by every job unless it overrides them, and `services` every job starts with.                                                                                                                 |
+| `scratch`         | The most the run's shared `/tmp/workflow` may hold, such as `2GiB`. Default `1GiB`, between `16MiB` and `16GiB`.                                                                                                       |
+| `concurrency`     | A group name, or `{ group, cancel-in-progress }`: at most one run of the repository per group is in progress. See [Concurrency](#concurrency).                                                                         |
+| `install-scripts` | `true` runs the install scripts the project's package manager would run (`postinstall`, native builds) after the runner's own install of `deps:`, in a Linux virtual machine. See [Install scripts](#install-scripts). |
+| `jobs`            | Map of job key (lowercase, digits, `-`, `_`) to job.                                                                                                                                                                   |
 
 `on.schedule` is a list of up to 16 `- cron: "0 3 * * *"` entries, always
 in UTC: five fields (minute, hour, day of month, month, day of week) taking
@@ -173,42 +174,42 @@ everything through.
 
 ### Jobs
 
-| Key            | Meaning                                                                                                                                                                                                            |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `using`        | Required, unless the job has `cloud:` or a `platform:` other than `wasm`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                |
-| `platform`     | Where the job runs: `wasm` (the default, an isolate on the runner), `linux` (a virtual machine the runner starts for it), or `{ os, image }`. See [Platforms](#platforms).                                         |
-| `shell`        | A `platform: linux` job's script interpreter: `bash` (default), `sh` or `pwsh`.                                                                                                                                    |
-| `cloud`        | Run the job on one of the organisation's connected cloud accounts instead of the runner: `<provider>/<kind>` or a map. See [Cloud jobs](#cloud-jobs).                                                              |
-| `args`         | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                                                   |
-| `run`          | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                                                   |
-| `name`         | Display name. Defaults to the key plus the matrix values.                                                                                                                                                          |
-| `matrix`       | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries.                                     |
-| `cwd`          | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                                                     |
-| `env`          | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                                                  |
-| `clone`        | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                                                   |
-| `deps`         | Override `workspace.deps`, or `false` to install nothing.                                                                                                                                                          |
-| `changes`      | `ignore` (default), `fail`, or `{ commit: "<message>" }`. A new file the repository's `.gitignore` ignores is never a change.                                                                                      |
-| `needs`        | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                                               |
-| `if`           | When the job runs, given how its `needs` went. See below.                                                                                                                                                          |
-| `outputs`      | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                        |
-| `paths`        | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                      |
-| `timeout`      | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                      |
-| `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`. A virtual machine's is its whole memory, at least `256MiB`.                                                                                         |
-| `cpus`         | Whole vCPUs the job holds and is told it has, from `1` to `64`, instead of its share of one, with which it is told 1. See [Limits](#limits).                                                                       |
-| `cache`        | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                     |
-| `env-cache`    | `false` turns off the caches the job's environment keeps on its own (Go's build cache), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches).                                 |
-| `tools`        | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                                                     |
-| `network`      | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                                              |
-| `artifacts`    | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                                                       |
-| `downloads`    | Files kept for people to download from the run: a list of paths, or `{ paths, retention, when }`. See [Downloads](#downloads).                                                                                     |
-| `packages`     | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                                                       |
-| `task-cache`   | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                                                     |
-| `services`     | Programs started in the job's isolate before it and stopped after it, such as a database, over `workspace.services`; `false` for none. See [Background services](#background-services).                            |
-| `connections`  | Infrawrench connections whose credentials are lent to the job (a kubeconfig, an SSH host entry), by name or `{ name, namespace }`. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources). |
-| `ssh-keys`     | Infrawrench SSH keys written into the job's `~/.ssh`, by name. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).                                                                     |
-| `env-from`     | Resource grants whose every exported key becomes an environment variable, by their CI name. The job's own `env:` wins.                                                                                             |
-| `github-token` | A GitHub token for the run's own repository with the permissions named (`{ contents: write, pull-requests: write }`), for gh, the API and `git push`. See [GitHub token](#github-token).                           |
-| `env-file`     | A `.infraenv` file whose variables the job gets, resolved by the app at the run's commit: a path or `{ path, environment, vars }`. See [Environment files](#environment-files).                                    |
+| Key            | Meaning                                                                                                                                                                                                             |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `using`        | Required, unless the job has `cloud:` or a `platform:` other than `wasm`. `builtin:<name>@<version>`, `repo:<name>@<version>` or `env:<name>@<version>`. See below.                                                 |
+| `platform`     | Where the job runs: `wasm` (the default, an isolate on the runner), `linux` (a virtual machine the runner starts for it), or `{ os, image }`. See [Platforms](#platforms).                                          |
+| `shell`        | A `platform: linux` job's script interpreter: `bash` (default), `sh` or `pwsh`.                                                                                                                                     |
+| `cloud`        | Run the job on one of the organisation's connected cloud accounts instead of the runner: `<provider>/<kind>` or a map. See [Cloud jobs](#cloud-jobs).                                                               |
+| `args`         | For a tool: a list, or one line split like a shell splits words (quotes group, nothing expands).                                                                                                                    |
+| `run`          | For an environment: a bash script, run with `set -euo pipefail`.                                                                                                                                                    |
+| `name`         | Display name. Defaults to the key plus the matrix values.                                                                                                                                                           |
+| `matrix`       | `[a, b]` (read as `${{ matrix }}`) or named axes `{ os: [a, b], mode: [x] }` (read as `${{ matrix.os }}`), with an optional `exclude:` list of combinations. Up to 64 entries.                                      |
+| `cwd`          | Working directory in the isolate. Defaults to the clone. Plain WASI tools see it only as `$PWD` (see [Known limitations](#known-limitations)).                                                                      |
+| `env`          | Extra environment variables. `IWCI_*` is reserved for the runner.                                                                                                                                                   |
+| `clone`        | Override `workspace.clone`, or `false` for an empty file system.                                                                                                                                                    |
+| `deps`         | Override `workspace.deps`, or `false` to install nothing.                                                                                                                                                           |
+| `changes`      | `ignore` (default), `fail`, or `{ commit: "<message>" }`. A new file the repository's `.gitignore` ignores is never a change.                                                                                       |
+| `needs`        | Jobs that must finish first. Naming a matrix job waits for all of its entries; `^<job>` in a `packages:` job waits for that job in the packages this one depends on.                                                |
+| `if`           | When the job runs, given how its `needs` went. See below.                                                                                                                                                           |
+| `outputs`      | Names the job writes to `$IWCI_OUTPUT` for later jobs to read. Not allowed on a matrix job.                                                                                                                         |
+| `paths`        | Skip the job unless the commit touches a path these globs let through (see [Filters](#filters)). A skipped job does not block its dependents.                                                                       |
+| `timeout`      | `90s`, `10m`, `3h`. Default `10m`, at most `6h`. Stopped sooner when it prints nothing and uses no CPU for 5 minutes (see [Limits](#limits)).                                                                       |
+| `memory`       | `512MiB`, `4GiB`. Default `2GiB`, between `16MiB` and `16GiB`. A virtual machine's is its whole memory, at least `256MiB`.                                                                                          |
+| `cpus`         | Whole vCPUs the job holds and is told it has, from `1` to `64`, instead of its share of one, with which it is told 1. See [Limits](#limits).                                                                        |
+| `cache`        | Files kept between runs: `{ key, restore-keys, paths }`, or a list of up to 16. See [Job caches](#job-caches).                                                                                                      |
+| `env-cache`    | `false` turns off the caches the job's environment or machine image keeps on its own (Go's build cache, nvm's versions), or `{ go-build: false }` the ones it names. See [Environment caches](#environment-caches). |
+| `tools`        | For an environment: up to 16 `builtin:` or `repo:` tools its script runs by name. See [Tools in a script](#tools-in-a-script).                                                                                      |
+| `network`      | `false` to keep the job off the internet (default on). See [Networking](#networking).                                                                                                                               |
+| `artifacts`    | Files handed on to the jobs that need this one. See [Artifacts](#artifacts).                                                                                                                                        |
+| `downloads`    | Files kept for people to download from the run: a list of paths, or `{ paths, retention, when }`. See [Downloads](#downloads).                                                                                      |
+| `packages`     | One job per workspace package, ordered by their dependencies. See [Workspace packages](#workspace-packages).                                                                                                        |
+| `task-cache`   | Skip the job when nothing it reads has changed since a run that passed. See [The task cache](#the-task-cache).                                                                                                      |
+| `services`     | Programs started in the job's isolate before it and stopped after it, such as a database, over `workspace.services`; `false` for none. See [Background services](#background-services).                             |
+| `connections`  | Infrawrench connections whose credentials are lent to the job (a kubeconfig, an SSH host entry), by name or `{ name, namespace }`. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).  |
+| `ssh-keys`     | Infrawrench SSH keys written into the job's `~/.ssh`, by name. See [Connections, SSH keys and resources](#connections-ssh-keys-and-resources).                                                                      |
+| `env-from`     | Resource grants whose every exported key becomes an environment variable, by their CI name. The job's own `env:` wins.                                                                                              |
+| `github-token` | A GitHub token for the run's own repository with the permissions named (`{ contents: write, pull-requests: write }`), for gh, the API and `git push`. See [GitHub token](#github-token).                            |
+| `env-file`     | A `.infraenv` file whose variables the job gets, resolved by the app at the run's commit: a path or `{ path, environment, vars }`. See [Environment files](#environment-files).                                     |
 
 Expressions in `name`, `cwd`, `args`, `run` and `env`, and in a service's
 `args`, `run`, `env` and `ready` `log` and `command`: `${{ matrix }}`,
@@ -389,11 +390,11 @@ jobs:
       node scripts/migrate.mjs # reads $DATABASE_URL
 ```
 
-| Key           | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `connections` | Up to 16 connection names (as the app shows them), or `{ name, namespace }`. A Kubernetes connection writes a kubeconfig and sets `KUBECONFIG`; an SSH host connection adds a `Host` entry named after it to `~/.ssh/config`, with its key (`~/.ssh/iw_<name>`), its pinned host key as a `known_hosts` file of its own (`~/.ssh/iw_<name>.known_hosts`) and its jump host as `ProxyJump`; Vercel, Cloudflare and Neon set the token their CLIs read (`VERCEL_TOKEN`, `CLOUDFLARE_API_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`, `NEON_API_KEY`); AWS, Google Cloud and Azure connections set what their CLIs and SDKs read (see [Cloud CLIs](#cloud-clis)); PostgreSQL, MySQL, Redis and MongoDB set `DATABASE_URL` (`REDIS_URL`, `MONGODB_URI`) and what their clients read. A name may also be a resource the app grants as its peer, such as a GKE cluster lent as a Kubernetes connection or a managed database as PostgreSQL, which is lent exactly as that connection would be. |
-| `ssh-keys`    | Up to 16 SSH key names: each private key is written to `~/.ssh` (mode `0600`) and named as an `IdentityFile`. Only a key whose private half Infrawrench holds.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `env-from`    | Up to 16 resource grants by CI name (`[A-Za-z0-9][A-Za-z0-9_-]*`): every key the resource exports (an R2 bucket's endpoint and keys, a tunnel's token) becomes a variable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Key           | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connections` | Up to 16 connection names (as the app shows them), or `{ name, namespace }`. A Kubernetes connection writes a kubeconfig and sets `KUBECONFIG` (and `KUBE_CONFIG_PATH`, which Terraform's providers read); an SSH host connection adds a `Host` entry named after it to `~/.ssh/config`, with its key (`~/.ssh/iw_<name>`), its pinned host key as a `known_hosts` file of its own (`~/.ssh/iw_<name>.known_hosts`) and its jump host as `ProxyJump`; Vercel, Cloudflare and Neon set the token their CLIs read (`VERCEL_TOKEN` and, for Terraform, `VERCEL_API_TOKEN`; `CLOUDFLARE_API_TOKEN` with `CLOUDFLARE_ACCOUNT_ID`; `NEON_API_KEY`); AWS, Google Cloud and Azure connections set what their CLIs and SDKs read (see [Cloud CLIs](#cloud-clis)); PostgreSQL, MySQL, Redis and MongoDB set `DATABASE_URL` (`REDIS_URL`, `MONGODB_URI`) and what their clients read. A name may also be a resource the app grants as its peer, such as a GKE cluster lent as a Kubernetes connection or a managed database as PostgreSQL, which is lent exactly as that connection would be. |
+| `ssh-keys`    | Up to 16 SSH key names: each private key is written to `~/.ssh` (mode `0600`) and named as an `IdentityFile`. Only a key whose private half Infrawrench holds.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `env-from`    | Up to 16 resource grants by CI name (`[A-Za-z0-9][A-Za-z0-9_-]*`): every key the resource exports (an R2 bucket's endpoint and keys, a tunnel's token) becomes a variable.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 `${{ resources.<name>.<output> }}` reads one output of a granted resource,
 such as a database's `connectionString` or a secret manager entry's
@@ -465,7 +466,7 @@ is an error when the file is parsed.
   the same permissions share one; nothing else in the run sees it.
 - **What the job gets.** `GH_TOKEN` and `GITHUB_TOKEN` (gh and most API
   clients read one of them), `GH_REPO` (`acme/web`, so gh needs no
-  checkout, which has no `.git`), and Git's global configuration
+  checkout), and Git's global configuration
   (`GIT_CONFIG_GLOBAL=/root/.gitconfig`) with the token as an
   `Authorization` header for `https://github.com/acme/web` and
   `https://github.com/acme/web.git`, so `git push`, `git fetch` and
@@ -610,11 +611,11 @@ runs on the GKE cluster granted as `gke-prod`, through its cloud connection. `ma
   `env-from`. It starts from the commit, in the directory `workspace.clone`
   says (`into`, `/app` by default).
 - **The commit is a source archive**, not a clone: the files of the commit
-  and nothing else. As on the runner the checkout is not a repository (no
-  `.git`), so there is no history whatever `clone: { depth }` says;
-  submodules are not fetched, and a file kept in Git LFS is its pointer. A
-  job that needs any of those fetches it in its own script, with a token of
-  its own. A workspace with `clone: false` starts in an empty `cwd`.
+  and nothing else. Unlike a runner job's clone it has no `.git`, so
+  there is no history whatever `clone: { depth }` says; submodules are not
+  fetched, and a file kept in Git LFS is its pointer. A job that needs any
+  of those fetches it in its own script, with a token of its own. A
+  workspace with `clone: false` starts in an empty `cwd`.
 - **What the machine needs:** `bash`, `curl`, `tar`, `gzip` and `base64`.
   Where one is missing and the job is root on fresh compute, it is installed
   first with the image's package manager (apt, apk, dnf, yum, zypper or
@@ -686,9 +687,17 @@ jobs:
 
 - **Where.** Only a runner started with `--machines <dir>` (or
   `IWCI_MACHINES`) runs them: it needs KVM and the image
-  `images/linux/build.sh` builds into that directory. Each machine gets
-  the vCPUs its job holds with `cpus:`, or `--machine-cpus` (default 2)
-  without one. `/v1/capacity` lists what a runner
+  `images/linux/build.sh` builds into that directory. Each machine holds
+  the vCPUs its job asks for with `cpus:`, or `--machine-cpus` (default 2)
+  without one, and is given more to run on when the runner has a
+  delegated cgroup subtree (the one its sandboxes use): up to four times
+  its `cpus:` and one per GiB of its `memory:` (a build or a test run
+  starts a worker per CPU it sees, and each needs memory), in a cgroup of
+  its own whose `cpu.weight` is what those `cpus:` hold. So a compile or a
+  parallel test run spreads over the host's idle CPUs, and when every job
+  wants more than there is, each gets its `cpus:` share, as if it had only
+  those. `--machine-burst off` keeps every machine to its `cpus:`.
+  `/v1/capacity` lists what a runner
   runs (`"platforms": ["wasm", "linux"]`), leaving out, with a line in its
   log, whatever the host lacks, and the proxy places a run whose pipelines
   need a machine on a runner that has it. A runner without one fails just
@@ -696,23 +705,112 @@ jobs:
 - **The machine.** QEMU with KVM: on x86_64 the `microvm` machine type
   with the kernel booted directly, on aarch64 `virt`. The job's `memory:`
   is the machine's whole memory, and the runner reserves the emulator's
-  own beside it (160 MiB). Jobs run as root. The agent inside
+  own beside it (160 MiB). Scripts run as `runner` (uid 1001, home
+  `/root`, passwordless `sudo`, in the `docker` group), as on GitHub's
+  hosted runners, so a test that expects `chmod 000` to keep it out passes;
+  the job's files, lent files and caches are its own. A command that needs
+  root (`apt-get install`, `mount`) runs with `sudo`. An image from before
+  the job user, or a runner that cannot stream the job's files, runs them
+  as root. The agent inside
   (`crates/iwci-guest`) talks to the runner over a virtio-serial port
-  (`crates/iwci-vm-proto`).
+  (`crates/iwci-vm-proto`). A machine answers about 0.36 s after QEMU
+  starts (measured on ci-1, from 4.2 s before): its memory is in 2 MiB
+  huge pages where the host lends them (`vm.nr_overcommit_hugepages`,
+  which the install sets), and in ordinary pages otherwise, which boot
+  about 0.5 s slower at 2 GiB and more at larger sizes. `IWCI_BOOT_TIMES=1`
+  prints when each step of a machine's start ended, the agent's included.
 - **Files.** The machine starts from the same files an isolate would: the
   clone, the artifacts of the jobs it needs, lent files and restored
-  caches. The clone is a read-only erofs image made once per commit and
-  shared by every machine, with a copy-on-write layer over it. Afterwards the machine sends back what the scheduler reads:
-  `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, `cache:` paths, the run's
-  `/tmp/workflow` (shared with isolate jobs), and, for `changes:`, the
-  clone without what its `.gitignore` ignores. A job's `npm ci` stays in
-  the machine, and artifacts in ignored directories (`dist`) still come
-  back. All of it is at most twice the job's `memory:`.
+  caches. On an image that can (its `image.json` lists `files-virtiofs`,
+  as every image built since this did), they are streamed in: the runner
+  serves the job's files read only over virtio-fs, as the lower layer of
+  the machine's root, and a file crosses only when it is read. From the
+  moment the machine is up its agent reads the whole tree ahead of the job
+  in the background (four low-priority threads, breadth first, at most a
+  quarter of the machine's memory and files of at most 256 MiB), so most
+  reads find the file in the machine already, and nothing is asked of the
+  runner a second time: names, attributes, listings and pages stay in the
+  machine's cache, and no file or directory is opened over the wire.
+  Measured on ci-1 against the disk image, a job that reads most of a
+  216 MB clone right after boot takes the same time, a second walk of it
+  is faster, and no image has to be made for the commit. An older image
+  gets the clone as a read-only erofs disk made once per commit, and the
+  rest copied in. On an image whose `image.json` lists `memory-upper`, the
+  job's own files (restored caches, the artifacts of the jobs it needs,
+  lent files) are not streamed but written into the machine as it starts,
+  up to half its `memory:`, and only the workspace is served: a cache is
+  read whole, and over virtio-fs each of a package store's tens of
+  thousands of files was round trips to the runner, so a pnpm install from
+  a restored store took 27 s where downloading it took 14 s. Whether they
+  fit is read from their sizes, and the files are gathered while the
+  machine boots (a 1.4 GB store took 0.9 s, which used to come before
+  QEMU started). What the job
+  writes stays in memory, a tmpfs, where writing and copying up cost
+  memory speed (the bun install cache, 63k files and 814 MB, copied in
+  0.9 s, against 44 s onto an ext4 disk), and the kernel swaps what the
+  job is not using to a scratch disk of its own when its files and
+  processes outgrow its memory, rather than running out of room: the
+  runner attaches a 40 GiB sparse file, which the agent formats as ext4,
+  half of it a swap file and half Docker's storage (overlay2 needs a real
+  file system). The tmpfs holds up to the memory and the swap together,
+  so a machine's files may go 20 GiB past its `memory:`, as an isolate's
+  may go 20 GiB to disk (`--spill-disk`); at 10 GiB of swap shadcn/ui's
+  `pnpm test` in 8 GiB swapped all of it and was killed out of memory.
+  The file is deleted with the machine, and only what the job wrote takes
+  room on the runner's disk. The machine's kernel reclaims ahead of
+  demand (`vm.watermark_scale_factor=500`, on its command line, so any
+  image gets it): a job living on swap otherwise has each allocating
+  thread reclaim for itself in a burst, which is where the kernel gives
+  up and kills the largest process. shadcn/ui's `pnpm test` in 8 GiB,
+  which keeps up to 16.1 GiB of swap in use, reclaimed that way 204 to
+  497 times a run with it and 1,756 to 5,118 without. When a machine does
+  run out of memory, its job's output ends with what the kernel said:
+  the allocation that found none, the swap it had left and the process
+  it killed. An image without `memory-upper` keeps the
+  whole writable layer on the ext4 disk. Afterwards
+  the job sends back what the scheduler reads:
+  `$IWCI_OUTPUT`, `artifacts:`, `downloads:`, the paths of the `cache:`
+  entries it will save, and, for `changes:`, the clone without what its
+  `.gitignore` ignores. A cache that restored its exact key is not saved,
+  so its paths stay in the machine: pnpm, Bun and uv hard-link a restored
+  store into the project, which touches every file in it, and sending it
+  back cost a warm create-t3-turbo job 1.2 s of its 16 (and the runner
+  the store's size in memory). A job's
+  `npm ci` stays in the machine, and artifacts in ignored directories
+  (`dist`) still come back. All of it is at most twice the job's
+  `memory:`.
+- **`/tmp/workflow` is mounted, not copied.** The runner serves the run's
+  scratch directory to the machine over virtio-fs, from its own memory,
+  as the job's view of it: the same directory isolate jobs see, live, in
+  both directions. A file another runner wrote shows at once and is
+  waited for only when the job opens it, and a file the job closes is
+  shared from then on. Nothing of it is copied in or out. A runner whose
+  QEMU has no `vhost-user-fs-device`, or an image whose agent predates it,
+  gets the old way instead: the whole directory copied in before the
+  script (after everything another runner sent has arrived) and what
+  changed copied back after it; the runner's log says so at start.
 - **Network.** The machine's traffic goes through the runner's own gateway
   under the same policy as an isolate's ([Networking](#networking)):
   public addresses only, never the host. `network: false` cuts it off.
+  Its `eth0` has a 65,000-byte MTU, the gateway's, offered by the network
+  device (`host_mtu`): the link is a socket on the runner, so nothing on it
+  fragments, and a download takes a fortieth of the frames 1,500 bytes
+  would. With the gateway's 256 KiB windows a machine downloads at about
+  what the host does (an image's layers from `ghcr.io`, three at a time,
+  at 370 to 400 MB/s on a c8i where 1,500 bytes and 64 KiB windows gave
+  230 to 250), and the runner and the emulator spend a third less CPU time
+  per byte. Docker's own bridge inside the machine keeps 1,500 bytes.
+- **Version managers, cached.** The image has `nvm`, rbenv (with
+  ruby-build), goenv and Bun beside its default Node.js, Ruby and Go, and
+  keeps what nvm, rbenv and goenv install between runs of a job on its
+  own, as an environment keeps Go's build cache
+  ([Environment caches](#environment-caches)): `nvm install 22`,
+  `rbenv install 3.4.9` or `goenv install 1.24.11` downloads or compiles once,
+  and the next run restores it before the machine starts. uv is there too,
+  with its managed Pythons cached the same way. `env-cache:` turns them off
+  as it does an environment's.
 - **What it cannot have.** Keys that only mean something in an isolate are
-  errors: `using`, `args`, `deps`, `tools`, `services`, `env-cache` and
+  errors: `using`, `args`, `deps`, `tools`, `services` and
   `task-cache` (the script installs and starts what it needs, and `cache:`
   keeps it between runs). A machine job stays on
   the runner that has its run; helpers never take one
@@ -726,7 +824,8 @@ later job (`needs:`) pick it up without a cache or an output. It starts
 empty, it is gone when the run ends, it is held in memory and capped by the
 top-level `scratch:` (default 1 GiB), and nothing under it counts as a
 change to the repository. Jobs running at the same time share it as they
-would share a disk, so give them different paths.
+would share a disk, so give them different paths. In a
+[split run](#split-runs) it is shared across runners too.
 
 ### Artifacts
 
@@ -1152,22 +1251,41 @@ of them starts while the host is short of memory.
 
 ### Split runs
 
-A run belongs to one runner. With `split:` at the top of a pipeline, that
-runner (the primary) can have another runner (a helper) take some of the
-pipeline's jobs when its own slots or memory are what the jobs wait for:
+A run belongs to one runner (the primary). Other runners (helpers) can
+take some of its jobs, and nothing in a pipeline says whether they may:
+that is the runners' to decide, from what each job needs and what each
+runner has free. A pipeline that still says `split:` (it once turned this
+on) is read as if it did not.
 
-```yaml
-split: true
-# or, to say how much a job without a task cache entry may send:
-split:
-  artifacts: 8MiB # default 4MiB, at most 256MiB; 0MiB sends none
-```
-
-- **Off by default, because the scratch directory does not cross
-  runners.** Jobs of a split pipeline that run on different runners do not
-  see the same `/tmp/workflow`, and nothing in a pipeline says whether its
-  jobs use it. Turn `split:` on only for a pipeline whose jobs hand things
-  on through `artifacts:` and `outputs:`.
+- **A run stays on one runner while that runner has room.** The proxy
+  places it on the runner where it is expected to finish soonest, which
+  is the one with the most cores for it (see the proxy's placement), so
+  the heavier runner takes it when it can. The primary asks for help only
+  once a job another runner could run has waited two seconds in its
+  queue, and a helper that has joined takes only jobs that have waited
+  that long without the primary starting them. A run that fits one
+  runner never pays for a second clone or for files crossing the store.
+- **`/tmp/workflow` is shared across runners.** Every runner keeps its
+  own copy, and what a job writes there reaches the others: a file is
+  sent once nothing has it open for writing, when the job that wrote it
+  ends at the latest and within about a second while another runner runs
+  jobs of the pipeline. A job that `needs` another starts only once
+  everything that job wrote is listed where it runs. A file from another
+  runner shows in the directory, with its size, before its bytes are
+  there; they come in the background, and opening a file that has not
+  come yet waits for that file alone and has it fetched next (a file of
+  1 MiB or more travels on its own, smaller ones together). A file written
+  by a job that reads a secret (or was handed what one left), or one that
+  holds a secret's value, stays on the runner that has the run: it shows
+  on a helper, and a helper job that opens it is handed back to that
+  runner, which runs it with the file there. A run sends at most four
+  times its `scratch:` of these files (a fork's pull request at most
+  4 MiB); past that the runner that has the run keeps the rest the same
+  way, and a helper gives back the jobs that wrote them. A write on one
+  runner that the other has not sent yet is kept over the other's copy, so
+  two jobs that write one file at the same time on two runners can each
+  end with their own, as two jobs on one disk that share a path can
+  overwrite each other.
 - **Both runners run the same commit and plan the same run.** The primary
   writes down the commit it resolved the request to, and a helper runs
   exactly that or does not join: a request that names only a branch (a
@@ -1178,13 +1296,12 @@ split:
   whoever claims it runs it. The other keeps the job in its graph and
   completes it from the record the first writes when the job ends, so the
   jobs that need it become ready on both.
-- **The primary asks, the helper decides.** The primary asks for help once
-  a job another runner could run has waited two seconds in its queue. A
-  helper does nothing for a run until then: it does not fetch the commit,
-  holds none of the runs its runner may help (`--helping`), and looks at
-  the store once every five seconds. Once asked, it joins when it has a
-  free slot, none of its own runs' jobs waits for memory, and it helps
-  fewer than `--helping` runs.
+- **The primary asks, the helper decides.** Until it is asked, a helper
+  only fetches the commit (when the request names one, so that it can
+  build at once when it joins), holds none of the runs its runner may
+  help (`--helping`), and looks at the store once every five seconds.
+  Once asked, it joins when it has a free slot, none of its own runs'
+  jobs waits for memory, and it helps fewer than `--helping` runs.
 - **A helper's own runs come first.** A helper starts a job only with a
   slot that is free and memory that fits at that moment, never waiting for
   either, and never while a job of one of its own runs waits for memory or
@@ -1199,29 +1316,36 @@ split:
   building its workspace (the clone and the dependency installs, which a
   helper does once per run and which hold a slot and the job's memory
   reservation but run no job); it stops when that step is done.
-- **A helper is sent no secrets.** The proxy leaves `secrets` and `lent`
-  out of what it offers, and a runner helping a run uses none even if
-  sent. So a job runs on a helper only if it is given no secret and lent
-  nothing (its services included), has no `changes: commit`, keeps no
-  `downloads:`, is not a cloud job, and needs no job, directly or through
-  others, that reads a secret or is lent something: what such a job hands
-  on (artifacts, outputs) may carry what it read. All of those run on the
-  primary. A job larger than the helper's whole memory budget stays with
-  the primary too.
+- **A helper gets the run's secrets sealed, and nothing lent.** The proxy
+  leaves `secrets` and `lent` out of what it offers, and a runner helping
+  a run uses none it was sent. When a helper joins it makes an X25519 key
+  for that run alone and lists its public half in the store; the primary
+  seals the run's secrets to it (X25519, HKDF-SHA256, ChaCha20-Poly1305)
+  and stores only that, and the helper opens it in memory and masks with
+  the values as the primary does. A helper that does not have them within
+  ten seconds goes on without them. So a job given secrets (its services'
+  included) runs on a helper that has them, as long as it keeps no
+  `artifacts:`, which are never sent from a job that reads a secret; and
+  one of its writes to `/tmp/workflow` is never sent from a helper, which
+  hands the job back instead. A job lent anything, one with
+  `changes: commit`, one that keeps `downloads:`, a cloud job, a machine
+  job, and one that needs a job (directly or through others) that reads a
+  secret or is lent something stay on the primary. A job larger than the
+  helper's whole memory budget stays with the primary too.
 - **How artifacts cross.** A task-cached job's artifacts are in the task
   cache entry it saves, which every runner reads. A job without one that
   passes has its artifacts stored for the run, under the name of the
-  runner that ran it, when they come to at most `split.artifacts` in
-  total (never more than the 4 MiB default in an untrusted run, such as a
-  fork's pull request), the job was handed nothing by a job that reads
+  runner that ran it, when they come to at most 64 MiB in total (4 MiB in
+  an untrusted run, such as a fork's pull request), the job was handed
+  nothing by a job that reads
   secrets, and no file among them holds one of the run's secret values as
   it is written; they are sent byte for byte or not at all. Artifacts that
   do not cross stay where the job ran, the job's report says why, and the
   jobs that need them run there: a helper never takes a job whose needs
   left artifacts it does not have, and the primary runs again a job a
   helper ran whose artifacts it cannot get. So a job that is not
-  task-cached and keeps more than `split.artifacts` is best not left to a
-  helper: make it task-cached, or raise the limit. What a runner takes in
+  task-cached and keeps more than that is best made task-cached, which
+  every runner reads. What a runner takes in
   from another counts toward the run's `scratch:` like any artifact.
 - **What the run looks like.** The app follows the primary and nothing
   else: its report, `progress`, log, checks and bill hold every job. A job
@@ -1229,8 +1353,9 @@ split:
   its real status, `duration_ms` and output, with `"remote": "<runner>"`
   on its report and its `job-finished` event and a note saying where it
   ran. Its output arrives when it ends, not line by line. The primary
-  masks everything in a helper's record with the run's secrets, since the
-  helper had none to mask with. If that changes one of the job's
+  masks everything in a helper's record with the run's secrets too, since
+  a helper may not have had them to mask with. If that changes one of the
+  job's
   `outputs:`, the primary runs the job itself rather than take the
   helper's word for it: a matrix or an `if:` that reads the output is then
   worked out from the masked text, as it is without a helper, and not
@@ -1251,8 +1376,8 @@ split:
   answer is a job the primary runs and a helper leaves alone, so a split
   run never fails because it was split. A helper ends when the pipeline
   does, when the primary cancels it, and when the primary has been silent
-  for 45 s. If the primary dies the run is lost, as it is without
-  `split:`.
+  for 45 s. If the primary dies the run is lost, as it would be with no
+  helper.
 - **A job can run twice, and only then.** A job the primary took back
   runs on the primary whatever the helper does next. If the helper was
   alive after all and finishes it too, both ran: the first record written
@@ -1276,9 +1401,13 @@ split:
   architecture (see [Environment caches](#environment-caches)). The task
   cache has always been shared between runners of different architectures
   in the same way.
-- **Cost.** A split pipeline's primary makes two small writes to the store
-  for each job it starts and one listing a second; a helper that is never
-  asked makes one listing every five seconds.
+- **Cost.** A primary makes two small writes to the store for each job it
+  starts and one listing a second while a pipeline runs; a helper that is
+  never asked makes one listing every five seconds. A helper that joins adds a write for its key
+  and the primary one for the sealed secrets. A job that writes to
+  `/tmp/workflow` adds one write for its layer's list and one per object
+  of its files (4 MiB of small files to an object), and each runner reads
+  each other runner's lists and the objects its jobs open or are sent.
 
 ### What changed from the first sketch
 
@@ -2015,12 +2144,14 @@ install:
   `stat` walked the runner's record of file modes and every few inodes it
   swept its whole inode table, both quadratic in the number of files
   (`vendor/README.md`, wasmer-wasix, and `iwci-vfs`'s `modes.rs`).
-- **The store and `node_modules` are both in memory**, and with Edge.js's
-  default `npm_config_package_import_method=copy` (below) the package files
-  are copied out of the store. `hardlink` (or `auto`) in a job's `env:`
-  links them instead ([Hard links](#hard-links)), which pays for each
-  file's bytes once. create-t3-turbo's install passed in the default
-  `memory: 2GiB` every time it was tried; a larger tree needs more.
+- **The store and `node_modules` are both the job's files**, in memory
+  until they come to half its `memory:` and on the runner's disk past that
+  (see `memory:` under [Limits](#limits)), and with Edge.js's default
+  `npm_config_package_import_method=copy` (below) the package files are
+  copied out of the store. `hardlink` (or `auto`) in a job's `env:` links
+  them instead ([Hard links](#hard-links)), which pays for each file's
+  bytes once. create-t3-turbo's install passed in the default
+  `memory: 2GiB` every time it was tried, before files spilled.
 - **Edge.js's pnpm has its own defaults**, which a job's `env:` can
   override: `npm_config_node_linker=hoisted` (a flat `node_modules`, as
   npm makes, not pnpm's linked one; `isolated` works and was faster here,
@@ -2033,7 +2164,8 @@ install:
   directory, and inode numbers Node read as one number; `vendor/README.md`).
 - **Install scripts that fetch a native binary fail**, as any native
   package does (esbuild's `postinstall` cannot find a build for `wasm32`).
-  `--ignore-scripts` skips them.
+  `--ignore-scripts` skips them. [`install-scripts: true`](#install-scripts) runs the
+  workspace's in a Linux machine instead.
 
 ### Tools in a script
 
@@ -2415,6 +2547,70 @@ passed in 36 s, oxlint 1.92.0 under Bun found nothing in its 50 files in
 package's vitest through pnpm, with `managePackageManagerVersions: false`
 so pnpm 10 did not switch to the pnpm 12 it pins.
 
+### Install scripts
+
+The runner's own install of `deps:` runs no package's install script:
+the jobs are `wasm32`, and a script that builds or downloads a native
+binary has nothing to build it for. With `install-scripts: true` at the
+top of the pipeline, a workspace with a pnpm, npm or Bun install then runs
+the scripts its package manager would have run, in a Linux
+[virtual machine](#platforms), and every job starts from what they wrote:
+generated code (`prisma generate`), patched files (`patch-package`), a
+project's `prepare` build, and native addons for jobs in the native
+sandbox.
+
+```yaml
+install-scripts: true
+workspace:
+  deps: [pnpm]
+```
+
+- **Only what the package manager would run.** pnpm 10 and later builds
+  only what `allowBuilds` or `onlyBuiltDependencies` allows (from
+  `pnpm-workspace.yaml` or `package.json`'s `pnpm` field;
+  `dangerouslyAllowAllBuilds` allows the rest), and pnpm 9 everything but
+  `neverBuiltDependencies`, by the project's `packageManager`. npm 12 runs
+  what `allowScripts` in `package.json` allows, and a project without the
+  field runs none on npm 12 (by `packageManager` or `devEngines`) and every
+  package's otherwise, as npm 11 did. Bun runs `trustedDependencies`, or
+  without it its own list of trusted packages (Bun 1.4.5's). The projects'
+  own `preinstall`, `install`, `postinstall` and `prepare` scripts run too,
+  workspace packages included. `ignore-scripts` (`.npmrc`, pnpm's
+  `ignoreScripts`, `bunfig.toml`'s `install.ignoreScripts`) runs nothing,
+  and pnpm's `ignoreDepScripts` only the projects'. A line on the run names
+  the packages left out.
+- **In the order the package managers run them**: each package after the
+  packages it depends on, found as Node finds them, and the projects last.
+  `install` is `node-gyp rebuild` for a package with a `binding.gyp` and
+  neither `preinstall` nor `install`. Each script runs in its package's
+  directory with npm's lifecycle variables (`npm_lifecycle_event`,
+  `npm_package_name`, `INIT_CWD` and the rest), the `node_modules/.bin`
+  directories above it on its `PATH`, and node-gyp building against the
+  image's Node.js 24 headers, so nothing is downloaded for them.
+- **No machine when there is nothing to run.** The plan is made on the
+  runner from the installed tree, and a workspace whose packages have no
+  script to run starts none.
+- **One machine per workspace and commit**, with 4 GiB of memory, the
+  network, no secrets and 30 minutes for every script together. What the
+  scripts changed under the clone comes back and is written into the
+  workspace before any job starts; a script that fails fails the jobs of
+  that workspace, with its output.
+- **Kept for the same commit.** What they wrote is kept with the
+  repository's caches, under the commit, the workspace and the plan, so a
+  retried run and another pipeline file of the same commit take it from
+  there. A new commit runs them again: any
+  script can read the commit's files (`prisma generate` reads the schema),
+  so nothing narrower would be safe. A pull request's scripts write only
+  to its own scope, as its `cache:` entries do.
+- **A runner with machines takes the run.** A pipeline with
+  `install-scripts: true` needs `linux` as a `platform: linux` job does, and
+  the jobs of such a workspace stay on the runner that has the run. On a
+  runner without machines, a workspace with scripts to run fails, saying
+  so.
+- Native addons are built for the machine, Linux on the runner's
+  architecture with glibc and Node.js 24's ABI: they load in the native
+  sandbox, not in an isolate.
+
 ### kubectl
 
 `tools: [builtin:kubectl@1.37]` puts kubectl on an environment's `PATH`.
@@ -2544,8 +2740,9 @@ release:
 
 What to know:
 
-- **It needs no checkout.** The clone has no `.git`, so gh finds the
-  repository in `GH_REPO`, which the lent token sets; `gh pr create`
+- **It needs no checkout.** The clone's `.git` names no remote, so gh
+  finds the repository in `GH_REPO`, which the lent token sets;
+  `gh pr create`
   takes `--head` (a branch the job pushed) and `--base`.
 - **No terminal, no prompts.** The package sets `GH_PROMPT_DISABLED`,
   so a command that would ask fails and says which flag it wants, as gh
@@ -2626,9 +2823,18 @@ What to know:
   [Tools and environments](#tools-and-environments)) Git's HTTP helper
   waited for the answer on the pipe from Git instead, until the job's
   timeout.
-- **The checkout is not a repository.** The runner writes the commit's
-  tree into the job's file system without a `.git`, so `git log` or `git
-describe` in `/app` fails; clone what a job needs to inspect.
+- **The checkout is a shallow repository.** Beside the commit's files the
+  runner writes a `.git` holding the commit and every tree under it, with
+  `shallow` marking the end of history and `HEAD` on the run's branch
+  (detached on the commit for a pull request or another ref, as
+  `actions/checkout` leaves one), and an index of every file. So
+  `git ls-files`, `git rev-parse HEAD`, `git describe --always`,
+  `git status` and Go's version stamping work in `/app`, and the clean
+  checkout reads as clean. `git log` has the one commit, and the files'
+  old contents are not there: `git diff` on a file the job changed, or
+  `git show HEAD:<path>`, says the object is missing. Clone what a job
+  needs for history. What git writes in `.git` stays in the job: it is
+  never one of its `changes:`, and `hashFiles` does not read it.
 - **No identity and no `HOME`.** A commit needs `user.name` and
   `user.email` (`-c`, `GIT_AUTHOR_*` and `GIT_COMMITTER_*`, or `git config`
   in the repository), and `git config --global` needs `HOME` set, which a
@@ -2820,8 +3026,8 @@ What to know when a job runs Bun:
   `mkdir -p /tmp/bin && ln -s "$(command -v bun)" /tmp/bin/node` with
   `/tmp/bin` first on `PATH`. `env:bash@5` has no `npm` either, so a script
   that runs `npm pack` needs it some other way (`bunx npm@11 pack`).
-- **The checkout has no `.git`** (see [Git](#git)): a script that runs
-  `git ls-files` wants a `git init -q` first.
+- **The checkout is a shallow repository** (see [Git](#git)): `git ls-files`
+  and `git status` work without setup.
 - **Next.js** runs its dev server under Bun with Turbopack and its native
   SWC: `bun --bun next dev --turbopack &` compiles and answers the requests
   the rest of the script makes.
@@ -2998,7 +3204,11 @@ job's own copy. To keep a set apart:
 - **A virtual environment of copies**: `python -m venv --copies .venv`
   works, with pip in it, and its `activate` script (#1310; before, venv's
   ensurepip ran as the base interpreter, which kept pip out of the venv,
-  so it had to be followed by `.venv/bin/python -m ensurepip`). Without
+  so it had to be followed by `.venv/bin/python -m ensurepip`). After
+  `activate`, a bare `python` or `python3` is the venv's, and
+  `python -m pip install` installs into it (#1334; before, the interpreter
+  bash started by that name could not find itself on `PATH` and ran as the
+  base one). Without
   `--copies` it fails: venv links the interpreter, and a command run
   through a symbolic link fails here (#1199). virtualenv works as well
   (`pip install virtualenv`, then `virtualenv .venv`).
@@ -3960,10 +4170,22 @@ jobs:
   changed is saved, never the environment's own files. Restored files
   belong to the cache, not the repository: they never count as changes for
   `changes: fail` or `changes: commit`.
-- Restored files count against the job's `memory:` like any other write.
+- Restored files count against the job's `memory:` like any other write
+  (and spill to disk with the rest, past half of it).
+- Restored files have the Unix epoch as their modification time, in a
+  machine and in an isolate alike: older than anything the job writes, so
+  a tool that trusts times (pnpm's store, checked again when a file looks
+  newer than its last check) does not take a restore for a change.
 - Files and directories keep their modes, so a program saved executable
   comes back executable. A cache saved by a runner from before modes were
   kept is a miss, and the next pass saves over it.
+- A cache bigger than 64 MiB compressed (a pnpm or Gradle store easily
+  is) is split into 64 MiB parts beside it, written in parallel and read
+  back in parallel; eviction and clearing take the parts with it.
+  A runner from before split caches reads one as a miss.
+- A save is on the job's time, so one over 16 MiB is compressed on up to
+  eight threads, into the same single zstd stream any runner reads: a
+  1.1 GB pnpm store took 4.9 s to save on one thread and 1.0 s on eight.
 - **Scoped by branch, so a pull request cannot poison the default
   branch.** A push saves into its branch's scope and reads that, then the
   default branch's (`--default-branch`, default `main`). A pull request
@@ -3972,10 +4194,84 @@ jobs:
   wins when both have it; `restore-keys` are read one scope after another.
 - **Counted against the owner's storage quota** (see below). A save that
   would pass the quota evicts the owner's oldest caches first; one larger
-  than the whole quota is refused.
+  than the whole quota is refused. Listing an owner's storage takes a
+  request per thousand objects, so a runner counts from its last listing
+  plus what it saved since: one under two minutes old stands, and one
+  under an hour old stands while a tenth of the quota is free, the owner
+  being listed again in the background. Past either, the save lists
+  first. A runner that starts counts every owner in the background, so
+  its first save for one does not wait for a listing either.
+- Jobs that restore the same entry at the same moment (a matrix sharing
+  a package store) read and unpack it once between them.
+- **Saved after the job, not as part of it.** A save compresses and
+  uploads (a pnpm store of 3.6 GB took 22 s to R2), and the job's result
+  does not depend on it, so the job is reported done first: the jobs that
+  need it start, and its line in `caches` reads
+  ``cache `pnpm-…`: saving 1117709 KiB after the job`` while the upload
+  goes on. The run is not finished until every save has landed or
+  failed, and the line is then the one it always was (`saved … in …`, or
+  `could not save (…)`: a warning, never a failure). Until its saves end
+  the job keeps that much of its memory reservation: the files and half
+  as much again for their compressed copy. A save claims its key, so a
+  restore of it on this runner, or of a `restore-keys` prefix it falls
+  under, waits for the upload (at most ten minutes) instead of missing it
+  or reading an older entry: a run started straight after this one reads
+  what it saved. A drain waits for its runs, so for their saves.
+  Environment caches are saved the same way. A helper in a
+  [split run](#split-runs) still saves before its job ends, since it
+  gives back everything the moment its own runner wants it.
+- What each cache did is a line in the job's `caches`, with how long a
+  restore or a save took (``cache `pnpm-…`: restored in 2.1 s``,
+  ``cache `pnpm-…`: saved 412000 KiB in 9.8 s``). The runner's log says
+  how long each workspace's checkout and installs took, and where each
+  run's time went outside its jobs.
 
 Caches live in the object store beside the tools, so on R2 every runner
 shares them.
+
+### Turborepo's remote cache
+
+A repository built with Turborepo gets a remote cache without configuring
+one: every job with a network is given `TURBO_API`, `TURBO_TOKEN` and
+`TURBO_TEAM`, which point `turbo` at a cache the runner serves, so a task
+whose inputs an earlier run built already is restored rather than run
+again, and on every runner (the artifacts are in the object store).
+
+- `TURBO_API` is `http://10.0.2.2:7410`, port 7410 of the job's gateway
+  (the address its network's default route goes to), which the runner
+  answers from a Unix socket of its own (`--remote-cache on|off`, default
+  on). No host port is opened and nothing else reaches it. Jobs in a
+  sandbox (native programs) and in machines reach it; a `network: false`
+  job has no gateway and is given none of the variables.
+- `TURBO_TOKEN` is the run's own, masked in logs like a secret, and
+  refused once the run ends. `TURBO_TEAM` is `iwci`.
+- A job that sets any of `TURBO_API`, `TURBO_TOKEN`, `TURBO_TEAM`,
+  `TURBO_TEAMID` or `TURBO_LOGIN` itself (in `env:` or from a secret) is
+  given none of them, so a remote cache of the repository's own keeps
+  working.
+- Artifacts are kept like [job caches](#job-caches): scoped by branch, so
+  a pull request reads the default branch's and writes its own, which no
+  push to the default branch reads; counted against the owner's storage
+  quota and evicted with the rest, oldest first; cleared with the
+  repository's caches. One over 200 MiB is refused, which `turbo` warns
+  about and carries on. Signed artifacts (`remoteCache.signature`) keep
+  their signature.
+- The API served is Turborepo's (`/v8/artifacts/...`: `GET`, `HEAD`,
+  `PUT`, the `POST` query and events, and `status`).
+- Every connection is served on a thread of its own for as long as it is
+  open (up to 512 at once, each closed after 5 minutes without a request,
+  at most 64 of them a run's; a request on one more is answered 429).
+  Artifacts in the runner's memory, uploads as they are read and
+  downloads until they are sent, are held to 2 GiB across every run, and
+  16 requests are answered at once: one that finds no room within 10 s
+  is answered 503 with `Retry-After` (an upload is read and let go
+  first), which `turbo` takes as a miss or a failed upload and carries on.
+  `turbo` opens several keep-alive connections together and keeps them
+  open; on tiny_http's connection pool, which this replaced, one of them
+  could go unread until another closed, which `turbo` does only at its
+  30 s timeout, so a lookup that hung rebuilt its task and an upload that
+  hung was never kept (tRPC's `pnpm build` took 31 s for 3 s of work, cold
+  and warm alike).
 
 ### Environment caches
 
@@ -3999,9 +4295,15 @@ job cache that the environment wrote:
   the default branch's cache and saves into a scope of its own, which
   nothing on the default branch reads. These caches hold compiled code that
   later builds link or run, so this matters more here, not less.
-- **Saved after a pass, and only when the job changed it.** A failed job
-  saves nothing, and a run that leaves the directory as it was restored
-  saves nothing either.
+- **Saved once the script ends on its own, and only when it changed the
+  directory.** A job whose script exited non-zero saves what it added too:
+  these caches hold toolchains and packages keyed by version, not test
+  results, so a suite that fails still warms the next run. A job stopped
+  mid-write saves nothing, since what it left may be half an install: one
+  that timed out, stalled, ran out of memory, had a write refused or was
+  cancelled, as well as one that never ran its script. Nor does a run that
+  leaves the directory as it was restored. Job `cache:` entries still save
+  only after a pass, as GitHub's `actions/cache` does.
 - **Bounded.** A cache keeps at most its declared `max-bytes`, and never
   more than a quarter of the job's `memory:` (restored files are in the
   job's memory). Past that, only what that run wrote or changed is kept,
@@ -4010,11 +4312,29 @@ job cache that the environment wrote:
   the limit saves nothing. Go never trims its own cache here (the
   environment's entries are dated 2100), so this is the only bound.
 - **Counted against the owner's storage quota**, with the job caches.
+- **Left to the job's own `cache:`.** One whose directory a `cache:`
+  entry of the job keeps, or lies under one, or holds one, is neither
+  restored nor saved: the job's entry is, under its key. Both at once
+  wrote the environment's copy over the files the job's key chose, and
+  on a machine asked for the directory back after an exact hit, which
+  otherwise stays in the machine. guava's test jobs cache
+  `~/.m2/repository` (190 MB in 5,000 files) themselves, and the image's
+  `m2` restored it a second time, brought it back and saved it again
+  after every warm run, since Maven rewrites files in it as it resolves:
+  on ci-2 that save kept the warm run going 6.4 s after its last job.
 - Its lines are in the job's `caches`: ``env cache `go-build`: restored
-12345 KiB``, `miss`, `unchanged`, `saved ...`.
+12345 KiB``, `miss`, `unchanged`, `saved ...`, ``left to the job's cache
+of `/root/.m2/repository` ``.
 
 `env-cache: false` turns them all off for a job; `env-cache: { go-build:
 false }` turns off the ones it names.
+
+A virtual machine's image declares caches the same way, in its
+`image.json`: the Linux image keeps `nvm` (`/root/.nvm/versions`),
+`rbenv` (`/root/.rbenv`), `goenv` (`/root/.goenv`), `m2` (`/root/.m2/repository`), `gradle` (`/root/.gradle/caches`), `uv-python` (`/root/.local/share/uv/python`) and `uv` (`/root/.cache/uv`), keyed by the image's name rather than its
+version (`machine:ubuntu-24.04`), so a rebuild of the image on the same
+Ubuntu release keeps them. Only what the job added is saved there too:
+the image's own files are its read-only root, never the job's.
 
 An environment declares them in its `build.json` (which `iwci publish`
 turns into its manifest), beside `env`:
@@ -4070,7 +4390,9 @@ documentation or reserved ranges, in IPv4, IPv6 or IPv4 inside IPv6, nor the hos
 answers that point inside are dropped. UDP is not offered.
 
 `network: false` on a job keeps it off the internet, leaving only its
-loopback. The `iwci` command turns the internet on for its jobs; the
+loopback. A job with a network also reaches the runner's own
+[remote cache](#turborepos-remote-cache), on port 7410 of its gateway
+(`10.0.2.2`), and no other port there. The `iwci` command turns the internet on for its jobs; the
 runtime's own tests never use it.
 
 ### Background services
@@ -4323,9 +4645,10 @@ iwci run --repo https://github.com/org/repo (--sha <commit> | --branch <name>) \
          [--stall-after 5m] [--json] [--store <dir>] \
          [--keep-installs-unpacked 24h] [--no-task-cache] [--module-memory 2GiB] \
          [--pin-module-under 64MiB] [--pinned-module-memory 512MiB] \
-         [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d]
+         [--download-max-file 256MiB] [--download-max-run 1GiB] [--download-max-retention 90d] \
+         [--spill-disk 20GiB] [--remote-cache on|off]
 IWCI_SERVER_KEY=... iwci serve [--listen 127.0.0.1:8547] [same limits as run] [--memory-reserve 5GiB] [--helping 2] \
-         [--machines <dir>] [--machine-cpus 2]
+         [--machines <dir>] [--machine-cpus 2] [--machine-burst on|off]
 iwci publish dist/builtin/gofmt/1.27.3 ...        # upload builtins/*/build.sh output
 ```
 
@@ -4461,7 +4784,8 @@ whole pipeline.
   `/sys/devices/system/cpu` and so Bun's `os.cpus()` and the C library's
   `sysconf(_SC_NPROCESSORS_ONLN)`, is the sandbox's CPUs (the runner's
   `--cpus`). A [Linux machine](#linux-machines) is told its own vCPUs,
-  which are real ones it is held to.
+  which are real ones, more than its `cpus:` when it may use idle CPUs,
+  and held to its `cpus:` share when the host is busy.
 - **`/proc/cpuinfo`** is the one file the runner puts in a job's `/proc`
   (WASIX has no procfs): a `processor` section per CPU the job is told, all
   cores of one package (`physical id`, `siblings`, `core id`,
@@ -4670,17 +4994,25 @@ whole pipeline.
   so a job longer than that should not need them near its end.
 
 Inside a job, `memory:` holds its program memory (Wasmer's linear-memory
-limit) and, separately, the files it writes, which live in memory: without
-that a job could write past any limit. That is every file it writes, in
-`/tmp` and in its environment's directories (`GOCACHE`) too. A write over it is refused before
-any of it lands, and the job's report says so.
+limit) and, separately, the files it writes, which start in memory. That is
+every file it writes, in `/tmp` and in its environment's directories
+(`GOCACHE`) too. Once they come to half its `memory:`, the files read or
+written least recently move, whole, to the runner's disk (unlinked files
+under the cache directory's `spill/`) until those in memory are back under
+three quarters of that half; a file on disk stays there until it is
+truncated to nothing. What a job writes is held to the runner's
+`--spill-disk` (20 GiB by default, or its `memory:` if that is more), and a
+write over it is refused before any of it lands, as a full disk refuses
+one; the job's report says so. With `--spill-disk 0` every file stays in
+memory and is held to `memory:`, as before.
 
 **Sizing `memory:`.** A job's report says what it used beside what it
 reserved (`memory_mib`): `peak_memory_mib` is the most it held at once,
 adding up the linear memories of its programs and its services (every
 process has one, each at the size it had grown to), the room its V8 heaps
 had reserved (read five times a second, so a heap that lived for less can
-be missed) and the files it had written, each at its own peak. A `memory:`
+be missed) and the files it had written in memory (at most half its
+`memory:` when they spill), each at its own peak. A `memory:`
 at or above it would have refused the job nothing; leave room above it,
 since a suite's peak moves from run to run and with what else shares the
 runner. `queued_ms` is how long the job waited, once its `needs` had
@@ -4775,11 +5107,23 @@ otherwise. Runners are meant to sit behind a plain load balancer: reports,
 billing records and caches go to the shared object store, so any runner can
 answer for any owner, and a full runner says so instead of queueing.
 
+Each connection is served on a thread of its own for as long as it is open,
+its requests in turn (a `?wait=true` run holds its connection until the run
+ends), so a client's keep-alive connections are each answered at once (on
+tiny_http's connection pool, which this replaced, one could go unread until
+another closed). Up to 1,024 connections are open at once. A cloud job's
+machine, known by its claim token, holds at most 16 of them, and requests
+without a credential 64 between them; a request on one more is answered
+`429` with `Retry-After`. The JSON bodies the routes read (each at most
+1 MiB) are held to 256 MiB across every connection, and one that finds no
+room within 10 s is answered `503` with `Retry-After`; an artifact upload
+streams through and holds none. A connection idle for 5 minutes is closed.
+
 | Route                                   | Does                                                                                                                                                                    |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /healthz`                          | `200 ok`, unauthenticated.                                                                                                                                              |
 | `GET /v1/capacity`                      | Slots (total, free), active runs, memory reserved and waited for, the process's own memory (below), V8's out-of-memory losses (below), and the `platforms` it runs.     |
-| `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done.                                                                                     |
+| `POST /v1/runs[?wait=true]`             | Runs a request (below): `202` with an id, or with `wait=true` the result when done. With `notify`, posts each change of the run's state to the caller (below).          |
 | `GET /v1/runs/{id}[?owner=]`            | A run's state and report, and while it runs its `progress` (each pipeline's jobs and their states so far); `?owner=` reads it from the store when this runner lacks it. |
 | `GET /v1/runs/{id}/logs`                | The run's log as Server-Sent Events: everything so far, then live until it ends.                                                                                        |
 | `POST /v1/runs/{id}/cancel`             | Cancels a run on this runner, or only some of its pipelines (below).                                                                                                    |
@@ -4820,7 +5164,8 @@ A request body (for `runs` and `prepare`):
   "no-task-cache": "optional: true runs every task-cache: job; passes still save",
   "trusted": "optional: false for a pull request from a fork; default false for a pull request, true otherwise",
   "lent": "optional: connections, SSH keys and resource outputs lent to the jobs, by name (below)",
-  "split": "optional: { \"runner\": \"ci-1\" } shares the run; { \"of\": \"<run id>\", \"runner\": \"ci-2\" } helps another runner's run (below)"
+  "split": "optional: { \"runner\": \"ci-1\" } shares the run; { \"of\": \"<run id>\", \"runner\": \"ci-2\" } helps another runner's run (below)",
+  "notify": "optional, runs only: { \"url\": \"https://app.example/api/ci-notify/runs/<id>\", \"token\": \"<bearer>\" }; where to post each change of the run's state (below)"
 }
 ```
 
@@ -4937,21 +5282,42 @@ it is masked, and an untrusted run is given none of it:
   after it gets a note in its report.
 - Up to 64 entries of each kind; the whole body is at most 1 MiB.
 
+- **Notices.** With `notify`, the runner posts
+  `{ "run": "<its id>", "state": "running" }` to `url`, with
+  `Authorization: Bearer <token>`, as each pipeline and each job starts
+  and ends (never for output), at most once a second, changes in between
+  being one notice; and `{ "run": ..., "state": "finished" }` (or
+  `"error"`) once the run has ended and its entry and report are recorded,
+  so a `GET /v1/runs/{id}` that follows finds it ended. Notices of a run go
+  one at a time, each after the caller answered the last (or 30 s passed).
+  A notice while it runs is tried once. The last is tried again for two
+  minutes while the caller cannot be reached or answers `409`, `425`,
+  `429` or `5xx`, then left to the caller's polling; any other answer ends
+  it. A drain waits for it (`/v1/capacity` does not count it as a run).
+  Redirects are not followed. `url` must be `https` to a host name, never
+  an IP address or `localhost` (`400` otherwise, before the run starts);
+  `token` is 1 to 512 printable characters without spaces, and is never
+  stored, echoed or logged. A notice carries nothing the caller has to
+  trust: it reads the run as it always does. An offer to help (`split.of`)
+  ignores `notify`. `/v1/capacity` says `"notify": true` on a runner that
+  takes the field; a runner from before refuses a request with it, so send
+  it to no other.
 - **Capacity.** A run is admitted when a slot is free and fewer runs are
   active than there are slots; otherwise `429` with `Retry-After` and the
   current capacity, so the balancer can try another runner. `prepare` takes
   a slot while it works and is refused the same way.
 - **Split runs.** `"split": { "runner": "<name>" }` in a run's request
-  lets its pipelines that say `split:` be shared (see
-  [Split runs](#split-runs)); `runner` is what this runner is called in
+  lets its pipelines be shared (see [Split runs](#split-runs)); `runner`
+  is what this runner is called in
   claims and reports, and one is made up when it is left out. The same
   request with `"split": { "of": "<run id>", "runner": "<name>" }`, sent
   to another runner, is an offer to help the run of that id (its id on the
   runner that has it). It answers `202` with an id of its own, takes no
   slot, and counts in none of `runs_active`, `slots_free`, `memory_used`
   or `memory_waiting`. It needs neither `secrets` nor `lent` and uses
-  neither if sent; it needs no `sha`, since it runs the commit the run it
-  helps resolved. An offer is not one of the runs a runner helps
+  neither if sent (the secrets come sealed from the run's runner once it
+  joins); it needs no `sha`, since it runs the commit the run it helps
+  resolved, though one it is sent is fetched at once. An offer is not one of the runs a runner helps
   (`--helping`, default 2) until the run asks for help and the runner
   joins it, so offers are not refused for one another: only with `429`
   when the runner is draining, helps no runs (`--helping 0`), or holds 32
@@ -5043,7 +5409,12 @@ it is masked, and an untrusted run is given none of it:
   its bill. Storage is read from `GET /v1/storage/{owner}`, for billing by
   GB-month: `used_bytes` is caches and unexpired downloads together, with
   `entries` (cache entries), `download_bytes` and `downloads` beside it and
-  the same four per repository under `repos`.
+  the same four per repository under `repos`. It answers from the runner's
+  last listing of the owner: one under a minute old as it is, an older one
+  at once while the owner is listed again behind it (an owner with tens of
+  thousands of entries takes half a minute to list). An owner's first ask
+  waits up to 12 s for its listing and otherwise answers `503` with
+  `Retry-After`; ask again. Clearing a repository drops the listing.
 - **Quotas.** An owner's caches and downloads across all its repositories
   are held to its storage quota: the request's `storage-quota`, else the
   server's `--storage-quota` (default 10 GiB). Only caches are evicted to
@@ -5276,10 +5647,10 @@ the routes; the short version:
 
 ## Known limitations
 
-- **Virtual machines are new.** `platform: linux` is tested against the
-  real agent over pipes and with a fake machine in the scheduler, but the
-  image (`images/linux`) has not yet been built and booted on a KVM host,
-  so expect the first real runs to find problems. No machine job can use
+- **Virtual machines are new.** `platform: linux` has run on one KVM host
+  so far (ci-1, x86_64, from 2026-11-21), where machine jobs boot in about
+  four seconds and hand files to each other through `/tmp/workflow` over
+  virtio-fs; the aarch64 image has not been built yet. No machine job can use
   the task cache. `platform: windows` is turned off: the parser refuses it
   and no runner offers it (`VmOs::enabled`).
 - **File locks need a C library that asks for them.** The runner keeps
@@ -5488,18 +5859,23 @@ What a split run keeps under `splits/<owner>/<repo-id>/<run-id>/`, `<run-id>`
 being the run's id on the runner that has it, `<pipeline>` a hash of the
 pipeline's file name and `<job>` the job id in hex:
 
-| Key                                        | What                                                                                                                                               |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `state/primary.<n>`                        | The primary is alive; `<n>` moves every ten seconds.                                                                                               |
-| `state/helper/<runner>.<n>`                | The same for a helper.                                                                                                                             |
-| `state/help.<version>`                     | The primary, a runner of that version, has more ready jobs than it can start.                                                                      |
-| `state/end`                                | The run is over.                                                                                                                                   |
-| `state/ended/<pipeline>`                   | That pipeline is over, or cancelled.                                                                                                               |
-| `state/done/<pipeline>/<job>`              | How a job went on the runner that ran it: its report. The primary's is masked; a helper's is masked by the primary when it reads it. Written once. |
-| `state/commit.<sha>`                       | The commit the primary resolved the request to; a helper runs that one.                                                                            |
-| `state/back/<pipeline>/<job>.<runner>.<n>` | That helper gave the job up. Written before it lets go of the claim.                                                                               |
-| `claims/<pipeline>/<job>`                  | The name of the runner that runs the job. Written only if absent.                                                                                  |
-| `artifacts/<pipeline>/<job>.<runner>`      | What a job without a task cache entry kept on that runner, when small enough: a zstd archive.                                                      |
+| Key                                         | What                                                                                                                                               |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `state/primary.<n>`                         | The primary is alive; `<n>` moves every ten seconds.                                                                                               |
+| `state/helper/<runner>.<n>`                 | The same for a helper.                                                                                                                             |
+| `state/help.<version>`                      | The primary, a runner of that version, has more ready jobs than it can start.                                                                      |
+| `state/end`                                 | The run is over.                                                                                                                                   |
+| `state/ended/<pipeline>`                    | That pipeline is over, or cancelled.                                                                                                               |
+| `state/done/<pipeline>/<job>`               | How a job went on the runner that ran it: its report. The primary's is masked; a helper's is masked by the primary when it reads it. Written once. |
+| `state/commit.<sha>`                        | The commit the primary resolved the request to; a helper runs that one.                                                                            |
+| `state/back/<pipeline>/<job>.<runner>.<n>`  | That helper gave the job up. Written before it lets go of the claim.                                                                               |
+| `claims/<pipeline>/<job>`                   | The name of the runner that runs the job. Written only if absent.                                                                                  |
+| `artifacts/<pipeline>/<job>.<runner>`       | What a job without a task cache entry kept on that runner, when small enough: a zstd archive.                                                      |
+| `scratch/<pipeline>/<runner>/<layer>.list`  | One of that runner's `/tmp/workflow` layers: what changed, with each file's size and object, or that it stays on that runner. JSON.                |
+| `scratch/<pipeline>/<runner>/<layer>.<n>`   | Files of that layer: one of 1 MiB or more, or smaller ones together up to 4 MiB. A zstd archive.                                                   |
+| `state/scratch/<pipeline>/<runner>.<layer>` | That runner's layers up to this one are stored. Only the latest is kept.                                                                           |
+| `state/key/<runner>.<key>`                  | That helper has joined and wants the run's secrets sealed to this X25519 public key (hex).                                                         |
+| `secrets/<runner>`                          | The run's secrets sealed to that helper's key. Never in the clear. Written once.                                                                   |
 
 A runner follows the others with one listing of `state/`. The primary
 deletes everything but `state/end` when the run ends; every server sweeps

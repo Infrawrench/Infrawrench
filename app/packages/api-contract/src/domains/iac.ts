@@ -184,6 +184,24 @@ export const IacResourceStatus = Schema.Struct({
   stateLabel: Schema.NullOr(Schema.String),
   terraformAddress: Schema.NullOr(Schema.String),
   driftFieldCount: Schema.Int,
+  managedBy: Schema.Array(
+    Schema.Struct({
+      repository: Schema.String.annotate({
+        description: "`<namespace>/<repository>` on git.infrawrench.com.",
+      }),
+      rootPath: Schema.String.annotate({
+        description: "The Terraform root, relative to the repository. Empty for its top.",
+      }),
+      workspace: Schema.String,
+      address: Schema.String.annotate({
+        description: "The resource's address in that workspace's state.",
+      }),
+      url: Schema.String.annotate({ description: "The workspace's page on git.infrawrench.com." }),
+    }).annotate({ identifier: "IacManagedBy" }),
+  ).annotate({
+    description:
+      "The Terraform workspaces on git.infrawrench.com whose current state holds this resource. Independent of `status`, which is about uploaded state documents. A workspace of a private repository is listed only for a caller with `git:read` (or more) in the organization. Empty when none matched, or none the caller may see.",
+  }),
 }).annotate({ identifier: "IacResourceStatusResponse" });
 
 export class IacGroup extends HttpApiGroup.make("iac")

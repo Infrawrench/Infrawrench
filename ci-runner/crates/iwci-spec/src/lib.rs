@@ -153,11 +153,6 @@ pub const MAX_TIMEOUT_SECS: u64 = 6 * 60 * 60;
 pub const DEFAULT_MEMORY: u64 = 2 << 30;
 /// What the run's shared `/tmp/workflow` holds unless `scratch:` says.
 pub const DEFAULT_SCRATCH: u64 = 1 << 30;
-/// What a job's artifacts may be for another runner to be sent them
-/// (`split: { artifacts }`) unless the pipeline says, and the most it may
-/// say.
-pub const DEFAULT_SPLIT_ARTIFACTS: u64 = 4 << 20;
-pub const MAX_SPLIT_ARTIFACTS: u64 = 256 << 20;
 /// Where every job of a run finds the scratch directory they share.
 pub const SCRATCH_PATH: &str = "/tmp/workflow";
 /// The most `tools:` one job may list.
@@ -279,6 +274,7 @@ pub fn parse(yaml: &str, ctx: &Context) -> Result<Plan, SpecErrors> {
         ctx,
         decls: &decls,
         generated: &generated,
+        install_scripts: false,
     };
     let mut plan = v.pipeline(raw);
     plan.triggers.manual = manual;
@@ -512,6 +508,8 @@ struct Validator<'a> {
     decls: &'a HashMap<String, JobDecl>,
     /// The jobs `packages:` jobs became, by key.
     generated: &'a packages::Generated,
+    /// The pipeline's `install-scripts:`.
+    install_scripts: bool,
 }
 
 /// The parts of a job that do not depend on its matrix entry or on other
@@ -602,6 +600,7 @@ pub(crate) fn instantiate(
         ctx: &plan.ctx,
         decls: &plan.decls,
         generated: &generated,
+        install_scripts: false,
     };
     let st = v.job_static(
         &format!("jobs.{}", template.key),
@@ -637,6 +636,7 @@ impl Validator<'_> {
         }
         let triggers = self.triggers(raw.on);
         let concurrency = raw.concurrency.as_ref().and_then(|c| self.concurrency(c));
+        self.install_scripts = raw.install_scripts == Some(true);
         let base_ws = raw.workspace.unwrap_or_default();
         let base_clone = Some(base_ws.clone.unwrap_or_default());
         let base_deps = base_ws.deps.unwrap_or_default();
@@ -808,29 +808,6 @@ impl Validator<'_> {
             },
         };
 
-        let split = match &raw.split {
-            None | Some(raw::Split::On(false)) => None,
-            Some(raw::Split::On(true)) => Some(DEFAULT_SPLIT_ARTIFACTS),
-            Some(raw::Split::Full(map)) => Some(match &map.artifacts {
-                None => DEFAULT_SPLIT_ARTIFACTS,
-                Some(text) => match units::parse_bytes(text) {
-                    Some(b) if b <= MAX_SPLIT_ARTIFACTS => b,
-                    Some(_) => {
-                        self.error("split.artifacts", "must be at most 256MiB");
-                        DEFAULT_SPLIT_ARTIFACTS
-                    }
-                    None => {
-                        self.error(
-                            "split.artifacts",
-                            format!("`{text}` is not a size; use e.g. `512KiB` or `8MiB`"),
-                        );
-                        DEFAULT_SPLIT_ARTIFACTS
-                    }
-                },
-            }),
-        }
-        .map(|artifact_bytes| SplitSpec { artifact_bytes });
-
         Plan {
             name: raw.name,
             triggers,
@@ -838,7 +815,6 @@ impl Validator<'_> {
             workspaces,
             jobs,
             scratch_bytes,
-            split,
             decls: self.decls.clone(),
             ctx: self.ctx.clone(),
         }
@@ -1130,14 +1106,28 @@ impl Validator<'_> {
             specs.push(spec);
         }
 
+        // Only where there is an install whose scripts could run.
+        let install_scripts = self.install_scripts
+            && specs.iter().any(|d| {
+                matches!(
+                    d.ecosystem,
+                    Ecosystem::Pnpm | Ecosystem::Npm | Ecosystem::Bun
+                )
+            });
         let key = {
-            let canonical = serde_json::to_vec(&(&clone, &specs)).expect("serialisable");
+            let canonical = if install_scripts {
+                serde_json::to_vec(&(&clone, &specs, "install-scripts"))
+            } else {
+                serde_json::to_vec(&(&clone, &specs))
+            }
+            .expect("serialisable");
             hex::encode(&sha2::Sha256::digest(&canonical)[..12])
         };
         WorkspaceSpec {
             key,
             clone,
             deps: specs,
+            install_scripts,
         }
     }
 
@@ -1911,12 +1901,6 @@ impl Validator<'_> {
             refuse(
                 "services",
                 "starts services in the job's isolate; on a virtual machine, start them in the script (`docker run -d`, `pg_ctl start`)",
-            );
-        }
-        if job.env_cache.is_some() {
-            refuse(
-                "env-cache",
-                "keeps an isolate environment's caches; use `cache:` for a virtual machine's",
             );
         }
         if matches!(

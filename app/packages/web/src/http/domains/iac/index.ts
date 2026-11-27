@@ -9,6 +9,7 @@
 import { Effect } from "effect";
 import { HttpApiBuilder } from "effect/http-api";
 import { IAC_STATE_LIMITS } from "@infrawrench/client-core";
+import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import {
   IacInputError,
   deleteIacState,
@@ -41,6 +42,9 @@ const store: RefusalPolicy = refusalsOf(IacInputError, {
   logPrefix: "[iac]",
   failure: "IaC reconciliation failed",
 });
+
+/** What reads an organisation's repositories on git.infrawrench.com, as the forge decides it. */
+const GIT_READ_PERMISSIONS = ["git:read", "git:write", "git:admin"] as const;
 
 const IacHandlers = HttpApiBuilder.group(IacApi, "iac", (handlers) =>
   handlers
@@ -130,11 +134,16 @@ const IacHandlers = HttpApiBuilder.group(IacApi, "iac", (handlers) =>
     )
     .handle("resource", ({ query }) =>
       Effect.gen(function* () {
-        const { organizationId } = yield* OrgPrincipal;
+        const { organizationId, permissions } = yield* OrgPrincipal;
         const resourceId = query.resourceId;
         if (!resourceId) return yield* badRequest("Missing resourceId");
+        // Which repository manages a resource is the forge's to say: a private
+        // one is named only to someone who reads the organisation's repositories.
+        const readsGit = GIT_READ_PERMISSIONS.some((permission) =>
+          hasPermission(permissions, permission),
+        );
         const status = yield* refusalCall(store, inputRefusals, () =>
-          getIacResourceStatus(organizationId, resourceId),
+          getIacResourceStatus(organizationId, resourceId, { readsGit }),
         );
         return yield* respond(IacResourceStatus)(status);
       }),

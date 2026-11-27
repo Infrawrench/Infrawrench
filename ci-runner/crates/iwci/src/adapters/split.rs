@@ -16,6 +16,11 @@
 //! | `state/back/<pipeline>/<job>.<runner>.<n>` | that helper gave the job up |
 //! | `claims/<pipeline>/<job>` | who runs the job: the runner's name |
 //! | `artifacts/<pipeline>/<job>.<runner>` | what a job without a task cache entry kept on that runner, when small enough |
+//! | `scratch/<pipeline>/<runner>/<layer>.list` | one of that runner's `/tmp/workflow` layers: what changed, and where each file is (`schedule::Layer`) |
+//! | `scratch/<pipeline>/<runner>/<layer>.<n>` | some of that layer's files: one large file, or several small ones |
+//! | `state/scratch/<pipeline>/<runner>.<layer>` | that runner's layers up to this one are stored; the last one only |
+//! | `state/key/<runner>.<key>` | that helper has joined and wants the run's secrets sealed to this X25519 public key (hex) |
+//! | `secrets/<runner>` | the run's secrets sealed to that helper's key (`crate::sealed`): never in the clear |
 //!
 //! `<pipeline>` is a hash of the pipeline's file name and `<job>` the job
 //! id in hex, so every key stays inside the store's key grammar. All of
@@ -40,7 +45,7 @@ use iwci_store::{ObjectStore, RepoId};
 use iwci_vfs::{Entry, archive};
 use sha2::Digest;
 
-use crate::schedule::{Claim, Seen, Split, Timing};
+use crate::schedule::{Claim, Seen, Split, Timing, scratch_object_name};
 
 /// The prefix of every split run's objects.
 pub const PREFIX: &str = "splits";
@@ -91,6 +96,8 @@ pub struct SplitRun {
     asked: AtomicBool,
     timing: Timing,
     beat: Beating,
+    /// A helper has opened the run's secrets.
+    secrets: AtomicBool,
 }
 
 /// Work a run leaves to do in the store after it ends (deleting its
@@ -245,6 +252,7 @@ impl SplitRun {
             asked: AtomicBool::new(false),
             timing,
             beat,
+            secrets: AtomicBool::new(false),
         })
     }
 
@@ -254,6 +262,7 @@ impl SplitRun {
             run: self.clone(),
             pipeline: pipeline_segment(file),
             back: AtomicU64::new(0),
+            scratch_marker: AtomicU64::new(0),
         })
     }
 
@@ -318,6 +327,45 @@ impl SplitRun {
                 std::thread::sleep(Duration::from_millis(100).min(self.timing.offer));
             }
         }
+    }
+
+    /// Says, as a helper that has joined, that it wants the run's secrets
+    /// sealed to `public` (`crate::sealed::Opener::public`).
+    pub fn publish_key(&self, public: &[u8]) -> Result<(), String> {
+        if !self.helper || public.len() != crate::sealed::PUBLIC_KEY_LEN {
+            return Err("not a helper's key".into());
+        }
+        self.store
+            .put(
+                &format!(
+                    "{}/state/key/{}.{}",
+                    self.root,
+                    self.runner,
+                    hex::encode(public)
+                ),
+                b"",
+                "text/plain",
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    /// What the primary sealed to this helper, once it is there: looked
+    /// for every 200 ms for up to `max`, and given up on with the run.
+    pub fn wait_for_secrets(&self, max: Duration, stopped: &dyn Fn() -> bool) -> Option<Vec<u8>> {
+        let key = format!("{}/secrets/{}", self.root, self.runner);
+        let until = Instant::now() + max;
+        while Instant::now() < until && !stopped() {
+            if let Ok(Some(sealed)) = self.store.get(&key) {
+                return Some(sealed);
+            }
+            std::thread::sleep(Duration::from_millis(200));
+        }
+        None
+    }
+
+    /// This helper has the run's secrets: it may take jobs given them.
+    pub fn got_secrets(&self) {
+        self.secrets.store(true, Ordering::SeqCst);
     }
 
     /// Says which commit the run is of, as the primary resolved it, for
@@ -419,6 +467,8 @@ pub struct PipelineSplit {
     pipeline: String,
     /// Jobs this runner handed back, to tell each time apart.
     back: AtomicU64,
+    /// The last scratch layer this runner said it stored.
+    scratch_marker: AtomicU64,
 }
 
 impl PipelineSplit {
@@ -428,6 +478,15 @@ impl PipelineSplit {
             self.run.root,
             self.pipeline,
             hex::encode(job)
+        )
+    }
+}
+
+impl PipelineSplit {
+    fn scratch_key(&self, runner: &str, name: &str) -> String {
+        format!(
+            "{}/scratch/{}/{runner}/{name}",
+            self.run.root, self.pipeline
         )
     }
 }
@@ -604,6 +663,22 @@ impl Split for PipelineSplit {
                 if let Some(id) = mine(rest).and_then(|hex_id| job_id(&hex_id)) {
                     seen.done.push(id);
                 }
+            } else if let Some(rest) = key.strip_prefix("key/") {
+                if let Some((runner, hex_key)) = rest.rsplit_once('.')
+                    && runner_name(Some(runner)) == runner
+                    && let Ok(public) = hex::decode(hex_key)
+                    && public.len() == crate::sealed::PUBLIC_KEY_LEN
+                {
+                    seen.keys.push((runner.to_string(), public));
+                }
+            } else if let Some(rest) = key.strip_prefix("scratch/") {
+                if let Some(rest) = mine(rest)
+                    && let Some((runner, n)) = rest.rsplit_once('.')
+                    && let Ok(n) = n.parse::<u64>()
+                {
+                    let layers = seen.scratch.entry(runner.to_string()).or_default();
+                    *layers = (*layers).max(n);
+                }
             } else if let Some(rest) = key.strip_prefix("back/")
                 && let Some(rest) = mine(rest)
                 && let Some((rest, n)) = rest.rsplit_once('.')
@@ -615,6 +690,71 @@ impl Split for PipelineSplit {
         }
         seen.helpers = helpers;
         Ok(seen)
+    }
+
+    fn has_secrets(&self) -> bool {
+        !self.run.helper || self.run.secrets.load(Ordering::SeqCst)
+    }
+
+    fn seal_for(&self, runner: &str, sealed: &[u8]) -> Result<(), String> {
+        if runner_name(Some(runner)) != runner {
+            return Err("not a runner's name".into());
+        }
+        self.run
+            .store
+            .put_if_absent(
+                &format!("{}/secrets/{runner}", self.run.root),
+                sealed,
+                "application/octet-stream",
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    fn put_scratch(&self, name: &str, bytes: &[u8]) -> Result<(), String> {
+        if !scratch_object_name(name) {
+            return Err(format!("`{name}` is not a scratch object"));
+        }
+        self.run
+            .store
+            .put(
+                &self.scratch_key(&self.run.runner, name),
+                bytes,
+                "application/octet-stream",
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    fn get_scratch(&self, runner: &str, name: &str) -> Result<Option<Vec<u8>>, String> {
+        if runner_name(Some(runner)) != runner {
+            return Err("the record names no runner".into());
+        }
+        if !scratch_object_name(name) {
+            return Err(format!("`{name}` is not a scratch object"));
+        }
+        self.run
+            .store
+            .get(&self.scratch_key(runner, name))
+            .map_err(|e| e.to_string())
+    }
+
+    fn scratch_layer(&self, layer: u64) -> Result<(), String> {
+        let marker = |n: u64| {
+            format!(
+                "{}/state/scratch/{}/{}.{n}",
+                self.run.root, self.pipeline, self.run.runner
+            )
+        };
+        self.run
+            .store
+            .put(&marker(layer), b"", "text/plain")
+            .map_err(|e| e.to_string())?;
+        // One marker each, so the listing every runner reads stays short.
+        let before = self.scratch_marker.swap(layer, Ordering::SeqCst);
+        if before != 0 && before < layer {
+            let _ = self.run.store.delete(&marker(before));
+        }
+        Ok(())
     }
 
     fn timing(&self) -> Timing {
@@ -651,6 +791,58 @@ mod tests {
             )
         };
         (new("ci-1", false), new("ci-2", true))
+    }
+
+    #[test]
+    fn a_helper_gets_the_runs_secrets_sealed_and_the_store_never_holds_them() {
+        let (objects, dir) = store("secrets");
+        let (primary, helper) = pair(&objects);
+        let (p, h) = (primary.pipeline("test.yml"), helper.pipeline("test.yml"));
+        assert!(p.has_secrets() && !h.has_secrets());
+        let opener = crate::sealed::Opener::new().unwrap();
+        // Only a helper asks, and only with a key.
+        assert!(primary.publish_key(opener.public()).is_err());
+        assert!(helper.publish_key(b"short").is_err());
+        helper.publish_key(opener.public()).unwrap();
+        let keys = p.seen().unwrap().keys;
+        assert_eq!(keys, vec![("ci-2".to_string(), opener.public().to_vec())]);
+
+        let secrets = br#"{"TOKEN":"t0k3n-value"}"#;
+        let sealed = crate::sealed::seal(&keys[0].1, secrets).unwrap();
+        p.seal_for("ci-2", &sealed).unwrap();
+        // The first one stays.
+        p.seal_for("ci-2", b"another").unwrap();
+        let got = helper
+            .wait_for_secrets(Duration::from_secs(2), &|| false)
+            .unwrap();
+        assert_eq!(opener.open(&got).unwrap(), secrets);
+        helper.got_secrets();
+        assert!(h.has_secrets());
+
+        // Nothing under the store's directory holds the value.
+        let mut todo = vec![dir.clone()];
+        while let Some(at) = todo.pop() {
+            for entry in std::fs::read_dir(&at).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    todo.push(path);
+                } else {
+                    let bytes = std::fs::read(&path).unwrap();
+                    assert!(
+                        !bytes.windows(11).any(|w| w == b"t0k3n-value"),
+                        "{}",
+                        path.display()
+                    );
+                }
+            }
+        }
+        // A helper with no secrets sealed to it gives up when told to.
+        let (_, other) = pair(&store("secrets-none").0);
+        assert!(
+            other
+                .wait_for_secrets(Duration::from_secs(5), &|| true)
+                .is_none()
+        );
     }
 
     #[test]

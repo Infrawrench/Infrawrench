@@ -8,8 +8,15 @@
 //!    link's bridge to the runner's gateway.
 //! 4. The conversation: hello, setup, the job's files in (on Linux only
 //!    what it starts with beyond the workspace image; on Windows all of
-//!    them), the script, and back what it left under the paths asked for
-//!    and in the run's `/tmp/workflow`.
+//!    them), the script, and back what it left under the paths asked for.
+//!    The run's `/tmp/workflow` is served to a Linux machine over
+//!    virtio-fs (`virtiofs.rs`) when the host's QEMU and the image's
+//!    agent can, so nothing of it is copied and the job sees it live;
+//!    otherwise it is copied in whole and what changed comes back. The
+//!    job's own files are streamed in the same way, read only, as the
+//!    lower layer of the machine's root, when the image's agent says it
+//!    can mount them (`files-virtiofs`): no workspace image is made and no
+//!    archive is sent, and a file crosses only when it is read.
 //! 5. Stop the machine and remove its directory, whatever happened.
 //!
 //! The job's timeout, a cancel, and a hang (no output and the machine's
@@ -23,13 +30,27 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use iwci_vfs::{JobFs, Snapshot};
-use iwci_vm_proto::{Collect, Exec, Exited, Network, PROTOCOL, Setup, Shell};
+use iwci_vfs::{DynFs, JobFs, Snapshot};
+use iwci_vm_proto::{
+    Collect, Exec, Exited, FILES_FEATURE, Network, PROTOCOL, SCRATCH_TAG, ScratchMount, Setup,
+    Shell,
+};
 
 use crate::agent::{Agent, Failed, Ran, Tick, Watch};
 use crate::archive::{self, Moded};
 use crate::images::{LinuxImage, WindowsImage, Workspaces};
 use crate::qemu::{self, Arch, Sockets};
+
+/// How big a Linux job's scratch disk is. Sparse on the host, so only the
+/// sectors the job touches cost anything; the rest is a hole. The agent
+/// makes half of it swap, which the job's in-memory files and processes
+/// spill to past its `memory:`, and half Docker's storage, so a machine's
+/// writes may go 20 GiB past its memory, as an isolate's may go 20 GiB to
+/// disk (`--spill-disk`). At 20 GiB (10 of swap) shadcn/ui's `pnpm test`,
+/// whose CLI tests install a project after project into its tree, peaked at
+/// 10.0 GiB of swap in an 8 GiB machine and was killed out of memory once
+/// its restored pnpm store added the rest.
+const SCRATCH_DISK_BYTES: u64 = 40 << 30;
 
 /// The kind of machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -55,10 +76,49 @@ pub struct Config {
     pub cpus: u32,
     /// The most disk the workspace images keep.
     pub workspace_cache_bytes: u64,
+    /// Lets a Linux machine use the host's idle CPUs (see [`Burst`]);
+    /// `None` gives it its `cpus:` and no more.
+    pub burst: Option<Burst>,
     /// The runner's network policy, the one every job's network goes
     /// through; `None` gives machines no network at all.
     #[cfg(target_os = "linux")]
     pub outside: Option<Arc<dyn iwci_sandbox::net::Outside>>,
+    /// The runner's own services a machine with a network reaches on its
+    /// gateway's address, by port (`iwci_sandbox::net::Network::local`).
+    #[cfg(target_os = "linux")]
+    pub local: Vec<(u16, PathBuf)>,
+}
+
+/// How a Linux machine uses CPUs no job is using. It gets more vCPUs than
+/// its job's `cpus:` ([`burst_vcpus`]) and runs in a cgroup of its own
+/// among the runner's sandboxes, weighted by those `cpus:`: when the host
+/// has idle CPUs a compile or a parallel test run spreads over them, and
+/// when every job wants more than there is, each gets its `cpus:` share,
+/// as if it had only that many.
+#[derive(Debug, Clone, Copy)]
+pub struct Burst {
+    /// The host's CPUs, the most any machine gets.
+    pub host_cpus: u32,
+    /// `cpu.weight` per CPU a job holds: the runner's sandboxes weigh 100
+    /// per slot, `--jobs-per-cpu` slots to a CPU.
+    pub weight_per_cpu: u64,
+}
+
+/// At most this many times its `cpus:` in vCPUs.
+const BURST_FACTOR: u32 = 4;
+
+/// The vCPUs a machine whose job holds `cpus` and `memory_bytes` gets when
+/// it may burst: up to [`BURST_FACTOR`] times its `cpus:` and one per GiB
+/// of its memory, since a build or a test run starts a worker per CPU it
+/// sees and each needs memory; never fewer than its `cpus:` nor more than
+/// the host has.
+pub fn burst_vcpus(cpus: u32, memory_bytes: u64, host_cpus: u32) -> u32 {
+    let cpus = cpus.max(1);
+    let by_memory = u32::try_from(memory_bytes >> 30).unwrap_or(u32::MAX);
+    cpus.saturating_mul(BURST_FACTOR)
+        .min(by_memory)
+        .min(host_cpus)
+        .max(cpus)
 }
 
 /// Where a job's output goes as it is written: `true` for stderr.
@@ -85,7 +145,7 @@ pub struct Job<'a> {
     /// The job's files: the workspace's, and what it starts with.
     pub fs: &'a JobFs,
     /// The run's `/tmp/workflow`, rooted at `/`, and where the job sees it.
-    pub scratch: &'a JobFs,
+    pub scratch: Scratch<'a>,
     pub scratch_at: &'a str,
     /// Unix paths whose contents come back.
     pub collect: &'a [String],
@@ -96,6 +156,18 @@ pub struct Job<'a> {
     pub stall_after: Option<Duration>,
     /// What each of stdout and stderr keeps for the report.
     pub output_cap: usize,
+}
+
+/// The run's `/tmp/workflow` for one job.
+pub struct Scratch<'a> {
+    /// What the job sees, served to a Linux machine as it is, over
+    /// virtio-fs, when the host and the image can.
+    pub live: Option<DynFs>,
+    /// Otherwise its files are copied in and what the job changed comes
+    /// back into these: `settle` first, so everything another runner wrote
+    /// is here to copy.
+    pub files: &'a JobFs,
+    pub settle: &'a (dyn Fn() -> Result<(), String> + Sync),
 }
 
 /// What a machine sent back for one file system.
@@ -150,6 +222,17 @@ pub struct Host {
     qemu_img: Option<PathBuf>,
     workspaces: Option<Workspaces>,
     problems: Vec<String>,
+    /// QEMU has `vhost-user-fs-device`: a Linux machine is served the
+    /// run's `/tmp/workflow` rather than a copy of it.
+    virtiofs: bool,
+    /// The host lends 2 MiB huge pages (`vm.nr_overcommit_hugepages`, or a
+    /// pool): a machine's shared memory is put in them, which is most of
+    /// what its boot costs otherwise (`qemu::linux_args`).
+    huge_pages: bool,
+    /// Where Linux machines get their weighted cgroups when they may burst
+    /// ([`Burst`]): the runner's delegated `jobs/`.
+    #[cfg(target_os = "linux")]
+    cgroups: Option<iwci_sandbox::cgroup::Jobs>,
 }
 
 /// `name` on `PATH`, or `path` when given and present.
@@ -162,6 +245,47 @@ fn find(path: Option<&Path>, name: &str) -> Option<PathBuf> {
             .map(|dir| dir.join(name))
             .find(|p| p.is_file())
     })
+}
+
+/// Whether `child` has exited, or does within a second: a machine whose
+/// sockets closed under the runner is on its way out.
+fn exits(child: &mut Child) -> bool {
+    let until = Instant::now() + Duration::from_secs(1);
+    loop {
+        if matches!(child.try_wait(), Ok(Some(_))) {
+            return true;
+        }
+        if Instant::now() >= until {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// Whether the host has, or may make, 2 MiB huge pages: a pool
+/// (`nr_hugepages`) or room to make them when asked
+/// (`nr_overcommit_hugepages`).
+fn lends_huge_pages() -> bool {
+    let read = |name: &str| {
+        std::fs::read_to_string(format!("/sys/kernel/mm/hugepages/hugepages-2048kB/{name}"))
+            .ok()
+            .and_then(|t| t.trim().parse::<u64>().ok())
+            .unwrap_or(0)
+    };
+    read("nr_hugepages") + read("nr_overcommit_hugepages") > 0
+}
+
+/// Whether `qemu` lists the virtio-fs device a Linux machine's
+/// `/tmp/workflow` is served over.
+fn has_virtiofs(qemu: &Path) -> bool {
+    Command::new(qemu)
+        .args(["-device", "help"])
+        .stdin(Stdio::null())
+        .output()
+        .is_ok_and(|out| {
+            let text = String::from_utf8_lossy(&out.stdout) + String::from_utf8_lossy(&out.stderr);
+            text.contains("\"vhost-user-fs-device\"")
+        })
 }
 
 fn kvm() -> Result<(), String> {
@@ -189,6 +313,10 @@ impl Host {
             qemu_img: None,
             workspaces: None,
             problems: Vec::new(),
+            virtiofs: false,
+            huge_pages: false,
+            #[cfg(target_os = "linux")]
+            cgroups: None,
             config,
         };
         if !cfg!(target_os = "linux") {
@@ -218,6 +346,29 @@ impl Host {
             host.problems = problems;
             return host;
         }
+        host.virtiofs = host.qemu.as_deref().is_some_and(has_virtiofs);
+        host.huge_pages = lends_huge_pages();
+        #[cfg(target_os = "linux")]
+        if host.config.burst.is_some() {
+            match iwci_sandbox::cgroup::Jobs::delegated() {
+                Ok(jobs) => host.cgroups = Some(jobs),
+                Err(e) => problems.push(format!(
+                    "machines keep to their `cpus:`: no cgroup subtree to weigh them in ({e})"
+                )),
+            }
+        }
+        if host.virtiofs && !host.huge_pages {
+            problems.push(
+                "Linux: machines boot slower: the host lends no 2 MiB huge pages (vm.nr_overcommit_hugepages)"
+                    .into(),
+            );
+        }
+        if !host.virtiofs {
+            problems.push(
+                "Linux: /tmp/workflow is copied into each machine and back: this QEMU has no vhost-user-fs-device"
+                    .into(),
+            );
+        }
         match LinuxImage::open(&host.config.dir.join("linux"), arch.name()) {
             Ok(image) => match find(host.config.mkfs_erofs.as_deref(), "mkfs.erofs") {
                 Some(mkfs) => {
@@ -241,6 +392,65 @@ impl Host {
         host
     }
 
+    /// Whether a Linux machine's own files are streamed in over virtio-fs:
+    /// QEMU has the device and the image's agent mounts it at boot.
+    fn streams_files(&self) -> bool {
+        self.virtiofs
+            && self
+                .linux
+                .as_ref()
+                .is_some_and(|image| image.info.features.iter().any(|f| f == FILES_FEATURE))
+    }
+
+    /// The uid a Linux machine runs scripts as: the image's job user when
+    /// its agent has one and the job's files are streamed in, since those
+    /// are then served as that user's, so the job can write them. `None`
+    /// (root) otherwise, as with every image before the job user.
+    fn job_user(&self) -> Option<u32> {
+        (self.streams_files()
+            && self.linux.as_ref().is_some_and(|image| {
+                image
+                    .info
+                    .features
+                    .iter()
+                    .any(|f| f == iwci_vm_proto::JOB_USER_FEATURE)
+            }))
+        .then_some(iwci_vm_proto::JOB_UID)
+    }
+
+    /// Whether a Linux machine whose files are streamed in is also given
+    /// its own files (what it has beyond the workspace: restored caches,
+    /// artifacts, what it is lent) up front: the image keeps its writable
+    /// layer in memory, with swap behind it.
+    fn puts_own_files(&self) -> bool {
+        self.streams_files()
+            && self.linux.as_ref().is_some_and(|image| {
+                image
+                    .info
+                    .features
+                    .iter()
+                    .any(|f| f == iwci_vm_proto::MEMORY_UPPER_FEATURE)
+            })
+    }
+
+    /// The vCPUs a Linux machine gets: its job's `cpus:`, or more when it
+    /// may burst into a weighted cgroup ([`Burst`]).
+    fn linux_vcpus(&self, job: &Job<'_>) -> u32 {
+        let cpus = job.cpus.unwrap_or(self.config.cpus);
+        match (self.config.burst, self.bursts()) {
+            (Some(burst), true) => burst_vcpus(cpus, job.memory_bytes, burst.host_cpus),
+            _ => cpus,
+        }
+    }
+
+    /// Whether Linux machines run in weighted cgroups of their own.
+    fn bursts(&self) -> bool {
+        #[cfg(target_os = "linux")]
+        return self.cgroups.is_some();
+        #[cfg(not(target_os = "linux"))]
+        false
+    }
+
     /// The kinds of machine it can start.
     pub fn platforms(&self) -> Vec<Os> {
         let mut out = Vec::new();
@@ -251,6 +461,16 @@ impl Host {
             out.push(Os::Windows);
         }
         out
+    }
+
+    /// The image of `os`'s name (`ubuntu-24.04`) and the caches it
+    /// declares, when the runner has that image.
+    pub fn caches(&self, os: Os) -> Option<(&str, &[crate::images::ImageCache])> {
+        let info = match os {
+            Os::Linux => &self.linux.as_ref()?.info,
+            Os::Windows => &self.windows.as_ref()?.info,
+        };
+        Some((info.image.as_str(), info.caches.as_slice()))
     }
 
     /// Why a kind of machine is not offered, for the runner's log.
@@ -285,24 +505,76 @@ impl Host {
         let arch = self.arch.ok_or("no machines on this host")?;
         let qemu_bin = self.qemu.as_ref().ok_or("QEMU is not installed")?;
         let started = Instant::now();
+        // `IWCI_BOOT_TIMES=1`: when each step of a machine's start ended,
+        // from the start of `run_in`, on stderr.
+        let times = std::env::var_os("IWCI_BOOT_TIMES").is_some();
+        let mark = |step: &str| {
+            if times {
+                eprintln!(
+                    "iwci: machine {}: {step} at {} ms",
+                    job.id,
+                    started.elapsed().as_millis()
+                );
+            }
+        };
         let memory_mib = job.memory_bytes.div_ceil(1 << 20);
+        let user = if job.os == Os::Linux {
+            self.job_user()
+        } else {
+            None
+        };
+        // What the machine is shown its files as owned by: the job user's,
+        // or root's.
+        #[cfg(target_os = "linux")]
+        let owner = user.map_or((0, 0), |uid| (uid, uid));
         let sockets = Sockets {
             agent: dir.join("agent.sock"),
             // A Windows machine's saved state has a network device, so it
             // always gets a link; one without a network gets a dead end.
             net: (job.network || job.os == Os::Windows).then(|| dir.join("net.sock")),
             console: dir.join("console.log"),
+            scratch: (cfg!(target_os = "linux")
+                && job.os == Os::Linux
+                && self.virtiofs
+                && job.scratch.live.is_some())
+            .then(|| dir.join("scratch.sock")),
+            files: (cfg!(target_os = "linux") && job.os == Os::Linux && self.streams_files())
+                .then(|| dir.join("files.sock")),
+        };
+        // A sparse file per job becomes the guest's ext4 writable layer.
+        // `run` removes the machine's directory, and the disk with it.
+        let scratch_disk = if cfg!(target_os = "linux") && job.os == Os::Linux {
+            let path = dir.join("scratch.img");
+            let file =
+                std::fs::File::create(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            file.set_len(SCRATCH_DISK_BYTES)
+                .map_err(|e| format!("resizing {}: {e}", path.display()))?;
+            Some(path)
+        } else {
+            None
         };
         let agent_listener = listen(&sockets.agent)?;
         let net_listener = sockets.net.as_deref().map(listen).transpose()?;
+        // Shared memory in huge pages when the host lends them, else in
+        // 4 KiB pages: tried in that order (`qemu::linux_args`).
+        let shared = sockets.scratch.is_some() || sockets.files.is_some();
+        let tries: Vec<bool> = if shared && self.huge_pages {
+            vec![true, false]
+        } else {
+            vec![false]
+        };
 
-        let (args, boot): (Vec<OsString>, Duration) = match job.os {
+        // The arguments for each try, and how long the machine has to say
+        // hello.
+        let (attempts, boot): (Vec<(Vec<OsString>, bool)>, Duration) = match job.os {
             Os::Linux => {
                 let image = self
                     .linux
                     .as_ref()
                     .ok_or("this runner has no Linux image")?;
                 let workspace = match job.workspace {
+                    // Streamed in instead (`sockets.files`).
+                    Some(_) if sockets.files.is_some() => None,
                     Some((key, snapshot)) => self
                         .workspaces
                         .as_ref()
@@ -310,16 +582,30 @@ impl Host {
                         .image(key, snapshot)?,
                     None => None,
                 };
-                let args = qemu::linux_args(&qemu::Linux {
-                    arch,
-                    kernel: &image.kernel,
-                    rootfs: &image.rootfs,
-                    workspace: workspace.as_deref(),
-                    memory_mib,
-                    cpus: job.cpus.unwrap_or(self.config.cpus),
-                    sockets: &sockets,
-                });
-                (args, LINUX_BOOT)
+                let attempts = tries
+                    .iter()
+                    .map(|&huge_pages| {
+                        let args = qemu::linux_args(&qemu::Linux {
+                            arch,
+                            kernel: &image.kernel,
+                            rootfs: &image.rootfs,
+                            workspace: workspace.as_deref(),
+                            scratch_disk: scratch_disk.as_deref(),
+                            // Huge pages come whole.
+                            memory_mib: if huge_pages {
+                                memory_mib.div_ceil(2) * 2
+                            } else {
+                                memory_mib
+                            },
+                            cpus: self.linux_vcpus(&job),
+                            sockets: &sockets,
+                            huge_pages,
+                            user,
+                        });
+                        (args, huge_pages)
+                    })
+                    .collect();
+                (attempts, LINUX_BOOT)
             }
             Os::Windows => {
                 let image = self
@@ -359,7 +645,7 @@ impl Host {
                     incoming: restore.as_ref().map(|r| r.state.as_path()),
                 });
                 (
-                    args,
+                    vec![(args, false)],
                     if restore.is_some() {
                         WINDOWS_RESTORE
                     } else {
@@ -369,35 +655,164 @@ impl Host {
             }
         };
 
-        let log = std::fs::File::create(dir.join("qemu.log"))
-            .map_err(|e| format!("the emulator's log: {e}"))?;
-        let child = Command::new(qemu_bin)
-            .args(&args)
-            .stdin(Stdio::null())
-            .stdout(log.try_clone().map_err(|e| e.to_string())?)
-            .stderr(log)
-            .spawn()
-            .map_err(|e| format!("{}: {e}", qemu_bin.display()))?;
-        let mut machine = Machine {
-            child,
-            dir: dir.to_path_buf(),
-            bridge: Vec::new(),
-            #[cfg(target_os = "linux")]
-            gateway: None,
-        };
+        // Listening before QEMU starts, and stopped after it has (they are
+        // dropped after `machine`); started again for a second try, since
+        // each takes one connection.
+        #[cfg(target_os = "linux")]
+        let mut _serving: Option<crate::virtiofs::Serving> = None;
+        // The job's own files, read only: the machine writes to its
+        // overlay above them, and what it left is collected as before.
+        #[cfg(target_os = "linux")]
+        let mut _serving_files: Option<crate::virtiofs::Serving> = None;
+        // A Linux machine whose files are streamed in is given its own
+        // files (restored caches, artifacts, what it is lent) up front when
+        // the image keeps its writable layer in memory: a restored cache is
+        // read whole (a package store is tens of thousands of files), and
+        // over virtio-fs each one is round trips to the runner, so a pnpm
+        // install from a restored store took longer than downloading it.
+        // Up to half the job's memory; more is left to be streamed. Those
+        // put are then not served too, so the agent's read-ahead spends
+        // itself on the workspace.
+        //
+        // Whether they fit is read from their sizes; the files themselves
+        // are copied out of the job's file system while the machine boots,
+        // which for a restored package store (1.4 GB in 60,000 files) took
+        // as long as the boot itself, and are wanted only once it is up.
+        let puts_own = job.os == Os::Linux
+            && sockets.files.is_some()
+            && job.workspace.is_some()
+            && self.puts_own_files()
+            && job.fs.own_file_bytes() <= job.memory_bytes / 2;
+        let mut put_own = puts_own.then(|| {
+            let fs = job.fs.clone();
+            std::thread::Builder::new()
+                .name("iwci-vm-own".into())
+                .spawn(move || archive::own(&fs))
+        });
         let deadline = started + boot.min(job.timeout + boot);
-        let agent_stream = machine.accept(&agent_listener, deadline, job.cancelled)?;
-        if let Some(listener) = &net_listener {
-            let stream = machine.accept(listener, deadline, job.cancelled)?;
-            self.connect_link(&mut machine, stream, job.network)?;
+        let mut fell_back = None;
+        let mut launched = None;
+        for (n, (args, huge_pages)) in attempts.iter().enumerate() {
+            #[cfg(target_os = "linux")]
+            {
+                _serving = None;
+                _serving_files = None;
+                _serving = match (&sockets.scratch, &job.scratch.live) {
+                    (Some(path), Some(fs)) => Some(crate::virtiofs::Serving::start(
+                        fs.clone(),
+                        job.scratch.files.modes(),
+                        owner,
+                        path,
+                    )?),
+                    _ => None,
+                };
+                _serving_files = match (&sockets.files, puts_own, job.workspace) {
+                    (Some(path), true, Some((_, workspace))) => {
+                        Some(crate::virtiofs::Serving::start_read_only(
+                            workspace.read_only(),
+                            job.fs.modes(),
+                            owner,
+                            path,
+                        )?)
+                    }
+                    (Some(path), _, _) => Some(crate::virtiofs::Serving::start_read_only(
+                        job.fs.as_dyn(),
+                        job.fs.modes(),
+                        owner,
+                        path,
+                    )?),
+                    (None, _, _) => None,
+                };
+            }
+            let log = std::fs::File::create(dir.join("qemu.log"))
+                .map_err(|e| format!("the emulator's log: {e}"))?;
+            mark("set up");
+            let mut args = args.clone();
+            if times && let Some(at) = args.iter().position(|a| a == "-append") {
+                // The agent's own steps on the console (`init::mark`).
+                args[at + 1].push(" iwci.times");
+            }
+            let child = Command::new(qemu_bin)
+                .args(&args)
+                .stdin(Stdio::null())
+                .stdout(log.try_clone().map_err(|e| e.to_string())?)
+                .stderr(log)
+                .spawn()
+                .map_err(|e| format!("{}: {e}", qemu_bin.display()))?;
+            // In a cgroup of its own, weighted by the CPUs its job holds,
+            // when it may use more than those ([`Burst`]).
+            #[cfg(target_os = "linux")]
+            let cgroup = match (&self.cgroups, self.config.burst, job.os) {
+                (Some(jobs), Some(burst), Os::Linux) => {
+                    let cpus = job.cpus.unwrap_or(self.config.cpus).max(1);
+                    let made = jobs
+                        .create_weighted(
+                            &format!("vm-{}", unique()),
+                            burst.weight_per_cpu.saturating_mul(u64::from(cpus)),
+                        )
+                        .and_then(|cgroup| {
+                            cgroup.add(child.id() as libc::pid_t)?;
+                            Ok(cgroup)
+                        });
+                    match made {
+                        Ok(cgroup) => Some(cgroup),
+                        Err(e) => {
+                            eprintln!("iwci: machine {}: no cgroup of its own: {e}", job.id);
+                            None
+                        }
+                    }
+                }
+                _ => None,
+            };
+            let mut machine = Machine {
+                child,
+                dir: dir.to_path_buf(),
+                bridge: Vec::new(),
+                #[cfg(target_os = "linux")]
+                gateway: None,
+                #[cfg(target_os = "linux")]
+                _cgroup: cgroup,
+            };
+            mark("started QEMU");
+            // Everything up to the agent's hello: QEMU connects its sockets
+            // before it maps the guest's memory, so a machine that could
+            // not have its huge pages still connects, then goes.
+            let mut start = || -> Result<_, String> {
+                let agent_stream = machine.accept(&agent_listener, deadline, job.cancelled)?;
+                mark("agent port connected");
+                if let Some(listener) = &net_listener {
+                    let stream = machine.accept(listener, deadline, job.cancelled)?;
+                    self.connect_link(&mut machine, stream, job.network)?;
+                    mark("network linked");
+                }
+                let reader = agent_stream.try_clone().map_err(|e| e.to_string())?;
+                let mut agent = Agent::start(reader, agent_stream).map_err(|e| e.to_string())?;
+                let left = deadline.saturating_duration_since(Instant::now());
+                let hello = agent
+                    .hello(left.max(Duration::from_secs(5)))
+                    .map_err(|e| machine.failed(e))?;
+                Ok((agent, hello))
+            };
+            match start() {
+                Ok((agent, hello)) => {
+                    launched = Some((machine, agent, hello));
+                    break;
+                }
+                // Huge pages the host could not give: the same machine in
+                // ordinary pages.
+                Err(e) if *huge_pages && n + 1 < attempts.len() && exits(&mut machine.child) => {
+                    fell_back = Some(e);
+                }
+                Err(e) => return Err(e),
+            }
         }
-
-        let reader = agent_stream.try_clone().map_err(|e| e.to_string())?;
-        let mut agent = Agent::start(reader, agent_stream).map_err(|e| e.to_string())?;
-        let left = deadline.saturating_duration_since(Instant::now());
-        let hello = agent
-            .hello(left.max(Duration::from_secs(5)))
-            .map_err(|e| machine.failed(e))?;
+        let (mut machine, mut agent, hello) = launched.ok_or("the machine did not start")?;
+        if times {
+            let console = std::fs::read_to_string(dir.join("console.log")).unwrap_or_default();
+            for line in console.lines().filter(|l| l.contains("of uptime")) {
+                eprintln!("iwci: machine {}: {line}", job.id);
+            }
+        }
         if hello.protocol != PROTOCOL {
             return Err(format!(
                 "the machine's agent speaks protocol {}, this runner {PROTOCOL}: the image needs rebuilding with this runner's agent",
@@ -407,12 +822,24 @@ impl Host {
         let mut outcome = Outcome {
             image: hello.image.clone(),
             arch: hello.arch.clone(),
-            boot_ms: started.elapsed().as_millis() as u64,
+            boot_ms: {
+                mark("hello");
+                started.elapsed().as_millis() as u64
+            },
             ..Default::default()
         };
+        if let Some(why) = fell_back {
+            outcome.notes.push(format!(
+                "the machine started without huge pages, which the host could not give ({}); it boots slower so",
+                why.lines().next().unwrap_or_default()
+            ));
+        }
         let now_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_millis() as u64);
+        // Served, when the device is there and the agent can mount it; an
+        // older image's agent gets the copy.
+        let live = sockets.scratch.is_some() && hello.virtiofs;
         agent
             .setup(
                 Setup {
@@ -420,6 +847,10 @@ impl Host {
                     time_ms: now_ms,
                     hostname: "iwci".into(),
                     network: job.network.then(Network::standard),
+                    scratch: live.then(|| ScratchMount {
+                        tag: SCRATCH_TAG.into(),
+                        at: job.scratch_at.into(),
+                    }),
                 },
                 STEP,
             )
@@ -430,13 +861,39 @@ impl Host {
         // on Windows everything. The run's scratch either way.
         let transfer = Instant::now();
         let files = match job.os {
+            // Streamed in: nothing to send but what is put up front.
+            Os::Linux if sockets.files.is_some() => {
+                // Served whole when there is no workspace to serve alone.
+                if job.workspace.is_some() {
+                    let own = match put_own.take() {
+                        Some(listing) => listing
+                            .map_err(|e| format!("listing the job's own files: {e}"))?
+                            .join()
+                            .map_err(|_| "listing the job's own files failed".to_string())?,
+                        None => Vec::new(),
+                    };
+                    mark("listed its own files");
+                    own
+                } else {
+                    Vec::new()
+                }
+            }
             Os::Linux => archive::own(job.fs),
             Os::Windows => archive::whole(job.fs),
         };
-        let scratch = archive::whole(job.scratch);
-        agent
-            .put(&[("/", &files), (job.scratch_at, &scratch)], STEP)
-            .map_err(|e| machine.failed(e))?;
+        if live {
+            if !files.is_empty() {
+                agent
+                    .put(&[("/", &files)], STEP)
+                    .map_err(|e| machine.failed(e))?;
+            }
+        } else {
+            (job.scratch.settle)()?;
+            let scratch = archive::whole(job.scratch.files);
+            agent
+                .put(&[("/", &files), (job.scratch_at, &scratch)], STEP)
+                .map_err(|e| machine.failed(e))?;
+        }
         let mut transfer_ms = transfer.elapsed().as_millis() as u64;
 
         // The script, until it ends or is stopped.
@@ -521,13 +978,28 @@ impl Host {
                 outcome.transfer_ms = transfer_ms;
                 return Ok(outcome);
             }
-            Ran::Exited(exited) => outcome.exited = Some(exited),
+            Ran::Exited(exited) => {
+                // Which allocation found no memory and what the kernel
+                // killed for it, from its console, beside "ran out of
+                // memory": without it a report could not tell a full swap
+                // from reclaim that fell behind.
+                if exited.oom_killed {
+                    let console =
+                        std::fs::read_to_string(dir.join("console.log")).unwrap_or_default();
+                    for line in qemu::oom_report(&console) {
+                        outcome.notes.push(format!("the machine's kernel: {line}"));
+                    }
+                }
+                outcome.exited = Some(exited);
+            }
         }
 
         // What it left, for the scheduler to read as any job's files.
         let back = Instant::now();
         let mut paths: Vec<String> = job.collect.to_vec();
-        paths.push(job.scratch_at.to_string());
+        if !live {
+            paths.push(job.scratch_at.to_string());
+        }
         let (collected, entries, done) = agent
             .collect(
                 Collect {
@@ -590,6 +1062,7 @@ impl Host {
                     iwci_sandbox::net::Gateway::start(iwci_sandbox::net::Network {
                         outside: outside.clone(),
                         services: Vec::new(),
+                        local: self.config.local.clone(),
                     })
                     .map_err(|e| format!("the machine's network: {e}"))?;
                 machine.gateway = Some(gateway);
@@ -624,6 +1097,10 @@ struct Machine {
     bridge: Vec<std::thread::JoinHandle<()>>,
     #[cfg(target_os = "linux")]
     gateway: Option<iwci_sandbox::net::Gateway>,
+    /// Its weighted cgroup, removed once the emulator is gone (killed
+    /// first, in `drop`, before the fields are).
+    #[cfg(target_os = "linux")]
+    _cgroup: Option<iwci_sandbox::cgroup::Cgroup>,
 }
 
 impl Machine {
@@ -821,6 +1298,21 @@ mod tests {
         ));
     }
 
+    /// A machine gets up to four times its `cpus:` in vCPUs, one per GiB
+    /// of its memory, never fewer than its `cpus:` and never more than the
+    /// host has.
+    #[test]
+    fn a_machine_bursts_to_what_its_memory_can_feed() {
+        let gib = 1u64 << 30;
+        assert_eq!(burst_vcpus(2, 6 * gib, 64), 6);
+        assert_eq!(burst_vcpus(2, 16 * gib, 64), 8, "four times its cpus");
+        assert_eq!(burst_vcpus(2, 2 * gib, 64), 2);
+        assert_eq!(burst_vcpus(4, 2 * gib, 64), 4, "never below its cpus");
+        assert_eq!(burst_vcpus(1, gib / 2, 64), 1);
+        assert_eq!(burst_vcpus(8, 64 * gib, 12), 12, "the host's CPUs");
+        assert_eq!(burst_vcpus(0, 0, 64), 1);
+    }
+
     #[test]
     fn a_host_without_kvm_offers_nothing_and_says_why() {
         let host = Host::open(Config {
@@ -831,8 +1323,11 @@ mod tests {
             mkfs_erofs: None,
             cpus: 2,
             workspace_cache_bytes: 1 << 30,
+            burst: None,
             #[cfg(target_os = "linux")]
             outside: None,
+            #[cfg(target_os = "linux")]
+            local: Vec::new(),
         });
         if std::path::Path::new("/dev/kvm").exists() {
             // A host with KVM still has no images under /nonexistent.

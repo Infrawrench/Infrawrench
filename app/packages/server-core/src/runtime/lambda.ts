@@ -61,14 +61,15 @@ async function loadAppEnv(secretId: string): Promise<void> {
  * `INFRAWRENCH_APP_ENV_SECRET_ARN` the environment is used as it is, which is
  * what a local run of the handler wants.
  */
-export function prepareLambdaProcess(): Promise<void> {
+export function prepareLambdaProcess(options: { connections?: number } = {}): Promise<void> {
   prepared ??= (async () => {
     const secretId = process.env[APP_ENV_SECRET_VAR];
     if (secretId) await loadAppEnv(secretId);
     setProcessDbOptions({
       // One invocation at a time per environment; the second connection is
-      // for the occasional transaction running beside a plain query.
-      max: 2,
+      // for the occasional transaction running beside a plain query. The
+      // poller runs many passes at once in its invocation and asks for more.
+      max: options.connections ?? 2,
       // Seconds. Short enough that a socket idle across a freeze is closed
       // and reopened rather than written to after the NAT forgot it.
       idle_timeout: 20,

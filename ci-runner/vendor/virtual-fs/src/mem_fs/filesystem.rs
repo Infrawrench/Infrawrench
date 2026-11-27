@@ -27,6 +27,15 @@ impl FileSystem {
         self.inner.write().unwrap().limiter = Some(limiter);
     }
 
+    /// iwci patch: files made from now on spill to disk past
+    /// `config.resident_max` bytes in memory (`spill.rs`). Returns what
+    /// reports how much is where.
+    pub fn set_spill(&self, config: super::SpillConfig) -> Arc<super::Spill> {
+        let spill = Arc::new(super::Spill::new(config));
+        self.inner.write().unwrap().spill = Some(spill.clone());
+        spill
+    }
+
     pub fn new_open_options_ext(&self) -> &FileSystem {
         self
     }
@@ -428,8 +437,9 @@ impl crate::FileSystem for FileSystem {
         let inode = guard.storage.get(inode_of_directory);
         let children = match inode {
             Some(Node::Directory(DirectoryNode { children, .. })) => children
-                .iter()
-                .filter_map(|inode| guard.storage.get(*inode))
+                .in_order()
+                .into_iter()
+                .filter_map(|inode| guard.storage.get(inode))
                 .map(|node| DirEntry {
                     path: {
                         let mut entry_path = path.to_path_buf();
@@ -492,13 +502,13 @@ impl crate::FileSystem for FileSystem {
 
             // Anything of that name, a directory or not, is in the way.
             let taken = match fs.storage.get(inode_of_parent) {
-                Some(Node::Directory(DirectoryNode { children, .. })) => {
-                    children.iter().any(|child| {
+                Some(Node::Directory(DirectoryNode { children, .. })) => children
+                    .named(&name_of_directory)
+                    .any(|(_, child)| {
                         fs.storage
-                            .get(*child)
+                            .get(child)
                             .is_some_and(|node| node.name() == name_of_directory.as_os_str())
-                    })
-                }
+                    }),
                 _ => false,
             };
             if taken {
@@ -510,7 +520,7 @@ impl crate::FileSystem for FileSystem {
             let real_inode_of_directory = fs.storage.insert(Node::Directory(DirectoryNode {
                 inode: inode_of_directory,
                 name: name_of_directory,
-                children: Vec::new(),
+                children: Children::default(),
                 metadata: {
                     let time = time();
 
@@ -601,7 +611,7 @@ impl crate::FileSystem for FileSystem {
         fs.storage.remove(inode_of_directory);
 
         // Remove the child from the parent directory.
-        fs.remove_child_from_node(inode_of_parent, position)
+        fs.remove_child_from_node(inode_of_parent, &name_of_directory, position)
     }
 
     fn rename<'a>(&'a self, from: &'a Path, to: &'a Path) -> BoxFuture<'a, Result<()>> {
@@ -741,7 +751,7 @@ impl crate::FileSystem for FileSystem {
             }
         };
 
-        fs.unlink_file_inode(inode_of_parent, position, inode_of_file)
+        fs.unlink_file_inode(inode_of_parent, &name_of_file, position, inode_of_file)
     }
 
     fn new_open_options(&self) -> OpenOptions<'_> {
@@ -766,6 +776,8 @@ pub(super) struct FileSystemInner {
     pub(super) links: HashMap<Inode, Vec<Inode>>,
     pub(super) backing_offload: Option<OffloadBackingStore>,
     pub(super) limiter: Option<crate::limiter::DynFsMemoryLimiter>,
+    /// iwci patch: where files spill to, when they do (`spill.rs`).
+    pub(super) spill: Option<Arc<super::Spill>>,
 }
 
 #[derive(Debug)]
@@ -787,9 +799,45 @@ impl InodeResolution {
 }
 
 impl FileSystemInner {
+    /// iwci patch: when the files in memory together pass the spill limit,
+    /// moves the least recently used of them to disk until what is left is
+    /// under three quarters of it (`spill.rs`). A file that cannot be moved
+    /// (the disk is full) stays in memory, and spilling stops there.
+    pub(super) fn spill_over(&mut self) {
+        let Some(spill) = self.spill.clone() else {
+            return;
+        };
+        if !spill.over() {
+            return;
+        }
+        let mut candidates: Vec<(u64, Inode)> = self
+            .storage
+            .iter()
+            .filter_map(|(inode, node)| match node {
+                Node::File(FileNode { file, .. }) => {
+                    file.in_memory().map(|(used, _)| (used, inode))
+                }
+                _ => None,
+            })
+            .collect();
+        candidates.sort_unstable();
+        for (_, inode) in candidates {
+            if spill.settled() {
+                break;
+            }
+            if let Some(Node::File(FileNode { file, .. })) = self.storage.get_mut(inode)
+                && let Err(e) = file.spill_to_disk()
+            {
+                tracing::warn!(error = %e, "could not spill a file to disk");
+                break;
+            }
+        }
+    }
+
     pub(super) fn unlink_file_inode(
         &mut self,
         inode_of_parent: Inode,
+        name_of_file: &OsStr,
         position: usize,
         inode_of_file: Inode,
     ) -> Result<()> {
@@ -802,19 +850,19 @@ impl FileSystemInner {
             let body = link.target;
             self.storage.remove(inode_of_file);
             self.forget_link(body, inode_of_file);
-            return self.remove_child_from_node(inode_of_parent, position);
+            return self.remove_child_from_node(inode_of_parent, name_of_file, position);
         }
         if let Some(&link) = self.links.get(&inode_of_file).and_then(|l| l.last()) {
             self.forget_link(inode_of_file, link);
-            self.remove_child_from_node(inode_of_parent, position)?;
+            self.remove_child_from_node(inode_of_parent, name_of_file, position)?;
             let Node::HardLink(link) = self.storage.remove(link) else {
                 return Err(FsError::UnknownError);
             };
             if let Some(Node::Directory(DirectoryNode { children, .. })) =
                 self.storage.get_mut(link.parent)
-                && let Some(entry) = children.iter_mut().find(|c| **c == link.inode)
+                && let Some(position) = children.position_of(&link.name, link.inode)
             {
-                *entry = inode_of_file;
+                children.replace(&link.name, position, inode_of_file);
             }
             if let Some(node) = self.storage.get_mut(inode_of_file) {
                 node.set_name(link.name);
@@ -837,7 +885,7 @@ impl FileSystemInner {
             self.storage.remove(inode_of_file);
         }
 
-        self.remove_child_from_node(inode_of_parent, position)
+        self.remove_child_from_node(inode_of_parent, name_of_file, position)
     }
 
     /// Renames the child `name_of_from` of `inode_of_from_parent` to
@@ -878,7 +926,12 @@ impl FileSystemInner {
                     return Ok(());
                 }
                 InodeResolution::Found(inode_of_file) => {
-                    self.unlink_file_inode(inode_of_to_parent, position, inode_of_file)?;
+                    self.unlink_file_inode(
+                        inode_of_to_parent,
+                        &name_of_to,
+                        position,
+                        inode_of_file,
+                    )?;
                 }
                 InodeResolution::Redirect(..) => {
                     return Err(FsError::InvalidInput);
@@ -887,13 +940,13 @@ impl FileSystemInner {
         }
 
         // Update the file name, and update the modified time.
-        self.update_node_name(inode, name_of_to)?;
+        self.update_node_name(inode, name_of_to.clone())?;
 
         // The parents are different. Let's update them.
         if inode_of_from_parent != inode_of_to_parent {
             // Remove the file from its parent, and update the
             // modified time.
-            self.remove_child_from_node(inode_of_from_parent, position_of_from)?;
+            self.remove_child_from_node(inode_of_from_parent, name_of_from, position_of_from)?;
 
             // Add the file to its new parent, and update the modified
             // time.
@@ -906,7 +959,12 @@ impl FileSystemInner {
         else {
             let mut inode = self.storage.get_mut(inode_of_from_parent);
             match inode.as_mut() {
-                Some(Node::Directory(node)) => node.metadata.modified = time(),
+                // iwci patch (#1408): and its index of names. The entry
+                // keeps its place.
+                Some(Node::Directory(node)) => {
+                    node.children.rename(name_of_from, position_of_from, &name_of_to);
+                    node.metadata.modified = time();
+                }
                 Some(Node::ArcDirectory(node)) => node.metadata.modified = time(),
                 _ => return Err(FsError::UnknownError),
             }
@@ -929,8 +987,8 @@ impl FileSystemInner {
         while let Some(component) = components.next() {
             node = match node {
                 Node::Directory(DirectoryNode { children, .. }) => children
-                    .iter()
-                    .filter_map(|inode| self.storage.get(*inode))
+                    .named(component.as_os_str())
+                    .filter_map(|(_, inode)| self.storage.get(inode))
                     .find(|node| node.name() == component.as_os_str())
                     .map(|node| self.follow(node))
                     .ok_or(FsError::EntryNotFound)?,
@@ -981,9 +1039,8 @@ impl FileSystemInner {
     ) -> Result<(usize, InodeResolution)> {
         match self.storage.get(inode_of_parent) {
             Some(Node::Directory(DirectoryNode { children, .. })) => children
-                .iter()
-                .enumerate()
-                .filter_map(|(nth, inode)| self.storage.get(*inode).map(|node| (nth, node)))
+                .named(name_of_directory)
+                .filter_map(|(nth, inode)| self.storage.get(inode).map(|node| (nth, node)))
                 .find_map(|(nth, node)| match node {
                     Node::Directory(DirectoryNode {
                         inode,
@@ -1028,9 +1085,8 @@ impl FileSystemInner {
     ) -> Result<Option<(usize, InodeResolution)>> {
         match self.storage.get(inode_of_parent) {
             Some(Node::Directory(DirectoryNode { children, .. })) => children
-                .iter()
-                .enumerate()
-                .filter_map(|(nth, inode)| self.storage.get(*inode).map(|node| (nth, node)))
+                .named(name_of_file)
+                .filter_map(|(nth, inode)| self.storage.get(inode).map(|node| (nth, node)))
                 .find_map(|(nth, node)| match node {
                     Node::File(FileNode { inode, name, .. })
                     | Node::OffloadedFile(OffloadedFileNode { inode, name, .. })
@@ -1070,9 +1126,8 @@ impl FileSystemInner {
     ) -> Result<Option<(usize, InodeResolution)>> {
         match self.storage.get(inode_of_parent) {
             Some(Node::Directory(DirectoryNode { children, .. })) => children
-                .iter()
-                .enumerate()
-                .filter_map(|(nth, inode)| self.storage.get(*inode).map(|node| (nth, node)))
+                .named(name_of)
+                .filter_map(|(nth, inode)| self.storage.get(inode).map(|node| (nth, node)))
                 .find_map(|(nth, node)| match node {
                     Node::File(FileNode { inode, name, .. })
                     | Node::OffloadedFile(OffloadedFileNode { inode, name, .. })
@@ -1126,8 +1181,8 @@ impl FileSystemInner {
     fn child_named(&self, parent: Inode, name: &OsString) -> Option<Inode> {
         match self.storage.get(parent) {
             Some(Node::Directory(DirectoryNode { children, .. })) => children
-                .iter()
-                .copied()
+                .named(name)
+                .map(|(_, c)| c)
                 .find(|c| self.storage.get(*c).is_some_and(|n| n.name() == name)),
             _ => None,
         }
@@ -1174,13 +1229,21 @@ impl FileSystemInner {
     ///
     /// `inode` must represents an existing directory.
     pub(super) fn add_child_to_node(&mut self, inode: Inode, new_child: Inode) -> Result<()> {
+        // iwci patch (#1408): the child goes in its directory's index under
+        // its name, so it must be in the storage already.
+        let name = self
+            .storage
+            .get(new_child)
+            .ok_or(FsError::UnknownError)?
+            .name()
+            .to_os_string();
         match self.storage.get_mut(inode) {
             Some(Node::Directory(DirectoryNode {
                 children,
                 metadata: Metadata { modified, .. },
                 ..
             })) => {
-                children.push(new_child);
+                children.push(&name, new_child);
                 *modified = time();
 
                 Ok(())
@@ -1197,14 +1260,24 @@ impl FileSystemInner {
     /// # Safety
     ///
     /// `inode` must represents an existing directory.
-    pub(super) fn remove_child_from_node(&mut self, inode: Inode, position: usize) -> Result<()> {
+    ///
+    /// iwci patch (#1408): `position` is the entry's in `Children`, and
+    /// `name` its name there.
+    pub(super) fn remove_child_from_node(
+        &mut self,
+        inode: Inode,
+        name: &OsStr,
+        position: usize,
+    ) -> Result<()> {
         match self.storage.get_mut(inode) {
             Some(Node::Directory(DirectoryNode {
                 children,
                 metadata: Metadata { modified, .. },
                 ..
             })) => {
-                children.remove(position);
+                children
+                    .remove(name, position)
+                    .ok_or(FsError::EntryNotFound)?;
                 *modified = time();
 
                 Ok(())
@@ -1311,8 +1384,9 @@ impl fmt::Debug for FileSystemInner {
                 if let Node::Directory(DirectoryNode { children, .. }) = node {
                     debug(
                         children
-                            .iter()
-                            .filter_map(|inode| slf.storage.get(*inode))
+                            .in_order()
+                            .into_iter()
+                            .filter_map(|inode| slf.storage.get(inode))
                             .collect(),
                         slf,
                         formatter,
@@ -1341,7 +1415,7 @@ impl Default for FileSystemInner {
         slab.insert(Node::Directory(DirectoryNode {
             inode: ROOT_INODE,
             name: OsString::from("/"),
-            children: Vec::new(),
+            children: Children::default(),
             metadata: Metadata {
                 ft: FileType {
                     dir: true,
@@ -1361,6 +1435,7 @@ impl Default for FileSystemInner {
             links: HashMap::new(),
             backing_offload: None,
             limiter: None,
+            spill: None,
         }
     }
 }
@@ -1889,7 +1964,7 @@ mod test_filesystem {
                 accessed,
                 created,
                 modified,
-                len: 0
+                len: 0,
                 ino: 0,
                 nlink: 0,
             }) if accessed == created && created == modified && modified > 0
@@ -1908,7 +1983,7 @@ mod test_filesystem {
                 accessed,
                 created,
                 modified,
-                len: 0
+                len: 0,
                 ino: 0,
                 nlink: 0,
             } if accessed == created && created == modified && modified > 0
@@ -1926,7 +2001,7 @@ mod test_filesystem {
                     accessed,
                     created,
                     modified,
-                    len: 0
+                    len: 0,
                     ino: 0,
                     nlink: 0,
                 }) if
@@ -1944,7 +2019,7 @@ mod test_filesystem {
                     accessed,
                     created,
                     modified,
-                    len: 0
+                    len: 0,
                     ino: 0,
                     nlink: 0,
                 }) if

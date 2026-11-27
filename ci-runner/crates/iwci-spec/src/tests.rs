@@ -1029,34 +1029,21 @@ fn scratch_has_a_default_and_a_bound() {
 }
 
 #[test]
-fn split_is_off_unless_asked_for_and_bounds_what_it_sends() {
+fn split_is_retired_and_any_value_of_it_is_ignored() {
     let job = "jobs:\n  a:\n    using: builtin:t@1\n";
-    let plan = parse(&format!("name: x\n{job}"), &ctx()).unwrap();
-    assert_eq!(plan.split, None);
-    let plan = parse(&format!("name: x\nsplit: false\n{job}"), &ctx()).unwrap();
-    assert_eq!(plan.split, None);
-    let plan = parse(&format!("name: x\nsplit: true\n{job}"), &ctx()).unwrap();
-    assert_eq!(
-        plan.split,
-        Some(SplitSpec {
-            artifact_bytes: DEFAULT_SPLIT_ARTIFACTS
-        })
-    );
-    let plan = parse(
-        &format!("name: x\nsplit: {{ artifacts: 16MiB }}\n{job}"),
-        &ctx(),
-    )
-    .unwrap();
-    assert_eq!(plan.split.unwrap().artifact_bytes, 16 << 20);
-    assert_error(
-        &format!("name: x\nsplit: {{ artifacts: 1GiB }}\n{job}"),
-        "at most 256MiB",
-    );
-    assert_error(
-        &format!("name: x\nsplit: {{ artifacts: lots }}\n{job}"),
-        "is not a size",
-    );
-    assert_error(&format!("name: x\nsplit: 3\n{job}"), "`split` is `true`");
+    let plain = parse(&format!("name: x\n{job}"), &ctx()).unwrap();
+    for value in [
+        "true",
+        "false",
+        "{ artifacts: 16MiB }",
+        "{ artifacts: lots }",
+        "3",
+    ] {
+        let plan = parse(&format!("name: x\nsplit: {value}\n{job}"), &ctx())
+            .unwrap_or_else(|e| panic!("split: {value}: {e}"));
+        assert_eq!(plan.jobs.len(), plain.jobs.len(), "split: {value}");
+        assert_eq!(plan.scratch_bytes, plain.scratch_bytes);
+    }
 }
 
 #[test]
@@ -2970,5 +2957,37 @@ fn a_job_may_run_for_up_to_six_hours() {
     assert_error(
         "name: x\njobs:\n  a:\n    using: builtin:t@1\n    timeout: 6h1s\n",
         "between 1s and 6h",
+    );
+}
+
+#[test]
+fn install_scripts_is_on_for_workspaces_with_a_node_install_only() {
+    let workspaces = |yaml: &str| parse(yaml, &ctx()).unwrap().workspaces;
+    let on = workspaces(
+        "name: x\ninstall-scripts: true\nworkspace:\n  deps: [pnpm]\njobs:\n  t:\n    using: builtin:t@1\n  g:\n    using: builtin:t@1\n    deps: [go]\n  m:\n    platform: linux\n    run: make\n",
+    );
+    // The pnpm workspace runs them; Go's and the machine's have nothing.
+    let flags: Vec<bool> = on.iter().map(|w| w.install_scripts).collect();
+    // A runner with Linux machines is what such a run needs, as a
+    // machine job does.
+    let plan = parse(
+        "name: x\ninstall-scripts: true\nworkspace:\n  deps: [npm]\njobs:\n  t:\n    using: builtin:t@1\n",
+        &ctx(),
+    )
+    .unwrap();
+    assert_eq!(plan.vm_platforms(), vec![VmOs::Linux]);
+    assert_eq!(flags, vec![true, false, false]);
+    let off =
+        workspaces("name: x\nworkspace:\n  deps: [pnpm]\njobs:\n  t:\n    using: builtin:t@1\n");
+    assert!(!off[0].install_scripts);
+    // It is part of the workspace's key, which stays as it was without it.
+    assert_ne!(on[0].key, off[0].key);
+    let unset = workspaces(
+        "name: x\ninstall-scripts: false\nworkspace:\n  deps: [pnpm]\njobs:\n  t:\n    using: builtin:t@1\n",
+    );
+    assert_eq!(unset[0].key, off[0].key);
+    assert_error(
+        "name: x\ninstall-scripts: yes please\njobs:\n  t:\n    using: builtin:t@1\n",
+        "install-scripts",
     );
 }

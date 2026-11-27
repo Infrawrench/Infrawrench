@@ -72,6 +72,8 @@ Supabase has no billing API. Infrawrench estimates each project's daily spend fr
 
 The quota radar tracks each running project's database disk usage against its provisioned size. A project whose disk fills up goes read-only, so this warns you first.
 
+Capacity runway tracks each running project's Edge Functions against its plan's per-project cap (100 on Free, 1,000 on Pro, 2,000 on Team).
+
 ## Status
 
 Supabase incidents show against your projects by region, and against Auth, Storage and Edge Functions resources by service.

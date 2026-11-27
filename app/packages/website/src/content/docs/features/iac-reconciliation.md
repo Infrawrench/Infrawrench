@@ -17,16 +17,17 @@ There's a fourth list too: resources that are **in state but not in inventory**.
 
 ![The Infrastructure as Code page with the four summary tiles across the top and the resource table below, showing a mix of managed, drifted and unmanaged rows](https://agent-assets.infrawrench.com/docs-screenshots/features/iac-reconciliation/iac-overview.png)
 
-## Four things called "Terraform"
+## Five things called "Terraform"
 
-Four Infrawrench features mention Terraform. Here's which is which:
+Five Infrawrench features mention Terraform. Here's which is which:
 
-| Feature                                       | Direction                | Unit                          |
-| --------------------------------------------- | ------------------------ | ----------------------------- |
-| **IaC reconciliation** (this page)            | Terraform state, in      | Your cloud resources          |
-| [Eject to Terraform](./terraform-export.md)   | HCL, out                 | Your cloud resources          |
-| [Config as code](./config-as-code.md)         | JSON, both ways          | Your Infrawrench organization |
-| [Terraform provider](./terraform-provider.md) | Terraform to Infrawrench | Your Infrawrench organization |
+| Feature                                                | Direction                | Unit                          |
+| ------------------------------------------------------ | ------------------------ | ----------------------------- |
+| **IaC reconciliation** (this page)                     | Terraform state, in      | Your cloud resources          |
+| [Eject to Terraform](./terraform-export.md)            | HCL, out                 | Your cloud resources          |
+| [Config as code](./config-as-code.md)                  | JSON, both ways          | Your Infrawrench organization |
+| [Terraform provider](./terraform-provider.md)          | Terraform to Infrawrench | Your Infrawrench organization |
+| [Terraform on git.infrawrench.com](./git-terraform.md) | Runs Terraform for you   | Your cloud resources          |
 
 This is the only one that reads your state. Eject to Terraform writes HCL describing your cloud resources. Config as code moves your whole Infrawrench organization as one JSON document. The Terraform provider lets Terraform manage Infrawrench's own settings.
 

@@ -11,6 +11,12 @@ export const PubSubSubscriptionResourceType = rt({
     f("topic", "Topic", { required: false }),
     f("ackDeadlineSeconds", "Ack Deadline (s)", { kind: "number", required: false }),
     f("messageRetentionDuration", "Message Retention", { required: false }),
+    f("messageRetentionSeconds", "Message Retention (s)", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description: "How long an unacknowledged message is kept before it is discarded",
+    }),
     f("filter", "Filter", { required: false }),
   ],
   outputs: [],
@@ -22,4 +28,16 @@ export const PubSubSubscriptionResourceType = rt({
   parentTypeId: "pubsub-topic",
   supportsCreate: true,
   supportsMetrics: true,
+  // `subscription/oldest_unacked_message_age` ("Age (in seconds) of the
+  // oldest unacknowledged message"), against the retention after which an
+  // unacknowledged message is dropped:
+  // https://docs.cloud.google.com/monitoring/api/metrics_gcp_p_z, read 2026-11-23
+  capacityMetrics: [
+    {
+      seriesLabel: "Oldest Unacked Age",
+      limit: { field: "messageRetentionSeconds" },
+      unit: "s",
+      label: "Backlog Age",
+    },
+  ],
 });

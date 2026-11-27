@@ -1078,6 +1078,10 @@ export interface OciAutonomousDatabase {
   computeCount?: number;
   cpuCoreCount?: number;
   dataStorageSizeInTBs?: number;
+  dataStorageSizeInGBs?: number;
+  usedDataStorageSizeInGBs?: number;
+  actualUsedDataStorageSizeInTBs?: number;
+  isAutoScalingForStorageEnabled?: boolean;
   isAutoScalingEnabled?: boolean;
   lifecycleState: string;
   licenseModel?: string;
@@ -1087,6 +1091,30 @@ export interface OciAutonomousDatabase {
   connectionUrls?: { sqlDevWebUrl?: string };
   connectionStrings?: { high?: string };
   timeCreated?: string;
+}
+
+/**
+ * Storage in use against the reserved size, both in GB, off the
+ * `AutonomousDatabaseSummary` the list already returns:
+ * `actualUsedDataStorageSizeInTBs` ("The current amount of storage in use for
+ * user and system data") or `usedDataStorageSizeInGBs`, against
+ * `dataStorageSizeInGBs` or `dataStorageSizeInTBs` (OCI counts 1024 GB to the
+ * TB; https://github.com/oracle/oci-go-sdk/blob/master/database/autonomous_database_summary.go,
+ * read 2026-11-23). With storage auto scaling on, the database grows past the
+ * reserved size, so no limit is stored then.
+ */
+export function autonomousStorageFields(db: OciAutonomousDatabase): Record<string, number> {
+  const out: Record<string, number> = {};
+  const used =
+    db.actualUsedDataStorageSizeInTBs != null
+      ? db.actualUsedDataStorageSizeInTBs * 1024
+      : db.usedDataStorageSizeInGBs;
+  if (used != null && Number.isFinite(used)) out["storageUsedGb"] = Math.round(used * 100) / 100;
+  const reserved =
+    db.dataStorageSizeInGBs ??
+    (db.dataStorageSizeInTBs != null ? db.dataStorageSizeInTBs * 1024 : undefined);
+  if (reserved && db.isAutoScalingForStorageEnabled !== true) out["storageLimitGb"] = reserved;
+  return out;
 }
 
 export function mapAutonomousDatabase(
@@ -1110,6 +1138,7 @@ export function mapAutonomousDatabase(
       computeModel: db.computeModel ?? "",
       computeCount: db.computeCount ?? db.cpuCoreCount ?? 0,
       ...(db.dataStorageSizeInTBs !== undefined ? { storageTb: db.dataStorageSizeInTBs } : {}),
+      ...autonomousStorageFields(db),
       autoScaling: db.isAutoScalingEnabled === true,
       status: db.lifecycleState,
       licenseModel: db.licenseModel ?? "",

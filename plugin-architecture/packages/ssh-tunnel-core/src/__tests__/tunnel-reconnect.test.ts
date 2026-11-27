@@ -19,8 +19,19 @@ import {
 
 const { Server: SshServer, utils } = ssh2;
 
-const hostKey = utils.generateKeyPairSync("ed25519").private;
-const clientKey = utils.generateKeyPairSync("ed25519").private;
+// ssh2 1.17's ed25519 generator strips every leading zero byte from the public
+// key's DER bit string, not just the unused-bits byte, so a public key that
+// starts with 0x00 (about 1 in 256) is written 31 bytes long and its own
+// `parseKey` (and `new Server`) refuses the result. Draw again until it parses.
+function ed25519Key(): string {
+  for (;;) {
+    const key = utils.generateKeyPairSync("ed25519").private;
+    if (!(utils.parseKey(key) instanceof Error)) return key;
+  }
+}
+
+const hostKey = ed25519Key();
+const clientKey = ed25519Key();
 
 function listen(server: net.Server | InstanceType<typeof SshServer>, port = 0): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -62,6 +73,11 @@ const sshd = new SshServer({ hostKeys: [hostKey] }, (conn) => {
     channel.on("error", () => {});
     channel.pipe(upstream);
     upstream.pipe(channel);
+    // Close each side with the other, as sshd does, rather than leaving it to
+    // half-close: on CI's in-memory loopback a FIN can be the last thing that
+    // moves, and the leak check would then wait on a socket nobody needs.
+    channel.on("close", () => upstream.destroy());
+    upstream.on("close", () => channel.close());
   });
 });
 let sshdPort = 0;
@@ -158,18 +174,28 @@ function roundTrip(port: number, text: string): Promise<string> {
   });
 }
 
-async function until(check: () => boolean, ms = 5_000): Promise<void> {
-  const deadline = Date.now() + ms;
+/**
+ * Waits for `check`. The deadline reads `performance.now()`, which tests that
+ * fake `Date` leave running, and sits inside vitest's own 5 s so a wait that
+ * never ends fails here, saying which, rather than as a bare test timeout.
+ */
+async function until(
+  check: () => boolean,
+  ms = 4_000,
+  what: () => string = () => check.toString(),
+): Promise<void> {
+  const deadline = performance.now() + ms;
   while (!check()) {
-    if (Date.now() > deadline) throw new Error("timed out waiting");
+    if (performance.now() > deadline) throw new Error(`timed out waiting for ${what()}`);
     await new Promise((r) => setTimeout(r, 10));
   }
 }
 
-const handles = () =>
+const tracked = () =>
   process
     .getActiveResourcesInfo()
-    .filter((r) => r === "TCPServerWrap" || r === "TCPSocketWrap" || r === "Timeout").length;
+    .filter((r) => r === "TCPServerWrap" || r === "TCPSocketWrap" || r === "Timeout");
+const handles = () => tracked().length;
 
 let baseline = 0;
 
@@ -324,6 +350,12 @@ describe("tunnels whose SSH connection ends (#1276)", () => {
     await bastion.stop();
     await bastion.start(bastion.port);
     await until(() => sshConnections.size === 0);
-    await until(() => handles() === baseline);
+    // At most the baseline: on CI's runner the baseline can hold a timer of
+    // vitest's own that is gone by now, so equality would never come.
+    await until(
+      () => handles() <= baseline,
+      4_000,
+      () => `at most ${baseline} handles, still open: ${tracked().join(", ")}`,
+    );
   });
 });

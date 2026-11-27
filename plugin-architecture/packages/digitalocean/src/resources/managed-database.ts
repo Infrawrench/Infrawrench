@@ -146,6 +146,12 @@ export const ManagedDatabaseResourceType = rt({
   showInSidebar: true,
   supportsCreate: true,
   supportsMetrics: true,
+  // `fetchDoMetricSeries` charts `/v2/monitoring/metrics/database/{engine}/disk_usage`
+  // ("disk usage (percent)") under this label:
+  // https://docs.digitalocean.com/reference/api/reference/monitoring/
+  capacityMetrics: [
+    { seriesLabel: "Disk Used", limit: { constant: 100 }, unit: "%", label: "Disk" },
+  ],
   extendedSupport: MANAGED_DATABASE_EXTENDED_SUPPORT,
   iconKey: "database",
   peerIntegrations: [

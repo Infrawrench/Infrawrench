@@ -177,11 +177,19 @@ export interface QuotaListResponse {
 export interface QuotaSettings {
   enabled: boolean;
   threshold: number;
+  /** Capacity runway: alert when a resource reaches its limit within this many days. */
+  runwayDays: number;
+  /** Capacity runway: alert at this fraction of a monthly allowance. */
+  allowanceThreshold: number;
+  /** When the last alert scan completed; null before the first. */
+  lastNotifiedAt: string | null;
 }
 
 export interface QuotaSettingsPatch {
   enabled?: boolean;
   threshold?: number;
+  runwayDays?: number;
+  allowanceThreshold?: number;
 }
 
 // --- The pure half ---

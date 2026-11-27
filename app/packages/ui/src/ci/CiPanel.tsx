@@ -4,6 +4,7 @@ import {
   CI_CANCELLABLE_STATUSES,
   CI_RETRYABLE_STATUSES,
   CI_RUN_STATUSES,
+  ciRunSource,
   type CiAccount,
   type CiJobOutput,
   type CiRun,
@@ -21,6 +22,15 @@ import { CiAccessCard } from "./CiAccessCard.js";
 import { CiRunView, useCiLiveRun } from "./CiRunView.js";
 import { formatDuration } from "./format.js";
 import { useLiveRefresh } from "../live/index.js";
+
+/** The forge a run's link opens, as its host: `git.infrawrench.com`. */
+function sourceHost(run: CiRun): string {
+  try {
+    return new URL(run.sourceUrl ?? run.githubUrl).host;
+  } catch {
+    return "git.infrawrench.com";
+  }
+}
 
 export interface CiPanelProps {
   client: CiClient;
@@ -531,10 +541,13 @@ function RunSource({ run }: { run: CiRun }) {
   if (run.pullNumber !== null) {
     return (
       <span>
-        {gt("Pull request #{number} from {branch}", {
-          number: String(run.pullNumber),
-          branch: run.headRef,
-        })}
+        {ciRunSource(run) === "git"
+          ? // git.infrawrench.com has branch pages, not pull requests.
+            gt("Branch page of {branch}", { branch: run.headRef })
+          : gt("Pull request #{number} from {branch}", {
+              number: String(run.pullNumber),
+              branch: run.headRef,
+            })}
         {run.fromFork ? (
           <span className="ml-1 rounded bg-warning/15 px-1 text-[10px] text-warning">
             {run.headRepoFullName
@@ -721,8 +734,10 @@ function RunDetailView({
             <h3 className="text-sm font-semibold text-on-surface">{run.repoFullName}</h3>
             <StatusBadge status={run.status} />
             <span className="font-mono text-xs text-on-surface-muted">{run.sha.slice(0, 12)}</span>
-            <ExternalLink href={run.githubUrl} onOpenUrl={onOpenUrl}>
-              {gt("Open on GitHub")}
+            <ExternalLink href={run.sourceUrl ?? run.githubUrl} onOpenUrl={onOpenUrl}>
+              {ciRunSource(run) === "git"
+                ? gt("Open on {host}", { host: sourceHost(run) })
+                : gt("Open on GitHub")}
             </ExternalLink>
             {canApprove && CI_RETRYABLE_STATUSES.includes(run.status) ? (
               <div className="ml-auto">
@@ -748,9 +763,13 @@ function RunDetailView({
           {run.status === "awaiting_approval" ? (
             <Notice tone="warning">
               <p className="mb-2">
-                {gt(
-                  "This pull request comes from a fork. CI runs only once a maintainer approves this commit, and it runs without your secrets.",
-                )}
+                {ciRunSource(run) === "git"
+                  ? gt(
+                      "This branch comes from a fork. CI runs only once a maintainer approves this commit, and it runs without your secrets.",
+                    )
+                  : gt(
+                      "This pull request comes from a fork. CI runs only once a maintainer approves this commit, and it runs without your secrets.",
+                    )}
               </p>
               {canApprove ? (
                 <ApprovalButtons

@@ -23,6 +23,7 @@ iwci-git.workspace = true
 iwci-deps.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+futures.workspace = true
 hex.workspace = true
 sha2.workspace = true
 globset.workspace = true
@@ -40,8 +41,11 @@ getrandom = "0.3"
 # in the tree through tokio.
 libc = "0.2"
 signal-hook-registry = "1"
+# A split run's secrets reach a helper sealed to a key only it holds
+# (`sealed.rs`). Already in the tree through rustls.
+ring = "0.17"
 # Job caches are stored as one zstd stream each.
-zstd = { version = "0.13", default-features = false }
+zstd = { version = "0.13", default-features = false, features = ["zstdmt"] }
 # A cloud job's artifacts travel to and from its machine as tar archives.
 # Already in the tree through iwci-deps.
 tar = { version = "0.4.46", default-features = false }
@@ -49,6 +53,9 @@ tar = { version = "0.4.46", default-features = false }
 # already in the tree.
 bytes = "1.9"
 shared-buffer = "0.1.4"
+# Telling the caller a run's state changed (`notify.rs`). Already in the
+# tree through iwci-deps and iwci-store.
+ureq = { version = "3.3", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 # The gem builds' tests write a gzipped archive. Already in the tree through

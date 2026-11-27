@@ -46,6 +46,18 @@ export const EKSClusterResourceType = rt({
       kind: "number",
       required: false,
       sizing: "node-count",
+      usage: { limit: { field: "maxNodeCount" }, unit: "nodes", label: "Node Group Capacity" },
+    }),
+    f("maxNodeCount", "Max Nodes", {
+      kind: "number",
+      required: false,
+      editable: false,
+      description: "Sum of every managed node group's maximum size",
+    }),
+    f("controlPlaneTier", "Control Plane Tier", {
+      required: false,
+      editable: false,
+      description: "standard, or the Provisioned Control Plane scaling tier",
     }),
     // The stored spelling; the create form calls it `instanceType`, and the
     // estimator accepts both.
@@ -108,6 +120,32 @@ export const EKSClusterResourceType = rt({
   iconKey: "kubernetes",
   supportsCreate: true,
   supportsMetrics: true,
+  // `eksClusterMetrics` charts `etcd_mvcc_db_total_size_in_bytes` (the etcd
+  // database file, which the size limit is enforced on) as "etcd Size
+  // Allocated". Standard mode holds 8 GB; the Provisioned Control Plane
+  // tiers 16 GB (24 GB for 4XL and 8XL on Kubernetes 1.34 and later, so 16
+  // is the earlier of the two there):
+  // https://docs.aws.amazon.com/eks/latest/userguide/eks-provisioned-control-plane.html
+  // (read 2026-11-23). etcd counts these in GiB.
+  capacityMetrics: [
+    {
+      seriesLabel: "etcd Size Allocated",
+      limit: {
+        plan: {
+          field: "controlPlaneTier",
+          allowances: {
+            standard: 8 * 1024 ** 3,
+            "tier-xl": 16 * 1024 ** 3,
+            "tier-2xl": 16 * 1024 ** 3,
+            "tier-4xl": 16 * 1024 ** 3,
+            "tier-8xl": 16 * 1024 ** 3,
+          },
+        },
+      },
+      unit: "bytes",
+      label: "etcd Database",
+    },
+  ],
   peerIntegrations: [
     {
       pluginId: "kubernetes",

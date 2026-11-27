@@ -216,6 +216,9 @@ COMMANDS
   migrate-estimate    what a service or a set of resources would cost on another provider, side
                       by side (cloud only)   --service <id|slug|name> | --resources <id,id>
                       --to <plugin> [--region <id>] [--save <name>]
+  git                 the org's namespace on git.infrawrench.com: plan limits & usage (cloud only)
+  git repos           its repositories: visibility, CI on the default branch, open PRs, last
+                      push, size & address
   github-issues       findings filed as GitHub issues, open first, with any pull request
   github-issues settings  repository routing, Terraform sources and each GitHub App
                       installation's granted permissions (cloud only)
@@ -317,6 +320,8 @@ COMMANDS
   leases              resource leases (TTLs): deadlines, auto-delete flags & status
   access              break-glass requests & live permission elevations
   credits             prepaid balances with burn rate & runway ("6 days left")
+  runway              resource usage against its limit (disks, plan caps, monthly allowances),
+                      soonest to run out first   [--at-risk]
   commitments         reserved instances, savings plans & committed-use discounts:
                       coverage, utilization & the savings planner's recommendations
   commitments reports [name|id]
@@ -353,6 +358,9 @@ COMMANDS
   jit cancel <id>     withdraw your pending request
   jit extend <id>     lengthen an active grant, within the policy maximum   --by 30m
   jit revoke <id>     end a grant now and remove it from the provider
+  offboard            every offboarding checklist, with progress (cloud only)
+  offboard <email>    their checklist, or what a sweep finds for them (not saved)
+                      [--start] [--alias <handle>]...
   cost-visibility     cost visibility scopes on roles, members & API keys
   cost-visibility me  whether your own cost figures are scoped
   recordings          recorded SSH sessions: who connected, to what, for how long

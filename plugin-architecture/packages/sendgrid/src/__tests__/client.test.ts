@@ -97,6 +97,44 @@ describe("SendGrid client", () => {
     expect(reads.map((x) => x.url.searchParams.get("include_region"))).toEqual(["true", "true"]);
   });
 
+  it("stores the credit period's usage, limit and both reset dates on the account", async () => {
+    const { c } = client((url) => {
+      if (url.pathname === "/v3/user/username") return { body: { username: "acme", user_id: 7 } };
+      if (url.pathname === "/v3/user/credits") {
+        return {
+          body: {
+            remain: 30_000,
+            total: 50_000,
+            overage: 0,
+            used: 20_000,
+            last_reset: "2026-11-01",
+            next_reset: "2026-12-01",
+            reset_frequency: "monthly",
+          },
+        };
+      }
+      return { status: 404, body: { errors: [{ message: "not found" }] } };
+    });
+    const [account] = await c.listResources("sendgrid-account", "a");
+    expect(account!.fields).toMatchObject({
+      creditsUsed: 20_000,
+      creditsTotal: 50_000,
+      creditsLastReset: "2026-11-01",
+      creditsNextReset: "2026-12-01",
+    });
+  });
+
+  it("leaves the credit fields out when the key cannot read credits", async () => {
+    const { c } = client((url) =>
+      url.pathname === "/v3/user/username"
+        ? { body: { username: "acme" } }
+        : { status: 403, body: { errors: [{ message: "access forbidden" }] } },
+    );
+    const [account] = await c.listResources("sendgrid-account", "a");
+    expect(account!.fields).not.toHaveProperty("creditsUsed");
+    expect(account!.fields).not.toHaveProperty("creditsLastReset");
+  });
+
   describe("editing an event webhook", () => {
     const hook = { id: "wh1", url: "https://example.com/events", enabled: true, bounce: true };
     const route = (url: URL, method: string) =>

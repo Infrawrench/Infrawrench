@@ -390,7 +390,9 @@ export function mapAutoscalePool(p: Partial<DoAutoscalePool>, accountId: string)
       targetCpuUtilization: fractionToPercent(config.target_cpu_utilization),
       targetMemoryUtilization: fractionToPercent(config.target_memory_utilization),
       cooldownMinutes: isStatic ? "" : Number(config.cooldown_minutes ?? 0) || "",
-      activeResourcesCount: Number(p.active_resources_count ?? 0),
+      // Blank, not 0, when DO leaves it out: no reading is not an empty pool.
+      activeResourcesCount:
+        typeof p.active_resources_count === "number" ? p.active_resources_count : "",
       vpcUuid: str(template.vpc_uuid),
       createdAt,
     },

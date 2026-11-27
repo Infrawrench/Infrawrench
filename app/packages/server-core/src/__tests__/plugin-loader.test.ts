@@ -281,6 +281,58 @@ describe("expiryFields declarations", () => {
  * surcharge that is never priced. `regionFieldKey` is exempt because several
  * listers store `region` without declaring it as a form field.
  */
+/**
+ * Capacity runway declarations name fields the same way: a usage, a limit
+ * field, a plan field or a cycle boundary the type never declares is a row
+ * that silently never appears, or a limit that never resolves. Every key a
+ * declaration names must be a declared field or a non-sensitive output.
+ */
+describe("capacity declarations", () => {
+  it("name fields and outputs the type actually knows about", async () => {
+    const loaded = await loader.loadPlugins();
+    const suspicious: string[] = [];
+    let declared = 0;
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        const known = new Set([
+          ...type.fields.map((f) => f.key),
+          ...type.outputs.filter((o) => !o.sensitive).map((o) => o.key),
+        ]);
+        const where = `${plugin.manifest.id}/${type.id}`;
+        const usages = [
+          ...type.fields.flatMap((f) => (f.usage ? [{ key: f.key, usage: f.usage }] : [])),
+          ...type.outputs.flatMap((o) => (o.usage ? [{ key: o.key, usage: o.usage }] : [])),
+          ...(type.capacityMetrics ?? []).map((m) => ({
+            key: `metric:${m.seriesLabel}`,
+            usage: { ...m, cycle: undefined },
+          })),
+        ];
+        for (const { key, usage } of usages) {
+          declared += 1;
+          const limit = usage.limit;
+          if ("field" in limit && !known.has(limit.field)) {
+            suspicious.push(`${where}.${key} limit field ${limit.field}`);
+          }
+          if ("plan" in limit && !known.has(limit.plan.field)) {
+            suspicious.push(`${where}.${key} plan field ${limit.plan.field}`);
+          }
+          for (const boundary of [usage.cycle?.startField, usage.cycle?.endField]) {
+            if (boundary !== undefined && !known.has(boundary)) {
+              suspicious.push(`${where}.${key} cycle field ${boundary}`);
+            }
+          }
+        }
+        for (const metric of type.capacityMetrics ?? []) {
+          if (!type.supportsMetrics)
+            suspicious.push(`${where} metric ${metric.seriesLabel} without supportsMetrics`);
+        }
+      }
+    }
+    expect(suspicious).toEqual([]);
+    expect(declared).toBeGreaterThan(0);
+  });
+});
+
 describe("extendedSupport declarations", () => {
   it("name fields the type actually knows about", async () => {
     const loaded = await loader.loadPlugins();
@@ -859,6 +911,35 @@ describe("principalRole declarations", () => {
       "weaviate-cloud/db-user:deactivate",
       "workos/organization-api-key:expire",
       "workos/organization-membership:deactivate",
+    ]);
+  });
+
+  /**
+   * `offboardByDelete` puts a Remove button on a departing person's
+   * offboarding checklist that calls the plugin's `deleteResource`. Pinned so
+   * a new declaration is a reviewed decision (a delete that also destroys data
+   * the organization owns must never be offered as offboarding), and each
+   * must be on a type the host can delete.
+   */
+  it("offer offboarding removal only on deletable membership and key types", async () => {
+    const loaded = await loader.loadPlugins();
+    const declared: string[] = [];
+    for (const { plugin } of loaded) {
+      for (const type of plugin.resourceTypes) {
+        if (!type.principalRole?.offboardByDelete) continue;
+        declared.push(`${plugin.manifest.id}/${type.id}`);
+        expect(type.supportsDelete, `${plugin.manifest.id}/${type.id}`).not.toBe(false);
+      }
+    }
+    expect(declared.sort()).toEqual([
+      "anthropic/organization-user",
+      "anthropic/workspace-member",
+      "docker-hub/dockerhub-member",
+      "gitlab/group-member",
+      "gitlab/project-member",
+      "openai/organization-user",
+      "openai/project-user",
+      "turso/turso-organization-member",
     ]);
   });
 

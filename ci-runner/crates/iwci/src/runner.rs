@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use iwci_deps::cache::LayerCache;
 use iwci_deps::fetch::Fetcher;
@@ -61,6 +61,12 @@ pub struct Runner {
     /// The virtual machines `platform: linux` jobs run in (`--machines`);
     /// `None` fails such jobs, saying so.
     pub machines: Option<Arc<dyn crate::machines::Machines>>,
+    /// Where isolate jobs' files spill once they outgrow memory
+    /// (`--spill-disk`); `None` keeps them in memory.
+    pub spill: Option<schedule::Spill>,
+    /// Turborepo's remote cache, served to the jobs of every run with
+    /// caches ([`crate::turbo`]); `None` serves none.
+    pub remote_cache: Option<Arc<crate::turbo::RemoteCache>>,
 }
 
 impl Runner {
@@ -152,11 +158,16 @@ pub struct RunRequest {
     /// output and reports. See [`crate::lent`].
     #[serde(default)]
     pub lent: crate::lent::Lent,
-    /// Shares the run with other runners: its pipelines that say `split:`
-    /// may have jobs taken by a runner sent the same request with
+    /// Shares the run with other runners: its pipelines may have jobs
+    /// taken by a runner sent the same request with
     /// `split.of` naming this run. See [`SplitRequest`].
     #[serde(default)]
     pub split: Option<SplitRequest>,
+    /// Where to tell the caller that the run's state changed, so it reads
+    /// the run then rather than on its next poll. See [`crate::notify`].
+    /// Its token is never stored or echoed. A helper's run ignores it.
+    #[serde(default)]
+    pub notify: Option<crate::notify::NotifyRequest>,
 }
 
 /// How a run is shared with other runners (`RunRequest::split`).
@@ -376,8 +387,8 @@ pub enum PipelineOutput {
         file: String,
         name: String,
     },
-    /// On a helper's run: a pipeline it took no part in, because it does
-    /// not say `split:` or the run it helps was done with it already.
+    /// On a helper's run: a pipeline it took no part in, because the run
+    /// it helps was done with it already.
     NotShared {
         file: String,
         name: String,
@@ -501,16 +512,23 @@ pub struct PrepareOutput {
     pub problems: Vec<String>,
 }
 
+/// How long a helper that has joined waits for the run's secrets before
+/// it goes on without them.
+const SECRETS_WAIT: Duration = Duration::from_secs(10);
+
 /// The request a helper runs: the primary's, at exactly the commit the
 /// primary resolved it to (a request that names only a branch would
 /// otherwise run whatever that branch's head is by the time the helper
-/// joins), and with no secrets and nothing lent, whatever was sent: a
-/// helper only runs jobs that are given neither.
+/// joins), and with no secrets and nothing lent, whatever was sent: the
+/// secrets come sealed from the primary once the helper joins, and a
+/// helper never runs a job that is lent anything. Nor is the caller told
+/// of it: the primary's run is the one it follows.
 pub fn helper_request(req: &RunRequest, commit: &str) -> RunRequest {
     RunRequest {
         sha: Some(commit.to_string()),
         secrets: Secrets::default(),
         lent: Default::default(),
+        notify: None,
         ..req.clone()
     }
 }
@@ -798,6 +816,7 @@ impl Runner {
             threads: self.cpus,
             git: Some(self.git.clone()),
             prebuilt: Arc::new(crate::gem_builds::from_store(self.store.clone())),
+            scripts: None,
         };
         let mut author = self.author.clone();
         author.time = now_secs() as i64;
@@ -836,6 +855,7 @@ impl Runner {
         control: Option<Arc<RunControl>>,
     ) -> Result<RunOutput, String> {
         let started_at = now_secs();
+        let clock = Instant::now();
         let run = RepoId::new(run_id).map_err(|e| format!("run id: {e}"))?;
         // A split run's shared state, kept alive from here to the end of
         // the run. A helper reads nothing of the run, not even its commit,
@@ -884,8 +904,31 @@ impl Runner {
                     },
                 }
             };
+            // The commit, fetched while the run decides whether it wants
+            // help, so that a helper asked at its start builds as soon as
+            // the primary does. Only the git cache is warmed: what the
+            // helper runs is still the commit the primary resolved.
+            if let Some(sha) = req.sha.as_deref() {
+                let _ = self.resolve(&helper_request(req, sha));
+            }
             match split.0.wait_to_be_asked(&room, &stopped) {
-                Asked::Join(commit) => as_helper = Some(helper_request(req, &commit)),
+                Asked::Join(commit) => {
+                    let mut joining = helper_request(req, &commit);
+                    // The run's secrets, sealed by the primary to a key
+                    // made for this run alone. Without them the helper
+                    // takes only jobs given none.
+                    if let Ok(opener) = crate::sealed::Opener::new()
+                        && split.0.publish_key(opener.public()).is_ok()
+                        && let Some(sealed) = split.0.wait_for_secrets(SECRETS_WAIT, &stopped)
+                        && let Ok(plain) = opener.open(&sealed)
+                        && let Ok(secrets) =
+                            serde_json::from_slice::<BTreeMap<String, String>>(&plain)
+                    {
+                        joining.secrets = Secrets(secrets);
+                        split.0.got_secrets();
+                    }
+                    as_helper = Some(joining);
+                }
                 Asked::Over => {
                     return Ok(RunOutput {
                         run_id: run.as_str().to_string(),
@@ -906,7 +949,13 @@ impl Runner {
         }
         // From here a helper runs the primary's commit, with no secrets.
         let req = as_helper.as_ref().unwrap_or(req);
+        let resolving = Instant::now();
         let r = self.resolve(req)?;
+        // Where a run's time goes outside its jobs, in the runner's log.
+        let mut phases = vec![format!(
+            "commit fetched in {} ms",
+            resolving.elapsed().as_millis()
+        )];
         if let (Some(split), None) = (&split, &helping) {
             // Before any pipeline can ask for help: a helper runs this
             // commit or none.
@@ -926,7 +975,7 @@ impl Runner {
             None => None,
         };
         let ctx = r.context(req);
-        let (tools, executor, workspaces, committer) = self.parts(&r, req);
+        let (tools, executor, mut workspaces, committer) = self.parts(&r, req);
         let default_branch = req
             .default_branch
             .clone()
@@ -941,6 +990,19 @@ impl Runner {
             r.event,
             quota,
         ));
+        workspaces.scripts = Some(crate::install_scripts::ScriptHost {
+            machines: self.machines.clone(),
+            caches: Some(caches.clone()),
+            commit: r.sha.clone(),
+        });
+        // Turborepo's artifacts, in the same scopes as the entries, for as
+        // long as the run lasts.
+        let remote_cache = self.remote_cache.as_ref().and_then(|server| {
+            server
+                .register(caches.clone())
+                .map_err(|e| eprintln!("iwci: remote cache: {e}"))
+                .ok()
+        });
         // Task cache keys this run computes, and the ones other runs do,
         // in the same scopes as the entries. The runners of a split run
         // count as one run, the primary's.
@@ -1003,6 +1065,8 @@ impl Runner {
                 external: None,
             },
             machines: self.machines.clone(),
+            spill: self.spill.clone(),
+            remote_cache: remote_cache.as_ref().map(|r| r.job_env()),
         };
         let run_info = crate::external::RunInfo {
             run_id: run.as_str().to_string(),
@@ -1060,7 +1124,7 @@ impl Runner {
                 passed = false;
                 cancelled = true;
                 // A helper is told too, though the pipeline never started.
-                if let (Some(split), None, Some(_)) = (&split, &helping, plan.split) {
+                if let (Some(split), None) = (&split, &helping) {
                     schedule::Split::end(&*split.0.pipeline(file));
                 }
                 pipelines.push(PipelineOutput::Cancelled {
@@ -1069,10 +1133,10 @@ impl Runner {
                 });
                 continue;
             }
-            // A helper only takes part in a pipeline that is shared and
-            // that the run it helps has not finished with.
+            // A helper only takes part in a pipeline that the run it helps
+            // has not finished with.
             if let (Some(split), Some(_)) = (&split, &helping)
-                && (plan.split.is_none() || split.0.ended(file))
+                && split.0.ended(file)
             {
                 pipelines.push(PipelineOutput::NotShared {
                     file: file.clone(),
@@ -1082,7 +1146,6 @@ impl Runner {
             }
             options.split = split
                 .as_ref()
-                .filter(|_| plan.split.is_some())
                 .map(|split| split.0.pipeline(file) as Arc<dyn schedule::Split>);
             // A helper is stopped by the run it helps, so it always has
             // something to stop it with.
@@ -1100,7 +1163,9 @@ impl Runner {
                     },
                 }) as Arc<dyn crate::external::External>
             });
+            let scheduling = Instant::now();
             let report = schedule::run(&plan, &workspaces, &tools, &executor, &committer, &options);
+            phases.push(format!("{file} in {} ms", scheduling.elapsed().as_millis()));
             passed &= report.passed();
             cancelled |= report
                 .jobs
@@ -1121,6 +1186,13 @@ impl Runner {
             usage = Usage::default();
         }
         drop(joined);
+        eprintln!(
+            "iwci: run {} of {}: {}; {} ms in all",
+            run.as_str(),
+            r.repo_id.as_str(),
+            phases.join(", "),
+            clock.elapsed().as_millis()
+        );
         Ok(RunOutput {
             run_id: run.as_str().to_string(),
             commit: r.sha,

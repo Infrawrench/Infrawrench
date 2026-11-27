@@ -1,16 +1,18 @@
 /**
  * Secrets and variables for CI, kept by the CI proxy per owner (a GitHub
- * account) and per repository. The organization reaches only the accounts it
- * runs CI for: the scope is resolved from its own `ci_accounts` row, so it
+ * account, or a namespace of git.infrawrench.com) and per repository. The
+ * organization reaches only the owners it runs CI for: the scope is
+ * resolved from its own `ci_accounts` or `ci_git_repositories` row, so it
  * can never name another owner's key. Secret values are write-only: the
  * proxy lists their names, and nothing here reads one back.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { CI_VALUE_NAME, type CiValues } from "@infrawrench/client-core";
 
 import { db } from "../db/client.js";
-import { ciAccounts } from "../db/schema.js";
+import { ciAccounts, ciGitRepositories } from "../db/schema.js";
 import { accountOwnerKey } from "./events.js";
+import { GIT_SOURCE_INSTALLATION_ID, gitOwnerKey } from "./source.js";
 import { CiProxyError, proxyJson } from "./proxy.js";
 import { CiInputError } from "./runs.js";
 
@@ -18,11 +20,48 @@ export type CiValueKind = "secrets" | "variables";
 
 const REPO_NAME = /^[A-Za-z0-9._-]{1,100}$/;
 
+/**
+ * Whose values: a GitHub account the organization runs CI for, by its
+ * installation, or one of its namespaces on git.infrawrench.com.
+ */
+export type CiValueOwner = number | { gitNamespace: string };
+
+const installationOf = (owner: CiValueOwner): number =>
+  typeof owner === "number" ? owner : GIT_SOURCE_INSTALLATION_ID;
+
+/** The runner owner of a namespace the organization has a repository in, or a 404. */
+async function gitNamespaceOwner(organizationId: string, namespace: string): Promise<string> {
+  const [row] = await db
+    .select({ namespace: ciGitRepositories.namespace })
+    .from(ciGitRepositories)
+    .where(
+      and(
+        eq(ciGitRepositories.organizationId, organizationId),
+        sql`lower(${ciGitRepositories.namespace}) = ${namespace.toLowerCase()}`,
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    throw new CiInputError("That namespace runs no CI for this organization.", 404);
+  }
+  return gitOwnerKey(row.namespace);
+}
+
 async function scopePath(
   organizationId: string,
-  installationId: number,
+  owner: CiValueOwner,
   repo: string | null,
 ): Promise<string> {
+  if (typeof owner !== "number") {
+    if (repo !== null && (!REPO_NAME.test(repo) || repo.includes(".."))) {
+      throw new CiInputError("That is not a repository name.", 400);
+    }
+    const key = encodeURIComponent(await gitNamespaceOwner(organizationId, owner.gitNamespace));
+    return repo === null
+      ? `/v1/orgs/${key}`
+      : `/v1/orgs/${key}/repos/${encodeURIComponent(repo.toLowerCase())}`;
+  }
+  const installationId = owner;
   const [account] = await db
     .select({ accountLogin: ciAccounts.accountLogin })
     .from(ciAccounts)
@@ -38,10 +77,10 @@ async function scopePath(
   if (repo !== null && (!REPO_NAME.test(repo) || repo.includes(".."))) {
     throw new CiInputError("That is not a repository name.", 400);
   }
-  const owner = encodeURIComponent(accountOwnerKey(account.accountLogin));
+  const key = encodeURIComponent(accountOwnerKey(account.accountLogin));
   return repo === null
-    ? `/v1/orgs/${owner}`
-    : `/v1/orgs/${owner}/repos/${encodeURIComponent(repo.toLowerCase())}`;
+    ? `/v1/orgs/${key}`
+    : `/v1/orgs/${key}/repos/${encodeURIComponent(repo.toLowerCase())}`;
 }
 
 const segment = (kind: CiValueKind) => (kind === "secrets" ? "secrets" : "vars");
@@ -62,10 +101,11 @@ function refusal(err: unknown): never {
 
 export async function listCiValues(
   organizationId: string,
-  installationId: number,
+  owner: CiValueOwner,
   repo: string | null,
 ): Promise<CiValues> {
-  const base = await scopePath(organizationId, installationId, repo);
+  const installationId = installationOf(owner);
+  const base = await scopePath(organizationId, owner, repo);
   try {
     const [secrets, vars] = await Promise.all([
       proxyJson<{ secrets?: Array<{ name: string; "updated-at"?: number }> }>(`${base}/secrets`),
@@ -102,14 +142,14 @@ function checkName(name: string): void {
 
 export async function setCiValue(
   organizationId: string,
-  installationId: number,
+  owner: CiValueOwner,
   repo: string | null,
   kind: CiValueKind,
   name: string,
   value: string,
 ): Promise<void> {
   checkName(name);
-  const base = await scopePath(organizationId, installationId, repo);
+  const base = await scopePath(organizationId, owner, repo);
   try {
     await proxyJson(`${base}/${segment(kind)}/${name}`, {
       method: "PUT",
@@ -122,13 +162,13 @@ export async function setCiValue(
 
 export async function deleteCiValue(
   organizationId: string,
-  installationId: number,
+  owner: CiValueOwner,
   repo: string | null,
   kind: CiValueKind,
   name: string,
 ): Promise<void> {
   checkName(name);
-  const base = await scopePath(organizationId, installationId, repo);
+  const base = await scopePath(organizationId, owner, repo);
   try {
     await proxyJson(`${base}/${segment(kind)}/${name}`, { method: "DELETE" });
   } catch (err) {

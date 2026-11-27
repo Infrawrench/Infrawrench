@@ -55,6 +55,7 @@ import { SidebarAccounts } from "../components/SidebarAccounts";
 import { ProviderIncidentShellBanner } from "../components/ProviderIncidentShellBanner";
 import { SidebarDashboards } from "../components/SidebarDashboards";
 import { Onboarding, isOnboardingComplete, markOnboardingComplete } from "../components/Onboarding";
+import { CallToActionHost } from "../components/CallToActionHost";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
 import { pinResource, pinWorkflow } from "../lib/pins";
@@ -164,6 +165,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     target.kind === "compliance" ||
     target.kind === "access-review" ||
     target.kind === "jit-access" ||
+    target.kind === "offboarding" ||
     target.kind === "backups" ||
     target.kind === "wallboard" ||
     target.kind === "calendar" ||
@@ -321,7 +323,11 @@ function RootLayout() {
     () => useUIStore.getState().activeCloudOrgId,
   );
   const [cloudAuthenticated, setCloudAuthenticated] = useState(false);
+  // Until the first auth check answers, `cloudAuthenticated` is only a default.
+  const [cloudAuthChecked, setCloudAuthChecked] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  // Onboarding opened by a sign-in call to action starts at the browser step.
+  const [onboardingSignIn, setOnboardingSignIn] = useState(false);
 
   useEffect(() => {
     setActiveCloudOrgId(activeOrgId);
@@ -404,7 +410,8 @@ function RootLayout() {
       .catch((err) => {
         console.error(err);
         if (useUIStore.getState().activeCloudOrgId) setActiveOrgId(null);
-      });
+      })
+      .finally(() => setCloudAuthChecked(true));
   }, []);
 
   const swipeBack = useCallback(() => router.history.back(), [router]);
@@ -893,9 +900,20 @@ function RootLayout() {
             onDone={() => {
               markOnboardingComplete();
               setShowOnboarding(false);
+              setOnboardingSignIn(false);
             }}
+            startWithSignIn={onboardingSignIn}
           />
         )}
+
+        <CallToActionHost
+          enabled={tabsValidated && cloudAuthChecked && !showOnboarding}
+          signedIn={cloudAuthenticated}
+          onSignIn={() => {
+            setOnboardingSignIn(true);
+            setShowOnboarding(true);
+          }}
+        />
 
         <SwipeIndicator gesture={swipeGesture} />
         <SshHostKeyPromptHost />

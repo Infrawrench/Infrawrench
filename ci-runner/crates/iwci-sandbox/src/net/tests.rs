@@ -76,6 +76,7 @@ fn gateway() -> (Gateway, OwnedFd) {
     Gateway::start(Network {
         outside: Arc::new(Fake { upstreams, names }),
         services: vec!["postgres".into()],
+        local: Vec::new(),
     })
     .unwrap()
 }
@@ -179,6 +180,8 @@ impl Sandbox {
             matches!(s.state(), tcp::State::Closed | tcp::State::TimeWait)
         });
         assert!(ok, "the connection to {to} never finished");
+        // A socket in TIME-WAIT would take the next connection from its port.
+        self.sockets.remove(h);
         established.then_some(got)
     }
 
@@ -227,7 +230,7 @@ fn an_allowed_connection_carries_bytes_both_ways_and_closes() {
     let mut sandbox = Sandbox::new(link);
     let got = sandbox.exchange(UP, 40000, b"hello, upstream").unwrap();
     assert_eq!(got, b"HELLO, UPSTREAM");
-    // A lot of data, both ways, through the 64 KiB buffers.
+    // A lot of data, both ways, through several windows of the buffers.
     let big: Vec<u8> = (0..2_000_000u32).map(|i| b'a' + (i % 26) as u8).collect();
     let got = sandbox.exchange(UP, 40001, &big).unwrap();
     assert_eq!(got.len(), big.len());
@@ -248,6 +251,41 @@ fn refused_addresses_and_closed_ports_are_reset() {
     assert_eq!(sandbox.exchange(closed, 40012, b"x"), None);
     // And the allowed one still works afterwards.
     assert_eq!(sandbox.exchange(UP, 40013, b"ok").unwrap(), b"OK");
+}
+
+#[test]
+fn a_port_is_used_again_once_its_connection_is_closed() {
+    let (_gateway, link) = gateway();
+    let mut sandbox = Sandbox::new(link);
+    // The sandbox closes first, so the gateway's socket ends in CLOSED,
+    // whose endpoints `smoltcp` forgets: the connection was still counted
+    // as open, and the port's next SYN was taken for a repeat and reset.
+    for round in 0..3 {
+        let got = sandbox.exchange(UP, 40020, format!("round {round}").as_bytes());
+        assert_eq!(got.unwrap(), format!("ROUND {round}").as_bytes());
+    }
+}
+
+#[test]
+fn a_handshake_the_sandbox_resets_does_not_take_the_next_connection() {
+    let (_gateway, link) = gateway();
+    let mut sandbox = Sandbox::new(link);
+    // A SYN, and the socket gone before the SYN-ACK comes: the sandbox
+    // answers that with a reset, which sends the gateway's socket back to
+    // listening on the upstream's address.
+    let h = sandbox.connect(UP, 40030);
+    // One pass: the SYN is sent, and nothing read back yet.
+    sandbox.run_until(|_| true);
+    sandbox.sockets.remove(h);
+    let quiet = std::time::Instant::now() + Duration::from_millis(300);
+    sandbox.run_until(|_| std::time::Instant::now() > quiet);
+    // Every later connection to that address still reaches an upstream
+    // of its own, rather than the reset one's (whose upstream has seen
+    // its end and answers nothing).
+    for port in 40031..40036 {
+        let got = sandbox.exchange(UP, port, b"after").unwrap();
+        assert_eq!(got, b"AFTER");
+    }
 }
 
 #[test]
@@ -308,4 +346,51 @@ fn a_stopped_gateway_lets_its_thread_go() {
     let (mut gateway, link) = gateway();
     gateway.stop();
     drop(link);
+}
+
+/// One of the gateway's own ports goes to the runner's Unix socket for it,
+/// and only that port, and only on the gateway's address: the same port
+/// anywhere else is the internet's, and the gateway's other ports stay
+/// closed.
+#[test]
+fn the_gateways_own_ports_reach_the_runners_sockets_and_nothing_else() {
+    let dir = std::env::temp_dir().join(format!("iwci-net-local-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("cache.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { return };
+            std::thread::spawn(move || {
+                let mut got = Vec::new();
+                let _ = stream.read_to_end(&mut got);
+                let mut reply = b"local:".to_vec();
+                reply.extend_from_slice(&got);
+                let _ = stream.write_all(&reply);
+            });
+        }
+    });
+    let mut upstreams = HashMap::new();
+    upstreams.insert(UP, shouting_upstream());
+    let (_gateway, link) = Gateway::start(Network {
+        outside: Arc::new(Fake {
+            upstreams,
+            names: HashMap::new(),
+        }),
+        services: Vec::new(),
+        local: vec![(9119, path)],
+    })
+    .unwrap();
+    let mut sandbox = Sandbox::new(link);
+    let own = SocketAddr::new(IpAddr::V4(GATEWAY_V4), 9119);
+    assert_eq!(sandbox.exchange(own, 42000, b"hi").unwrap(), b"local:hi");
+    // Another port of the gateway is closed.
+    let other = SocketAddr::new(IpAddr::V4(GATEWAY_V4), 9120);
+    assert_eq!(sandbox.exchange(other, 42001, b"hi"), None);
+    // The same port elsewhere is refused (not allowed) or the internet's.
+    let elsewhere = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 1, 2, 3)), 9119);
+    assert_eq!(sandbox.exchange(elsewhere, 42002, b"hi"), None);
+    assert_eq!(sandbox.exchange(UP, 42003, b"up").unwrap(), b"UP");
+    let _ = std::fs::remove_dir_all(dir);
 }

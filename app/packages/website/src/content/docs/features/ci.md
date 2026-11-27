@@ -42,6 +42,8 @@ jobs:
 
 The next push runs it. Each run shows on the commit or pull request on GitHub as a check, **Infrawrench CI / push** or **Infrawrench CI / pull request**, so a branch with an open pull request shows both. The check's **Details** link opens the run in Infrawrench.
 
+Repositories on git.infrawrench.com run the same pipelines with nothing to connect: every repository of your organization's namespace runs CI on a paid plan, and an administrator of a repository can switch CI off for it under **Settings > CI** on git.infrawrench.com (secrets, variables and approvals stay here in the app). Their runs are in the same list, link to the commit or branch page on git.infrawrench.com, and show there as commit statuses under the same names. A member's own repositories run here too once they [connect their namespace to your organization](./git-getting-started.md#where-your-own-repositories-run): the runs are listed and billed like the rest, with secrets and variables of their own, and anything lent to "every repository" under [CI access](#ci-access) is not lent to them unless the repository is added by name. In a list of chosen repositories under [CI access](#ci-access), one of these is written `git.infrawrench.com/namespace/name`; a plain `owner/name` is a GitHub repository. [GitHub tokens](#write-back-to-github) are for GitHub repositories only.
+
 ### Check your first run
 
 - **No check on GitHub:** Confirm the GitHub App can see the repository and **Run CI** is enabled for its account. Check that the commit contains a pipeline under `.infrawrench/ci/`.
@@ -73,7 +75,7 @@ A job either runs a built-in tool (`using: builtin:typescript@7.1`) or runs a ba
 
 `env:bash@5` and `env:bash-node@24` also have `tar`, `gzip` and `openssl` (OpenSSL 3.5.9, with Mozilla's CA certificates). `tar -z` works, and so does `openssl req -x509` for a test's self-signed certificate. Unix domain sockets on a path work between a job's processes (tsx's IPC, test runners' workers), and connecting to `::` or `0.0.0.0` reaches the job's own loopback, as on Linux.
 
-In `env:python@3.13`, `pip install` works for pure Python packages and for packages with compiled code that have a WebAssembly build on Wasmer's wheel index, such as numpy, pandas, pydantic and cryptography. A package that has to be compiled while it installs does not. Packages install into the job's own copy of Python; `pip install --user` puts them in `/root/.local` with their commands on the `PATH`, and a virtual environment works when it copies the interpreter: `python -m venv --copies .venv`, then `.venv/bin/python -m ensurepip --default-pip` for its pip. pipx does not run. pip downloads while the job runs, so leave the job's network on (no `network: false`).
+In `env:python@3.13`, `pip install` works for pure Python packages and for packages with compiled code that have a WebAssembly build on Wasmer's wheel index, such as numpy, pandas, pydantic and cryptography. A package that has to be compiled while it installs does not. Packages install into the job's own copy of Python; `pip install --user` puts them in `/root/.local` with their commands on the `PATH`, and a virtual environment works when it copies the interpreter: `python -m venv --copies .venv` gives it its own pip, and after `source .venv/bin/activate`, `python` and `python -m pip` are the virtual environment's. pipx does not run. pip downloads while the job runs, so leave the job's network on (no `network: false`).
 
 In the PHP environments, `composer install` and `vendor/bin/phpunit` work in the job's directory as they do on a developer's machine, and the common extensions are built in (intl, mbstring, PDO for SQLite, MySQL and PostgreSQL, curl, gd, sodium, zip and more). There is no Xdebug or PCOV, so no code coverage. Composer downloads while the job runs, too.
 
@@ -316,13 +318,27 @@ jobs:
     artifacts: [dist]
 ```
 
-`platform:` is `wasm` (the sandbox, the default) or `linux`. The machine is new for each job and is gone when it ends. Its tools are close to GitHub's hosted Ubuntu 24.04 runner, without its largest SDKs (Android, .NET); a job installs anything else in its script, and `cache:` keeps it between runs. The script runs in `bash`; `shell:` picks `sh` or `pwsh` instead.
+`platform:` is `wasm` (the sandbox, the default) or `linux`. The machine is new for each job and is gone when it ends. Its tools are close to GitHub's hosted Ubuntu 24.04 runner, without its largest SDKs (Android, .NET); a job installs anything else in its script, and `cache:` keeps it between runs. It has Bun, `nvm`, `rbenv` (with ruby-build) and `goenv` too, and keeps the Node.js, Ruby and Go versions they install between runs of a job on its own: `nvm install 22`, `rbenv install 3.4.9` or `goenv install 1.24.11` downloads or compiles once, and the next run starts with it. A directory the job's own `cache:` keeps is left to that entry. `env-cache: false` turns that off. The script runs in `bash`; `shell:` picks `sh` or `pwsh` instead.
 
-A machine job gets the same files a sandbox job would: the commit, the artifacts of the jobs it `needs:`, and its caches. Its own `artifacts:`, `downloads:`, `cache:`, outputs and `/tmp/workflow` work as for any job, so sandbox and machine jobs can hand files to each other. Its `memory:` is the whole machine's: 2 GiB unless it says, and at least 256 MiB. Its network reaches the same places as any job's, and `network: false` turns it off.
+A machine job gets the same files a sandbox job would: the commit, the artifacts of the jobs it `needs:`, and its caches. Its own `artifacts:`, `downloads:`, `cache:`, outputs and `/tmp/workflow` work as for any job, so sandbox and machine jobs can hand files to each other. Its `memory:` is the whole machine's: 2 GiB unless it says, and at least 256 MiB. What the job writes is kept in that memory, and when its files and programs need more than that, the machine swaps to a disk of its own (up to 20 GiB) rather than running out. If it does run out, the job's output ends with what the machine's kernel said: the allocation that found no memory, the swap it had left and the process it stopped. Its network reaches the same places as any job's, and `network: false` turns it off. The machine's link to the runner never leaves the runner, so its `eth0` has a 65,000-byte MTU and downloads (image pulls, `apt-get`, package installs) run at about the speed the runner itself gets.
+
+Google Chrome is installed (x86_64), as on GitHub's runner, so Playwright's `install --with-deps chrome` takes seconds. `apt-get install` uses Ubuntu's live archive. Docker runs, with its storage on the machine's disk.
 
 A machine has no `using:`, `deps:`, `tools:`, `services:` or `task-cache:`: its script installs and starts what it needs (`npm ci`, `docker run -d postgres`).
 
 `changes: fail` and `changes: { commit: ... }` count only what git would see: a new file that the repository's `.gitignore` ignores, such as `node_modules` or a build folder, is not a change, in a machine or in the sandbox.
+
+### Install scripts
+
+The install of a workspace's `deps:` runs no package's install script. With `install-scripts: true` at the top of the pipeline, a workspace with a pnpm, npm or Bun install also runs the scripts its package manager would have run (`postinstall`, native builds, the project's own `prepare`) in a Linux machine, and every job starts from what they wrote:
+
+```yaml
+install-scripts: true
+workspace:
+  deps: [pnpm]
+```
+
+Which packages' scripts run is your package manager's setting: pnpm's `allowBuilds` (or `onlyBuiltDependencies`), npm's `allowScripts`, and Bun's `trustedDependencies` or its built-in list of trusted packages. The run shows which were left out. When nothing is left to run, no machine starts. What the scripts wrote is kept for the same commit, so a retried run reuses it; a new commit runs them again.
 
 ## Monorepos: a job per package
 
@@ -677,7 +693,7 @@ The job starts from the commit as a source archive: the commit's files, without 
 What a cloud job is lent works the way it does on the runner, on any provider and kind:
 
 - **SSH keys and SSH hosts** are written to `~/.ssh` of the user the job runs as, and host keys are checked against the ones pinned in Infrawrench, which a lent host brings as a `known_hosts` line any OpenSSH reads. When the image has no `ssh`, OpenSSH's client is installed from the image's packages.
-- **A cluster** is a kubeconfig with `KUBECONFIG` pointing at it. When the image has no `kubectl`, the job gets Kubernetes' own build of it on its `PATH`, checked against its published checksum. The kubeconfig always carries a token or a client certificate, never a sign-in helper such as `aws eks get-token`, so it works on a machine with no cloud CLI.
+- **A cluster** is a kubeconfig with `KUBECONFIG` (and `KUBE_CONFIG_PATH`, for Terraform's providers) pointing at it. When the image has no `kubectl`, the job gets Kubernetes' own build of it on its `PATH`, checked against its published checksum. The kubeconfig always carries a token or a client certificate, never a sign-in helper such as `aws eks get-token`, so it works on a machine with no cloud CLI.
 - **Resources** are environment variables, as on the runner.
 
 A job that does not run as root (some images, every Heroku dyno) gets the same: the files go to that user's home directory, and if it cannot write `/app` it runs in a directory of its own with the clone inside (`$PWD` says where). The machine's own network decides what the job reaches, so a host on a private address is reachable without a jump host when the machine sits in the same network.
@@ -702,16 +718,16 @@ jobs:
 
 Names are the connections' names in Infrawrench. To lend one, open it under **Manage connections** and switch on **Lend its credentials to jobs**. Only the providers below can be lent; for any other connection the dialog says it can't be lent to jobs.
 
-- **Kubernetes:** a kubeconfig for the cluster in `/root/.kube`, with `KUBECONFIG` pointing at it, for one context (and the namespace a job asks for). A service account's token is swapped for a short-lived one where the cluster allows it. The cluster must be served over TLS. A cluster on a private network is reached through a public SSH jump host: open a tunnel with `ssh -L` in the job.
+- **Kubernetes:** a kubeconfig for the cluster in `/root/.kube`, with `KUBECONFIG` pointing at it, for one context (and the namespace a job asks for). `KUBE_CONFIG_PATH` names the same file, which is the variable Terraform's Kubernetes and Helm providers read. A service account's token is swapped for a short-lived one where the cluster allows it. The cluster must be served over TLS. A cluster on a private network is reached through a public SSH jump host: open a tunnel with `ssh -L` in the job.
 - **SSH:** an entry in `/root/.ssh/config` named after the connection, with its key, user and port, the host key Infrawrench pinned for it as a `known_hosts` line, and the jump host it connects through, which must be lent too. A host with no pinned key is not lent: open a terminal to it from Infrawrench once first. Infrawrench reads the host's key when it lends the connection, so the host (and its jump host) must be reachable from Infrawrench then, and a host that now offers another key than the pinned one is not lent either.
 - **AWS:** session credentials from STS, minted from the connection's access key for each run and expiring with it (seven hours), never the key itself: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION` and `AWS_DEFAULT_REGION`, which the AWS CLI, every AWS SDK and Terraform read, and the same session as a profile named after the connection in `~/.aws/credentials` (`aws --profile production ...` when a job is lent two). A session has the IAM user's permissions, except that AWS lets it call no IAM operation and no STS operation but `AssumeRole` and `GetCallerIdentity`.
 - **Google Cloud:** an access token for the connection's service account, never its key. `gcloud` reads it from the file `CLOUDSDK_AUTH_ACCESS_TOKEN_FILE` names, Terraform from `GOOGLE_OAUTH_ACCESS_TOKEN`, and `CLOUDSDK_CORE_PROJECT` and `GOOGLE_CLOUD_PROJECT` name the project. Google's client libraries have no variable for a token, so a script hands it to the library itself. A token lasts an hour from when the run is sent to the runner; where your organization allows longer ones for the account (the `iam.allowServiceAccountCredentialLifetimeExtension` policy) and the account may mint its own (`iam.serviceAccounts.getAccessToken` on itself), it lasts as long as the run may.
 - **Azure:** the connection's service principal: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_CLIENT_SECRET` and `AZURE_SUBSCRIPTION_ID`, which the Azure SDKs read, and the same as `ARM_*` for Terraform. This is the connection's own client secret, not a short-lived one: the Azure CLI accepts no token from outside. Sign the CLI in with `az login --service-principal --username "$AZURE_CLIENT_ID" --password="$AZURE_CLIENT_SECRET" --tenant "$AZURE_TENANT_ID"`.
-- **Vercel:** the connection's access token as `VERCEL_TOKEN`, which the Vercel CLI reads, so `vercel deploy` needs no `--token`. Say which project to deploy as usual: a committed `.vercel/project.json`, `VERCEL_ORG_ID` with `VERCEL_PROJECT_ID`, or `--scope`.
+- **Vercel:** the connection's access token as `VERCEL_TOKEN`, which the Vercel CLI reads, so `vercel deploy` needs no `--token`, and as `VERCEL_API_TOKEN`, which Vercel's Terraform provider reads. Say which project to deploy as usual: a committed `.vercel/project.json`, `VERCEL_ORG_ID` with `VERCEL_PROJECT_ID`, or `--scope`.
 - **Cloudflare:** the connection's API token as `CLOUDFLARE_API_TOKEN` and its account as `CLOUDFLARE_ACCOUNT_ID`, which Wrangler and Cloudflare's `cf` read. The token has the scopes it was created with, so give the connection the Workers and Pages scopes a deploy needs.
 - **Neon:** the connection's API key as `NEON_API_KEY`, which the Neon CLI reads, for a job that creates a branch per pull request and deletes it after.
 - **PostgreSQL:** the connection string as `DATABASE_URL`, its parts as `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` and `PGSSLMODE`, so `psql` connects with no arguments, and a section named after the connection in `~/.pg_service.conf`, so a job lent two picks one with `psql service=<name>`. A CA certificate the connection holds is written beside it and named by `PGSSLROOTCERT`.
-- **MySQL:** the connection string as `DATABASE_URL`, its password as `MYSQL_PASSWORD`, and an option group named after the connection in `~/.my.cnf` that `MYSQL_GROUP_SUFFIX` selects, so `mysql` connects with no arguments (`mysql --defaults-group-suffix=_<name>` picks another when a job is lent two). A password with both kinds of quote in it cannot be written there, so it is left out of the file and the job passes `MYSQL_PASSWORD` itself.
+- **MySQL:** the connection string as `DATABASE_URL`, its password as `MYSQL_PASSWORD`, and an option group named after the connection in `~/.my.cnf` that `MYSQL_GROUP_SUFFIX` selects, so `mysql` connects with no arguments (`mysql --defaults-group-suffix=_<name>` picks another when a job is lent two). A password with both kinds of quote in it cannot be written there, so it is left out of the file and the job passes `MYSQL_PASSWORD` itself. `MYSQL_ENDPOINT` (`host:port`) and `MYSQL_USERNAME` are set too, which with `MYSQL_PASSWORD` are what the MySQL Terraform provider reads; a CA certificate the connection holds is named by `MYSQL_TLS_CA_CERT`.
 - **Redis:** the URL as `REDIS_URL` (`redis-cli -u "$REDIS_URL"`) and its password as `REDISCLI_AUTH`, which `redis-cli` reads. An ACL user's name comes as `REDIS_USERNAME`: `redis-cli` reads no user from the environment, so pass `--user "$REDIS_USERNAME"`.
 - **MongoDB:** the connection string as `MONGODB_URI` (`mongosh "$MONGODB_URI"`), and its user and password as `MONGODB_USERNAME` and `MONGODB_PASSWORD`.
 
@@ -830,18 +846,21 @@ Everyone who can see runs can see the card; clearing a cache takes `ci:write` an
 
 ![The "Clear the cache of acme/web?" dialog open over the CI page's Caches card, saying it deletes 214 cache entries (6.00 GiB)](https://agent-assets.infrawrench.com/docs-screenshots/features/ci/caches-clear-dialog.png)
 
+### Turborepo's remote cache
+
+A repository built with Turborepo gets a remote cache with nothing to set up. Every job with a network is given `TURBO_API`, `TURBO_TOKEN` and `TURBO_TEAM`, which point `turbo` at a cache the runner keeps for you, so a task an earlier run already built with the same inputs is restored instead of run again, on whichever runner picks the run up.
+
+The cache follows the same rules as the rest of your caches: a pull request reads what the default branch saved and saves its own, which nothing on the default branch ever reads; what it keeps counts against your storage quota, shows on the **Caches** card and goes when you clear the repository's cache. The token is masked in logs and stops working when its run ends. Artifacts over 200 MiB are not kept (`turbo` says so and carries on), and signed artifacts (`remoteCache.signature` in `turbo.json`) keep their signature.
+
+To keep a remote cache of your own, set any of `TURBO_API`, `TURBO_TOKEN`, `TURBO_TEAM` or `TURBO_TEAMID` in the job's `env:` (from a secret for the token) and the job is given none of these. A job with `network: false` cannot reach the cache and is not given them either.
+
 ### Runs shared between runners
 
-A run belongs to one runner. When that runner has more ready jobs than it can start, a pipeline that says `split: true` at its top level lets another runner take some of them:
+A run goes to the runner where it is expected to finish soonest, which is usually the largest one free, and stays there while that runner has room. When it has more ready jobs than it can start, another runner takes the ones that have waited. There is nothing to turn on; a pipeline that still says `split:` is read as if it did not.
 
-```yaml
-name: Test
-split: true
-```
+Each job still runs once, and the run page shows every job as before; a job another runner ran says so in its notes, and its output appears when it finishes rather than line by line. A job's `artifacts:` reach the jobs that need them on either runner: through the task cache for a job with `task-cache:`, and otherwise when they come to 64 MiB or less (4 MiB for a pull request from a fork). Larger ones stay where the job ran, and so do the jobs that need them.
 
-Each job still runs once, and the run page shows every job as before; a job another runner ran says so in its notes, and its output appears when it finishes rather than line by line. A job's `artifacts:` reach the jobs that need them on either runner: through the task cache for a job with `task-cache:`, and otherwise when they are small (4 MiB in total by default, `split: { artifacts: 16MiB }` to change it). Larger ones stay where the job ran, and so do the jobs that need them.
-
-Jobs that read secrets, use [CI access](#ci-access), commit their changes, keep [downloads](#downloads), run on a cloud account or run in a [machine](#linux-machines) always stay on the runner that has the run. Leave `split:` off for a pipeline whose jobs pass files through the shared `/tmp/workflow` directory: that directory is not shared between runners.
+A job that reads secrets can run on another runner, which gets the run's secrets sealed to a key only it holds, as long as the job keeps no `artifacts:`. Jobs that use [CI access](#ci-access), commit their changes, keep [downloads](#downloads), run on a cloud account or run in a [machine](#linux-machines) always stay on the runner that has the run. The shared `/tmp/workflow` directory works across runners: a file one job closes shows on the other runner straight away and its contents follow in the background, and a job starts only once everything the jobs it `needs:` wrote there is listed. A file written by a job that reads secrets stays on the runner that has the run, and a job that wants it runs there.
 
 A job another runner ran is billed like any other job of the run.
 
@@ -860,7 +879,7 @@ jobs:
 - **What it holds:** that many vCPUs of the runner, from 1 to 64. It waits until they are free, and no job sharing a vCPU starts ahead of it meanwhile. A runner with fewer vCPUs than it asks for gives it all of its own.
 - **What it is told:** `$IWCI_CPUS` is the number it holds, and so is the CPU count its programs read (`nproc`, Python's `os.cpu_count()`, Node's `os.availableParallelism()`, `/proc/cpuinfo`). Without `cpus:`, `$IWCI_CPUS` is not set and that count is 1, so a tool that starts a worker per CPU (`pytest -n auto`, Vitest, Jest, cargo) starts one; give the job `cpus:` to run more. Either way the count is all that changes: a job still uses CPU time no other job wants.
 - **What it costs:** its running time at that many vCPUs, rather than at its share of one (see [Usage and billing](#usage-and-billing)).
-- A [Linux machine](#linux-machines) gets that many vCPUs. Without `cpus:`, it gets the runner's default for a machine.
+- A [Linux machine](#linux-machines) holds that many vCPUs. Without `cpus:`, it holds the runner's default for a machine. It is told more, so it can use CPUs no other job wants: up to four times what it holds and one per GiB of its `memory:` (so `nproc` in a 2-CPU, 6 GiB machine says 6). When every job wants more than there is, each gets the share it holds, and it is charged for what it holds either way.
 - A [cloud job](#cloud-jobs) is sized by its `cloud.machine`, so `cpus:` there is an error.
 
 ## Usage and billing

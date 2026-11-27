@@ -9,7 +9,15 @@ export const SQSQueueResourceType = rt({
     f("queueUrl", "Queue URL"),
     f("approximateMessages", "Messages Available", { kind: "number", required: false }),
     f("approximateMessagesDelayed", "Messages Delayed", { kind: "number", required: false }),
-    f("approximateMessagesNotVisible", "Messages In-Flight", { kind: "number", required: false }),
+    // Roughly 120,000 messages can be in flight on a standard queue, and
+    // 120,000 on a FIFO queue; past it receives return OverLimit
+    // (https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/quotas-queues.html
+    // and .../quotas-fifo.html, read 2026-11-23).
+    f("approximateMessagesNotVisible", "Messages In-Flight", {
+      kind: "number",
+      required: false,
+      usage: { limit: { constant: 120_000 }, unit: "messages", label: "In-Flight Messages" },
+    }),
     f("isFifo", "FIFO", { kind: "boolean", required: false }),
   ],
   outputs: [o("queueArn", "Queue ARN")],

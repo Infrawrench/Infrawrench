@@ -97,6 +97,14 @@ export { CreditAccessError } from "./credits.js";
 
 export type { QuotaCapabilityDeclaration, QuotaUsage } from "./quotas.js";
 export type {
+  CapacityCycle,
+  CapacityDeclarationEntry,
+  CapacityLimitSource,
+  CapacityMetricDeclaration,
+  CapacityUsageDeclaration,
+  ResolvedCapacityLimit,
+} from "./capacity.js";
+export type {
   WarehouseCell,
   WarehouseColumn,
   WarehouseColumnType,
@@ -116,6 +124,12 @@ export type {
   ExtendedSupportUnit,
 } from "./extended-support.js";
 export { normalizeQuotaUsage, QuotaAccessError, quotaUtilization } from "./quotas.js";
+export {
+  capacityDeclarations,
+  readCapacityNumber,
+  resolveCapacityLimit,
+  typeHasCapacity,
+} from "./capacity.js";
 export type {
   IdleEvidenceStatistic,
   IdleFindingAction,

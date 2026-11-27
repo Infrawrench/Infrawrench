@@ -436,6 +436,19 @@ infrawrench env hooks uninstall
 
 `env hooks install` (also run by `env init`, unless you pass `--no-hooks`) adds a marked block to the `post-checkout`, `post-merge`, `post-rewrite` and `post-commit` hooks (honouring `core.hooksPath`) and leaves anything else in them alone. The block pulls only when the commit changed the `.infraenv` or the output is missing, in the background, and prefers the project's own `infraenv` from the npm package over starting the desktop app. It never fails the git command. See [Environment files](./env-files.md#regenerate-on-checkout).
 
+## Git repositories
+
+`git` reads your organization's side of [git.infrawrench.com](./git.md). Cloud only.
+
+```
+infrawrench git           # the namespace, the plan's limits and what is used
+infrawrench git repos     # repositories, most recently pushed first
+```
+
+`infrawrench git` prints the namespace's address, what new repositories start as, and private repositories and private storage against the plan. `infrawrench git repos` lists each repository with its visibility, the latest CI run of its default branch, open branches, last push, size and its address on the forge. Both take `--json`: `{ org, forgeUrl, namespace, plan, limits, usage }` and `{ org, repositories: [{ id, name, fullName, url, visibility, archived, defaultBranch, pushedAt, openPullRequests, openIssues, sizeBytes, ci }] }`.
+
+Claiming or renaming the namespace happens in **Settings > Git**. Everything about one repository happens on the forge.
+
 ## Track credits, savings and waste
 
 `credits` is the [credit burndown](./credit-burndown.md): prepaid balances with a measured burn rate and a runway, for providers that report one. It's a good one for a morning check, since a prepaid balance that runs out means an outage, not an invoice. Needs `costs:read`:
@@ -443,6 +456,14 @@ infrawrench env hooks uninstall
 ```
 infrawrench credits
 infrawrench credits --json
+```
+
+`runway` is the [capacity runway](./quota-radar.md#capacity-runway): every resource usage a provider plugin tracks against the limit that will stop it (a volume filling, a database at its storage cap, a monthly allowance of sends or transfer), soonest to run out first. Monthly allowances show what they'll reach by the end of the billing cycle. `--at-risk` keeps only rows at the limit or running out, and `--json` prints the server's response with each row's `status` (`full`, `critical`, `watch` or `ok`). Cloud only. Needs `resources:read`:
+
+```
+infrawrench runway
+infrawrench runway --at-risk
+infrawrench runway --json
 ```
 
 `commitments` prints the [commitments](./commitments.md) inventory, the coverage range and the savings planner. `commitments reports` lists your saved [commitment reports](./commitment-reports.md) and, given a name or id, runs one: coverage, utilization, effective savings rate, net savings, the on-demand remainder and used and unused commitment cost over time, with a sparkline of the report's chart metric (`--metric` picks another). `--format csv` writes the same CSV the app exports (to stdout, or to a file with `--out`). `commitments report` runs an unsaved report from flags: `--last`/`--from`/`--to` (the last 90 days by default), `--bin day|week|month|quarter` (no hourly, since spend is stored per day), `--group-by provider|commitment_type|commitment|service|account|region`, and the filters `--provider`, `-a`, `--service`, `--region`, `--commitment-type` and `--commitment`, each matched against the values your organization has (repeat a filter for several values). A window too long for its granularity is refused before anything is sent. Cloud only. Needs `costs:read`:
@@ -720,6 +741,15 @@ infrawrench recordings --json         # list plus the org's policy and storage u
 infrawrench ownership
 infrawrench ownership sam            # filter by resource, owner or purpose
 infrawrench ownership --json
+```
+
+`offboard` is [offboarding](./offboarding.md): everything tied to someone who is leaving. With no email it lists every offboarding and its progress. With an email it prints their checklist, or, if nobody has started one, what a sweep would find (nothing is saved). `--start` saves it as a checklist, and `--alias` adds a name providers know them by. Acting on rows happens in the app. Cloud only; needs `team:remove`:
+
+```
+infrawrench offboard
+infrawrench offboard jane@example.com --alias jdoe-gh
+infrawrench offboard jane@example.com --start
+infrawrench offboard jane@example.com --json
 ```
 
 ## Status pages and incidents

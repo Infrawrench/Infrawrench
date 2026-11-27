@@ -166,6 +166,10 @@ export const SETTINGS_SECTIONS: readonly SettingsSectionDef[] = [
     label: msg("Pull Request Checks"),
     requiresPermission: "iac:read",
   },
+  // The organisation's side of git.infrawrench.com (its namespace, what a
+  // new repository starts as, usage against the plan). Beside Billing, which
+  // its usage card links to. Claiming and renaming need `git:admin`.
+  { key: "git", group: "org", label: msg("Git"), requiresPermission: "git:read" },
   { key: "billing", group: "org", label: msg("Billing") },
   { key: "audit-log", group: "org", label: msg("Audit Log") },
 ];

@@ -29,7 +29,7 @@ export const ISO27001_FRAMEWORK: ComplianceFrameworkDefinition = {
       id: "5.16",
       title: "Identities are managed across their lifecycle",
       group: ORG,
-      sources: ["access-review"],
+      sources: ["access-review", "offboarding"],
     },
     {
       id: "5.17",
@@ -41,7 +41,7 @@ export const ISO27001_FRAMEWORK: ComplianceFrameworkDefinition = {
       id: "5.18",
       title: "Access rights are granted, reviewed and removed",
       group: ORG,
-      sources: ["access-review", "jit-access"],
+      sources: ["access-review", "jit-access", "offboarding"],
     },
     {
       id: "5.24",

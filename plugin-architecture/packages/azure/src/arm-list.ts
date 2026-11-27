@@ -195,3 +195,38 @@ export class ReadBudget {
     }
   }
 }
+
+/** Pages an optional per-row read follows before giving up on it. */
+const MAX_OPTIONAL_PAGES = 20;
+
+/**
+ * Every item of an ARM list that only adds fields to rows the list already has
+ * (a registry's usages, a namespace's queues). `undefined` when the answer cannot be
+ * read as a whole list: a page with no `value` array, a `nextLink` off ARM, or more
+ * pages than a field is worth. Unlike {@link listAllPages} it raises no incomplete-list
+ * error, because a field left out keeps its stored value and says nothing about rows.
+ * HTTP errors still throw, for `ReadBudget.hydrate` to read.
+ */
+export async function readOptionalArmList(
+  ctx: ArmReader,
+  url: string,
+): Promise<Record<string, unknown>[] | undefined> {
+  const origin = new URL(url).origin;
+  const items: Record<string, unknown>[] = [];
+  let pageUrl = url;
+  for (let page = 0; page < MAX_OPTIONAL_PAGES; page++) {
+    const body = await ctx.get<ArmListPage<Record<string, unknown>> | null>(pageUrl);
+    if (!body || !Array.isArray(body.value)) return undefined;
+    items.push(...body.value);
+    if (!body.nextLink) return items;
+    let next: URL;
+    try {
+      next = new URL(body.nextLink, pageUrl);
+    } catch {
+      return undefined;
+    }
+    if (next.origin !== origin) return undefined;
+    pageUrl = next.toString();
+  }
+  return undefined;
+}

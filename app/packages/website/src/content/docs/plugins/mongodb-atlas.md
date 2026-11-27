@@ -62,6 +62,7 @@ The project's IP access list must allow the address Infrawrench connects from. C
 - **Potential savings** also lists paused clusters (storage and backups are still billed, and Atlas resumes a cluster after 30 days), orphaned online archives, and private endpoint services with no endpoint.
 - **[Posture checks](../features/posture-checks.md)** flag clusters with backup or termination protection off, `0.0.0.0/0` on the access list, and database users with `atlasAdmin`.
 - **[Backup coverage](../features/backup-coverage.md)** counts each cluster's snapshots. Temporary users and access list entries show on the [expiry radar](../features/expiry-radar.md).
+- **Capacity runway** tracks the organization's projects against Atlas's 250 per organization and each project's clusters against 25 per project. For clusters pinned to a dashboard it also tracks the fullest node's disk and the busiest node's connections against the per-node connection limit of the cluster's tier.
 
 ## Tips and limits
 

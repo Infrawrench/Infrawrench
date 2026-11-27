@@ -53,6 +53,12 @@ x-watch: &watch
       - "**/node_modules"
       - "**/dist"
       - "**/.turbo"
+  # server-core imports @infrawrench/git-terraform from source.
+  - path: git/packages/terraform
+    target: /repo/git/packages/terraform
+    action: sync
+    ignore:
+      - "**/node_modules"
   - path: pnpm-lock.yaml
     action: rebuild
 

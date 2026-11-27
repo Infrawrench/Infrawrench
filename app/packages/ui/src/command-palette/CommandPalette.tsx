@@ -11,6 +11,7 @@ import {
 } from "@infrawrench/client-core";
 import type { WorkspaceTabTarget } from "../store/ui.store.js";
 import { useDataString } from "../i18n/data-strings.js";
+import { BetaBadge } from "../components/BetaBadge.js";
 import { toast } from "../components/Toast/useToast.js";
 import { formatErrorMessage } from "../utils.js";
 import type { PaletteAction } from "./actions.js";
@@ -535,6 +536,7 @@ export function CommandPalette({
                         </span>
                       )}
                     </span>
+                    {row.type === "action" && row.action.beta && <BetaBadge />}
                     {kindLabel && (
                       <span className="flex-shrink-0 text-xs text-on-surface-faint">
                         {kindLabel}

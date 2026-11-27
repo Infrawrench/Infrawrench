@@ -23,23 +23,11 @@ pub struct Plan {
     pub jobs: Vec<JobTemplate>,
     /// The most the run's shared `/tmp/workflow` holds (`scratch:`).
     pub scratch_bytes: u64,
-    /// `split:`: other runners may take this pipeline's jobs.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub split: Option<SplitSpec>,
     /// What every job declares, for expanding deferred jobs later.
     #[serde(skip)]
     pub(crate) decls: HashMap<String, crate::JobDecl>,
     #[serde(skip)]
     pub(crate) ctx: crate::Context,
-}
-
-/// A pipeline's `split:`, checked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct SplitSpec {
-    /// The most one job's artifacts may be, in bytes of file content, for
-    /// another runner to be sent them when the task cache does not hold
-    /// them; 0 sends none.
-    pub artifact_bytes: u64,
 }
 
 impl Plan {
@@ -49,13 +37,17 @@ impl Plan {
     }
 
     /// The kinds of virtual machine the pipeline's jobs run in, sorted,
-    /// each once: what a runner must have to run all of it.
+    /// each once: what a runner must have to run all of it. A workspace
+    /// with `install-scripts: true` runs them in a Linux machine.
     pub fn vm_platforms(&self) -> Vec<VmOs> {
         let mut out: Vec<VmOs> = self
             .jobs
             .iter()
             .filter_map(|t| t.vm.as_ref().map(|v| v.os))
             .collect();
+        if self.workspaces.iter().any(|w| w.install_scripts) {
+            out.push(VmOs::Linux);
+        }
         out.sort();
         out.dedup();
         out
@@ -584,6 +576,12 @@ pub struct WorkspaceSpec {
     pub key: String,
     pub clone: Option<CloneSpec>,
     pub deps: Vec<DepSpec>,
+    /// `install-scripts: true` and a pnpm, npm or Bun install to run them
+    /// for: after its installs the runner runs the install scripts the
+    /// package manager would, in a virtual machine. Left out of the key
+    /// when off, so workspaces without it keep theirs.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub install_scripts: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

@@ -182,6 +182,7 @@ pub fn serve(mut args: Args) -> Result<ExitCode, String> {
     server.keep_installs_compact(std::time::Duration::from_secs(COMPACT_EVERY_SECS));
     server.watch_memory();
     server.sweep_splits();
+    crate::adapters::caches::warm_estimates(server.store());
     server.serve(&listen)?;
     Ok(ExitCode::SUCCESS)
 }

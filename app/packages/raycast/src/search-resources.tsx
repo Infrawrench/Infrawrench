@@ -292,6 +292,18 @@ function ResourceDetail({ client, result: r }: { client: Client; result: SearchR
                 : partText(data?.iac, () => "")
             }
           />
+          {(iac?.managedBy ?? []).map((managed) => (
+            <List.Item.Detail.Metadata.Link
+              key={`${managed.url}#${managed.address}`}
+              title="Managed by"
+              target={managed.url}
+              text={
+                managed.rootPath === ""
+                  ? managed.repository
+                  : `${managed.repository} (${managed.rootPath})`
+              }
+            />
+          ))}
           {services.length > 0 ? (
             <List.Item.Detail.Metadata.TagList title="Service">
               {services.map((s) => (
