@@ -206,6 +206,17 @@ describe("the sidebar", () => {
     expect(screen.getByRole("button", { name: "Workspace: Tidewater" })).toBeTruthy();
   });
 
+  it("goes to the picked workspace's home when one is picked on a repository", async () => {
+    open("/tidewater/ledger");
+    await screen.findByRole("navigation", { name: "Repository" }, wait);
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace: Tidewater" }, wait));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Acme" }));
+    // Staying on Tidewater's repository would pull the sidebar back to Tidewater.
+    await screen.findByRole("heading", { name: /active branches/ }, wait);
+    expect(await sidebar().findByRole("list", { name: "Acme" }, wait)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Workspace: Acme" })).toBeTruthy();
+  });
+
   it("keeps the workspace on somebody else's repository, which it shows as Viewing", async () => {
     open("/jonas/edge-router");
     await screen.findByRole("navigation", { name: "Repository" }, wait);

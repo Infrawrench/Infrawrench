@@ -15,7 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { SessionUser } from "@infrawrench/git-contract";
 import { api } from "../api/client";
 import { queries } from "../api/queries";
-import { AppLink } from "../components/AppLink";
+import { AppLink, useGo } from "../components/AppLink";
 import { Badge } from "../components/Badge";
 import { buttonClass } from "../components/Button";
 import { Icon, type IconName } from "../components/icons";
@@ -469,6 +469,13 @@ function MemberSidebar({
   useEffect(() => {
     if (follow !== null) select(follow);
   }, [follow, select]);
+  // Choosing another workspace while on one of this one's repositories goes to
+  // that workspace's home: staying on the repository would pull the sidebar back.
+  const go = useGo();
+  const choose = (slug: string) => {
+    select(slug);
+    if (owning !== null && slug !== owning.slug) go(paths.home());
+  };
   // Somebody else's repository: shown above the list, from the cache its layout fills.
   const foreign = here !== null && workspaces !== undefined && owning === null;
   const viewed = useQuery({
@@ -484,7 +491,7 @@ function MemberSidebar({
           <WorkspaceSwitcher
             workspaces={workspaces ?? []}
             current={current}
-            select={select}
+            select={choose}
             unclaimed={unclaimed}
           />
           <Badge tone="outline" className="shrink-0">
