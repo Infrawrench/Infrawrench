@@ -27,7 +27,7 @@ import {
 } from "../db/findings";
 import { statusesForCommit } from "../db/policy";
 import type { PullRequestWithThread } from "../db/pulls";
-import type { RepositoryWithOwner } from "../db/repositories";
+import { type RepositoryWithOwner, runsInOrganization } from "../db/repositories";
 import type { VersionRow } from "../db/review";
 import { type RepoReader, RepoReaderError } from "../repo/reader";
 import { fingerprintOf, recordFindings } from "./findings";
@@ -387,7 +387,7 @@ const readChecks = async (cx: ReviewerContext): Promise<string> => {
     out.push("", "This branch is from a fork: check logs are not read here.");
     return out.join("\n");
   }
-  const organizationId = cx.base.owner.organizationId;
+  const organizationId = runsInOrganization(cx.base.owner);
   const failed = statuses.filter(
     (status) => (status.state === "failure" || status.state === "error") && status.ciRunId,
   );

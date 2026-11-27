@@ -13,8 +13,8 @@
  *   public repository. Someone with `write` there asks for a fork's review by
  *   hand (`findings.requestRun`), as CI waits for approval before it runs a
  *   fork's code.
- * - **Not where nobody can be billed**: a person's own namespace, or a
- *   deployment with no model configured.
+ * - **Not where nobody can be billed**: a person's own namespace that is
+ *   connected to no organisation, or a deployment with no model configured.
  */
 import { queuePushRun } from "../db/findings";
 import type { PullRequestWithThread } from "../db/pulls";

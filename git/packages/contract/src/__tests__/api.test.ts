@@ -230,6 +230,7 @@ describe("plan limits", () => {
         privateRepositories: false,
         privateRepositoryRefusal: "A personal namespace includes 5 private repositories",
         defaultVisibility: "private",
+        workspace: { id: "org", name: "Acme" },
       },
       organizations: [
         {
@@ -240,6 +241,7 @@ describe("plan limits", () => {
           gitEnabled: true, // git-feature-flag
           namespacePlanRefusal: null,
           canClaimNamespace: false,
+          paid: true,
           privateRepositories: true,
           privateRepositoryRefusal: null,
           defaultVisibility: "public",

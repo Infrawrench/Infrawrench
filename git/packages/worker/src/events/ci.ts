@@ -1,8 +1,11 @@
 /**
  * Telling Infrawrench CI what happened to a repository (NOTES-ci.md section
  * 1). CI decides everything itself (tags, deleted branches, a person's own
- * namespace, an organisation without a paid plan, redeliveries all start
- * nothing), so every event is passed on unfiltered.
+ * namespace that is connected to no organisation, an organisation without a
+ * paid plan, redeliveries all start nothing), so every event is passed on
+ * unfiltered. That includes which organisation a person's own repository
+ * runs in: the event says only who owns the namespace, and CI reads the
+ * connection itself (`acceptGitEvent`).
  *
  * `ci/git-events` reaches most of server-core, so it is imported when the
  * first event arrives, never at the Worker's start.
@@ -12,7 +15,7 @@ import type { RepositoryWithOwner } from "../db/repositories";
 
 const ciEvents = () => import("@infrawrench/server-core/ci/git-events");
 
-/** A repository as CI names it. */
+/** A repository as CI names it. `organizationId` is the owner's: null for a person's namespace. */
 export const ciRepository = ({ repository, owner }: RepositoryWithOwner) => ({
   id: repository.id,
   namespace: owner.slug,

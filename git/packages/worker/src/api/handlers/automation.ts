@@ -59,6 +59,7 @@ import {
 } from "../../db/automation";
 import { pageKeysByNumber, pageNumberOf } from "../../db/branch-pages";
 import { combinedState, statusesForCommit, upsertCommitStatus } from "../../db/policy";
+import { runsInOrganization } from "../../db/repositories";
 import { userByUsername } from "../../db/users";
 import { hasAccess } from "../../auth/access";
 import { appOrigin, siteOrigin } from "../../env";
@@ -184,14 +185,12 @@ const ciRunViews = async (cx: RepoCx, rows: readonly CiRunRow[]): Promise<CiRun[
       ? { cancelRequested: true }
       : {}),
     commitTitle: titleOf.get(row.sha) ?? null,
-    appUrl: owner.organizationId
-      ? `${appOrigin(cx.env)}/org/${owner.organizationId}/ci/${row.id}`
-      : null,
+    appUrl: `${appOrigin(cx.env)}/org/${row.organizationId}/ci/${row.id}`,
   }));
 };
 
 const ciRunOr404 = async (cx: RepoCx, runId: string): Promise<CiRunRow> => {
-  const row = await getCiRun(cx.repo.repository.id, cx.repo.owner.organizationId, runId);
+  const row = await getCiRun(cx.repo.repository.id, runsInOrganization(cx.repo.owner), runId);
   if (!row) throw notFound("No such run");
   return row;
 };
@@ -227,18 +226,33 @@ const pipelinesOf = async (cx: RepoCx): Promise<Array<{ file: string; name: stri
   }
 };
 
+const CI_NEEDS_ORGANISATION =
+  "CI runs in an organisation. Choose one for your own repositories in Settings > Profile";
+
+/**
+ * CI in the app for the organisation the repository runs in, for a caller
+ * who is a member of it: where its secrets, variables and approvals are.
+ */
+const ciAppUrl = async (cx: RepoCx): Promise<string | null> => {
+  const organizationId = runsInOrganization(cx.repo.owner);
+  if (organizationId === null || cx.principal.kind !== "user") return null;
+  const member = (await cx.viewer()).organizations.some(({ id }) => id === organizationId);
+  return member ? `${appOrigin(cx.env)}/org/${organizationId}/ci` : null;
+};
+
 export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
   handlers
     .handle(
       "status",
       repoOp(async (cx) => {
         const { repository, owner } = cx.repo;
+        const organizationId = runsInOrganization(owner);
         const reason =
-          owner.organizationId === null
-            ? "CI runs for an organisation's repositories"
+          organizationId === null
+            ? CI_NEEDS_ORGANISATION
             : (await ciSwitchedOff(repository.id))
               ? "CI is switched off for this repository"
-              : !(await planAccess(owner.organizationId)).paid
+              : !(await planAccess(organizationId)).paid
                 ? "CI needs a paid plan"
                 : null;
         return { enabled: reason === null, pipelines: await pipelinesOf(cx), reason };
@@ -248,15 +262,17 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
       "settings",
       repoOp(async (cx) => ({
         enabled: !(await ciSwitchedOff(cx.repo.repository.id)),
-        available: cx.repo.owner.organizationId !== null,
+        available: runsInOrganization(cx.repo.owner) !== null,
+        appUrl: await ciAppUrl(cx),
       })),
     )
     .handle(
       "updateSettings",
       repoOp(async (cx, { payload }) => {
         const { repository, owner } = cx.repo;
-        if (owner.organizationId === null) {
-          throw unprocessable("CI runs for an organisation's repositories", "ci_unavailable");
+        const organizationId = runsInOrganization(owner);
+        if (organizationId === null) {
+          throw unprocessable(CI_NEEDS_ORGANISATION, "ci_unavailable");
         }
         const saved = await setCiGitRepository(
           {
@@ -264,12 +280,12 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
             namespace: owner.slug,
             name: repository.name,
             defaultBranch: repository.defaultBranch,
-            organizationId: owner.organizationId,
+            organizationId,
           },
           payload.enabled,
           cx.userId,
         );
-        return { enabled: saved.ciEnabled, available: true };
+        return { enabled: saved.ciEnabled, available: true, appUrl: await ciAppUrl(cx) };
       }),
     )
     .handle(
@@ -278,7 +294,7 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
         const { page, ...rest } = query;
         const pull = await pageFilter(cx, page);
         if (pull === null) return { items: [], nextCursor: null };
-        const found = await listCiRuns(cx.repo.repository.id, cx.repo.owner.organizationId, {
+        const found = await listCiRuns(cx.repo.repository.id, runsInOrganization(cx.repo.owner), {
           ...rest,
           pull,
         });
@@ -324,7 +340,7 @@ export const CiHandlers = HttpApiBuilder.group(GitApi, "ci", (handlers) =>
           const row = state
             ? await getCiRun(
                 state.found.repository.id,
-                state.found.owner.organizationId,
+                runsInOrganization(state.found.owner),
                 params.runId,
               )
             : null;

@@ -12,7 +12,7 @@ import { HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/http-api";
 import { RequiresUser, SuccessDescription } from "../http/annotations";
 import { Authentication } from "../http/auth";
 import { BadRequest, Conflict, Forbidden, TooManyRequests } from "../http/errors";
-import { NamespaceRef, Session, UsernameAvailability } from "../schemas/people";
+import { NamespaceRef, PersonalWorkspace, Session, UsernameAvailability } from "../schemas/people";
 
 const UsernameBody = Schema.Struct({
   username: Schema.String.annotate({
@@ -49,7 +49,13 @@ export class SessionGroup extends HttpApiGroup.make("session")
       .annotate(OpenApi.Summary, "Whether a username can be claimed")
       .annotate(SuccessDescription, "Availability"),
     HttpApiEndpoint.post("claimUsername", "/username", {
-      payload: UsernameBody,
+      payload: Schema.Struct({
+        ...UsernameBody.fields,
+        workspaceOrganizationId: Schema.optional(Schema.NullOr(Schema.String)).annotate({
+          description:
+            "The organisation the person's own repositories run CI and review agents in: one they belong to. Null or left out for none; `setWorkspace` changes it later.",
+        }),
+      }),
       success: Schema.Struct({ namespace: NamespaceRef }),
       // git-feature-flag: Forbidden (`signups_closed`) is the flag's; remove with it.
       error: [BadRequest, Conflict, Forbidden],
@@ -58,7 +64,7 @@ export class SessionGroup extends HttpApiGroup.make("session")
       .annotate(OpenApi.Summary, "Claim a username")
       .annotate(
         OpenApi.Description,
-        "Creates the person's namespace. 409 `username_taken` when someone has it, 409 `namespace_already_claimed` when the person already has one (use `renameUsername`). 403 `signups_closed` while sign-ups are not open to this person.",
+        "Creates the person's namespace. 409 `username_taken` when someone has it, 409 `namespace_already_claimed` when the person already has one (use `renameUsername`). 403 `signups_closed` while sign-ups are not open to this person, 403 `not_a_member` when `workspaceOrganizationId` is not an organisation of theirs (nothing is claimed).",
       )
       .annotate(SuccessDescription, "The namespace"),
     HttpApiEndpoint.put("renameUsername", "/username", {
@@ -73,6 +79,22 @@ export class SessionGroup extends HttpApiGroup.make("session")
         "Repositories keep their ids, so nothing moves; old URLs stop resolving.",
       )
       .annotate(SuccessDescription, "The namespace"),
+    HttpApiEndpoint.put("setWorkspace", "/workspace", {
+      payload: Schema.Struct({
+        organizationId: Schema.NullOr(Schema.String).annotate({
+          description: "An organisation the person belongs to, or null for none.",
+        }),
+      }),
+      success: Schema.Struct({ workspace: Schema.NullOr(PersonalWorkspace) }),
+      error: Forbidden,
+    })
+      .annotate(RequiresUser, true)
+      .annotate(OpenApi.Summary, "Choose where the person's own repositories run")
+      .annotate(
+        OpenApi.Description,
+        "Connects the person's own namespace to an organisation they belong to: its repositories then run CI and review agents there, on that organisation's plan and bill, with their own secrets and variables. Null disconnects it. From a signed-in browser only. 403 `not_a_member` for an organisation that is not theirs, 403 `username_required` before they have a username.",
+      )
+      .annotate(SuccessDescription, "The connection"),
   )
   .prefix("/api/session")
   .middleware(Authentication)

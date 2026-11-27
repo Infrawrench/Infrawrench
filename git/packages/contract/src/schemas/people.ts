@@ -119,6 +119,10 @@ export const SessionOrganization = Schema.Struct({
     description:
       "What a new repository in its namespace starts as, set in the app (Settings > Git).",
   }),
+  paid: Schema.Boolean.annotate({
+    description:
+      "On a paid plan, which CI needs. Read when a person chooses where their own repositories run (`Session.personal.workspace`).",
+  }),
 }).annotate({ identifier: "SessionOrganization" });
 export type SessionOrganization = typeof SessionOrganization.Type;
 
@@ -130,6 +134,13 @@ export const SessionUser = Schema.Struct({
   avatarUrl: Schema.NullOr(Schema.String),
 }).annotate({ identifier: "SessionUser" });
 export type SessionUser = typeof SessionUser.Type;
+
+/** The organisation a person's own repositories run in. */
+export const PersonalWorkspace = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+}).annotate({ identifier: "PersonalWorkspace" });
+export type PersonalWorkspace = typeof PersonalWorkspace.Type;
 
 /**
  * Who is signed in. `user` is null for a signed-out browser, which every page
@@ -162,6 +173,10 @@ export const Session = Schema.Struct({
         description: "Why not, as a sentence. Null when `privateRepositories` is true.",
       }),
       defaultVisibility: Visibility,
+      workspace: Schema.NullOr(PersonalWorkspace).annotate({
+        description:
+          "The organisation the person's own repositories run CI and review agents in, and are billed to. Null when they chose none, and once they are no longer a member of it. One of `organizations`; changed with `setWorkspace`.",
+      }),
     }),
   ).annotate({
     description:

@@ -275,6 +275,58 @@ describe.skipIf(!configured)("review agents, against a real Postgres", () => {
     });
   });
 
+  describe("a person's own repository connected to an organisation", () => {
+    it("is reviewed on the organisation's pool, and no longer once it is disconnected", async () => {
+      const connect = (organizationId: string | null) =>
+        world.call("PUT", "/api/session/workspace", { as: alice, body: { organizationId } });
+      const own = await world.repository(alice, alice.username, `connected-${count}`);
+      expect((await connect(organization.id)).status).toBe(200);
+      try {
+        expect(
+          (
+            await world.call("PATCH", `${own.path}/review-settings`, {
+              as: alice,
+              body: { reviewAgentsEnabled: true, reviewerKinds: ["general"] },
+            })
+          ).status,
+        ).toBe(200);
+        await push("feature", { in: own.id });
+        const pull = await pullOf("feature", own.path);
+        await world.call("PUT", `${pull.path}/draft`, { as: alice, body: { draft: false } });
+        const [run] = await runsOf(pull.id);
+        expect(run).toMatchObject({ status: "queued", reviewerKinds: ["general"] });
+
+        const script = scripted([[MUST_FIX], "end"]);
+        expect(await review(run!.id, script.model)).toBe("done");
+        expect(script.requests.length).toBeGreaterThan(0);
+        // What it used is the connected organisation's, under the repository's own source.
+        const used = await db
+          .select({ organizationId: workflowAiUsage.organizationId })
+          .from(workflowAiUsage)
+          .where(eq(workflowAiUsage.workflowId, reviewUsageSource(own.id)));
+        expect(used.length).toBeGreaterThan(0);
+        expect(used.every((row) => row.organizationId === organization.id)).toBe(true);
+
+        // Disconnected, the next version queues nothing, and a run left over is skipped unbilled.
+        await push("feature", { in: own.id });
+        const [, second] = await runsOf(pull.id);
+        expect(second?.status).toBe("queued");
+        expect((await connect(null)).status).toBe(200);
+        const idle = scripted([[MUST_FIX], "end"]);
+        expect(await review(second!.id, idle.model)).toBe("failed");
+        expect(idle.requests).toEqual([]);
+        expect((await runsOf(pull.id))[1]).toMatchObject({
+          error: expect.stringMatching(/^Skipped: Review agents run in an organisation/),
+          costMicros: 0,
+        });
+        await push("feature", { in: own.id });
+        expect((await runsOf(pull.id)).filter((row) => row.status === "queued")).toEqual([]);
+      } finally {
+        await connect(null);
+      }
+    });
+  });
+
   describe("a run", () => {
     it("writes what the model reports, masked, and holds the merge on a must-fix finding", async () => {
       const { pull, run } = await reviewed();

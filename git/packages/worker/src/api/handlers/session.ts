@@ -23,10 +23,16 @@ import {
   suggestSlug,
 } from "@infrawrench/git-contract";
 import { gitNamespaces, gitUsers, users } from "@infrawrench/server-core/db/schema";
+import { planAccess } from "@infrawrench/server-core/entitlements";
 import {
   gitOrganizationClaimRefusal,
   gitPrivateRepositoryRefusal,
 } from "@infrawrench/server-core/git/quota";
+import {
+  clearStaleGitWorkspace,
+  gitWorkspaceOf,
+  setGitWorkspace,
+} from "@infrawrench/server-core/git/workspace";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { signOut } from "../../auth/sign-in";
 import { recordAudit } from "../../db/audit";
@@ -43,7 +49,7 @@ import {
   avatarOfNamespace,
   updateNamespaceProfile,
 } from "../../db/namespaces";
-import { getOrganization } from "../../db/organizations";
+import { getOrganization, isMember } from "../../db/organizations";
 import { countVisibleRepositories } from "../../db/repository-lists";
 import { gitEnabledAmong, maySignUp } from "../../db/signups"; // git-feature-flag
 import { getGitUser, getUser } from "../../db/users";
@@ -97,6 +103,68 @@ const checkRenameInterval = (namespace: NamespaceRow): void => {
   if (namespace.renamedAt && Date.now() - namespace.renamedAt.getTime() < RENAME_INTERVAL_MS) {
     throw new TooManyRequests({ error: "A name can be changed once a day" });
   }
+};
+
+const NOT_A_MEMBER = "You are not a member of that organisation";
+
+/**
+ * The organisation a person's own repositories run in, as the session says
+ * it: the stored connection, while they are still a member. A connection
+ * they have left is cleared here, in the background, so the organisation's
+ * CI tab stops listing their repositories without waiting for the poller.
+ */
+const workspaceOf = async (
+  cx: Cx,
+  userId: string,
+  namespace: NamespaceRow,
+): Promise<{ readonly id: string; readonly name: string } | null> => {
+  if (namespace.workspaceOrganizationId === null) return null;
+  const live = await gitWorkspaceOf(userId);
+  if (live === null) {
+    cx.background(clearStaleGitWorkspace(userId));
+    return null;
+  }
+  const organization = await getOrganization(live);
+  return organization ? { id: organization.id, name: organization.name } : null;
+};
+
+/**
+ * Connect the person's own namespace to an organisation of theirs, or to
+ * none, and note it in the audit log of each organisation it touches: the
+ * one that starts paying for their runs and the one that stops.
+ */
+const connectWorkspace = async (
+  cx: Cx,
+  userId: string,
+  organizationId: string | null,
+): Promise<{ readonly id: string; readonly name: string } | null> => {
+  const namespace = await getNamespaceForUser(userId);
+  if (!namespace) throw forbidden("Choose a username first", "username_required");
+  const before = await gitWorkspaceOf(userId);
+  const set = await setGitWorkspace(userId, organizationId);
+  if (!set.ok) {
+    throw set.reason === "no_namespace"
+      ? forbidden("Choose a username first", "username_required")
+      : forbidden(NOT_A_MEMBER, "not_a_member");
+  }
+  const audit = (organization: string, action: string) =>
+    cx.background(
+      recordAudit({
+        organizationId: organization,
+        userId,
+        action,
+        entityType: "git_namespace",
+        entityId: namespace.id,
+        metadata: { slug: namespace.slug },
+      }),
+    );
+  if (before !== set.organizationId) {
+    if (before !== null) audit(before, "git.workspace.disconnect");
+    if (set.organizationId !== null) audit(set.organizationId, "git.workspace.connect");
+  }
+  if (set.organizationId === null) return null;
+  const organization = await getOrganization(set.organizationId);
+  return organization ? { id: organization.id, name: organization.name } : null;
 };
 
 export const namespaceView = async (cx: Cx, namespace: NamespaceRow): Promise<Namespace> => {
@@ -194,6 +262,7 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
               privateRepositories: refusal === null,
               privateRepositoryRefusal: refusal,
               defaultVisibility: organization.defaultVisibility ?? "private",
+              paid: (await planAccess(organization.id)).paid,
             };
           }),
         );
@@ -229,6 +298,7 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
                   privateRepositories: personalRefusal === null,
                   privateRepositoryRefusal: personalRefusal,
                   defaultVisibility: namespace.defaultVisibility,
+                  workspace: await workspaceOf(cx, user.id, namespace),
                 },
           organizations,
           ...base,
@@ -276,6 +346,11 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
         if (!(await maySignUp(userId))) {
           throw forbidden("Sign-ups are not open yet", "signups_closed");
         }
+        // Asked before anything is claimed: a refusal leaves the person where they were.
+        const workspace = payload.workspaceOrganizationId ?? null;
+        if (workspace !== null && !(await isMember(userId, workspace))) {
+          throw forbidden(NOT_A_MEMBER, "not_a_member");
+        }
         const user = await getUser(userId);
         const claimed = await claimUserNamespace(userId, payload.username, {
           displayName: user?.displayName ?? null,
@@ -285,6 +360,7 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
             ? conflict("You already have a username", "namespace_already_claimed")
             : conflict("That username is taken", "username_taken");
         }
+        if (workspace !== null) await connectWorkspace(cx, userId, workspace);
         return { namespace: refOf(claimed.namespace) };
       }),
     )
@@ -301,6 +377,19 @@ export const SessionHandlers = HttpApiBuilder.group(GitApi, "session", (handlers
         const renamed = await renameNamespace(current.id, payload.username);
         if (!renamed) throw conflict("That username is taken", "username_taken");
         return { namespace: refOf(renamed) };
+      }),
+    )
+    .handle(
+      "setWorkspace",
+      op(async (cx, { payload }) => {
+        // Who pays for a person's runs is theirs to say, in a browser: a token
+        // that could change it could move their bill to another organisation.
+        if (cx.principal.kind !== "user" || cx.principal.via !== "session") {
+          throw forbidden("This is changed from a signed-in browser, not with a token");
+        }
+        return {
+          workspace: await connectWorkspace(cx, cx.principal.userId, payload.organizationId),
+        };
       }),
     ),
 );

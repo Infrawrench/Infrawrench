@@ -9,11 +9,13 @@
  * > AI Chat, and the free allowance for an organisation without a paid plan.
  * A run is admitted against the pool before it starts and what it used is
  * written to it when it ends. A person's own namespace has no organisation
- * and so no pool: review agents do not run there.
+ * and so no pool: its review agents run in the organisation its owner
+ * connected it to (`runsInOrganization`), on that organisation's pool exactly
+ * as one of its own repositories would, and do not run until it is connected.
  */
 import type { ReviewerKind } from "@infrawrench/git-contract";
 import { isAnthropicConfigured } from "@infrawrench/server-core/anthropic-client";
-import type { RepositoryWithOwner } from "../db/repositories";
+import { type RepositoryWithOwner, runsInOrganization } from "../db/repositories";
 
 /** The model each of the forge's reviewers runs on. */
 export const REVIEWER_MODELS: Readonly<Record<ReviewerKind, string>> = {
@@ -72,7 +74,8 @@ export type ReviewAvailability =
   | { readonly available: true; readonly organizationId: string }
   | { readonly available: false; readonly reason: string };
 
-export const REVIEW_NEEDS_ORGANISATION = "Review agents run in an organisation's repositories";
+export const REVIEW_NEEDS_ORGANISATION =
+  "Review agents run in an organisation. Choose one for your own repositories in Settings > Profile";
 export const REVIEW_NOT_CONFIGURED = "Review agents are not set up on this server";
 
 /** Whether the forge's review agents can run for a repository at all, and who pays when they do. */
@@ -80,7 +83,7 @@ export const reviewAvailability = (
   repo: RepositoryWithOwner,
   configured: boolean = isAnthropicConfigured(),
 ): ReviewAvailability => {
-  const organizationId = repo.owner.organizationId;
+  const organizationId = runsInOrganization(repo.owner);
   if (organizationId === null) return { available: false, reason: REVIEW_NEEDS_ORGANISATION };
   if (!configured) return { available: false, reason: REVIEW_NOT_CONFIGURED };
   return { available: true, organizationId };

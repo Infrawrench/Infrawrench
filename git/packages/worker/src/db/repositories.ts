@@ -10,6 +10,7 @@ import {
   gitRepositories,
   gitStars,
 } from "@infrawrench/server-core/db/schema";
+import { liveGitWorkspaceId } from "@infrawrench/server-core/git/workspace";
 import type { RepoForAccess } from "../auth/access";
 import { namespaceAvatarUrl } from "./namespaces";
 import { db, isUniqueViolation, newId } from "./client";
@@ -34,6 +35,12 @@ export interface RepositoryWithOwner {
     readonly kind: "user" | "org";
     readonly userId: string | null;
     readonly organizationId: string | null;
+    /**
+     * A person's own namespace: the organisation they connected it to, while
+     * they are still a member of it (server-core `git/workspace.ts`). Null
+     * for an organisation's namespace. Read through {@link runsInOrganization}.
+     */
+    readonly workspaceOrganizationId: string | null;
     readonly displayName: string | null;
     readonly avatarUrl: string | null;
   };
@@ -45,9 +52,22 @@ const ownerColumns = {
   kind: gitNamespaces.kind,
   userId: gitNamespaces.userId,
   organizationId: gitNamespaces.organizationId,
+  workspaceOrganizationId: liveGitWorkspaceId,
   displayName: gitNamespaces.displayName,
   avatarUrl: namespaceAvatarUrl,
 };
+
+/**
+ * The organisation a repository's CI and review agents run in and are billed
+ * to: the one that owns its namespace, or for a person's own namespace the
+ * one they connected it to. Null when there is none. Owning is still
+ * `owner.organizationId` alone: a connected repository is its owner's, and
+ * nothing of the organisation's (its members' access, its accounts, its
+ * Terraform runs) comes with the connection.
+ */
+export const runsInOrganization = (
+  owner: Pick<RepositoryWithOwner["owner"], "organizationId" | "workspaceOrganizationId">,
+): string | null => owner.organizationId ?? owner.workspaceOrganizationId;
 
 /**
  * Strip a trailing `.git`, which clone URLs carry and repository names never

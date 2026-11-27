@@ -119,7 +119,11 @@ export const CiRepositorySettings = Schema.Struct({
   }),
   available: Schema.Boolean.annotate({
     description:
-      "An organisation owns the repository. A personal namespace runs no CI and has no switch to change.",
+      "The repository runs in an organisation: one owns it, or its owner connected their own namespace to one. A personal namespace that is not connected runs no CI and has no switch to change.",
+  }),
+  appUrl: Schema.NullOr(Schema.String).annotate({
+    description:
+      "CI in the app for the organisation the repository runs in, where its secrets, variables and approvals are. Null when it runs in none, and for a caller who is not a member of it.",
   }),
 }).annotate({ identifier: "CiRepositorySettings" });
 export type CiRepositorySettings = typeof CiRepositorySettings.Type;

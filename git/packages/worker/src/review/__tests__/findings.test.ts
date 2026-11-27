@@ -139,8 +139,13 @@ describe("the forge's reviewers", () => {
   });
 
   it("run for an organisation's repository, where a model is configured", () => {
-    const repo = (organizationId: string | null) =>
-      ({ owner: { organizationId }, repository: {} }) as never;
+    const repo = (organizationId: string | null, workspaceOrganizationId: string | null = null) =>
+      ({ owner: { organizationId, workspaceOrganizationId }, repository: {} }) as never;
+    // A person's own repository runs in the organisation they connected it to, and bills it.
+    expect(reviewAvailability(repo(null, "org-2"), true)).toEqual({
+      available: true,
+      organizationId: "org-2",
+    });
     expect(reviewAvailability(repo("org-1"), true)).toEqual({
       available: true,
       organizationId: "org-1",

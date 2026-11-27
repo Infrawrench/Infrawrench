@@ -149,6 +149,7 @@ describe.skipIf(!configured)("what the forms ask, against a real Postgres", () =
         privateRepositories: true,
         privateRepositoryRefusal: null,
         defaultVisibility: "private",
+        workspace: null,
       });
     });
 
@@ -184,12 +185,15 @@ describe.skipIf(!configured)("what the forms ask, against a real Postgres", () =
     const path = () => `/api/repos/${acme.slug}/open/ci/settings`;
 
     it("is on until an administrator turns it off", async () => {
+      // Where its secrets, variables and approvals are: CI in the app, for the organisation.
+      const appUrl = `https://app.example.test/org/${acme.id}/ci`;
       expect((await world.call("GET", path(), { as: erin })).body).toEqual({
         enabled: true,
         available: true,
+        appUrl,
       });
       const off = await world.call("PUT", path(), { as: erin, body: { enabled: false } });
-      expect(off).toEqual({ status: 200, body: { enabled: false, available: true } });
+      expect(off).toEqual({ status: 200, body: { enabled: false, available: true, appUrl } });
       expect((await world.call("GET", path(), { as: erin })).body.enabled).toBe(false);
       const [row] = await db
         .select()
@@ -219,11 +223,12 @@ describe.skipIf(!configured)("what the forms ask, against a real Postgres", () =
       expect((await world.call("GET", path(), { as: erin })).body.enabled).toBe(true);
     });
 
-    it("has nothing to switch in a personal namespace", async () => {
+    it("has nothing to switch in a personal namespace that is connected to no organisation", async () => {
       const personal = `/api/repos/${alice.username}/pub/ci/settings`;
       expect((await world.call("GET", personal, { as: alice })).body).toEqual({
         enabled: true,
         available: false,
+        appUrl: null,
       });
       const put = await world.call("PUT", personal, { as: alice, body: { enabled: false } });
       expect(put.status).toBe(422);

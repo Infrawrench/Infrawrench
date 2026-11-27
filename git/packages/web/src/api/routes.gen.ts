@@ -8,6 +8,7 @@ export const API_ROUTES = {
     usernameAvailability: ["GET", "/api/session/username-availability"],
     claimUsername: ["POST", "/api/session/username"],
     renameUsername: ["PUT", "/api/session/username"],
+    setWorkspace: ["PUT", "/api/session/workspace"],
   },
   namespaces: {
     get: ["GET", "/api/namespaces/:namespace"],

@@ -11,6 +11,7 @@ import {
   gitRepositories,
   gitStars,
 } from "@infrawrench/server-core/db/schema";
+import { liveGitWorkspaceId } from "@infrawrench/server-core/git/workspace";
 import { namespaceAvatarUrl } from "./namespaces";
 import { db } from "./client";
 import { type PageOf, pageSize } from "./cursor";
@@ -53,6 +54,7 @@ const ownerColumns = {
   kind: gitNamespaces.kind,
   userId: gitNamespaces.userId,
   organizationId: gitNamespaces.organizationId,
+  workspaceOrganizationId: liveGitWorkspaceId,
   displayName: gitNamespaces.displayName,
   avatarUrl: namespaceAvatarUrl,
 };
