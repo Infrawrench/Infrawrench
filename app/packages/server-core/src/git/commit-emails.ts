@@ -1,12 +1,14 @@
 /**
- * Commit emails: the extra addresses a member's commits carry in one
- * organisation on git.infrawrench.com (`git_commit_emails`). In that
- * organisation's repositories a commit with one is shown as theirs; anywhere
- * else the same address reads as it always did.
+ * Commit emails: the extra addresses a person's commits carry in one place
+ * on git.infrawrench.com (`git_commit_emails`): one organisation they are a
+ * member of, or their own namespace (a null `organization_id`). In that
+ * place's repositories a commit with one is shown as theirs; anywhere else
+ * the same address reads as it always did.
  *
  * - **An address counts once it is proved.** The person asks on the forge
- *   (Settings > Organisations), a code is mailed to the address, and they
- *   type it back while signed in. Whoever only holds the mailbox cannot
+ *   (Settings > Organisations, or Settings > Profile for their own
+ *   repositories), a code is mailed to the address, and they type it back
+ *   while signed in. Whoever only holds the mailbox cannot
  *   finish it for them, and whoever only holds the account cannot take an
  *   address they do not read.
  * - **The forge asks and the app sends.** The forge's Worker holds no mail
@@ -14,11 +16,17 @@
  *   pass of the app's poller, makes the code, stores its hash and mails it.
  *   The code never crosses between the two, and nothing but its hash is kept.
  * - **It counts only while the person is a member.** Every read that turns
- *   an address into a person joins `organization_members`, and the pass
- *   deletes the rows of people who have left.
+ *   an organisation's address into a person joins `organization_members`,
+ *   and the pass deletes the rows of people who have left.
  * - **One member per address.** An address that is another member's account
  *   email, or one they have proved, is refused; the partial unique index
  *   settles two people proving the same one at once.
+ * - **A person's own namespace has nobody else in it**, so the only address
+ *   refused there for being someone else's is the one on another person's
+ *   account, anywhere on the site: nobody shows that person's commits as
+ *   their own. The two kinds never meet: an address proved in a person's own
+ *   namespace does not stop anyone proving it in an organisation, nor the
+ *   other way round.
  *
  * Postgres and the mail transport only, and imported by the forge's Worker:
  * nothing here may reach plugin code or a socket driver.
@@ -36,7 +44,7 @@ import {
   sendEmails,
 } from "../email.js";
 
-/** How many addresses one member keeps in one organisation, proved or not. */
+/** How many addresses one person keeps in one organisation, or in their own namespace, proved or not. */
 export const GIT_COMMIT_EMAIL_LIMIT = 10;
 /** How long a mailed code works. */
 export const GIT_COMMIT_EMAIL_CODE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -53,7 +61,8 @@ const CODE_LENGTH = 8;
 
 export interface GitCommitEmail {
   id: string;
-  organizationId: string;
+  /** The organisation the address counts in. Null: the person's own namespace. */
+  organizationId: string | null;
   email: string;
   verifiedAt: Date | null;
   /** When a code was last mailed. Null while the first one is on its way. */
@@ -83,6 +92,15 @@ const refuse = (
 const NOT_FOUND = refuse(404, "not_found", "No such address");
 const NOT_A_MEMBER = refuse(403, "not_a_member", "You are not a member of that organisation");
 const TAKEN = "That address belongs to another member of the organisation";
+const TAKEN_PERSONAL = "That address is on another person's account";
+const takenMessage = (organizationId: string | null): string =>
+  organizationId === null ? TAKEN_PERSONAL : TAKEN;
+
+/** The rows of one place: an organisation's, or (null) a person's own namespace's. */
+const inScope = (organizationId: string | null) =>
+  organizationId === null
+    ? isNull(gitCommitEmails.organizationId)
+    : eq(gitCommitEmails.organizationId, organizationId);
 
 const columns = {
   id: gitCommitEmails.id,
@@ -102,7 +120,9 @@ function isUniqueViolation(error: unknown): boolean {
   return false;
 }
 
-const isMember = async (organizationId: string, userId: string): Promise<boolean> => {
+/** Everyone is in their own namespace; an organisation asks its members. */
+const isMember = async (organizationId: string | null, userId: string): Promise<boolean> => {
+  if (organizationId === null) return true;
   const [row] = await db
     .select({ id: organizationMembers.id })
     .from(organizationMembers)
@@ -116,23 +136,32 @@ const isMember = async (organizationId: string, userId: string): Promise<boolean
   return row !== undefined;
 };
 
-/** A row's owner is still in its organisation. */
-const stillMember = sql`exists (
+/** A row's owner is still in its organisation. A person's own namespace is never left. */
+const stillMember = sql`(${gitCommitEmails.organizationId} is null or exists (
   select 1 from ${organizationMembers}
   where ${organizationMembers.organizationId} = ${gitCommitEmails.organizationId}
     and ${organizationMembers.userId} = ${gitCommitEmails.userId}
-)`;
+))`;
 
 /**
  * Whether `email` is another member's in the organisation: the address on
  * their account, or one they have proved. Someone who has left is no member,
- * whatever rows they left.
+ * whatever rows they left. In a person's own namespace (null) it is whether
+ * the address is on anyone else's account at all.
  */
 const takenByAnotherMember = async (
-  organizationId: string,
+  organizationId: string | null,
   userId: string,
   email: string,
 ): Promise<boolean> => {
+  if (organizationId === null) {
+    const [other] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(ne(users.id, userId), eq(sql`lower(${users.email})`, email)))
+      .limit(1);
+    return other !== undefined;
+  }
   const [account] = await db
     .select({ id: users.id })
     .from(organizationMembers)
@@ -177,30 +206,35 @@ const dropDeparted = async (organizationId?: string, email?: string): Promise<vo
     );
 };
 
-/** A person's addresses in these organisations, the oldest first. */
+/** A person's addresses in their own namespace and in these organisations, the oldest first. */
 export async function listGitCommitEmails(
   userId: string,
   organizationIds: readonly string[],
 ): Promise<GitCommitEmail[]> {
-  if (organizationIds.length === 0) return [];
   return db
     .select(columns)
     .from(gitCommitEmails)
     .where(
       and(
         eq(gitCommitEmails.userId, userId),
-        inArray(gitCommitEmails.organizationId, [...organizationIds]),
+        organizationIds.length === 0
+          ? isNull(gitCommitEmails.organizationId)
+          : or(
+              isNull(gitCommitEmails.organizationId),
+              inArray(gitCommitEmails.organizationId, [...organizationIds]),
+            ),
       ),
     )
     .orderBy(gitCommitEmails.createdAt, gitCommitEmails.id);
 }
 
 /**
- * Add an address for a member and ask for its code. Adding one that is
- * already waiting asks again instead (as {@link resendGitCommitEmail}).
+ * Add an address for a member, or (a null organisation) for a person's own
+ * namespace, and ask for its code. Adding one that is already waiting asks
+ * again instead (as {@link resendGitCommitEmail}).
  */
 export async function addGitCommitEmail(input: {
-  organizationId: string;
+  organizationId: string | null;
   userId: string;
   email: string;
   now?: Date;
@@ -225,17 +259,12 @@ export async function addGitCommitEmail(input: {
     return refuse(400, "email_invalid", "That is the address on your account already");
   }
   if (await takenByAnotherMember(input.organizationId, input.userId, email)) {
-    return refuse(409, "email_taken", TAKEN);
+    return refuse(409, "email_taken", takenMessage(input.organizationId));
   }
   const mine = await db
     .select({ ...columns, sendRequestedAt: gitCommitEmails.sendRequestedAt })
     .from(gitCommitEmails)
-    .where(
-      and(
-        eq(gitCommitEmails.organizationId, input.organizationId),
-        eq(gitCommitEmails.userId, input.userId),
-      ),
-    );
+    .where(and(inScope(input.organizationId), eq(gitCommitEmails.userId, input.userId)));
   const existing = mine.find((row) => row.email === email);
   if (existing !== undefined) {
     if (existing.verifiedAt !== null) {
@@ -247,7 +276,9 @@ export async function addGitCommitEmail(input: {
     return refuse(
       400,
       "email_invalid",
-      `An organisation takes at most ${GIT_COMMIT_EMAIL_LIMIT} commit emails per member`,
+      input.organizationId === null
+        ? `Your own repositories take at most ${GIT_COMMIT_EMAIL_LIMIT} commit emails`
+        : `An organisation takes at most ${GIT_COMMIT_EMAIL_LIMIT} commit emails per member`,
     );
   }
   const [row] = await db
@@ -356,9 +387,10 @@ export async function verifyGitCommitEmail(input: {
   }
   // Someone may have joined with the address, or proved it, since it was added.
   if (await takenByAnotherMember(row.organizationId, input.userId, row.email)) {
-    return refuse(409, "email_taken", TAKEN);
+    return refuse(409, "email_taken", takenMessage(row.organizationId));
   }
-  await dropDeparted(row.organizationId, row.email);
+  // Nobody leaves their own namespace: only an organisation has rows to drop.
+  if (row.organizationId !== null) await dropDeparted(row.organizationId, row.email);
   try {
     // The hash in the condition is what makes the code single-use: a second
     // request with it finds nothing to update.
@@ -376,7 +408,9 @@ export async function verifyGitCommitEmail(input: {
     if (!verified) return refuse(400, "code_invalid", "That code has been used. Send another");
     return { ok: true, email: verified };
   } catch (error) {
-    if (isUniqueViolation(error)) return refuse(409, "email_taken", TAKEN);
+    if (isUniqueViolation(error)) {
+      return refuse(409, "email_taken", takenMessage(row.organizationId));
+    }
     throw error;
   }
 }
@@ -409,21 +443,29 @@ export const newGitCommitEmailCode = (): string => {
 export function gitCommitEmailMessage(input: {
   to: string;
   code: string;
-  organization: string;
+  /** The organisation's name. Null: the requester's own repositories. */
+  organization: string | null;
   requester: string;
   requesterEmail: string;
   forgeUrl: string;
 }): EmailMessage {
   const host = input.forgeUrl.replace(/^https?:\/\//, "");
+  const personal = input.organization === null;
   return {
     to: input.to,
-    subject: `Confirm ${input.to} for commits in ${input.organization}`,
+    subject: personal
+      ? `Confirm ${input.to} for commits in your own repositories`
+      : `Confirm ${input.to} for commits in ${input.organization}`,
     text: [
-      `${input.requester} (${input.requesterEmail}) asked for commits made with ${input.to} to be shown as theirs in ${input.organization}'s repositories on ${host}.`,
+      personal
+        ? `${input.requester} (${input.requesterEmail}) asked for commits made with ${input.to} to be shown as theirs in their own repositories on ${host}.`
+        : `${input.requester} (${input.requesterEmail}) asked for commits made with ${input.to} to be shown as theirs in ${input.organization}'s repositories on ${host}.`,
       "",
       `The code is ${input.code}`,
       "",
-      `Enter it under Settings > Organisations: ${input.forgeUrl}/settings/organisations`,
+      personal
+        ? `Enter it under Settings > Profile: ${input.forgeUrl}/settings`
+        : `Enter it under Settings > Organisations: ${input.forgeUrl}/settings/organisations`,
       "It works for 24 hours.",
       "",
       "If you did not ask for this, ignore this message. Nothing changes without the code.",
@@ -473,7 +515,8 @@ export async function runGitCommitEmailPass(
       requesterEmail: users.email,
     })
     .from(gitCommitEmails)
-    .innerJoin(organizations, eq(organizations.id, gitCommitEmails.organizationId))
+    // Left: a person's own namespace has no organisation to name.
+    .leftJoin(organizations, eq(organizations.id, gitCommitEmails.organizationId))
     .innerJoin(users, eq(users.id, gitCommitEmails.userId))
     .where(and(owed, gt(gitCommitEmails.sendRequestedAt, new Date(now.getTime() - SEND_WINDOW_MS))))
     .orderBy(gitCommitEmails.sendRequestedAt)

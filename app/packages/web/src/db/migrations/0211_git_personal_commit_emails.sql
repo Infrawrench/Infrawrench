@@ -1,0 +1,2 @@
+ALTER TABLE "git_commit_emails" ALTER COLUMN "organization_id" DROP NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "git_commit_emails_personal_idx" ON "git_commit_emails" USING btree ("user_id","email") WHERE "git_commit_emails"."organization_id" IS NULL;

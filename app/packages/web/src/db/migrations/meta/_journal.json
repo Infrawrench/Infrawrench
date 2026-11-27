@@ -1478,6 +1478,13 @@
       "when": 1795781365485,
       "tag": "0210_git_commit_emails",
       "breakpoints": true
+    },
+    {
+      "idx": 211,
+      "version": "7",
+      "when": 1795783730070,
+      "tag": "0211_git_personal_commit_emails",
+      "breakpoints": true
     }
   ]
 }

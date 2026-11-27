@@ -658,7 +658,7 @@ export const PASSES: readonly Pass[] = [
     run: guarded("[git] storage metering failed:", () => runGitStoragePass()),
   },
   // git.infrawrench.com's commit emails: mail the code for each address a
-  // member asked to add (the forge's Worker holds no mail key, so it only
+  // person asked to add (the forge's Worker holds no mail key, so it only
   // asks), and drop the addresses of people who have left their
   // organisation. Postgres and Mailgun only.
   {

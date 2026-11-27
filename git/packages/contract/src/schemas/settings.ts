@@ -192,13 +192,17 @@ export const AccessTokenCreated = Schema.Struct({
 export type AccessTokenCreated = typeof AccessTokenCreated.Type;
 
 /**
- * An extra address a member's commits carry in one organisation: in that
- * organisation's repositories a commit with it is shown as theirs, once they
- * have proved the address with the code mailed to it.
+ * An extra address a person's commits carry in one place: one organisation
+ * they are a member of, or their own namespace. In that place's repositories
+ * a commit with it is shown as theirs, once they have proved the address
+ * with the code mailed to it.
  */
 export const CommitEmail = Schema.Struct({
   id: Schema.String,
-  organizationId: Schema.String,
+  organizationId: Schema.NullOr(Schema.String).annotate({
+    description:
+      "The organisation whose repositories the address counts in. Null: the repositories of the caller's own namespace.",
+  }),
   email: Schema.String.annotate({ description: "Lowercased." }),
   verifiedAt: Schema.NullOr(IsoDateTime).annotate({
     description: "Null until the code is entered: the address counts for nothing before.",
@@ -211,8 +215,9 @@ export const CommitEmail = Schema.Struct({
 export type CommitEmail = typeof CommitEmail.Type;
 
 export const CommitEmailCreate = Schema.Struct({
-  organizationId: Schema.String.annotate({
-    description: "An organisation the caller is a member of.",
+  organizationId: Schema.NullOr(Schema.String).annotate({
+    description:
+      "An organisation the caller is a member of, or null for the repositories of the caller's own namespace.",
   }),
   email: Schema.String.check(Schema.isMaxLength(320)),
 }).annotate({ identifier: "CommitEmailCreate" });

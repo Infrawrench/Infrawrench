@@ -4,7 +4,7 @@
  * lookup; or, in an organisation's repository, the member who verified the
  * address there), and the commit's combined status.
  */
-import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { botUserForEmail, type CommitSummary, type UserRef } from "@infrawrench/git-contract";
 import { alias } from "drizzle-orm/pg-core";
 import {
@@ -43,13 +43,15 @@ export const usersByEmail = async (emails: readonly string[]): Promise<Map<strin
 };
 
 /**
- * People by the commit emails they have verified in the repository's
- * organisation (`git_commit_emails`, server-core `git/commit-emails.ts`).
- * Empty for a repository in a person's own namespace, connected to an
- * organisation or not: an address counts in the organisation's own
- * repositories and nowhere else. Someone who has left the organisation is
- * not found, whatever rows they left, and as with {@link usersByEmail} only
- * people with a username are named.
+ * People by the commit emails they have verified for the repository's
+ * namespace (`git_commit_emails`, server-core `git/commit-emails.ts`): in an
+ * organisation's repository, its members' addresses there; in a person's own,
+ * the addresses that person verified for their own repositories, and nobody
+ * else's. An organisation's addresses never count in a person's repository,
+ * connected to that organisation or not, and a person's never count in an
+ * organisation's or in someone else's. Someone who has left the organisation
+ * is not found, whatever rows they left, and as with {@link usersByEmail}
+ * only people with a username are named.
  */
 export const usersByCommitEmail = async (
   repositoryId: string,
@@ -57,7 +59,7 @@ export const usersByCommitEmail = async (
 ): Promise<Map<string, UserRef>> => {
   const unique = [...new Set(emails.map((email) => email.toLowerCase()).filter(Boolean))];
   if (unique.length === 0) return new Map();
-  // The repository's namespace (an organisation's) and the person's own (their username).
+  // The repository's namespace (an organisation's or a person's) and the person's own (their username).
   const owner = alias(gitNamespaces, "owner");
   const rows = await db
     .select({
@@ -72,15 +74,23 @@ export const usersByCommitEmail = async (
     .innerJoin(
       gitCommitEmails,
       and(
-        eq(gitCommitEmails.organizationId, owner.organizationId),
         isNotNull(gitCommitEmails.verifiedAt),
-      ),
-    )
-    .innerJoin(
-      organizationMembers,
-      and(
-        eq(organizationMembers.organizationId, gitCommitEmails.organizationId),
-        eq(organizationMembers.userId, gitCommitEmails.userId),
+        or(
+          and(
+            eq(owner.kind, "org"),
+            eq(gitCommitEmails.organizationId, owner.organizationId),
+            sql`exists (
+              select 1 from ${organizationMembers}
+              where ${organizationMembers.organizationId} = ${gitCommitEmails.organizationId}
+                and ${organizationMembers.userId} = ${gitCommitEmails.userId}
+            )`,
+          ),
+          and(
+            eq(owner.kind, "user"),
+            isNull(gitCommitEmails.organizationId),
+            eq(gitCommitEmails.userId, owner.userId),
+          ),
+        ),
       ),
     )
     .innerJoin(users, eq(users.id, gitCommitEmails.userId))
@@ -128,8 +138,8 @@ export const commitDecorator = async (
       : Promise.resolve(new Map<string, CommitSummary["status"]>()),
   ]);
   // A bot's address is the bot whatever the commit calls it; then the person
-  // whose account has the address; then whoever verified it in the
-  // repository's organisation.
+  // whose account has the address; then whoever verified it for the
+  // repository's namespace: a member in an organisation's, the owner in their own.
   const user = (email: string) => {
     const lower = email.toLowerCase();
     return botUserForEmail(email) ?? people.get(lower) ?? aliases.get(lower) ?? null;

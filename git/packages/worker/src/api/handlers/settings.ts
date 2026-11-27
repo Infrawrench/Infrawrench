@@ -518,8 +518,9 @@ export const AccountHandlers = HttpApiBuilder.group(GitApi, "account", (handlers
     .handle(
       "listCommitEmails",
       op(async (cx) => {
-        // Only the organisations the session lists: an address kept where the
-        // person is no longer a member is not shown, and counts for nothing.
+        // Their own namespace's, and only the organisations the session lists:
+        // an address kept where the person is no longer a member is not
+        // shown, and counts for nothing.
         const organizations = (await cx.viewer()).organizations.map(
           (organization) => organization.id,
         );
@@ -531,9 +532,12 @@ export const AccountHandlers = HttpApiBuilder.group(GitApi, "account", (handlers
     .handle(
       "addCommitEmail",
       op(async (cx, { payload }) => {
-        const member = (await cx.viewer()).organizations.some(
-          (organization) => organization.id === payload.organizationId,
-        );
+        // Null is the person's own namespace, which they are always in.
+        const member =
+          payload.organizationId === null ||
+          (await cx.viewer()).organizations.some(
+            (organization) => organization.id === payload.organizationId,
+          );
         if (!member) throw forbidden("You are not a member of that organisation", "not_a_member");
         return commitEmailOf(
           await addGitCommitEmail({

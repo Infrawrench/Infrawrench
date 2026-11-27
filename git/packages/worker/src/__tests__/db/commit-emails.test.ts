@@ -1,7 +1,8 @@
 /**
  * Who a commit's addresses are, against a real Postgres: the bot accounts,
  * then the person whose account has the address, then the member who
- * verified it in the repository's organisation (and nowhere else). And the
+ * verified it in the repository's organisation (and nowhere else), or, in a
+ * person's own repository, that person's own addresses. And the
  * way an address gets verified: asked for on the forge, mailed by the app's
  * pass (server-core's `runGitCommitEmailPass`, called here as the poller
  * calls it), typed back once, in time, by the person who asked.
@@ -9,7 +10,12 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { CommitSummary } from "@infrawrench/git-contract";
-import { gitCommitEmails, organizationMembers } from "@infrawrench/server-core/db/schema";
+import {
+  gitCommitEmails,
+  gitNamespaces,
+  organizationMembers,
+  users,
+} from "@infrawrench/server-core/db/schema";
 import {
   GIT_COMMIT_EMAIL_CODE_ATTEMPTS,
   GIT_COMMIT_EMAIL_CODE_TTL_MS,
@@ -55,6 +61,7 @@ describe.skipIf(!configured)("commit emails", () => {
   let inAcme: { id: string; path: string };
   let inOther: { id: string; path: string };
   let adasOwn: { id: string; path: string };
+  let bensOwn: { id: string; path: string };
   const address = (name: string) => `${name}-${world.suffix}@old.example.test`;
 
   /** What the app's pass mailed, newest last. */
@@ -75,14 +82,15 @@ describe.skipIf(!configured)("commit emails", () => {
     if (!code) throw new Error(`No code was mailed to ${email}`);
     return code;
   };
-  const add = (as: Person, organizationId: string, email: string) =>
+  /** A null organisation is the person's own namespace. */
+  const add = (as: Person, organizationId: string | null, email: string) =>
     world.call("POST", "/api/user/commit-emails", { as, body: { organizationId, email } });
   const verify = (as: Person, id: string, code: string) =>
     world.call("POST", `/api/user/commit-emails/${id}/verify`, { as, body: { code } });
   const list = async (as: Person): Promise<Array<Record<string, any>>> =>
     (await world.call("GET", "/api/user/commit-emails", { as })).body.emails;
   /** Add and verify in one go. */
-  const proved = async (as: Person, organizationId: string, email: string) => {
+  const proved = async (as: Person, organizationId: string | null, email: string) => {
     const added = await add(as, organizationId, email);
     expect(added.status, JSON.stringify(added.body)).toBe(200);
     await pass();
@@ -119,6 +127,7 @@ describe.skipIf(!configured)("commit emails", () => {
     inAcme = await world.repository(ada, acme.slug, "infra");
     inOther = await world.repository(ada, other.slug, "infra");
     adasOwn = await world.repository(ada, ada.username, "notes");
+    bensOwn = await world.repository(ben, ben.username, "notes");
   });
   afterAll(async () => {
     if (!world) return;
@@ -493,6 +502,217 @@ describe.skipIf(!configured)("commit emails", () => {
           .where(inArray(gitCommitEmails.id, [id, kept.body.id]))
       ).length,
     ).toBe(0);
+  });
+
+  describe("in a person's own namespace", () => {
+    it("counts an address in the person's own repositories and nowhere else", async () => {
+      const email = address("ada-own");
+      const added = await add(ada, null, ` ${email.toUpperCase()} `);
+      expect(added.status, JSON.stringify(added.body)).toBe(200);
+      expect(added.body).toMatchObject({ organizationId: null, email, verifiedAt: null });
+      // Nobody's until the code is typed back.
+      expect(await who(adasOwn.id, email)).toBeNull();
+      expect(await pass()).toBe(1);
+      expect(await who(adasOwn.id, email)).toBeNull();
+      const message = outbox.at(-1)!;
+      expect(message.to).toBe(email);
+      expect(message.subject).toBe(`Confirm ${email} for commits in your own repositories`);
+      expect(message.text).toContain(ada.email);
+      expect(message.text).toContain("their own repositories");
+      expect(message.text).toContain("Settings > Profile: ");
+      expect(message.text).not.toContain("organisations");
+
+      expect((await verify(ada, added.body.id, codeFor(email))).status).toBe(200);
+      expect((await who(adasOwn.id, email.toUpperCase()))?.username).toBe(ada.username);
+      // Not in an organisation she owns, nor in anyone else's own repositories.
+      expect(await who(inAcme.id, email)).toBeNull();
+      expect(await who(inOther.id, email)).toBeNull();
+      expect(await who(bensOwn.id, email)).toBeNull();
+      // Listed beside her organisations' addresses, under no organisation.
+      expect((await list(ada)).find((row) => row["id"] === added.body.id)).toMatchObject({
+        organizationId: null,
+        email,
+      });
+      // The pass drops what people who left an organisation kept: nobody leaves their own namespace.
+      await pass();
+      expect((await who(adasOwn.id, email))?.username).toBe(ada.username);
+    });
+
+    it("keeps an organisation's address out of a person's repository, connected to it or not", async () => {
+      const email = address("ada-connected");
+      await proved(ada, acme.id, email);
+      await db
+        .update(gitNamespaces)
+        .set({ workspaceOrganizationId: acme.id })
+        .where(eq(gitNamespaces.userId, ada.id));
+      try {
+        expect(await who(adasOwn.id, email)).toBeNull();
+        expect((await who(inAcme.id, email))?.username).toBe(ada.username);
+      } finally {
+        await db
+          .update(gitNamespaces)
+          .set({ workspaceOrganizationId: null })
+          .where(eq(gitNamespaces.userId, ada.id));
+      }
+    });
+
+    it("refuses a bot's address, the person's own and one on anyone else's account", async () => {
+      const refused = async (as: Person, email: string) => {
+        const answer = await add(as, null, email);
+        return [answer.status, answer.body.code, answer.body.error];
+      };
+      for (const bot of ["noreply@anthropic.com", "CursorAgent@cursor.com"]) {
+        expect(await refused(ada, bot)).toEqual([
+          400,
+          "email_invalid",
+          "That address belongs to a bot account",
+        ]);
+      }
+      expect(await refused(ada, ada.email.toUpperCase())).toEqual([
+        400,
+        "email_invalid",
+        "That is the address on your account already",
+      ]);
+      // Cy shares one organisation with Ada, the stranger none, and the
+      // nameless one has no username: an account's address is refused sitewide.
+      const stranger = await world.person("stranger");
+      for (const taken of [cy.email, stranger.email.toUpperCase(), nameless.email]) {
+        expect(await refused(ada, taken)).toEqual([
+          409,
+          "email_taken",
+          "That address is on another person's account",
+        ]);
+      }
+      expect((await refused(ada, "not an address"))[1]).toBe("email_invalid");
+      const email = address("ada-own-twice");
+      await proved(ada, null, email);
+      expect(await refused(ada, email)).toEqual([
+        409,
+        "email_taken",
+        "You have added that address already",
+      ]);
+      // Signed out, and with a token: set from a signed-in browser only.
+      expect(
+        (
+          await world.call("POST", "/api/user/commit-emails", {
+            body: { organizationId: null, email },
+          })
+        ).status,
+      ).toBe(401);
+      expect(
+        (
+          await world.call("POST", "/api/user/commit-emails", {
+            as: ada,
+            scopes: ["repo:write"],
+            body: { organizationId: null, email: address("ada-token") },
+          })
+        ).status,
+      ).toBe(403);
+    });
+
+    it("refuses the code when the address has become someone's account address since", async () => {
+      const email = address("claimed-later");
+      const added = await add(ada, null, email);
+      await pass();
+      const late = await world.person("latecomer");
+      await db.update(users).set({ email }).where(eq(users.id, late.id));
+      const answer = await verify(ada, added.body.id, codeFor(email));
+      expect([answer.status, answer.body.code]).toEqual([409, "email_taken"]);
+      expect(await who(adasOwn.id, email)).toMatchObject({ username: late.username });
+    });
+
+    it("neither blocks nor is blocked by the same address in an organisation or in someone else's namespace", async () => {
+      // Hers first, then a member's in the organisation.
+      const first = address("both-ways-1");
+      await proved(ada, null, first);
+      await proved(ben, acme.id, first);
+      // The organisation's first, then hers; and Ben's own as well.
+      const second = address("both-ways-2");
+      await proved(ben, acme.id, second);
+      await proved(ada, null, second);
+      await proved(ben, null, second);
+      for (const email of [first, second]) {
+        expect((await who(adasOwn.id, email))?.username).toBe(ada.username);
+        expect((await who(inAcme.id, email))?.username).toBe(ben.username);
+      }
+      expect((await who(bensOwn.id, second))?.username).toBe(ben.username);
+      expect(await who(bensOwn.id, first)).toBeNull();
+      // The same person may keep one address in both places: two rows.
+      const third = address("both-ways-3");
+      await proved(ada, null, third);
+      await proved(ada, acme.id, third);
+      expect((await list(ada)).filter((row) => row["email"] === third)).toHaveLength(2);
+    });
+
+    it("puts the account's address before the owner's alias", async () => {
+      // Proved before the address was anyone's account's: the account still wins.
+      const email = address("ada-then-account");
+      await proved(ada, null, email);
+      const late = await world.person("account-first");
+      await db.update(users).set({ email }).where(eq(users.id, late.id));
+      expect((await who(adasOwn.id, email))?.username).toBe(late.username);
+    });
+
+    it("holds a person to a few addresses of their own, counted apart from an organisation's", async () => {
+      const packer = await world.person("packer");
+      for (let n = 0; n < GIT_COMMIT_EMAIL_LIMIT; n++) {
+        expect((await add(packer, null, address(`packer-${n}`))).status).toBe(200);
+      }
+      const over = await add(packer, null, address("packer-over"));
+      expect([over.status, over.body.error]).toEqual([
+        400,
+        `Your own repositories take at most ${GIT_COMMIT_EMAIL_LIMIT} commit emails`,
+      ]);
+      // An organisation's are its own ten.
+      await db.insert(organizationMembers).values({
+        id: `m-packer-${world.suffix}`,
+        userId: packer.id,
+        organizationId: acme.id,
+        role: "member",
+      });
+      expect((await add(packer, acme.id, address("packer-over"))).status).toBe(200);
+      // Removing one makes room, and only its owner removes it.
+      const mine = (await list(packer)).filter((row) => row["organizationId"] === null);
+      expect(mine).toHaveLength(GIT_COMMIT_EMAIL_LIMIT);
+      expect(
+        (await world.call("DELETE", `/api/user/commit-emails/${mine[0]!["id"]}`, { as: ada }))
+          .status,
+      ).toBe(404);
+      expect(
+        (await world.call("DELETE", `/api/user/commit-emails/${mine[0]!["id"]}`, { as: packer }))
+          .status,
+      ).toBe(200);
+      expect((await add(packer, null, address("packer-over"))).status).toBe(200);
+      // Leaving the organisation takes its address and leaves theirs.
+      await db
+        .delete(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.userId, packer.id),
+            eq(organizationMembers.organizationId, acme.id),
+          ),
+        );
+      await pass();
+      const left = await list(packer);
+      expect(left).toHaveLength(GIT_COMMIT_EMAIL_LIMIT);
+      expect(left.every((row) => row["organizationId"] === null)).toBe(true);
+    });
+
+    it("resolves a page of a person's repository in the same two lookups", async () => {
+      const email = address("ada-own-page");
+      await proved(ada, null, email);
+      const page = Array.from({ length: 50 }, (_, n) =>
+        commit(n.toString(16).padStart(2, "0"), n % 2 === 0 ? email : ben.email, {
+          coAuthors: [["Claude", "noreply@anthropic.com"]],
+        }),
+      );
+      const decorate = await commitDecorator(adasOwn.id, page, { statuses: false });
+      const seen = page.map((one) => decorate(one));
+      expect(new Set(seen.map((one) => one.authorUser?.username))).toEqual(
+        new Set([ada.username, ben.username]),
+      );
+      expect(seen.every((one) => one.coAuthors[0]!.user?.kind === "bot")).toBe(true);
+    });
   });
 
   it("looks people up once a page, whatever its length", async () => {

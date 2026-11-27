@@ -145,10 +145,12 @@ export const gitUsers = pgTable("git_users", {
 });
 
 /**
- * An extra address a member's commits carry in one organisation
- * (`git/commit-emails.ts`): in that organisation's repositories a commit
- * with it is shown as theirs. Never sitewide, and it counts only while
- * `verifiedAt` is set and the person is still a member.
+ * An extra address a person's commits carry in one place
+ * (`git/commit-emails.ts`): in one organisation's repositories
+ * (`organizationId` set), or in the repositories of the person's own
+ * namespace (`organizationId` null). There a commit with it is shown as
+ * theirs. Never sitewide, and it counts only while `verifiedAt` is set and,
+ * for an organisation's, the person is still a member.
  *
  * The person proves the address is theirs with a code mailed to it. The
  * forge only asks (`sendRequestedAt`); the app's poller makes the code, keeps
@@ -160,9 +162,10 @@ export const gitCommitEmails = pgTable(
   "git_commit_emails",
   {
     id: text("id").primaryKey(),
-    organizationId: text("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** The organisation the address counts in. Null: the person's own namespace. */
+    organizationId: text("organization_id").references(() => organizations.id, {
+      onDelete: "cascade",
+    }),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -183,7 +186,19 @@ export const gitCommitEmails = pgTable(
   (t) => ({
     /** One row per person and address in an organisation. */
     ownIdx: uniqueIndex("git_commit_emails_own_idx").on(t.organizationId, t.userId, t.email),
-    /** An address is one member's in an organisation, once it is proved. */
+    /**
+     * One row per person and address in their own namespace: Postgres counts
+     * nulls as distinct, so the index above does not hold these.
+     */
+    personalIdx: uniqueIndex("git_commit_emails_personal_idx")
+      .on(t.userId, t.email)
+      .where(sql`${t.organizationId} IS NULL`),
+    /**
+     * An address is one member's in an organisation, once it is proved. A
+     * person's own namespace has nobody else in it, and its rows (a null
+     * organisation) are outside this index: the same address can be proved
+     * in an organisation by someone else.
+     */
     verifiedIdx: uniqueIndex("git_commit_emails_verified_idx")
       .on(t.organizationId, t.email)
       .where(sql`${t.verifiedAt} IS NOT NULL`),
