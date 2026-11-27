@@ -229,6 +229,29 @@ describe("note commands", () => {
     ]);
   });
 
+  it("reads what the documented jq program prints for a linter's JSON", () => {
+    // ci-runner/README.md "Notes on the branch page": the three lines its example
+    // prints for an error, a two-line warning and a message with no line.
+    const { notes, ignored } = parse(
+      [
+        "::must-fix file=src/db.ts,line=42,title=no-explicit-any::Unexpected any. Specify a different type.",
+        "::should-fix file=src/db.ts,line=7,title=prefer-const::'limit' is never reassigned: use 'const', not 'let'.%0ASee the rule.",
+        "::must-fix file=src/db.ts,title=eslint::Parsing error: 100%25 broken",
+      ].join("\n"),
+    );
+    expect(ignored).toEqual({ malformed: 0, tooLong: 0, overLimit: 0 });
+    expect(notes.map((note) => [note.severity, note.line, note.title, note.message])).toEqual([
+      ["must_fix", 42, "no-explicit-any", "Unexpected any. Specify a different type."],
+      [
+        "should_fix",
+        7,
+        "prefer-const",
+        "'limit' is never reassigned: use 'const', not 'let'.\nSee the rule.",
+      ],
+      ["must_fix", null, "eslint", "Parsing error: 100% broken"],
+    ]);
+  });
+
   it("keeps what the runner masked as it is", () => {
     const { notes } = parse("::must-fix file=.env,line=1::The key *** is committed.");
     expect(notes[0]?.message).toBe("The key *** is committed.");

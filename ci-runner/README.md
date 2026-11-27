@@ -1195,6 +1195,133 @@ Every tool is pinned. `@7.1` takes the newest `7.1.x`, `@7` the newest `7.x`,
 numbers (`@7.1.3.2`) one rebuild; a bare name is an error, so a new
 release can never change what an old commit runs.
 
+### Notes on the branch page
+
+A job of a repository on git.infrawrench.com can leave notes on the branch
+page of the commit it ran on, by printing a line:
+
+```
+::must-fix file=src/db.ts,line=42,title=Unbounded query::This read has no LIMIT.
+::doubt file=src/retry.ts,line=12::Is three attempts enough for a cold start?
+```
+
+Each command is one line of the job's output or of its errors, starting at
+the line's first character: `::`, the command, a space and its parameters
+when it has any, `::`, then the message.
+
+| Command        | Becomes                                                               |
+| -------------- | --------------------------------------------------------------------- |
+| `::must-fix`   | A finding that must be fixed. Open, it holds the branch's merge.      |
+| `::should-fix` | A finding that should be fixed.                                       |
+| `::note`       | A finding that is a note.                                             |
+| `::doubt`      | A trace entry of kind doubt, listed first under Doubts and decisions. |
+| `::decision`   | A trace entry of kind decision.                                       |
+| `::step`       | A trace entry of kind step.                                           |
+| `::evidence`   | A trace entry of kind evidence.                                       |
+
+| Parameter    | Value                                                                                                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `file`       | A path from the repository's root (`src/db.ts`; a leading `./` is dropped). Left out, the note is about the whole change.                                                  |
+| `line`       | The line the note is on, from 1, in the file as it is at the run's commit. Needs `file`.                                                                                   |
+| `end_line`   | The last line, for a range. Needs `line`, and is not before it.                                                                                                            |
+| `title`      | A finding's title, or a bold first line on a trace entry. Without one a finding is titled by its message's first line. Up to 200 characters.                               |
+| `needs_code` | `true` or `false`: whether the page shows the lines under the note's text. Left out, it is `true` when the note has a `line` and `false` otherwise. `true` needs a `file`. |
+
+Parameters are separated by commas, in any order, each given once. Every
+one is optional, and a finding with a `title` needs no message.
+
+**Escapes.** A message is one line, and a parameter's value ends at a comma,
+so write these instead of the characters themselves:
+
+| Write | For                                                         |
+| ----- | ----------------------------------------------------------- |
+| `%25` | `%`                                                         |
+| `%0A` | A line break (`%0D` for a carriage return)                  |
+| `%3A` | `:` in a parameter's value, where `::` would end the values |
+| `%2C` | `,` in a parameter's value                                  |
+
+Escape `%` first when you write commands from a tool's output: `%250A` is
+read as the text `%0A`. In a message, `:` and `,` need no escape.
+
+**Where they go.** On the open branch page of the run's commit, on the
+version that commit is the tip of. That is the page of a pull request event's
+run, and for a push or a manual run the page of the branch it ran on, in
+the same repository. A run on a branch with no open page (the default
+branch, a tag, a schedule) leaves nothing, and so does a run of a commit
+the branch has since been force pushed past. Nothing is written for a
+repository on GitHub.
+
+- **Findings** are reported by the reviewer `ci:<pipeline>/<job>`, with the
+  line of the job's log that printed the command as their evidence. They
+  count in the page's tally, sit under their line in the diff, and an open
+  must-fix holds the merge until it is fixed, dismissed or overridden by an
+  administrator, like any finding. A must-fix on a branch an agent writes is
+  sent to the agent.
+- **The same finding again** is the same card. A finding is told apart by
+  its job, its `file` and its title, never its line, so it follows the code
+  from version to version and a dismissal is remembered. Two with the same
+  file and title in one job's output are told apart by their order.
+- **Fixed.** When a job passes, whatever it reported earlier and did not
+  print this time is marked fixed in that version, on the same version too
+  when the job is run again. A job that fails fixes nothing (it may have
+  stopped before the linter ran), and neither does one that is skipped or
+  cancelled. A job the [task cache](#the-task-cache) stood in for printed
+  nothing, since nothing it reads changed: its findings stay as they were.
+- **Trace entries** are recorded by the agent `ci`, named
+  `<pipeline>/<job>`, and are shown with the job in place of an agent's
+  mark. A job that runs again on the same commit replaces what it recorded
+  there.
+- **A pull request from a fork** gets its run's findings (they are about the
+  fork's own code), and no trace entries: the trace is the repository's own
+  record of the work.
+
+**Limits.** A job leaves up to 100 notes and a run up to 1,000; a message
+is up to 8 KiB after its escapes are read, and a `file` up to 1,024
+characters. A command past a limit, or one that is malformed (a parameter
+that is not in the table, a `line` that is not a number, an `end_line`
+with no `line`, a `file` that is absolute or leaves the repository, no
+message), leaves no note, and the job's reason on the run's page says how
+many were ignored: `2 note commands ignored (2 malformed).` Lines that
+start with `::` and another name (`::group::`, `::error`) are other tools'
+and are left alone.
+
+**Secrets.** The commands are read from the run's report, where every
+secret's value is already replaced by `***`, and what a note says goes
+through the forge's own masking of credentials by their shape before it is
+stored. A note is read by everyone who can read the repository, so do not
+print what a secret protects either.
+
+A linter's JSON turned into notes, on a [Linux machine](#platforms) (whose
+image has `jq`):
+
+```yaml
+name: lint
+on:
+  pull-request: {}
+jobs:
+  eslint:
+    platform: linux
+    run: |
+      npm ci
+      status=0
+      npx eslint . --format json --output-file eslint.json || status=$?
+      jq -r --arg root "$PWD" '
+        def esc: gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A");
+        def param: esc | gsub(":"; "%3A") | gsub(","; "%2C");
+        .[]
+        | (.filePath | ltrimstr($root + "/")) as $file
+        | .messages[]
+        | (if .severity == 2 then "must-fix" else "should-fix" end) as $command
+        | (if .line then ",line=\(.line)" else "" end) as $line
+        | "::\($command) file=\($file | param)\($line),title=\(.ruleId // "eslint" | param)::\(.message | esc)"
+      ' eslint.json
+      exit "$status"
+```
+
+The job prints the commands whether or not the linter passed, then ends
+with the linter's own status. In an isolate (`env:bash-node@24`), which has
+no `jq`, the same few lines are a `node -e` script over the same file.
+
 ### Job order
 
 When more jobs are ready than may run, a run starts the one with the

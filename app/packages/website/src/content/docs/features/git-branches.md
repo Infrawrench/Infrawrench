@@ -53,11 +53,13 @@ Above the files, the page lists what there is to read about the version, so you 
 | Group                    | What it holds                                                                                         |
 | ------------------------ | ----------------------------------------------------------------------------------------------------- |
 | **Doubts and decisions** | What the agent was unsure of, then the choices it made. They come first and are marked down the side. |
-| **Findings**             | What reviewers found on this version, open ones first.                                                |
+| **Findings**             | What reviewers and CI jobs found on this version, open ones first.                                    |
 | **Comments**             | Review comments on lines of this diff.                                                                |
 | **Steps**                | The rest of the agent's record, in the order it was written: the ask, steps, evidence and notes.      |
 
 A note about a file names it, with its lines when it has them: `modules/network/main.tf:101` or `modules/network/main.tf:97-103`. Click that to open the file at those lines.
+
+A note a CI job printed is in the same groups, marked **CI** with the job's name: see [Notes from CI](#notes-from-ci).
 
 A note shows the lines it is about under its text when the code is needed to follow it. An agent says so when it records the note; when it does not say, a note on a line shows its code and a note on a whole file or on nothing does not. Review comments always show their lines.
 
@@ -71,13 +73,13 @@ Click a file's line to open it, or pick it in the tree. **Expand all** and **Col
 
 A file with notes opens on the lines they are about, with three lines around each. The rest is counted, not shown:
 
-- The bar under the file's name says how much you are looking at, such as **Showing 37 of 77 changed lines**, and **Show full diff** shows all of it. **Show less** goes back.
-- Between two parts, a row such as **40 more changed lines** stands for the changed lines left out there. Click it to show them.
+- The bar under the file's name says how much you are looking at, such as **Showing 52 of 77 changed lines**, and **Show full diff** shows all of it. **Show less** goes back.
+- Between two parts, a row such as **25 more changed lines** stands for the changed lines left out there. Click it to show them.
 - Every note about a file hangs in it too, whether or not its card shows code: an agent's entry above the lines it explains, a finding or a comment under its line, and a note on the whole file at the file's top.
 
 A file with no notes opens whole. Commenting on a line never closes what you had open around it.
 
-<insert [A file opened on a branch page: the bar reading "Showing 37 of 77 changed lines" with the "Show full diff" button, an agent's step above line 131, a row reading "40 more changed lines" with "Show" between two parts of the diff, a doubt above line 181, and four more files closed below with their note counts] here>
+<insert [A file opened on a branch page: the bar reading "Showing 52 of 77 changed lines" with the "Show full diff" button, an agent's step above line 131, a row reading "25 more changed lines" with "Show" between two parts of the diff, a finding marked CI under line 174, a doubt above line 181, and four more files closed below with their note counts] here>
 
 ### Review
 
@@ -109,6 +111,38 @@ A reviewer leaves findings on the lines they are about, each **must fix**, **sho
 - A branch proposed from a fork is not reviewed on its own: someone with write access asks for the review.
 
 Review agents run for repositories an organization owns, and what they use counts toward that organization's [AI usage](../team-and-billing/billing-and-plans.md#ai-usage). A repository in a personal namespace gets them once its owner [connects the namespace to an organization](./git-getting-started.md#where-your-own-repositories-run), and they count toward that organization's usage in the same way. When the organization has reached its AI budget for the month, a review is skipped and says so. A reviewer of your own can report findings through the API under its own name, in any repository: its findings are listed on the branch's page whether or not review agents are turned on.
+
+### Notes from CI
+
+A job in [Infrawrench CI](./ci.md) can put notes on the branch's page by printing a line for each. They land on the version its run was of, in the same cards and the same places in the diff as any other note, and the findings count in the page's tally.
+
+```
+::must-fix file=src/db.ts,line=42,title=Unbounded query::This read has no LIMIT.
+::doubt file=src/retry.ts,line=12::Is three attempts enough for a cold start?
+```
+
+| Command        | What it becomes                                                                 |
+| -------------- | ------------------------------------------------------------------------------- |
+| `::must-fix`   | A **must fix** finding. While it is open it holds the merge, like any must-fix. |
+| `::should-fix` | A **should fix** finding.                                                       |
+| `::note`       | A **note** finding.                                                             |
+| `::doubt`      | A doubt, under **Doubts and decisions**.                                        |
+| `::decision`   | A decision, under **Doubts and decisions**.                                     |
+| `::step`       | A step, under **Steps**.                                                        |
+| `::evidence`   | Evidence, under **Steps**.                                                      |
+
+`file`, `line`, `end_line`, `title` and `needs_code` say where a note goes and how it is shown. [Notes on a branch page](./ci.md#notes-on-a-branch-page) in the CI guide has the parameters, the escapes for line breaks, commas and colons, the limits, and a job that turns a linter's report into notes.
+
+<insert [The notes on a version of a branch page with two notes from CI: under "Doubts and decisions" a doubt marked "CI terraform/lint" beside the label "modules/network/main.tf:176", and under "Findings" a Should fix finding titled "DNS is allowed over UDP only" marked "CI terraform/lint" where a reviewer's name would be, with the label "modules/network/main.tf:165-174"] here>
+
+- **Where it came from.** A note from CI shows **CI** and `<pipeline>/<job>`. Click it to open the run's log at the line that printed the note.
+- **Fixed by a passing job.** When the job passes without printing a finding it reported before, the finding is marked fixed in that version. A job that fails, is skipped or is cancelled leaves its findings open.
+- **Dismissing and overriding** work as for a reviewer's finding: a dismissed finding stays dismissed when the job prints it again, and an administrator can let a merge past an open must-fix with a reason.
+- **Sent to the agent.** A must-fix from CI on a branch an agent writes is sent to it as an instruction.
+- **Forks.** A run of a branch proposed from a fork leaves findings only. It cannot mark another reviewer's findings fixed, since a job only ever answers for what it printed itself.
+- **One repository.** A job writes on a page of the repository it ran for. A fork's own CI never writes on the page its branch has in the original repository.
+
+The names are CI's own: a reviewer that reports through the API cannot call itself `ci:` anything, and an agent cannot record a trace as `ci`.
 
 ### Merge
 
@@ -181,5 +215,6 @@ A fork of a private repository stays private and within the reach of the same ow
 
 ## CI and Terraform on branches
 
-- Repositories of an organization on a paid plan run [Infrawrench CI](./ci.md) on every push from the pipelines in `.infrawrench/ci/`. Results show on a branch's **Checks** tab, beside each commit, and under the repository's **CI** tab. Repositories in a personal namespace run CI once their owner [connects the namespace to an organization](./git-getting-started.md#where-your-own-repositories-run) on a paid plan.
+- Repositories of an organization on a paid plan run [Infrawrench CI](./ci.md) on every push from the pipelines in `.infrawrench/ci/`. Results show on a branch's **Checks** tab, beside each commit, and under the repository's **CI** tab. A job can also put [notes on the branch's page](#notes-from-ci). Repositories in a personal namespace run CI once their owner [connects the namespace to an organization](./git-getting-started.md#where-your-own-repositories-run) on a paid plan.
 - A repository with [Terraform workspaces](./git-terraform.md) plans each branch that touches one and shows the plan on the branch's page.
+- An agent that works in the repository can learn the branch workflow and the CI note commands from the [git.infrawrench.com and CI skill](./git-agents-and-mcp.md#a-skill-for-your-agent).

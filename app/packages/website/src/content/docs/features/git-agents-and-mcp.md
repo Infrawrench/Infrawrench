@@ -8,6 +8,14 @@ sidebar_order: 9
 
 Every push to a branch makes a version of it. What an agent records before a push is attached to the version that push makes, so a reviewer reads the work and how it was done side by side.
 
+## A skill for your agent
+
+The skill below teaches a coding agent how to work in a repository here: connecting to this server, recording its work as it goes, answering what reviewers send back, reporting findings as a reviewer, and writing [Infrawrench CI](./ci.md) jobs that put [notes on a branch's page](./git-branches.md#notes-from-ci).
+
+<skill id="infrawrench-git" />
+
+The server tells a connected agent where the skill is, so an agent that can fetch a page finds it without being told.
+
 ## Connect
 
 The server is one address:
@@ -91,7 +99,7 @@ The expiry shown for a connected application is when it lapses if it is left unu
 An agent that cannot open a browser sends a credential in the `Authorization` header instead:
 
 - **A personal access token** (`iwg_`). Create one under **Settings > Access tokens**, with the `repo:write` scope if the agent records traces. See [Access tokens](./git-getting-started.md#access-tokens).
-- **A CI job's token.** A job in [Infrawrench CI](./ci.md) can record traces on the branch its run is of. It cannot use the other tools, and a run of a branch proposed from a fork cannot record.
+- **A CI job's token.** A job in [Infrawrench CI](./ci.md) can record traces on the branch its run is of. It cannot use the other tools, and a run of a branch proposed from a fork cannot record. A job that only wants to leave notes needs no token at all: it prints [note commands](./git-branches.md#notes-from-ci).
 
 ```sh
 claude mcp add --transport http infrawrench-git https://git.infrawrench.com/mcp \
@@ -112,7 +120,7 @@ For Codex, set `bearer_token_env_var` on the server in `~/.codex/config.toml`. F
 | `list_instructions`          | Lists what reviewers sent to the agent that writes the branch.                                                  |
 | `mark_instruction_delivered` | Says an instruction has reached the agent.                                                                      |
 | `mark_instruction_answered`  | Says which version answers an instruction. Left out, it is the next push.                                       |
-| `list_findings`              | Lists what review agents found on a branch.                                                                     |
+| `list_findings`              | Lists what review agents and CI jobs found on a branch.                                                         |
 | `report_finding`             | Reports a review agent's findings on a version.                                                                 |
 | `start_work`                 | Creates a branch and its page, as a draft, from an ask, before any code exists.                                 |
 
@@ -152,3 +160,7 @@ Tokens, keys and passwords in an entry are replaced with `***` before it is stor
 ## Reviewing with an agent
 
 An agent that reviews reads the change with `get_branch` and `get_version_diff`, then calls `report_finding` with a severity for each problem: `must_fix`, `should_fix` or `note`. It needs write access to the repository.
+
+It reports under a name of its own, such as `claude-review`. The names of the forge's own reviewers (`general`, `security`, `tests`, `terraform`, `intent`) and names that start with `ci:`, which [Infrawrench CI](./git-branches.md#notes-from-ci) reports under, are refused.
+
+When a check already runs in CI, it does not need this server to report: the job prints [note commands](./git-branches.md#notes-from-ci) and its findings appear on the branch's page under the job's name.

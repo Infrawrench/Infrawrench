@@ -541,6 +541,88 @@ jobs:
 - **Who can download**: anyone in the organization who can see the run (`ci:read`). Each **Download** makes a link that works for 15 minutes, for that one file; nothing is public.
 - A job with `task-cache:` cannot have `downloads:`: when the task cache stands in for it, it does not run, so there is nothing to keep.
 
+## Notes on a branch page
+
+A job of a repository on [git.infrawrench.com](./git.md) can leave notes on the [branch page](./git-branches.md#notes-from-ci) of the commit it ran on. It prints one line per note:
+
+```
+::must-fix file=src/db.ts,line=42,title=Unbounded query::This read has no LIMIT.
+::doubt file=src/retry.ts,line=12::Is three attempts enough for a cold start?
+```
+
+| Command        | What it becomes on the branch page                                 |
+| -------------- | ------------------------------------------------------------------ |
+| `::must-fix`   | A finding that must be fixed. While it is open it holds the merge. |
+| `::should-fix` | A finding that should be fixed.                                    |
+| `::note`       | A finding that is a note.                                          |
+| `::doubt`      | A doubt, listed first under **Doubts and decisions**.              |
+| `::decision`   | A decision, under **Doubts and decisions**.                        |
+| `::step`       | A step, under **Steps**.                                           |
+| `::evidence`   | Evidence, under **Steps**.                                         |
+
+A command is a whole line of the job's output, starting at its first character: `::`, the command, a space and its parameters when it has any, `::`, then the message.
+
+| Parameter    | Value                                                                                                                                              |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `file`       | A path from the repository's root, such as `src/db.ts`. Left out, the note is about the whole change.                                              |
+| `line`       | The line the note is on, from 1. Needs `file`.                                                                                                     |
+| `end_line`   | The last line of a range. Needs `line`.                                                                                                            |
+| `title`      | A finding's title, or a bold first line on a doubt, decision, step or evidence. Without one, a finding is titled by the first line of its message. |
+| `needs_code` | `true` or `false`: whether the page shows the lines under the note's text. Left out, a note with a `line` shows its code and any other does not.   |
+
+Separate parameters with commas. All of them are optional, and a finding with a `title` needs no message.
+
+A message is one line and a parameter's value ends at a comma, so some characters are written as escapes:
+
+| Write | For                        |
+| ----- | -------------------------- |
+| `%25` | `%`                        |
+| `%0A` | A line break               |
+| `%3A` | `:` in a parameter's value |
+| `%2C` | `,` in a parameter's value |
+
+Escape `%` first when a script builds commands from a tool's output.
+
+This job runs ESLint on a [Linux machine](#linux-machines), turns its JSON report into commands with `jq`, and still fails when the linter does:
+
+```yaml
+name: lint
+on:
+  pull-request: {}
+jobs:
+  eslint:
+    platform: linux
+    run: |
+      npm ci
+      status=0
+      npx eslint . --format json --output-file eslint.json || status=$?
+      jq -r --arg root "$PWD" '
+        def esc: gsub("%"; "%25") | gsub("\r"; "%0D") | gsub("\n"; "%0A");
+        def param: esc | gsub(":"; "%3A") | gsub(","; "%2C");
+        .[]
+        | (.filePath | ltrimstr($root + "/")) as $file
+        | .messages[]
+        | (if .severity == 2 then "must-fix" else "should-fix" end) as $command
+        | (if .line then ",line=\(.line)" else "" end) as $line
+        | "::\($command) file=\($file | param)\($line),title=\(.ruleId // "eslint" | param)::\(.message | esc)"
+      ' eslint.json
+      exit "$status"
+```
+
+- **Where they appear**: on the open branch page of the run's commit, on the version that push made. A run on a branch with no open page, such as the default branch, leaves no notes. So does a run of a commit the branch has since been force pushed past.
+- **Who they are from**: each note names the pipeline and the job that printed it, and links to that line of the job's log. Findings are reported by the reviewer `ci:<pipeline>/<job>`.
+- **The same finding again**: a finding is told apart by its job, its file and its title, not its line, so on the next push it is the same finding, and one you dismissed stays dismissed.
+- **Fixed**: when a job passes, the findings it reported before and did not print this time are marked fixed. A job that fails, is skipped or is cancelled fixes nothing. A job the task cache stood in for did not run, so its findings stay as they were.
+- **Run again**: a job that runs again on the same commit updates its findings and replaces its doubts, decisions, steps and evidence there.
+- **Forks**: a run of a branch proposed from a fork leaves findings, and no doubts, decisions, steps or evidence.
+- **How many**: up to 100 notes per job and 1,000 per run. A message is up to 8 KiB. A command over a limit, or a malformed one (a parameter that is not in the table, a `line` that is not a number, a `file` outside the repository, no message), leaves no note, and the job's reason on the run says how many were ignored.
+- **Secrets**: your secrets are replaced with `***` in a note as they are in the log, and anything shaped like a credential is masked again before the note is stored. Everyone who can read the repository reads its notes.
+- Lines that start with `::` and another name, such as `::group::`, are left alone. Runs for GitHub repositories leave no notes.
+
+An agent working in a repository on git.infrawrench.com can learn the commands, and how they fit with the forge's own tools, from a skill:
+
+<skill id="infrawrench-git" />
+
 ## Pull requests from forks
 
 A pull request from a fork runs code you have not reviewed, so it never runs on its own:
