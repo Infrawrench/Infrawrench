@@ -1,8 +1,23 @@
 import { defineMockHandlers, notFound, paginate, unprocessable } from "../define";
-import { findRepository, gitOf, requireUser } from "../db";
+import {
+  APP_URL,
+  type RepositoryRecord,
+  findRepository,
+  gitOf,
+  requireUser,
+  runsInOf as runsIn,
+} from "../db";
 import { flatten, resolveRef } from "../git";
 import { combine, logFrames, reportStatus, runsOf, statusesFor, toDetail, toRun } from "../ci-data";
 import { newId } from "../settings-data";
+
+const NEEDS_ORGANISATION =
+  "CI runs in an organisation. Choose one for your own repositories in Settings > Profile";
+
+const ciAppUrl = (repo: RepositoryRecord): string | null => {
+  const organizationId = runsIn(repo);
+  return organizationId === null ? null : `${APP_URL}/org/${organizationId}/ci`;
+};
 
 /** Repositories whose CI switch someone turned off. No entry means on. */
 const switchedOff = new Set<string>();
@@ -50,8 +65,8 @@ export default defineMockHandlers({
         }
       }
       const reason =
-        repo.owner.kind !== "org"
-          ? "CI runs for an organisation's repositories"
+        runsIn(repo) === null
+          ? NEEDS_ORGANISATION
           : switchedOff.has(repo.id)
             ? "CI is switched off for this repository"
             : null;
@@ -59,17 +74,19 @@ export default defineMockHandlers({
     },
     settings: ({ params }) => {
       const repo = findRepository(params.owner, params.repo);
-      return { enabled: !switchedOff.has(repo.id), available: repo.owner.kind === "org" };
+      return {
+        enabled: !switchedOff.has(repo.id),
+        available: runsIn(repo) !== null,
+        appUrl: ciAppUrl(repo),
+      };
     },
     updateSettings: ({ params, payload }) => {
       const repo = findRepository(params.owner, params.repo);
       requireUser();
-      if (repo.owner.kind !== "org") {
-        throw unprocessable("CI runs for an organisation's repositories", "ci_unavailable");
-      }
+      if (runsIn(repo) === null) throw unprocessable(NEEDS_ORGANISATION, "ci_unavailable");
       if (payload.enabled) switchedOff.delete(repo.id);
       else switchedOff.add(repo.id);
-      return { enabled: payload.enabled, available: true };
+      return { enabled: payload.enabled, available: true, appUrl: ciAppUrl(repo) };
     },
     listRuns: ({ params, query }) => {
       const repo = findRepository(params.owner, params.repo);

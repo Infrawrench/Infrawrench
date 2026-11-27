@@ -1,4 +1,7 @@
-/** First sign-in: pick the username that becomes the person's namespace. */
+/**
+ * First sign-in: pick the username that becomes the person's namespace, and
+ * the organisation their own repositories run CI and review agents in.
+ */
 import { useState, type FormEvent } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -11,12 +14,18 @@ import { api } from "../../api/client";
 import { invalidate, queries } from "../../api/queries";
 import { useGo } from "../../components/AppLink";
 import { Button, buttonClass } from "../../components/Button";
-import { Field, Input } from "../../components/forms";
+import { Field, Input, Select } from "../../components/forms";
 import { Icon } from "../../components/icons";
 import { Page, PageHeader } from "../../components/Panel";
 import { EmptyState, InlineError, Loading } from "../../components/states";
 import { useDebounced } from "../../lib/name-availability";
 import { paths } from "../../lib/paths";
+import {
+  RUNS_IN_NONE,
+  preselectedRunsIn,
+  runsInHint,
+  runsInOrganizationId,
+} from "../../lib/runs-in";
 import { sitePath } from "../../lib/safe-url";
 import { signInHref, useSession } from "../../lib/session";
 
@@ -29,6 +38,10 @@ export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
   const suggested = session.data?.onboarding?.suggestedUsername ?? "";
   const [username, setUsername] = useState<string | null>(null);
   const value = username ?? suggested;
+  const organizations = session.data?.organizations ?? [];
+  // Asked only of someone with an organisation to name; null until they say.
+  const [chosenRunsIn, setRunsIn] = useState<string | null>(null);
+  const runsIn = chosenRunsIn ?? preselectedRunsIn(organizations);
 
   const problem = namespaceSlugProblem(value);
   const settled = useDebounced(value, 300);
@@ -40,7 +53,13 @@ export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
   const checked = availability.data?.username === value ? availability.data : undefined;
 
   const claim = useMutation({
-    mutationFn: () => api.session.claimUsername({ payload: { username: value } }),
+    mutationFn: () =>
+      api.session.claimUsername({
+        payload: {
+          username: value,
+          workspaceOrganizationId: runsIn === null ? null : runsInOrganizationId(runsIn),
+        },
+      }),
     onSuccess: async () => {
       await invalidate("session");
       go(safeReturn(returnTo), { replace: true });
@@ -95,10 +114,11 @@ export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
           ? checked.message
           : null;
   const available = problem === null && checked?.available === true;
+  const unanswered = organizations.length > 0 && runsIn === null;
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (problem === null && checked?.available !== false) claim.mutate();
+    if (problem === null && checked?.available !== false && !unanswered) claim.mutate();
   };
 
   return (
@@ -135,12 +155,40 @@ export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
             />
           )}
         </Field>
+        {organizations.length > 0 ? (
+          <Field
+            label="Run CI and review agents in"
+            hint={runsInHint(organizations, runsIn) ?? undefined}
+          >
+            {(control) => (
+              <Select
+                {...control}
+                required
+                value={runsIn ?? ""}
+                onChange={(event) => {
+                  setRunsIn(event.target.value);
+                  if (claim.error) claim.reset();
+                }}
+              >
+                <option value="" disabled>
+                  Choose an organisation
+                </option>
+                {organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name}
+                  </option>
+                ))}
+                <option value={RUNS_IN_NONE}>None</option>
+              </Select>
+            )}
+          </Field>
+        ) : null}
         <InlineError error={claim.error} />
         <Button
           type="submit"
           variant="primary"
           busy={claim.isPending}
-          disabled={value === "" || problem !== null || checked?.available === false}
+          disabled={value === "" || problem !== null || checked?.available === false || unanswered}
         >
           Continue
         </Button>

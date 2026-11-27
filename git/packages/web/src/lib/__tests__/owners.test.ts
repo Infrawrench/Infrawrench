@@ -19,6 +19,7 @@ const session: Session = {
     privateRepositories: true,
     privateRepositoryRefusal: null,
     defaultVisibility: "private",
+    workspace: null,
   },
   organizations: [
     {
@@ -29,6 +30,7 @@ const session: Session = {
       gitEnabled: true, // git-feature-flag
       namespacePlanRefusal: null,
       canClaimNamespace: false,
+      paid: true,
       privateRepositories: true,
       privateRepositoryRefusal: null,
       defaultVisibility: "public",
@@ -41,6 +43,7 @@ const session: Session = {
       gitEnabled: true, // git-feature-flag
       namespacePlanRefusal: null,
       canClaimNamespace: false,
+      paid: true,
       privateRepositories: false,
       privateRepositoryRefusal: REFUSAL,
       defaultVisibility: "private",
@@ -53,6 +56,7 @@ const session: Session = {
       gitEnabled: true, // git-feature-flag
       namespacePlanRefusal: null,
       canClaimNamespace: false,
+      paid: true,
       privateRepositories: true,
       privateRepositoryRefusal: null,
       defaultVisibility: "private",
@@ -65,6 +69,7 @@ const session: Session = {
       gitEnabled: true, // git-feature-flag
       namespacePlanRefusal: null,
       canClaimNamespace: true,
+      paid: true,
       privateRepositories: true,
       privateRepositoryRefusal: null,
       defaultVisibility: "private",

@@ -4,7 +4,15 @@ import {
   NAME_MAX_LENGTH,
 } from "@infrawrench/git-contract";
 import { badRequest, conflict, defineMockHandlers } from "../define";
-import { claimUsername, currentUser, namespaces, requireUser, session, setScenario } from "../db";
+import {
+  claimUsername,
+  currentUser,
+  namespaces,
+  requireUser,
+  session,
+  setMyWorkspace,
+  setScenario,
+} from "../db";
 
 const taken = (username: string): boolean =>
   namespaces.some(
@@ -52,7 +60,15 @@ export default defineMockHandlers({
       }
       return { username: query.username, available: true, reason: null, message: null };
     },
-    claimUsername: ({ payload }) => claim(payload.username),
+    claimUsername: ({ payload }) => {
+      const claimed = claim(payload.username);
+      setMyWorkspace(payload.workspaceOrganizationId ?? null);
+      return claimed;
+    },
     renameUsername: ({ payload }) => claim(payload.username),
+    setWorkspace: ({ payload }) => {
+      requireUser();
+      return { workspace: setMyWorkspace(payload.organizationId) };
+    },
   },
 });

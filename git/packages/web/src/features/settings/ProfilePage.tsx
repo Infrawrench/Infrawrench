@@ -4,7 +4,7 @@ import { NAME_MAX_LENGTH, type Namespace } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
 import { invalidate, queries } from "../../api/queries";
 import { Button, ButtonLink, buttonClass } from "../../components/Button";
-import { Field, Input, Textarea } from "../../components/forms";
+import { Field, Input, Select, Textarea } from "../../components/forms";
 import { Icon } from "../../components/icons";
 import { Panel } from "../../components/Panel";
 import { Avatar } from "../../components/people";
@@ -12,7 +12,8 @@ import { SettingsRow, SettingsSection } from "../../components/SideNav";
 import { EmptyState, InlineError, QueryView } from "../../components/states";
 import { useDebounced } from "../../lib/name-availability";
 import { paths } from "../../lib/paths";
-import { useSession } from "../../lib/session";
+import { RUNS_IN_NONE, runsInHint, runsInOrganizationId } from "../../lib/runs-in";
+import { type SessionData, useSession } from "../../lib/session";
 
 function UsernameForm({ current }: { current: string }) {
   const [username, setUsername] = useState(current);
@@ -160,6 +161,51 @@ function ProfileForm({ namespace }: { namespace: Namespace }) {
   );
 }
 
+/**
+ * The organisation the person's own repositories run CI and review agents
+ * in. Saved as it is changed, like a switch.
+ */
+function RunsInRow({ session }: { session: SessionData }) {
+  const organizations = session.organizations;
+  const current = session.personal?.workspace?.id ?? null;
+  const change = useMutation({
+    mutationFn: (organizationId: string | null) =>
+      api.session.setWorkspace({ payload: { organizationId } }),
+    onSuccess: () => {
+      void invalidate("session");
+      void invalidate("ci");
+    },
+  });
+  // What was asked for shows while it is saved; a refusal puts the old answer back.
+  const shown = change.isPending ? (change.variables ?? null) : current;
+  const hint = runsInHint(organizations, shown);
+  return (
+    <>
+      <SettingsRow title="Run CI and review agents in" detail={hint ?? undefined}>
+        <Select
+          aria-label="Run CI and review agents in"
+          value={shown ?? RUNS_IN_NONE}
+          disabled={change.isPending}
+          onChange={(event) => change.mutate(runsInOrganizationId(event.target.value))}
+          className="w-52"
+        >
+          {organizations.map((organization) => (
+            <option key={organization.id} value={organization.id}>
+              {organization.name}
+            </option>
+          ))}
+          <option value={RUNS_IN_NONE}>None</option>
+        </Select>
+      </SettingsRow>
+      {change.error ? (
+        <div className="px-3 py-2">
+          <InlineError error={change.error} />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export function ProfilePage() {
   const session = useSession();
   const user = session.data?.user ?? null;
@@ -201,6 +247,9 @@ export function ProfilePage() {
       </SettingsSection>
       <SettingsSection title="Infrawrench account">
         <Panel className="max-w-2xl divide-y divide-border">
+          {session.data && session.data.organizations.length > 0 ? (
+            <RunsInRow session={session.data} />
+          ) : null}
           <SettingsRow title="Email" detail={user.email}>
             <a
               href={session.data?.appUrl}

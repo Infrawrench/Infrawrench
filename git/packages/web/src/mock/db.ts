@@ -49,6 +49,11 @@ let scenario: MockScenario = readScenario();
 
 export function setScenario(next: MockScenario): void {
   scenario = next;
+  // Someone new has no username yet, and has chosen nowhere to run.
+  if (next === "new-user") {
+    myUsername = null;
+    myWorkspaceId = null;
+  }
   try {
     sessionStorage.setItem(SCENARIO_KEY, next);
   } catch {
@@ -62,6 +67,31 @@ const TIDEWATER_ORG_ID = "org_tidewater";
 
 const me = FIXTURE_PEOPLE["mara@acme.example"]!;
 let myUsername: string | null = scenario === "new-user" ? null : "mara";
+/** The organisation the person's own repositories run CI and review agents in. */
+let myWorkspaceId: string | null = null;
+
+/** Every organisation the person belongs to, by id. */
+const organizationNames = (): Map<string, string> =>
+  new Map([
+    ...namespaces
+      .filter((n) => n.kind === "org")
+      .map((n) => [n.organizationId!, n.displayName ?? n.slug] as const),
+    ...unclaimedOrganizations.map((organization) => [organization.id, organization.name] as const),
+  ]);
+
+export function myWorkspace(): { id: string; name: string } | null {
+  const name = myWorkspaceId === null ? undefined : organizationNames().get(myWorkspaceId);
+  return myWorkspaceId !== null && name !== undefined ? { id: myWorkspaceId, name } : null;
+}
+
+/** Connect the person's own namespace to one of their organisations, or to none. */
+export function setMyWorkspace(organizationId: string | null): { id: string; name: string } | null {
+  if (organizationId !== null && !organizationNames().has(organizationId)) {
+    throw mockError(403, "You are not a member of that organisation", "not_a_member");
+  }
+  myWorkspaceId = organizationId;
+  return myWorkspace();
+}
 
 export const users: UserRef[] = Object.values(FIXTURE_PEOPLE);
 
@@ -113,7 +143,7 @@ export function session(): Session {
       suggestedUsername: user.username === null ? "mara" : null,
       signupsOpen: true, // git-feature-flag
     },
-    personal: own ? fits(own) : null,
+    personal: own ? { ...fits(own), workspace: myWorkspace() } : null,
     organizations: [
       ...namespaces
         .filter((n) => n.kind === "org")
@@ -126,6 +156,7 @@ export function session(): Session {
           namespacePlanRefusal: null,
           canClaimNamespace: false,
           ...fits(n),
+          paid: n.plan === "paid",
         })),
       ...unclaimedOrganizations.map((organization) => ({
         id: organization.id,
@@ -141,6 +172,7 @@ export function session(): Session {
         privateRepositories: true,
         privateRepositoryRefusal: null,
         defaultVisibility: "private" as const,
+        paid: organization.plan === "paid",
       })),
     ],
     signInUrl: "/auth/sign-in",
@@ -317,6 +349,17 @@ export function privateRefusal(namespace: NamespaceRecord): string | null {
     (repo) => repo.owner.slug === namespace.slug && repo.visibility === "private",
   ).length;
   return privateRepositoryRefusal(namespace.plan, held);
+}
+
+/**
+ * The organisation a repository runs CI and review agents in: its owner's,
+ * or for the signed-in person's own repositories the one they connected.
+ */
+export function runsInOf(repo: Pick<RepositoryRecord, "owner" | "ownerUserId">): string | null {
+  if (repo.owner.kind === "org") {
+    return namespaces.find((n) => n.slug === repo.owner.slug)?.organizationId ?? null;
+  }
+  return repo.ownerUserId === me.id ? myWorkspaceId : null;
 }
 
 export interface RepositoryRecord extends Mutable<Omit<Repository, "viewer" | "viewerHasStarred">> {

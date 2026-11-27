@@ -734,11 +734,17 @@ describe("Terraform", () => {
 
 describe("the CI switch", () => {
   it("is on until switched off, and the CI tab then says why nothing runs", async () => {
-    expect(await C.settings!({ params: repo })).toEqual({ enabled: true, available: true });
+    const appUrl = "https://app.infrawrench.com/org/org_acme/ci";
+    expect(await C.settings!({ params: repo })).toEqual({
+      enabled: true,
+      available: true,
+      appUrl,
+    });
     expect((await C.status!({ params: repo })).enabled).toBe(true);
     expect(await C.updateSettings!({ params: repo, payload: { enabled: false } })).toEqual({
       enabled: false,
       available: true,
+      appUrl,
     });
     const off = await C.status!({ params: repo });
     expect(off.enabled).toBe(false);
@@ -747,13 +753,35 @@ describe("the CI switch", () => {
     expect((await C.status!({ params: repo })).enabled).toBe(true);
   });
 
-  it("has nothing to switch in a personal namespace", async () => {
+  it("has nothing to switch in a personal namespace until it is connected to an organisation", async () => {
     const personal = { owner: "mara", repo: "route-lab" };
-    expect(await C.settings!({ params: personal })).toEqual({ enabled: true, available: false });
+    expect(await C.settings!({ params: personal })).toEqual({
+      enabled: true,
+      available: false,
+      appUrl: null,
+    });
     const refused = await failure(() =>
       C.updateSettings!({ params: personal, payload: { enabled: false } }),
     );
     expect(refused.code).toBe("ci_unavailable");
+
+    // Connected, it runs there, and its secrets are in that organisation's CI in the app.
+    await sessionHandlers.session!.setWorkspace!({ payload: { organizationId: "org_acme" } });
+    expect(await C.settings!({ params: personal })).toEqual({
+      enabled: true,
+      available: true,
+      appUrl: "https://app.infrawrench.com/org/org_acme/ci",
+    });
+    expect((await sessionHandlers.session!.me!({}))!.personal?.workspace).toEqual({
+      id: "org_acme",
+      name: "Acme",
+    });
+    const stranger = await failure(() =>
+      sessionHandlers.session!.setWorkspace!({ payload: { organizationId: "org_elsewhere" } }),
+    );
+    expect(stranger.code).toBe("not_a_member");
+    await sessionHandlers.session!.setWorkspace!({ payload: { organizationId: null } });
+    expect((await C.settings!({ params: personal })).available).toBe(false);
   });
 });
 

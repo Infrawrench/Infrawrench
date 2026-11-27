@@ -14,20 +14,21 @@ import { paths } from "../../lib/paths";
 /**
  * CI for the repository: its own switch, which its administrators hold, and
  * what the default branch's pipelines are. Whether runs start also follows
- * the owner's plan, which `ci.status` answers. Secrets, variables and
- * approvals are the organisation's and live in the app.
+ * the plan of the organisation it runs in, which `ci.status` answers.
+ * Secrets, variables and approvals live in the app, in that organisation:
+ * the one that owns the repository, or the one its owner connected their
+ * own namespace to (`ci.settings` `appUrl`).
  */
 export function CiSettingsPage() {
   const repo = useRepoRef();
   const repository = useRepository();
   const ci = useQuery(queries.ci.status({ params: repo }));
   const settings = useQuery(queries.ci.settings({ params: repo }));
-  const namespace = useQuery(queries.namespaces.get({ params: { namespace: repo.owner } }));
   const change = useMutation({
     mutationFn: (enabled: boolean) => api.ci.updateSettings({ params: repo, payload: { enabled } }),
     onSuccess: () => invalidate("ci"),
   });
-  const appUrl = namespace.data?.appUrl ?? null;
+  const appUrl = settings.data?.appUrl ?? null;
   const external = (label: string) =>
     appUrl === null ? null : (
       <a href={appUrl} target="_blank" rel="noreferrer" className={buttonClass("secondary", "sm")}>
@@ -73,12 +74,12 @@ export function CiSettingsPage() {
               ) : null}
               <SettingsRow title="Secrets and variables">
                 {external("Open in Infrawrench") ?? (
-                  <span className="text-xs text-on-surface-muted">Organisations only</span>
+                  <span className="text-xs text-on-surface-muted">In an organisation</span>
                 )}
               </SettingsRow>
               <SettingsRow title="Approvals for branches from forks">
                 {external("Open in Infrawrench") ?? (
-                  <span className="text-xs text-on-surface-muted">Organisations only</span>
+                  <span className="text-xs text-on-surface-muted">In an organisation</span>
                 )}
               </SettingsRow>
             </Panel>
