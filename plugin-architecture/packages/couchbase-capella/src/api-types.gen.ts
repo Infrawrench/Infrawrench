@@ -956,7 +956,7 @@ export interface components {
             currencySpend?: number | null;
         };
         BillingFilters: {
-            categories?: ("operationalComputeAndStorage" | "operationalBucketBackup" | "operationalClusterBackup" | "analyticsCompute" | "analyticsStorage" | "analyticsClusterBackup" | "appServicesComputeAndStorage" | "dataTransferStandard" | "privateEndpointsStandard" | "aiServicesLLM" | "aiServicesAiGateway" | "aiServicesUdsPager" | "aiServicesSdsPager" | "dataApiStandard")[];
+            categories?: ("operationalComputeAndStorage" | "operationalBucketBackup" | "operationalClusterBackup" | "analyticsCompute" | "analyticsStorage" | "analyticsClusterBackup" | "appServicesComputeAndStorage" | "dataTransferStandard" | "privateEndpointsStandard" | "aiServicesLLM" | "aiServicesAiGateway" | "aiServicesUdsPager" | "aiServicesSdsPager" | "dataApiStandard" | "operationalExpressScaling" | "aiServicesMcpServer" | "aiServicesAgentMemory")[];
             instanceIds?: string[];
             projectIds?: string[];
         };
@@ -1392,13 +1392,12 @@ export interface components {
             deletionProtection: boolean;
             description: string;
             enablePrivateDNSResolution?: boolean;
-            /** @enum {string} */
-            expressScaling?: "enabled" | "disabled";
             /** Format: uuid */
             id: string;
             name: string;
             serviceGroups: components["schemas"]["ServiceGroup"][];
             support: components["schemas"]["GetClusterSupport"];
+            zones?: string[];
         };
         GetClustersResponse: {
             cursor: components["schemas"]["Cursor"];
@@ -1526,7 +1525,7 @@ export interface components {
             previous: string;
         };
         ItemizedBillingFilters: {
-            categories?: ("operationalComputeAndStorage" | "operationalBucketBackup" | "operationalClusterBackup" | "dataApiStandard" | "dataTransferStandard" | "privateEndpointsStandard")[];
+            categories?: ("operationalComputeAndStorage" | "operationalBucketBackup" | "operationalClusterBackup" | "operationalExpressScaling" | "dataApiStandard" | "dataTransferStandard" | "privateEndpointsStandard")[];
         };
         ItemizedBillingRequest: {
             /** Format: date */
