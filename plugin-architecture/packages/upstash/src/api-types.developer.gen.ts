@@ -1039,6 +1039,7 @@ export interface components {
             enterprise?: {
                 enabled?: boolean;
             };
+            has_next_token?: boolean;
             /** Format: uuid */
             id?: string;
             /** Format: int64 */
