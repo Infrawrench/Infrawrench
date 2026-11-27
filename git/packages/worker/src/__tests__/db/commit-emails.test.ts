@@ -349,7 +349,10 @@ describe.skipIf(!configured)("commit emails", () => {
     expect((await who(inAcme.id, email))?.username).toBe(ada.username);
     // One active row an address in an organisation, whatever the code above does.
     await expect(
-      db.update(gitCommitEmails).set({ active: true }).where(eq(gitCommitEmails.id, second.body.id)),
+      db
+        .update(gitCommitEmails)
+        .set({ active: true })
+        .where(eq(gitCommitEmails.id, second.body.id)),
     ).rejects.toThrow();
     expect(await pass()).toBe(1);
     expect(outbox.at(-1)!.to).toBe(email);
