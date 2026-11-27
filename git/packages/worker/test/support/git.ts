@@ -102,7 +102,11 @@ export async function commitFile(
   const date = `${clock} +0000`;
   const env = { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date };
   await git(["add", "-A"], { cwd, env });
-  await git(["commit", "-q", "-m", message], { cwd, env });
+  // From a file, not `-m`: Linux refuses one argument over 128 KiB (E2BIG),
+  // and the reader's bounds suite commits a message larger than that.
+  const messageFile = join(cwd, ".git", "TEST_COMMIT_MSG");
+  writeFileSync(messageFile, message);
+  await git(["commit", "-q", "-F", messageFile], { cwd, env });
   return gitOut(["rev-parse", "HEAD"], { cwd });
 }
 

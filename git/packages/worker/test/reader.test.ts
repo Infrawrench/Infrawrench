@@ -444,6 +444,7 @@ describeGit("the reader, with git as the judge", () => {
       ["envs/prod/terraform.tfvars", true],
       ["modules/net/main.tf.json", true],
     ]);
+    // ci-reads-ignore: a Terraform source in the fixture's text, not a file this test reads
     expect(read.snapshot.files[2]!.text).toContain("../../modules/net");
     // The same tree again is answered from the object's memory, with the commit asked about.
     const again = await reader.terraformFiles({ ref: read.commitOid });

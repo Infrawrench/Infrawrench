@@ -121,11 +121,13 @@ const REPOSITORY = {
     variable "web_count" { default = 2 }
     variable "db_password" { sensitive = true }
     module "web" {
+      // ci-reads-ignore: Terraform source in a fixture, written to a temporary directory
       source        = "../../modules/web"
       count         = var.web_count
       instance_type = "m5.large"
     }
     module "api" {
+      // ci-reads-ignore: Terraform source in a fixture, written to a temporary directory
       source = "../../modules/web"
     }
     module "vpc" {

@@ -74,9 +74,10 @@ jobs:
   # contract, which needs neither but is tested with the rest.
   #
   # One machine per package, so the run takes as long as the longest (core,
-  # which indexes packs of a few hundred MiB). None of them has a workspace
-  # dependency outside this list, so the install is these six importers:
-  # seconds, from a restored store.
+  # which indexes packs of a few hundred MiB). The install is these six
+  # importers plus client-core and plugin-base, which the contract loads built
+  # output from (the root comes along for turbo): seconds, from a restored
+  # store.
   libraries:
     name: Test git-${{ matrix }}
     platform: linux
@@ -88,6 +89,8 @@ jobs:
       - git/packages/ssh/**
       - git/packages/terraform/**
       - git/packages/contract/**
+      - app/packages/client-core/**
+      - plugin-architecture/packages/plugin-base/**
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
       - tsconfig.base.json
@@ -123,14 +126,24 @@ jobs:
           # The throughput figures (SSH_BENCH).
           allow=(--allow test/throughput.test.ts)
           ;;
-        terraform) .infrawrench/ci/git-tools.sh "$tools" terraform ;;
+        terraform)
+          .infrawrench/ci/git-tools.sh "$tools" terraform
+          # Scans a directory named by LOCAL_SCAN_DIR, for running by hand.
+          allow=(--allow test/local-scan.test.ts)
+          ;;
       esac
       export PATH="$tools/bin:$PATH"
 
       pnpm install --frozen-lockfile --store-dir /root/.cache/pnpm-store \
         --filter @infrawrench/git-core --filter @infrawrench/git-ops \
         --filter @infrawrench/git-protocol --filter @infrawrench/git-ssh \
-        --filter @infrawrench/git-terraform --filter @infrawrench/git-contract
+        --filter @infrawrench/git-terraform --filter @infrawrench/git-contract \
+        --filter . --filter @infrawrench/client-core --filter @infrawrench/plugin-base
+      # The contract imports client-core's built output (the name rules and
+      # limits the app and the forge share), and client-core plugin-base's.
+      if [ "${{ matrix }}" = contract ]; then
+        pnpm exec turbo run build --filter=@infrawrench/client-core --output-logs=errors-only
+      fi
 
       cd "git/packages/${{ matrix }}"
       pnpm exec vitest run --reporter=default --reporter=json --outputFile=/tmp/vitest-report.json
