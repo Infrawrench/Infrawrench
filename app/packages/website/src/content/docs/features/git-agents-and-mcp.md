@@ -61,6 +61,8 @@ Add the server to `~/.cursor/mcp.json`, or to `.cursor/mcp.json` in a project:
 
 T3 Code runs other agents (Codex, Claude Code and others), and each uses its own MCP settings. Add the server to the agent you run there, as above.
 
+A thread that git.infrawrench.com starts is told how to add the server itself, with a token for its one branch. See [How the thread records its work](./git-agents.md#how-the-thread-records-its-work).
+
 ### Anything else
 
 Any client that speaks Streamable HTTP works. One that supports OAuth needs only the address. One that does not takes a token: see [Without a browser](#without-a-browser).
@@ -99,6 +101,7 @@ The expiry shown for a connected application is when it lapses if it is left unu
 An agent that cannot open a browser sends a credential in the `Authorization` header instead:
 
 - **A personal access token** (`iwg_`). Create one under **Settings > Access tokens**, with the `repo:write` scope if the agent records traces. See [Access tokens](./git-getting-started.md#access-tokens).
+- **A branch token** (`iwj_`). Good for six hours and one branch: it records that branch's trace, lists its instructions and marks them delivered and answered, and lists and reports findings on it. It cannot clone or push, and the other tools refuse it. Ask for one with a credential that can write the repository: `POST https://git.infrawrench.com/api/repos/<owner>/<repository>/branches/<branch>/agent/token`, with the branch as one URL segment (`work%2Fadd-rate-limits`). The answer's `token` is the credential.
 - **A CI job's token.** A job in [Infrawrench CI](./ci.md) can record traces on the branch its run is of. It cannot use the other tools, and a run of a branch proposed from a fork cannot record. A job that only wants to leave notes needs no token at all: it prints [note commands](./git-branches.md#notes-from-ci).
 
 ```sh
