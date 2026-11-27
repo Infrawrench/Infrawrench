@@ -8,6 +8,8 @@ sidebar_order: 6
 
 Using the forge itself is covered in [Get started on git.infrawrench.com](./git-getting-started.md) (signing in, access tokens, cloning and pushing over HTTPS), [Issues and branches](./git-branches.md) (branch pages, reviews, merging, protected branches, forks) and [Agents and MCP](./git-agents-and-mcp.md) (connecting Claude Code, Codex, Cursor or another agent).
 
+Coding agents can learn to work on the forge and with its CI from two skills, listed under [Skills for your coding agent](./git-getting-started.md#skills-for-your-coding-agent).
+
 > **Cloud only.** A namespace belongs to a cloud organization. The desktop app shows Git when it is signed in to one.
 
 > **Beta.** Git is in beta: it is open to every organization, and parts of it are still changing.

@@ -222,6 +222,18 @@ Renaming or transferring a repository changes its address. Archiving makes it re
 
 <insert [A repository's Settings > General page: the name and description fields, the default branch picker, the merge method checkboxes, and the danger zone with Make private, Archive, Transfer and Delete] here>
 
+## Skills for your coding agent
+
+Two skills teach a coding agent to work here. Add them from their cards: **Add it to your agent** shows the files for Claude Code, Cursor, GitHub Copilot and Codex.
+
+- **git.infrawrench.com and CI** covers connecting the [MCP server](./git-agents-and-mcp.md), working on a branch page, recording its work, answering reviewers, and the [notes a CI job can leave](./ci.md#notes-on-a-branch-page) on a branch page.
+
+<skill id="infrawrench-git" />
+
+- **Migrate from GitHub Actions** moves a repository's workflows to [Infrawrench CI](./ci.md); see [Migrate from GitHub Actions](./ci-migrate-from-github-actions.md).
+
+<skill id="migrate-github-actions" />
+
 ## Next
 
 - [Home and your work](./git-home.md): the sidebar, the home page, and the Changes, Reviews and Mentions lists.
