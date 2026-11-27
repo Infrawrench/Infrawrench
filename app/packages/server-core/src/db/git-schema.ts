@@ -144,6 +144,72 @@ export const gitUsers = pgTable("git_users", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+/**
+ * A short username kept for the person who is paying for it
+ * (`git/short-usernames.ts`). One per person and one per name. It counts only
+ * until `expiresAt`: nothing sweeps it, an expired row is simply not a hold,
+ * and the next hold on the name or by the person replaces it. The payment
+ * that settles deletes it.
+ */
+export const gitUsernameHolds = pgTable(
+  "git_username_holds",
+  {
+    id: text("id").primaryKey(),
+    /** As the person spelled it. */
+    slug: text("slug").notNull(),
+    slugLower: text("slug_lower").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The organisation chosen on the username page, connected when the name is claimed. */
+    workspaceOrganizationId: text("workspace_organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
+    /** The forge page the browser returns to after Checkout: a path on that site. */
+    returnPath: text("return_path").notNull(),
+    /** The Checkout session opened for it, once the app has opened one. */
+    stripeCheckoutSessionId: text("stripe_checkout_session_id"),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    slugIdx: uniqueIndex("git_username_holds_slug_idx").on(t.slugLower),
+    userIdx: uniqueIndex("git_username_holds_user_idx").on(t.userId),
+  }),
+);
+
+/** `claimed`: the name is theirs. `refund_due`: paid, the name was gone, the refund is not confirmed yet. */
+export type GitUsernamePurchaseStatus = "claimed" | "refund_due" | "refunded";
+
+/**
+ * Every settled payment for a short username: who paid, for which name, how
+ * much, and what came of it. One row per Checkout session, which is what
+ * makes the webhook idempotent. Never deleted: it is the record of the
+ * payment, kept (without its person) when the account goes.
+ */
+export const gitUsernamePurchases = pgTable(
+  "git_username_purchases",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+    /** The name paid for, as spelled. */
+    slug: text("slug").notNull(),
+    /** A first username, or a change to this one. */
+    kind: text("kind").$type<"claim" | "rename">().notNull(),
+    status: text("status").$type<GitUsernamePurchaseStatus>().notNull(),
+    stripeCheckoutSessionId: text("stripe_checkout_session_id").notNull(),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
+    amountPaidCents: integer("amount_paid_cents"),
+    currency: text("currency"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    sessionIdx: uniqueIndex("git_username_purchases_session_idx").on(t.stripeCheckoutSessionId),
+    userIdx: index("git_username_purchases_user_idx").on(t.userId, t.createdAt),
+  }),
+);
+
 export const gitRepositories = pgTable(
   "git_repositories",
   {

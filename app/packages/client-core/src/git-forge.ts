@@ -152,6 +152,54 @@ export function gitPrivateRepositoryLimitMessage(
     : `The free plan includes ${count}. Make this one public, or ${GIT_FORGE_UPGRADE}`;
 }
 
+/**
+ * A person's username this short or shorter is paid for once. Longer ones are
+ * free, and so is every organisation's name, whatever its length. Someone who
+ * held a short username before the rule keeps it: only claiming one, or
+ * changing to one, asks.
+ */
+export const GIT_SHORT_USERNAME_MAX_LENGTH = 6;
+/** What a short username costs, once, in US cents. The Stripe price is the amount charged. */
+export const GIT_SHORT_USERNAME_PRICE_CENTS = 5000;
+/** {@link GIT_SHORT_USERNAME_PRICE_CENTS} as the forge and the docs word it. */
+export const GIT_SHORT_USERNAME_PRICE_LABEL = "$50";
+/**
+ * The `lookup_key` of the one-time Stripe price, the same in live and test
+ * mode, so the app finds it without being told its id.
+ */
+export const GIT_SHORT_USERNAME_LOOKUP_KEY = "git_short_username";
+/** How long a short username is kept for the person who is paying for it. */
+export const GIT_USERNAME_HOLD_MINUTES = 30;
+/**
+ * The app's route that opens the payment page, where the forge sends the
+ * browser with a checkout token (`git-username-checkout-token.ts`) as
+ * `?token=`. `/return` under it is where Stripe sends the browser back.
+ */
+export const GIT_USERNAME_CHECKOUT_PATH = "/api/git-username-checkout";
+/**
+ * What the app adds to the forge page it sends the browser back to:
+ * `?checkout=return` after a payment, `?checkout=cancelled` when the person
+ * left the payment page. The page reads what happened from the forge.
+ */
+export const GIT_USERNAME_CHECKOUT_PARAM = "checkout";
+
+/**
+ * Why a short username cannot be claimed or changed to without paying: the
+ * forge's 402 `error`, and the hint beside the name as it is typed.
+ */
+export const GIT_SHORT_USERNAME_PAYMENT_REQUIRED = `Usernames of ${GIT_SHORT_USERNAME_MAX_LENGTH} characters or fewer cost ${GIT_SHORT_USERNAME_PRICE_LABEL}, paid once`;
+
+/**
+ * What a person pays to take `username`, in cents, or null when it is free.
+ * `current` is the username they hold: keeping it, or changing only its
+ * case, is never paid for again.
+ */
+export function gitUsernamePriceCents(username: string, current?: string | null): number | null {
+  if (username.length > GIT_SHORT_USERNAME_MAX_LENGTH) return null;
+  if (current && current.toLowerCase() === username.toLowerCase()) return null;
+  return GIT_SHORT_USERNAME_PRICE_CENTS;
+}
+
 /** `GET /git`: the namespace (or null), the plan's limits and the usage. */
 export async function fetchGitForgeOverview(
   api: CloudFetch,

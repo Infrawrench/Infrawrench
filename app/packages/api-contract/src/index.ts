@@ -114,6 +114,7 @@ export * from "./domains/environments";
 export * from "./domains/event-subscriptions";
 export * from "./domains/expiring";
 export * from "./domains/extended-support";
+export * from "./domains/git-username-checkout";
 export * from "./domains/github";
 export * from "./domains/git";
 export * from "./domains/github-issues";
@@ -279,6 +280,7 @@ import { EnvironmentsApi } from "./domains/environments";
 import { EventSubscriptionsApi } from "./domains/event-subscriptions";
 import { ExpiringApi } from "./domains/expiring";
 import { ExtendedSupportApi } from "./domains/extended-support";
+import { GitUsernameCheckoutApi } from "./domains/git-username-checkout";
 import { GithubApi } from "./domains/github";
 import { GitForgeApi } from "./domains/git";
 import { GithubIssuesApi } from "./domains/github-issues";
@@ -450,6 +452,7 @@ export const API_DEFINITIONS = {
   "event-subscriptions": EventSubscriptionsApi,
   expiring: ExpiringApi,
   "extended-support": ExtendedSupportApi,
+  "git-username-checkout": GitUsernameCheckoutApi,
   github: GithubApi,
   git: GitForgeApi,
   "github-issues": GithubIssuesApi,

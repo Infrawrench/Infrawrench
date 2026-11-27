@@ -140,7 +140,8 @@ export function session(): Session {
     },
     onboarding: {
       needsUsername: user.username === null,
-      suggestedUsername: user.username === null ? "mara" : null,
+      // Long enough to be free: a short username is paid for.
+      suggestedUsername: user.username === null ? "mara-lindqvist" : null,
     },
     personal: own ? { ...fits(own), workspace: myWorkspace() } : null,
     organizations: [

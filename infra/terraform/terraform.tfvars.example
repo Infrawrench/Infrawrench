@@ -292,6 +292,17 @@ app_env = {
   # git.infrawrench.com itself).
   INFRAWRENCH_STRIPE_GIT_STORAGE_METER_EVENT = "git_storage_gib_hours"
   STRIPE_GIT_STORAGE_PRICE_ID                = "price_..."
+  # Optional, and normally left empty: the one-time price of a short username
+  # on git.infrawrench.com (6 characters or fewer, $50, a person's own
+  # purchase). Without it the app finds the active one-time price whose
+  # lookup_key is `git_short_username` on the Stripe account, which is how
+  # production runs; set it only to name another price. It needs
+  # STRIPE_SECRET_KEY, the `checkout.session.completed` webhook event, and
+  # GIT_JOB_TOKEN_KEY shared with the forge Worker (it signs the token the
+  # forge sends the browser to the app with). Without a price, short usernames
+  # cannot be paid for and the forge says payments are unavailable; longer
+  # usernames are unaffected.
+  STRIPE_GIT_SHORT_USERNAME_PRICE_ID         = ""
 
   # Optional: egress proxy Worker (app/packages/egress-proxy) for workflow
   # fetch(), the chat agent's web_fetch, the poller's provider status-feed

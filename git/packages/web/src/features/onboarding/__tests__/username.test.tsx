@@ -98,15 +98,66 @@ describe("choosing a username", () => {
     expect(submit.disabled).toBe(false);
 
     fireEvent.click(submit);
-    await waitFor(() => expect(session().user?.username).toBe("mara"), wait);
+    await waitFor(() => expect(session().user?.username).toBe("mara-lindqvist"), wait);
     expect(sent.find((call) => call.key === "session.claimUsername")?.request).toEqual({
-      payload: { username: "mara", workspaceOrganizationId: "org_acme" },
+      payload: { username: "mara-lindqvist", workspaceOrganizationId: "org_acme" },
+    });
+    expect(session().personal?.workspace).toEqual({ id: "org_acme", name: "Acme" });
+  });
+
+  it("claims a username of seven characters without a payment", async () => {
+    setScenario("new-user");
+    open("/onboarding/username");
+    const input = (await screen.findByLabelText("Username", undefined, wait)) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "maralin" } });
+    await screen.findByText("Available", undefined, wait);
+    expect(screen.queryByText("$50, paid once")).toBeNull();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /payment/ })).toBeNull();
+  });
+
+  it("shows the price of a username of six characters or fewer, and sends it to the payment page", async () => {
+    setScenario("new-user");
+    open("/onboarding/username?returnTo=%2Facme%2Finfra");
+    const input = (await screen.findByLabelText("Username", undefined, wait)) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "maral6" } });
+    await screen.findByText("Available", undefined, wait);
+    expect(screen.getByText("$50, paid once")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Continue" })).toBeNull();
+    const pay = screen.getByRole("button", {
+      name: "Continue to payment ($50)",
+    }) as HTMLButtonElement;
+    fireEvent.change(screen.getByLabelText(LABEL), { target: { value: "org_acme" } });
+    expect(pay.disabled).toBe(false);
+
+    fireEvent.click(pay);
+    // The mock has no payment page: the name is theirs when they come back.
+    await screen.findByText("Your username is maral6", undefined, wait);
+    expect(sent.some((call) => call.key === "session.claimUsername")).toBe(false);
+    expect(sent.find((call) => call.key === "session.startUsernameCheckout")?.request).toEqual({
+      payload: { username: "maral6", workspaceOrganizationId: "org_acme", returnTo: "/acme/infra" },
     });
     expect(session().personal?.workspace).toEqual({ id: "org_acme", name: "Acme" });
   });
 });
 
 describe("Settings > Profile", () => {
+  it("charges for a change to a short username, and not for a long one", async () => {
+    setScenario("signed-in");
+    open("/settings");
+    const input = (await screen.findByLabelText("Username", undefined, wait)) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "mara-the-long" } });
+    await screen.findByText("Available", undefined, wait);
+    expect(screen.getByRole("button", { name: "Change username" })).toBeTruthy();
+    expect(screen.queryByText("$50, paid once")).toBeNull();
+
+    fireEvent.change(input, { target: { value: "mar" } });
+    await screen.findByText("$50, paid once", undefined, wait);
+    fireEvent.click(screen.getByRole("button", { name: "Continue to payment ($50)" }));
+    await waitFor(() => expect(session().user?.username).toBe("mar"), wait);
+    expect(sent.some((call) => call.key === "session.renameUsername")).toBe(false);
+  });
+
   it("shows where the person's repositories run and changes it as it is chosen", async () => {
     setScenario("signed-in");
     open("/settings");

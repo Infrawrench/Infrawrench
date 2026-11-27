@@ -9,6 +9,7 @@ import {
   SITE_ORIGIN,
   nameProblemMessage,
   namespaceSlugProblem,
+  usernamePriceCents,
 } from "@infrawrench/git-contract";
 import { api } from "../../api/client";
 import { invalidate, queries } from "../../api/queries";
@@ -28,11 +29,19 @@ import {
 } from "../../lib/runs-in";
 import { sitePath } from "../../lib/safe-url";
 import { signInHref, useSession } from "../../lib/session";
+import { UsernameCheckoutNotice, priceLabel } from "./username-checkout";
 
 /** Only a path on this site: `returnTo` comes from the URL. */
 const safeReturn = (returnTo: string | undefined): string => sitePath(returnTo) ?? paths.home();
 
-export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
+export function UsernamePage({
+  returnTo,
+  returned,
+}: {
+  returnTo?: string | undefined;
+  /** Set when the browser came back from the payment page: how (`?checkout=`). */
+  returned?: string | undefined;
+}) {
   const session = useSession();
   const go = useGo();
   const suggested = session.data?.onboarding?.suggestedUsername ?? "";
@@ -64,6 +73,20 @@ export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
       await invalidate("session");
       go(safeReturn(returnTo), { replace: true });
     },
+  });
+
+  // A short username is paid for: the name is kept for them and the browser
+  // goes to the payment page, which sends it back here.
+  const checkout = useMutation({
+    mutationFn: () =>
+      api.session.startUsernameCheckout({
+        payload: {
+          username: value,
+          workspaceOrganizationId: runsIn === null ? null : runsInOrganizationId(runsIn),
+          ...(returnTo === undefined ? {} : { returnTo }),
+        },
+      }),
+    onSuccess: ({ checkoutUrl }) => go(checkoutUrl),
   });
 
   // Once the name is claimed, refreshing the session also asks again whether
@@ -107,24 +130,41 @@ export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
           : null;
   const available = problem === null && checked?.available === true;
   const unanswered = organizations.length > 0 && runsIn === null;
+  // The server's price once it has answered; the rule itself until then.
+  const price =
+    value === "" || problem !== null
+      ? null
+      : checked
+        ? checked.priceCents
+        : usernamePriceCents(value);
+  const reset = () => {
+    if (claim.error) claim.reset();
+    if (checkout.error) checkout.reset();
+  };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (problem === null && checked?.available !== false && !unanswered) claim.mutate();
+    if (problem !== null || checked?.available === false || unanswered) return;
+    if (price === null) claim.mutate();
+    else checkout.mutate();
   };
 
   return (
     <Page width="narrow">
       <PageHeader title="Choose a username" />
+      {returned === undefined ? null : <UsernameCheckoutNotice state={returned} />}
       <form onSubmit={submit} noValidate className="space-y-4">
         <Field
           label="Username"
           error={error}
           hint={
             available ? (
-              <span className="inline-flex items-center gap-1 text-success">
-                <Icon name="check" size={12} />
-                Available
+              <span className="inline-flex items-center gap-2">
+                <span className="inline-flex items-center gap-1 text-success">
+                  <Icon name="check" size={12} />
+                  Available
+                </span>
+                {price === null ? null : <span>{priceLabel(price)}, paid once</span>}
               </span>
             ) : (
               `${SITE_ORIGIN.replace(/^https?:\/\//, "")}/${value === "" ? "username" : value}`
@@ -142,7 +182,7 @@ export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
               value={value}
               onChange={(event) => {
                 setUsername(event.target.value);
-                if (claim.error) claim.reset();
+                reset();
               }}
             />
           )}
@@ -159,7 +199,7 @@ export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
                 value={runsIn ?? ""}
                 onChange={(event) => {
                   setRunsIn(event.target.value);
-                  if (claim.error) claim.reset();
+                  reset();
                 }}
               >
                 <option value="" disabled>
@@ -175,14 +215,14 @@ export function UsernamePage({ returnTo }: { returnTo?: string | undefined }) {
             )}
           </Field>
         ) : null}
-        <InlineError error={claim.error} />
+        <InlineError error={claim.error ?? checkout.error} />
         <Button
           type="submit"
           variant="primary"
-          busy={claim.isPending}
+          busy={claim.isPending || checkout.isPending || checkout.isSuccess}
           disabled={value === "" || problem !== null || checked?.available === false || unanswered}
         >
-          Continue
+          {price === null ? "Continue" : `Continue to payment (${priceLabel(price)})`}
         </Button>
       </form>
     </Page>
