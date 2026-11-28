@@ -11,6 +11,7 @@
 import { GitError, type ObjectId, type Signature, isObjectId } from "@infrawrench/git-core";
 import {
   type MergeOutcome as OpsOutcome,
+  type ObjectCache,
   type Landing,
   aheadBehind,
   landedIn,
@@ -35,10 +36,23 @@ import {
 } from "../reader";
 import { trialMerge } from "./diffs";
 import { moveRef } from "./refs";
-import { BRANCH, type ReaderContext, type Session, branchTip, openSession } from "./session";
+import {
+  BRANCH,
+  type ReaderContext,
+  type Session,
+  boundedCache,
+  branchTip,
+  openSession,
+} from "./session";
 
 /** The base moved under a merge this many times before the caller hears of it. */
 const MERGE_ATTEMPTS = 2;
+/**
+ * Largest file `landed` merges as text, one version of it: four times the
+ * usual bound, as a single file's view has. A file a branch changed and the
+ * base changed again is merged to tell, and three versions of it are held.
+ */
+const LANDED_TEXT_BYTES = 8 * 1024 * 1024;
 
 const who = (cx: ReaderContext, identity: CommitIdentity): Signature => {
   const name = identity.name.trim() !== "" ? identity.name : identity.email.split("@")[0] || "user";
@@ -121,6 +135,9 @@ export async function landed(
   // One session for every head: the base's history is walked once and read from the cache after.
   const session = await openSession(cx);
   const baseOid = baseTip(session, input.baseRef);
+  // Larger files merged as text than elsewhere: a file a branch changed and the base changed
+  // again since (a long KNOWLEDGE.md) is otherwise a `too-large` conflict, and never landed.
+  const cache = boundedCache(session, { maxTextBytes: LANDED_TEXT_BYTES });
   let line: ObjectId[] | null = null;
   const heads: Array<ReaderLanded["heads"][number]> = [];
   for (const head of input.heads) {
@@ -130,7 +147,7 @@ export async function landed(
     }
     let landing: Landing | null;
     try {
-      landing = await landedIn(session.cache, baseOid, head);
+      landing = await landedIn(cache, baseOid, head);
     } catch (error) {
       // Over the limits, or something of it missing: this head cannot be told, the others still can.
       if (!(error instanceof GitError)) throw error;
@@ -140,8 +157,8 @@ export async function landed(
       heads.push(null);
       continue;
     }
-    line ??= await firstParents(session, baseOid);
-    heads.push(await landedAt(session, line, head, landing));
+    line ??= await firstParents(cache, baseOid);
+    heads.push(await landedAt(cache, line, head, landing));
   }
   return { baseOid, heads };
 }
@@ -151,11 +168,11 @@ export async function landed(
  * limit. Not stopped at the tip before a push: a page whose branch went
  * before a push to the base is settled by that push, and its commit is older.
  */
-async function firstParents(session: Session, tip: ObjectId): Promise<ObjectId[]> {
+async function firstParents(cache: ObjectCache, tip: ObjectId): Promise<ObjectId[]> {
   const line = [tip];
   try {
     while (line.length < LANDED_SEARCH) {
-      const parent = (await session.cache.node(line.at(-1)!)).parents[0];
+      const parent = (await cache.node(line.at(-1)!)).parents[0];
       if (parent === undefined) break;
       line.push(parent);
     }
@@ -172,7 +189,7 @@ async function firstParents(session: Session, tip: ObjectId): Promise<ObjectId[]
  * someone reverted it, and then any commit that has it will do.
  */
 async function landedAt(
-  session: Session,
+  cache: ObjectCache,
   line: readonly ObjectId[],
   head: ObjectId,
   atTip: Landing,
@@ -183,7 +200,7 @@ async function landedAt(
   try {
     while (lo < hi) {
       const mid = Math.ceil((lo + hi) / 2);
-      const landing = await landedIn(session.cache, line[mid]!, head);
+      const landing = await landedIn(cache, line[mid]!, head);
       if (landing) {
         lo = mid;
         found = { landing, commitOid: line[mid]! };
