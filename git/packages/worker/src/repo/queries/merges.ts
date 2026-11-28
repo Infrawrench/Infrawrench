@@ -14,7 +14,10 @@ import {
   type ObjectCache,
   type Landing,
   aheadBehind,
+  changeId,
+  changedPaths,
   landedIn,
+  mergeBases,
   mergeWithCommit,
   normalizeMessage,
   rebaseMerge,
@@ -53,6 +56,8 @@ const MERGE_ATTEMPTS = 2;
  * base changed again is merged to tell, and three versions of it are held.
  */
 const LANDED_TEXT_BYTES = 8 * 1024 * 1024;
+/** How far back along the base's first-parent line `landed` compares commits with a branch's change. */
+const SQUASH_SEARCH = 1_000;
 
 const who = (cx: ReaderContext, identity: CommitIdentity): Signature => {
   const name = identity.name.trim() !== "" ? identity.name : identity.email.split("@")[0] || "user";
@@ -127,7 +132,11 @@ export async function mergeability(
 
 export async function landed(
   cx: ReaderContext,
-  input: { readonly baseRef: string; readonly heads: readonly string[] },
+  input: {
+    readonly baseRef: string;
+    readonly heads: readonly string[];
+    readonly since?: string | undefined;
+  },
 ): Promise<ReaderLanded> {
   if (input.heads.length > MAX_LANDED_HEADS) {
     throw new RepoReaderError("too_large", `At most ${MAX_LANDED_HEADS} heads at a time`);
@@ -140,6 +149,7 @@ export async function landed(
   const cache = boundedCache(session, { maxTextBytes: LANDED_TEXT_BYTES });
   // The base's first-parent line, newest first, read as far back as a head needs it.
   const line = new FirstParents(cache, baseOid);
+  const changes = new ChangesOnLine(cache, line);
   const heads: Array<ReaderLanded["heads"][number]> = [];
   for (const head of input.heads) {
     if (!isObjectId(head) || !(await session.objects.has(head))) {
@@ -154,7 +164,11 @@ export async function landed(
       if (!(error instanceof GitError)) throw error;
       landing = null;
     }
-    heads.push(landing ? await landedAt(cache, line, head, landing) : null);
+    heads.push(
+      landing
+        ? await landedAt(cache, line, head, landing)
+        : await squashedAs(cache, changes, baseOid, head, input.since),
+    );
   }
   return { baseOid, heads };
 }
@@ -193,6 +207,86 @@ class FirstParents {
   /** How many commits of the line have been read. */
   get length(): number {
     return this.oids.length;
+  }
+}
+
+/** Each commit of a first-parent line's own change, read once however many heads ask. */
+class ChangesOnLine {
+  private readonly paths = new Map<ObjectId, string | null>();
+  private readonly ids = new Map<ObjectId, string | null>();
+
+  constructor(
+    private readonly cache: ObjectCache,
+    readonly line: FirstParents,
+  ) {}
+
+  /** The paths the commit changes against its parent; null for a merge, a root or too many. */
+  async pathsOf(oid: ObjectId): Promise<string | null> {
+    if (!this.paths.has(oid)) {
+      const node = await this.cache.node(oid);
+      this.paths.set(
+        oid,
+        node.parents.length === 1
+          ? await changedPaths(
+              this.cache,
+              (await this.cache.node(node.parents[0]!)).tree,
+              node.tree,
+            )
+          : null,
+      );
+    }
+    return this.paths.get(oid)!;
+  }
+
+  async idOf(oid: ObjectId): Promise<string | null> {
+    if (!this.ids.has(oid)) {
+      const node = await this.cache.node(oid);
+      const parent = (await this.cache.node(node.parents[0]!)).tree;
+      this.ids.set(oid, await changeId(this.cache, parent, node.tree));
+    }
+    return this.ids.get(oid)!;
+  }
+}
+
+/**
+ * A head that does not merge cleanly into the base, or would still change
+ * it, can have been squashed into it all the same: the base edited the
+ * squash's lines again since. It is `applied` when one commit of the base's
+ * first-parent line makes the same change as the whole branch (`changeId` in
+ * git-ops: the same files, the same lines removed and added), as `git
+ * cherry` tells a picked commit. Looked for after `since` (the commits a
+ * push brought) when given, else back to the head's merge base, at most
+ * `SQUASH_SEARCH` commits; the oldest match is the squash.
+ */
+async function squashedAs(
+  cache: ObjectCache,
+  changes: ChangesOnLine,
+  baseOid: ObjectId,
+  head: ObjectId,
+  since: string | undefined,
+): Promise<{ readonly landing: Landing; readonly commitOid: string } | null> {
+  try {
+    const bases = await mergeBases(cache, baseOid, head);
+    if (bases.length !== 1) return null;
+    const mergeBase = bases[0]!;
+    const before = (await cache.node(mergeBase)).tree;
+    const after = (await cache.node(head)).tree;
+    const paths = await changedPaths(cache, before, after);
+    if (paths === null) return null;
+    let id: string | null | undefined;
+    let found: ObjectId | null = null;
+    for (let index = 0; index < SQUASH_SEARCH; index++) {
+      const oid = await changes.line.at(index);
+      if (oid === null || oid === since || oid === mergeBase) break;
+      if ((await changes.pathsOf(oid)) !== paths) continue;
+      id ??= await changeId(cache, before, after);
+      if (id !== null && (await changes.idOf(oid)) === id) found = oid;
+    }
+    return found === null ? null : { landing: "applied", commitOid: found };
+  } catch (error) {
+    // Over the limits, or something missing: not known to have landed.
+    if (!(error instanceof GitError)) throw error;
+    return null;
   }
 }
 

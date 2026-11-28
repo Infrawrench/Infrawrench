@@ -125,7 +125,7 @@ const deleteMergedBranch = async (
 };
 
 /**
- * A push moved `branch`: the open pages based on it whose
+ * A push moved `branch` on from `oldOid`: the open pages based on it whose
  * changes it now has are merged, as the commit that brought them in, and
  * their branches deleted. `pulls` are the open pages whose head or base is
  * the branch.
@@ -133,6 +133,7 @@ const deleteMergedBranch = async (
 export const settleBasePush = async (
   cx: PushContext,
   branch: string,
+  oldOid: string,
   pulls: readonly PullRequestWithThread[],
 ): Promise<void> => {
   const { repository } = cx.repo;
@@ -157,6 +158,8 @@ export const settleBasePush = async (
     answer = await cx.reader.landed({
       baseRef: branch,
       heads: candidates.map(({ pull }) => pull.headOid),
+      // A squash is looked for among the commits this push brought.
+      since: /^0+$/.test(oldOid) ? undefined : oldOid,
     });
   } catch (error) {
     // The storage not answering degrades this step; the next push to the base looks again.

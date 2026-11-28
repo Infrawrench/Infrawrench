@@ -300,7 +300,7 @@ const handleBranch = async (cx: PushContext, update: Update, branch: string): Pr
     }
   }
   // The pages based on this branch whose changes it now has, however they got there, are merged.
-  await settleBasePush(cx, branch, pulls);
+  await settleBasePush(cx, branch, update.oldOid, pulls);
 
   if (branch === repository.defaultBranch && commits) await applyCommitMessages(cx, commits);
 

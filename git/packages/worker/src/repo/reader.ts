@@ -274,7 +274,9 @@ export const LANDED_SEARCH = 10_000;
  * or could not be told (a head commit that is not here, a merge over the
  * limits); else how it landed, `contained` when the head commit is in the
  * base's history and `applied` when merging it would leave the base's tree as
- * it is (a squash, a cherry-pick), and `commitOid`, the commit on the base's
+ * it is (a squash, a cherry-pick) or one commit of the base makes the
+ * branch's whole change (a squash the base edited around since), and
+ * `commitOid`, the commit on the base's
  * first-parent line that brought it in: the oldest there that has it, within
  * {@link LANDED_SEARCH} commits of the tip.
  */
@@ -668,6 +670,13 @@ export interface RepoReader {
   landed(input: {
     readonly baseRef: string;
     readonly heads: readonly string[];
+    /**
+     * The base's tip before the push being handled. A head that would not
+     * merge to nothing is compared, change for change, with the commits
+     * after it (the ones the push brought); without it, with the base's
+     * commits back to the head's merge base.
+     */
+    readonly since?: string | undefined;
   }): Promise<ReaderLanded>;
 
   /**

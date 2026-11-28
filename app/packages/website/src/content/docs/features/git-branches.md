@@ -187,7 +187,7 @@ You can edit the commit title and message before confirming a merge commit or a 
 
 ### Merged without the merge box
 
-A branch doesn't have to be merged from its page. When a push brings everything a branch changes into the branch its page is against, the page is marked merged and the branch is deleted, however the change got there: a squash, merge or rebase made on your machine, a cherry-pick, or a fast-forward. The forge goes by the content: the branch counts as merged when merging it again would change nothing. The page names who pushed and the commit that brought the change in, and keeps its versions, review comments and findings like any merged page.
+A branch doesn't have to be merged from its page. When a push brings everything a branch changes into the branch its page is against, the page is marked merged and the branch is deleted, however the change got there: a squash, merge or rebase made on your machine, a cherry-pick, or a fast-forward. The forge goes by the content: the branch counts as merged when merging it again would change nothing, or when one commit makes the same change as the whole branch (the same files, the same lines removed and added), so a squash still counts after later commits edited around it. The page names who pushed and the commit that brought the change in, and keeps its versions, review comments and findings like any merged page.
 
 The branch stays when:
 
@@ -195,7 +195,7 @@ The branch stays when:
 - a protection rule doesn't allow deleting it,
 - it is a fork's branch, which is the fork owner's to delete.
 
-A squash whose lines were changed again before the push reads as not merged, since merging the branch would undo that change. Merge or close that page yourself.
+A squash that changed the branch on the way in (a conflict resolved differently, a fix-up added) is neither, so it reads as not merged. Merge or close that page yourself.
 
 Deleting a branch ends its page too: merged if its changes are already in the base, closed if not. To carry on with a closed one, restore the branch from its page and reopen it.
 

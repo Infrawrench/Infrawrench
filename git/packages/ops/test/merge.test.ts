@@ -6,6 +6,9 @@ import {
   type MergeOutcome,
   type NewObject,
   analyzeMerge,
+  cacheOf,
+  changeId,
+  changedPaths,
   createCommit,
   landedIn,
   mergeCommits,
@@ -644,6 +647,39 @@ describeGit("merge strategies", () => {
     const store = loadStore(repo);
     expect(await landedIn(store, rewritten, source)).toBeNull();
     expect(await landedIn(store, target, nothing)).toBeNull();
+  });
+
+  it("knows a squash by its change after the base edited around it", async () => {
+    const { repo, base, target, source } = setup();
+    repo.run("merge", "-q", "--squash", source);
+    const squash = repo.commit("Feature, squashed");
+    // Main then rewrites a line the feature wrote: merging the branch again conflicts.
+    const edited = repo.lines("show", "HEAD:src/f0.txt");
+    edited[3] = "main rewrote the feature's line;";
+    repo.write("src/f0.txt", text(edited));
+    const rewritten = repo.commit("rewrite a feature line");
+    // Another branch that changes the same files differently.
+    repo.run("checkout", "-q", "-b", "other", base);
+    const other = repo.lines("show", `${base}:src/f0.txt`);
+    other[3] = "another change;";
+    repo.write("src/f0.txt", text(other));
+    repo.write("src/f1.txt", text(repo.lines("show", `${source}:src/f1.txt`)));
+    repo.write("src/feature-only.txt", "new in the feature\n");
+    const unrelated = repo.commit("other");
+
+    const store = cacheOf(loadStore(repo));
+    const tree = async (oid: string) => (await store.node(oid)).tree;
+    expect(await landedIn(store, rewritten, source)).toBeNull();
+    const branch = await changeId(store, await tree(base), await tree(source));
+    expect(branch).toMatch(/^[0-9a-f]{40}$/);
+    expect(await changeId(store, await tree(target), await tree(squash))).toBe(branch);
+    expect(await changeId(store, await tree(squash), await tree(rewritten))).not.toBe(branch);
+    expect(await changeId(store, await tree(base), await tree(unrelated))).not.toBe(branch);
+    // The same files, so the cheap test passes and the id tells them apart.
+    expect(await changedPaths(store, await tree(base), await tree(unrelated))).toBe(
+      await changedPaths(store, await tree(base), await tree(source)),
+    );
+    expect(await changeId(store, await tree(base), await tree(base))).toBeNull();
   });
 
   it("rebases the way git rebase does", async () => {

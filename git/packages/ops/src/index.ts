@@ -13,6 +13,7 @@ export * from "./diff/tree-diff";
 export * from "./diff/renames";
 export * from "./diff/diff";
 export * from "./diff/patch";
+export * from "./diff/change-id";
 export * from "./merge/text";
 export * from "./merge/sink";
 export * from "./merge/commit";
