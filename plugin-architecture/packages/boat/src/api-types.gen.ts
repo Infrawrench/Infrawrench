@@ -897,7 +897,7 @@ export interface components {
             new?: boolean;
             prompt: string;
             /** @enum {string} */
-            provider: "codex" | "claude-code" | "claude" | "pi" | "opencode" | "prime-agent" | "prime" | "kimi" | "kimi-code" | "mistral";
+            provider?: "codex" | "claude-code" | "claude" | "pi" | "opencode" | "prime-agent" | "prime" | "kimi" | "kimi-code" | "mistral" | "antigravity" | "agy";
             reasoningEffort?: string | null;
             /** @enum {string|null} */
             speed?: "standard" | "fast" | "ultrafast" | null;
