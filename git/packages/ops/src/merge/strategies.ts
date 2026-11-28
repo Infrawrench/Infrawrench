@@ -140,6 +140,44 @@ export async function analyzeMerge(
   };
 }
 
+/**
+ * How a source's changes already are in a target:
+ *
+ * - `contained`: the source commit is in the target's history (a merge, a
+ *   fast-forward, or a rebase that kept its commits).
+ * - `applied`: it is not, but merging it would leave the target's tree as it
+ *   is (a squash, a cherry-pick, or a rebase that rewrote the commits).
+ */
+export type Landing = "contained" | "applied";
+
+/**
+ * Whether everything `source` changes is already in `target`, without
+ * writing anything. Null when something of it is not, when merging it
+ * conflicts (a squash whose lines the target has changed again since reads
+ * as not landed), and when the source changes nothing since its merge base,
+ * so a source with nothing of its own is never `applied`. A source that is an
+ * ancestor of the target is `contained` whatever it changes: the caller
+ * decides whether a branch that never had commits of its own counts.
+ */
+export async function landedIn(
+  reader: ObjectReader,
+  target: ObjectId,
+  source: ObjectId,
+  options: MergeTreesOptions = {},
+): Promise<Landing | null> {
+  const cache = cacheOf(reader, options.limits);
+  const analysis = await analyzeMerge(cache, target, source);
+  if (analysis.upToDate || target === source) return "contained";
+  if (analysis.bases.length === 0) return null;
+  const sourceTree = (await cache.node(source)).tree;
+  if (analysis.bases.length === 1 && (await cache.node(analysis.bases[0]!)).tree === sourceTree) {
+    return null;
+  }
+  const merged = await mergeCommits(cache, target, source, options);
+  if (merged.conflicts.length > 0) return null;
+  return merged.tree === (await cache.node(target)).tree ? "applied" : null;
+}
+
 export type MergeOutcome =
   /** Write `objects`, then move the target ref to `commit`. */
   | {

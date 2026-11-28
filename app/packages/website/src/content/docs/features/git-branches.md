@@ -185,6 +185,20 @@ The merge box lists what stands in the way: missing approvals, failing required 
 
 You can edit the commit title and message before confirming a merge commit or a squash. **Delete branch after merge** removes the branch. An administrator chooses which methods a repository offers, and the default, under **Settings > General**.
 
+### Merged without the merge box
+
+A branch doesn't have to be merged from its page. When a push brings everything a branch changes into the branch its page is against, the page is marked merged and the branch is deleted, however the change got there: a squash, merge or rebase made on your machine, a cherry-pick, or a fast-forward. The forge goes by the content: the branch counts as merged when merging it again would change nothing. The page names who pushed and the commit that brought the change in, and keeps its versions, review comments and findings like any merged page.
+
+The branch stays when:
+
+- it was pushed to after the commits the forge checked,
+- a protection rule doesn't allow deleting it,
+- it is a fork's branch, which is the fork owner's to delete.
+
+A squash whose lines were changed again before the push reads as not merged, since merging the branch would undo that change. Merge or close that page yourself.
+
+Deleting a branch ends its page too: merged if its changes are already in the base, closed if not. To carry on with a closed one, restore the branch from its page and reopen it.
+
 ### After a merge
 
 A merged branch keeps its page, and the page keeps the record of the work: every version, the trace the agent recorded, the review comments, and every finding with how it was settled. A finding says whether it was fixed and in which version, dismissed and by whom with their reason, still open when the branch was merged, or merged past by an administrator with their reason.

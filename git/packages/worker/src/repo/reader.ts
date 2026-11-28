@@ -258,6 +258,30 @@ export interface ReaderMergeability {
   readonly behindBy: number;
 }
 
+/** The most heads one `landed` call measures. */
+export const MAX_LANDED_HEADS = 100;
+/** How far back along the base's first-parent line `landed` looks for the commit a head landed in. */
+export const LANDED_SEARCH = 256;
+
+/**
+ * Which heads a base branch already has the changes of (`landedIn` in
+ * git-ops), measured against `baseOid`, its tip when it was read. One
+ * answer per head asked about, in order: null when it is not in, conflicts,
+ * or could not be told (a head commit that is not here, a merge over the
+ * limits); else how it landed, `contained` when the head commit is in the
+ * base's history and `applied` when merging it would leave the base's tree as
+ * it is (a squash, a cherry-pick), and `commitOid`, the commit on the base's
+ * first-parent line that brought it in: the oldest of the newest
+ * {@link LANDED_SEARCH} there that has it.
+ */
+export interface ReaderLanded {
+  readonly baseOid: string;
+  readonly heads: ReadonlyArray<{
+    readonly landing: "contained" | "applied";
+    readonly commitOid: string;
+  } | null>;
+}
+
 export interface MergeInput {
   /** The branch to move, in this repository (short name). */
   readonly baseRef: string;
@@ -630,6 +654,19 @@ export interface RepoReader {
   }): Promise<ReaderMergeability>;
 
   /**
+   * Whether `baseRef` already has what each head changes (see
+   * {@link ReaderLanded}), moving nothing. The heads are commits that are
+   * already here: a fork's reach the base through `refs/pull/<n>/head`, and
+   * nothing is copied in to answer. At most {@link MAX_LANDED_HEADS} heads
+   * (`too_large` past that); `ref_not_found` when
+   * the base branch is gone.
+   */
+  landed(input: {
+    readonly baseRef: string;
+    readonly heads: readonly string[];
+  }): Promise<ReaderLanded>;
+
+  /**
    * Merge a pull request's head into its base branch and move the branch,
    * atomically in the Durable Object. See {@link MergeOutcome}.
    *
@@ -730,6 +767,7 @@ export const unavailableRepoReader: RepoReader = {
   blame: refuse,
   diffAnchor: refuse,
   mergeability: refuse,
+  landed: refuse,
   merge: refuse,
   updateBranch: refuse,
   listVersions: refuse,

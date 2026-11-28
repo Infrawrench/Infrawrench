@@ -8,10 +8,12 @@
  * the objects written are unreachable, and the merge is computed once more
  * against the new base before the caller is told the base moved.
  */
-import { GitError, type ObjectId, type Signature } from "@infrawrench/git-core";
+import { GitError, type ObjectId, type Signature, isObjectId } from "@infrawrench/git-core";
 import {
   type MergeOutcome as OpsOutcome,
+  type Landing,
   aheadBehind,
+  landedIn,
   mergeWithCommit,
   normalizeMessage,
   rebaseMerge,
@@ -21,8 +23,11 @@ import {
 import type { GitEventActor } from "../../env";
 import {
   type CommitIdentity,
+  LANDED_SEARCH,
+  MAX_LANDED_HEADS,
   type MergeInput,
   type MergeOutcome,
+  type ReaderLanded,
   type ReaderMergeability,
   RepoReaderError,
   type UpdateBranchInput,
@@ -104,6 +109,91 @@ export async function mergeability(
     aheadBy: counts.ahead,
     behindBy: counts.behind,
   };
+}
+
+export async function landed(
+  cx: ReaderContext,
+  input: { readonly baseRef: string; readonly heads: readonly string[] },
+): Promise<ReaderLanded> {
+  if (input.heads.length > MAX_LANDED_HEADS) {
+    throw new RepoReaderError("too_large", `At most ${MAX_LANDED_HEADS} heads at a time`);
+  }
+  // One session for every head: the base's history is walked once and read from the cache after.
+  const session = await openSession(cx);
+  const baseOid = baseTip(session, input.baseRef);
+  let line: ObjectId[] | null = null;
+  const heads: Array<ReaderLanded["heads"][number]> = [];
+  for (const head of input.heads) {
+    if (!isObjectId(head) || !(await session.objects.has(head))) {
+      heads.push(null);
+      continue;
+    }
+    let landing: Landing | null;
+    try {
+      landing = await landedIn(session.cache, baseOid, head);
+    } catch (error) {
+      // Over the limits, or something of it missing: this head cannot be told, the others still can.
+      if (!(error instanceof GitError)) throw error;
+      landing = null;
+    }
+    if (!landing) {
+      heads.push(null);
+      continue;
+    }
+    line ??= await firstParents(session, baseOid);
+    heads.push(await landedAt(session, line, head, landing));
+  }
+  return { baseOid, heads };
+}
+
+/**
+ * The base's first-parent line, newest first, from its tip back to the search
+ * limit. Not stopped at the tip before a push: a page whose branch went
+ * before a push to the base is settled by that push, and its commit is older.
+ */
+async function firstParents(session: Session, tip: ObjectId): Promise<ObjectId[]> {
+  const line = [tip];
+  try {
+    while (line.length < LANDED_SEARCH) {
+      const parent = (await session.cache.node(line.at(-1)!)).parents[0];
+      if (parent === undefined) break;
+      line.push(parent);
+    }
+  } catch (error) {
+    // A commit of the line that cannot be read ends it there.
+    if (!(error instanceof GitError)) throw error;
+  }
+  return line;
+}
+
+/**
+ * The oldest commit of `line` (newest first, its first one known to have the
+ * head) that has the head, by halving: a change that is in stays in, unless
+ * someone reverted it, and then any commit that has it will do.
+ */
+async function landedAt(
+  session: Session,
+  line: readonly ObjectId[],
+  head: ObjectId,
+  atTip: Landing,
+): Promise<{ readonly landing: Landing; readonly commitOid: string }> {
+  let found = { landing: atTip, commitOid: line[0]! };
+  let lo = 0;
+  let hi = line.length - 1;
+  try {
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      const landing = await landedIn(session.cache, line[mid]!, head);
+      if (landing) {
+        lo = mid;
+        found = { landing, commitOid: line[mid]! };
+      } else hi = mid - 1;
+    }
+  } catch (error) {
+    // The newest commit that has it is still true.
+    if (!(error instanceof GitError)) throw error;
+  }
+  return found;
 }
 
 /** Writes what a merge made and moves the branch, if it is still where the merge read it. */

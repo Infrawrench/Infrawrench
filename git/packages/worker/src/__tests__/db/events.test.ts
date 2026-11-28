@@ -3,9 +3,9 @@
  * once, so every push here is handled twice and must leave what one
  * delivery leaves.
  */
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { gitTerraformRuns } from "@infrawrench/server-core/db/schema";
+import { gitPullRequests, gitTerraformRuns } from "@infrawrench/server-core/db/schema";
 import { db } from "../../db/client";
 import type { GitPushEvent } from "../../env";
 import { announcePullRequest, announcePush } from "../../events/ci";
@@ -137,15 +137,108 @@ describe.skipIf(!configured)("the push consumer, against a real Postgres", () =>
       expect.objectContaining({ beforeOid: moved.newOid, afterOid: forced.newOid }),
     ]);
 
+    // Deleted without its changes in main: the page closes with it.
     await push("feature", { delete: true });
     const gone = (await world.call("GET", `${pagePath(repo, pull.key)}`, { as: bob })).body;
-    expect(gone.headRefExists).toBe(false);
-    expect(gone.mergeability.blockers.map((b: { code: string }) => b.code)).toContain(
-      "head_missing",
-    );
+    expect(gone).toMatchObject({ headRefExists: false, state: "closed" });
+    expect(gone.mergeability.blockers.map((b: { code: string }) => b.code)).toEqual(["closed"]);
     expect(
-      (await timeline(pull.number)).filter((entry) => entry.type === "head_branch_deleted"),
-    ).toHaveLength(1);
+      (await timeline(pull.number))
+        .map((entry) => entry.type)
+        .filter((type) => type === "head_branch_deleted" || type === "closed"),
+    ).toEqual(["head_branch_deleted", "closed"]);
+  });
+
+  /** A branch pushed and given a page against main, as the forge opens one. */
+  const page = async (branch: string, by: Person = bob) => {
+    const pushed = await push(branch, { by });
+    const opened = (
+      await world.call("POST", `${repo}/branch-pages`, {
+        as: by,
+        body: { title: branch, base: "main", head: branch },
+      })
+    ).body;
+    return { ...pushed, key: opened.key as string, number: opened.number as number };
+  };
+  const pageOf = async (key: string) =>
+    (await world.call("GET", `${pagePath(repo, key)}`, { as: alice })).body;
+
+  it("merges the pages whose changes a push to main brought in, and deletes their branches", async () => {
+    const squashed = await page("squashed");
+    const merged = await page("merged");
+    const waiting = await page("waiting");
+    const kept = await page("kept");
+    await world.call("POST", `${repo}/protected-branches`, {
+      as: alice,
+      body: { pattern: "kept", allowDeletion: false },
+    });
+    world.storage.landings.set(squashed.newOid, "applied");
+    world.storage.landings.set(merged.newOid, "contained");
+    world.storage.landings.set(kept.newOid, "applied");
+    const branches = world.storage.repository(id).branches;
+
+    const main = await push("main", { by: alice });
+
+    const squashedPage = await pageOf(squashed.key);
+    expect(squashedPage).toMatchObject({
+      state: "merged",
+      mergeMethod: "squash",
+      mergeCommitOid: main.newOid,
+      headRefExists: false,
+    });
+    expect(squashedPage.mergedBy.username).toBe(alice.username);
+    expect(branches.has("squashed")).toBe(false);
+    expect(await pageOf(merged.key)).toMatchObject({ state: "merged", mergeMethod: "merge" });
+    expect(branches.has("merged")).toBe(false);
+    // Nothing of it in main: open, and its branch is left alone.
+    expect((await pageOf(waiting.key)).state).toBe("open");
+    expect(branches.get("waiting")).toBe(waiting.newOid);
+    // A protection rule that keeps the branch keeps it; the page is still merged.
+    expect((await pageOf(kept.key)).state).toBe("merged");
+    expect(branches.get("kept")).toBe(kept.newOid);
+
+    // Delivered twice, recorded once.
+    const entries = (await timeline(squashed.number)).map((entry) => entry.type);
+    expect(entries.filter((type) => type === "merged")).toHaveLength(1);
+    expect(entries.filter((type) => type === "head_branch_deleted")).toHaveLength(1);
+  });
+
+  it("deletes a merged branch only where it was measured", async () => {
+    const moving = await page("moving");
+    world.storage.landings.set(moving.newOid, "applied");
+    // The branch moves in the storage after the page last heard of it.
+    const ahead = world.storage.nextOid();
+    world.storage.repository(id).branches.set("moving", ahead);
+    await push("main", { by: alice });
+    expect((await pageOf(moving.key)).state).toBe("merged");
+    expect(world.storage.repository(id).branches.get("moving")).toBe(ahead);
+  });
+
+  it("merges a page left open after its branch went, at the next push to main", async () => {
+    // As pages were before a deleted branch closed them: open, the branch gone.
+    const left = await page("left-open");
+    world.storage.repository(id).branches.delete("left-open");
+    await db
+      .update(gitPullRequests)
+      .set({ headRefExists: false })
+      .where(and(eq(gitPullRequests.repositoryId, id), eq(gitPullRequests.headRef, "left-open")));
+    world.storage.landings.set(left.newOid, "applied");
+    await push("main", { by: alice });
+    expect(await pageOf(left.key)).toMatchObject({ state: "merged", headRefExists: false });
+    expect((await timeline(left.number)).map((entry) => entry.type)).not.toContain(
+      "head_branch_deleted",
+    );
+  });
+
+  it("records a page as merged when its branch is deleted after its changes landed", async () => {
+    const done = await page("done-elsewhere");
+    world.storage.landings.set(done.newOid, "applied");
+    await push("done-elsewhere", { delete: true, by: alice });
+    const gone = await pageOf(done.key);
+    expect(gone).toMatchObject({ state: "merged", mergeMethod: "squash", headRefExists: false });
+    expect(
+      (await timeline(done.number)).map((entry) => entry.type).filter((type) => type !== "commits"),
+    ).toEqual(["merged", "head_branch_deleted"]);
   });
 
   it("closes the issues a commit on the default branch fixes, and notes the ones it names", async () => {

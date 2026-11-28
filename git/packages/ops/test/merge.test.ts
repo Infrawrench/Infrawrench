@@ -7,6 +7,7 @@ import {
   type NewObject,
   analyzeMerge,
   createCommit,
+  landedIn,
   mergeCommits,
   mergeText,
   mergeTrees,
@@ -591,6 +592,58 @@ describeGit("merge strategies", () => {
     repo.run("merge", "-q", "--squash", source);
     repo.commit("git's squash");
     expect(outcome.tree).toBe(repo.tree("HEAD"));
+  });
+
+  it("tells a merged, squashed or cherry-picked source from one that is not in", async () => {
+    const { repo, base, target, source } = setup();
+    let store = loadStore(repo);
+    expect(await landedIn(store, target, source)).toBeNull();
+    // A branch with nothing of its own is an ancestor; the caller decides whether it counts.
+    expect(await landedIn(store, target, base)).toBe("contained");
+
+    // Squashed, then main moves on elsewhere: everything it changes is in.
+    repo.run("merge", "-q", "--squash", source);
+    repo.commit("Feature, squashed");
+    const other = repo.lines("show", `${target}:src/f4.txt`);
+    other[30] = "main after the squash;";
+    repo.write("src/f4.txt", text(other));
+    const squashed = repo.commit("main after the squash");
+    store = loadStore(repo);
+    expect(await landedIn(store, squashed, source)).toBe("applied");
+
+    // A merge commit has the source in its history.
+    repo.run("checkout", "-q", "-b", "merged", target);
+    repo.run("merge", "-q", "--no-ff", "-m", "merge", source);
+    store = loadStore(repo);
+    expect(await landedIn(store, repo.rev("HEAD"), source)).toBe("contained");
+
+    // Only some of its commits picked: not in.
+    repo.run("checkout", "-q", "-b", "partial", target);
+    repo.run("cherry-pick", repo.rev(`${source}~3`));
+    store = loadStore(repo);
+    expect(await landedIn(store, repo.rev("HEAD"), source)).toBeNull();
+  });
+
+  it("does not take a source that changes nothing, or one main has changed again, as applied", async () => {
+    const { repo, target, source } = setup();
+    // Lands as a squash, then main edits a line the feature wrote: merging it again conflicts.
+    repo.run("merge", "-q", "--squash", source);
+    repo.commit("Feature, squashed");
+    const edited = repo.lines("show", "HEAD:src/f0.txt");
+    edited[3] = "main rewrote the feature's line;";
+    repo.write("src/f0.txt", text(edited));
+    const rewritten = repo.commit("rewrite a feature line");
+
+    // A branch whose commits cancel out.
+    repo.run("checkout", "-q", "-b", "nothing", target);
+    repo.write("src/f2.txt", "changed\n");
+    repo.commit("change");
+    repo.run("revert", "--no-edit", "HEAD");
+    const nothing = repo.rev("HEAD");
+
+    const store = loadStore(repo);
+    expect(await landedIn(store, rewritten, source)).toBeNull();
+    expect(await landedIn(store, target, nothing)).toBeNull();
   });
 
   it("rebases the way git rebase does", async () => {

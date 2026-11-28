@@ -180,6 +180,8 @@ export const applyState = async (
     readonly reason?: GitIssueStateReason | null;
     /** The commit whose message closed it. */
     readonly commitOid?: string;
+    /** When the timeline says it happened; now when left out. */
+    readonly at?: Date;
   },
 ): Promise<boolean> =>
   db.transaction(async (tx) => {
@@ -190,6 +192,7 @@ export const applyState = async (
       repositoryId: thread.repositoryId,
       actorUserId: by.userId,
       type: state === "closed" ? "closed" : "reopened",
+      ...(by.at ? { at: by.at } : {}),
       payload:
         state === "closed"
           ? {

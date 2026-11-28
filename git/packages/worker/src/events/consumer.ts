@@ -42,6 +42,7 @@ import { type RepoReaderFactory, repoReaderFor } from "../repo/select";
 import { announcePullRequest, announcePush } from "./ci";
 import { queueReviewForVersion } from "./reviews";
 import { queueMergeApplies, queuePullRequestPlans, scanAhead } from "./terraform";
+import { settleBasePush, settleDeletedHead } from "./landed";
 import { branchDeleted, carryThreads, openBranchPage, recordVersions } from "./versions";
 import { describeError } from "../http/log";
 import { enqueueJob } from "../jobs/consumer";
@@ -248,16 +249,20 @@ const handleBranch = async (cx: PushContext, update: Update, branch: string): Pr
   );
 
   if (deleted) {
-    for (const { thread, pull } of heads) {
-      if (!pull.headRefExists) continue;
-      await syncPullRequest(pull.issueId, { headRefExists: false });
-      await addTimelineEvent(db, {
-        issueId: thread.id,
-        repositoryId: thread.repositoryId,
-        actorUserId: cx.userId,
-        type: "head_branch_deleted",
-        payload: { ref: branch },
-        at: new Date(cx.event.at),
+    for (const found of heads) {
+      const { thread, pull } = found;
+      // A page never stays open without its branch: merged if the base has it, else closed.
+      await settleDeletedHead(cx, found, async (at) => {
+        if (!pull.headRefExists) return;
+        await syncPullRequest(pull.issueId, { headRefExists: false });
+        await addTimelineEvent(db, {
+          issueId: thread.id,
+          repositoryId: thread.repositoryId,
+          actorUserId: cx.userId,
+          type: "head_branch_deleted",
+          payload: { ref: branch },
+          at,
+        });
       });
     }
     await branchDeleted(cx, branch);
@@ -294,6 +299,8 @@ const handleBranch = async (cx: PushContext, update: Update, branch: string): Pr
       await syncPullRequest(pull.issueId, { baseOid: update.newOid });
     }
   }
+  // The pages based on this branch whose changes it now has, however they got there, are merged.
+  await settleBasePush(cx, branch, pulls);
 
   if (branch === repository.defaultBranch && commits) await applyCommitMessages(cx, commits);
 

@@ -949,6 +949,11 @@ describeGit("the reader, with git as the judge", () => {
       expect(await gitOut(["log", "-1", "--format=%P", oid], { cwd: dir })).toBe(
         `${fixture.at.main} ${fixture.at.topic}`,
       );
+      // Merged: the head is in main's history.
+      expect(await mine.landed({ baseRef: "main", heads: [input.headOid] })).toEqual({
+        baseOid: oid,
+        heads: [{ landing: "contained", commitOid: oid }],
+      });
       expect(await gitOut(["log", "-1", "--format=%an <%ae>|%cn|%B", oid], { cwd: dir })).toBe(
         "Mo Merger <mo@example.com>|Mo Merger|Merge the topic (#4)\n\nThree commits.",
       );
@@ -970,6 +975,13 @@ describeGit("the reader, with git as the judge", () => {
     {
       const repo = await fresh("repo-squash");
       const mine = hub.reader("repo-squash");
+      // Not in yet; a head that is not here, or not a commit id, cannot be told.
+      expect(
+        await mine.landed({
+          baseRef: "main",
+          heads: [input.headOid, "e".repeat(40), "not a commit"],
+        }),
+      ).toEqual({ baseOid: fixture.at.main, heads: [null, null, null] });
       const outcome = await mine.merge({
         ...input,
         headRepositoryId: "repo-squash",
@@ -984,6 +996,21 @@ describeGit("the reader, with git as the judge", () => {
       expect(await gitOut(["log", "-1", "--format=%P|%an|%cn", oid], { cwd: dir })).toBe(
         `${fixture.at.main}|Ada Author|Mo Merger`,
       );
+      // Squashed: not in main's history, but merging it again would change nothing.
+      expect(
+        await mine.landed({ baseRef: "main", heads: [input.headOid, fixture.at.conflict!] }),
+      ).toEqual({ baseOid: oid, heads: [{ landing: "applied", commitOid: oid }, null] });
+      // The commit a head landed in is the oldest of main's line that has it: for c7, c7 itself.
+      expect(await mine.landed({ baseRef: "main", heads: [fixture.at.c7!] })).toEqual({
+        baseOid: oid,
+        heads: [{ landing: "contained", commitOid: fixture.at.c7 }],
+      });
+      await expect(mine.landed({ baseRef: "gone", heads: [] })).rejects.toMatchObject({
+        code: "ref_not_found",
+      });
+      await expect(
+        mine.landed({ baseRef: "main", heads: Array(101).fill(input.headOid) }),
+      ).rejects.toMatchObject({ code: "too_large" });
     }
 
     // A rebase: each commit replayed, authors kept.

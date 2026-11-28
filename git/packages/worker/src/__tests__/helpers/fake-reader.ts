@@ -42,6 +42,8 @@ export interface FakeStorage {
   readonly commits: Map<string, { message: string; email: string }>;
   /** Head commits whose merge into anything conflicts. */
   readonly conflicting: Set<string>;
+  /** Head commits every base already has, and how (`landed`); any other head is not in. */
+  readonly landings: Map<string, "contained" | "applied">;
   /** What `commitRange` answers for a head commit. */
   readonly ranges: Map<string, string[]>;
   readonly merges: MergeInput[];
@@ -72,6 +74,7 @@ export const fakeStorage = (): FakeStorage => {
   const repositories = new Map<string, FakeRepository>();
   const commits = new Map<string, { message: string; email: string }>();
   const conflicting = new Set<string>();
+  const landings = new Map<string, "contained" | "applied">();
   const ranges = new Map<string, string[]>();
   const merges: MergeInput[] = [];
   const changedLines = new Set<string>();
@@ -393,6 +396,17 @@ export const fakeStorage = (): FakeStorage => {
           behindBy: 0,
         };
       },
+      landed: async ({ baseRef, heads }) => {
+        const baseOid = repo().branches.get(baseRef);
+        if (!baseOid) throw new RepoReaderError("ref_not_found");
+        return {
+          baseOid,
+          heads: heads.map((head) => {
+            const landing = landings.get(head);
+            return landing ? { landing, commitOid: baseOid } : null;
+          }),
+        };
+      },
       merge: async (input) => {
         merges.push(input);
         if (conflicting.has(input.headOid)) {
@@ -480,6 +494,7 @@ export const fakeStorage = (): FakeStorage => {
     repositories,
     commits,
     conflicting,
+    landings,
     ranges,
     merges,
     changedLines,

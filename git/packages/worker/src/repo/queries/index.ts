@@ -25,7 +25,7 @@ import {
 } from "./content";
 import { commit, commitDiff, compare, compareDiff, diffAnchor } from "./diffs";
 import { blame, commitRange, commits, commitsBetween, listCommits } from "./history";
-import { merge, mergeability, updateBranch } from "./merges";
+import { landed, merge, mergeability, updateBranch } from "./merges";
 import {
   createBranch,
   deleteBranch,
@@ -157,6 +157,7 @@ export function localRepoReader(
     blame: (input) => blame(cx, input),
     diffAnchor: (input) => diffAnchor(cx, input),
     mergeability: (input) => mergeability(cx, input),
+    landed: (input) => landed(cx, input),
     merge: (input) => merge(cx, input),
     updateBranch: (input) => updateBranch(cx, input),
     listVersions: (input) => listVersions(cx, input),
