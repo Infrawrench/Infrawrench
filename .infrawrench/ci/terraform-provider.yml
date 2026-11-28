@@ -4,12 +4,13 @@
 # module outside the pnpm workspace, so nothing in test.yml reaches it. A
 # pipeline of its own keeps it that way.
 #
-# Two checks stay on GitHub Actions (.github/workflows/terraform-provider.yml):
+# Two checks run on a machine (`platform: linux`) rather than in an isolate,
+# in the `native` job:
 # - `go vet`: vet compiled for WebAssembly traps in its errorsas and hostport
 #   analyzers on this module's packages, an upstream Go bug (it does the same
 #   under wasmtime with go.dev's own toolchain). Rechecked on runner 0.3.32
 #   with env:go 1.27 (Go 1.27.4): still so, while every other analyzer passes
-#   now that #1082 is fixed. Those two are the reason vet stays.
+#   now that #1082 is fixed. Those two are the reason vet is native.
 # - The docs check: tfplugindocs reads the schema by running a real
 #   Terraform, which loads the provider through go-plugin over a Unix domain
 #   socket, and WASIX has no Unix domain sockets.
@@ -21,12 +22,14 @@ name: Terraform provider
 on:
   push:
     branches: [main]
-    paths: &inputs
+    paths: &paths
       - terraform-provider-infrawrench/**
       - app/packages/web/openapi.json
       - .infrawrench/ci/terraform-provider.yml
+      # Where the `native` job gets Terraform.
+      - .infrawrench/ci/git-tools.sh
   pull-request:
-    paths: *inputs
+    paths: *paths
 
 workspace:
   deps:
@@ -57,8 +60,8 @@ jobs:
   # Acceptance tests are skipped without TF_ACC, which is deliberate: they
   # create and destroy real objects in a real organization. `-count=1`
   # defeats Go's test cache, so a run that is not a task-cache hit always
-  # runs the tests against this commit. `-vet=off` because vet runs on
-  # GitHub Actions (above); `go test`'s own vet includes errorsas.
+  # runs the tests against this commit. `-vet=off` because vet runs in
+  # `native` (below); `go test`'s own vet includes errorsas.
   #
   # Go compiles one package at a time here, so most of a cold run is
   # compiling the dependencies. From `env:go` 1.27.6 the environment keeps
@@ -73,6 +76,54 @@ jobs:
       go build ./...
       go test -vet=off -count=1 ./...
     task-cache:
-      inputs: *inputs
+      inputs:
+        - terraform-provider-infrawrench/**
+        - app/packages/web/openapi.json
+        - .infrawrench/ci/terraform-provider.yml
     timeout: 20m
     memory: 4GiB
+
+  # Every analyzer, as on a laptop: `go`'s `go test` runs with -vet=off, so
+  # this is the module's only vet. Then the docs: the Registry renders
+  # `docs/` from the release tag and nothing else, so a schema change that
+  # never reached the generated pages ships a provider whose documentation
+  # describes the previous version, silently. The generator is pinned as a
+  # Go tool dependency, so CI and a laptop produce identical bytes, and it
+  # drives a real Terraform (git-tools.sh fetches it, checked against
+  # HashiCorp's sum). The checkout has no .git, so the comparison is against
+  # a copy taken before generating.
+  native:
+    name: Vet and docs
+    platform: linux
+    cwd: /app/terraform-provider-infrawrench
+    paths:
+      - terraform-provider-infrawrench/**
+      - .infrawrench/ci/terraform-provider.yml
+      - .infrawrench/ci/git-tools.sh
+    cache:
+      - key: terraform-provider-go-${{ hashFiles('terraform-provider-infrawrench/go.sum') }}
+        restore-keys: ["terraform-provider-go-"]
+        paths: [/root/.cache/go-mod, /root/.cache/go-build]
+      - key: git-tools-${{ hashFiles('.infrawrench/ci/git-tools.sh') }}
+        paths: [/root/.cache/git-forge-tools]
+    env:
+      GOMODCACHE: /root/.cache/go-mod
+      GOCACHE: /root/.cache/go-build
+    run: |
+      tools=/root/.cache/git-forge-tools
+      /app/.infrawrench/ci/git-tools.sh "$tools" terraform
+      export PATH="$tools/bin:$PATH"
+      go version
+
+      go vet ./...
+
+      cp -R docs /tmp/docs-before
+      go tool tfplugindocs generate --provider-name infrawrench
+      if ! diff -r /tmp/docs-before docs >/tmp/docs.diff; then
+        echo "docs/ is stale. Run: cd terraform-provider-infrawrench && go tool tfplugindocs generate --provider-name infrawrench"
+        head -n 200 /tmp/docs.diff
+        exit 1
+      fi
+    cpus: 4
+    memory: 8GiB
+    timeout: 20m

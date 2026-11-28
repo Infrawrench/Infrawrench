@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
+#
+# Builds the bastion agent image (app/packages/bastion-agent) for amd64 and
+# arm64 and pushes it to the self-hosted registry (registry.infrawrench.com,
+# our serverless-registry fork on a CF Worker backed by R2, deployed from
+# infra/registry) as one multi-arch manifest tagged :<commit sha> and
+# :latest.
+#
+# One machine builds both: the machines are x86_64, so the arm64 half runs
+# under QEMU (binfmt-arm64.sh). The image is an npm install of esbuild and a
+# bundle of a few files on node:22-alpine, so emulation costs a minute or
+# two, not the separate arm64 runner GitHub Actions needed. Docker's
+# containerd image store (the default since Docker 29) builds a multi-platform
+# image with the default builder.
+#
+# Secrets: REGISTRY_USERNAME and REGISTRY_PASSWORD, push credentials for
+# registry.infrawrench.com.
+name: Deploy bastion agent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app/packages/bastion-agent/**
+      - .infrawrench/ci/bastion-deploy.yml
+      - .infrawrench/ci/binfmt-arm64.sh
+  # Main's push, again.
+  manual: {}
+
+concurrency:
+  group: bastion-deploy
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and push (amd64, arm64)
+    platform: linux
+    env:
+      IMAGE: registry.infrawrench.com/bastion-agent
+      SHA: ${{ commit.sha }}
+      BRANCH: ${{ commit.branch }}
+      REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+      REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+    run: |
+      # A manual run can name any branch; only main may publish.
+      if [ "$BRANCH" != main ]; then
+        echo "error: the bastion image is published from main only (got $BRANCH)" >&2
+        exit 1
+      fi
+
+      .infrawrench/ci/binfmt-arm64.sh
+      iwci-dockerd
+      printf '%s' "$REGISTRY_PASSWORD" |
+        docker login registry.infrawrench.com --username "$REGISTRY_USERNAME" --password-stdin
+
+      docker buildx build app/packages/bastion-agent \
+        --platform linux/amd64,linux/arm64 \
+        --tag "$IMAGE:$SHA" --tag "$IMAGE:latest" \
+        --push
+
+      docker buildx imagetools inspect "$IMAGE:$SHA"
+      docker logout registry.infrawrench.com
+    cpus: 4
+    memory: 6GiB
+    timeout: 30m

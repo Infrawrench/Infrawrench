@@ -123,7 +123,7 @@ anything, and `journalctl -u iwci-size` has what it set at the last boot.
 The rule is a few named constants at the top of `files/iwci-size`; its
 tests run with `bash infra/ci-runners/tests/iwci-size.sh` (fake hosts in a
 temporary directory, nothing applied to the machine running them), and
-`.github/workflows/ci-runner-hosts.yml` runs them and shellcheck on every
+`.infrawrench/ci/ci-runner-hosts.yml` runs them and shellcheck on every
 change here.
 
 ## Restarts and updates never kill a job

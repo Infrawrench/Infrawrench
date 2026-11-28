@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
+#
+# infra/ci-runners/ is Terraform and the shell scripts it installs on the
+# runner hosts; nothing else checks it. Its scripts run as root on hosts that
+# serve every run, so they are linted, and the sizing script's rule is tested
+# against made-up hosts (nothing is applied to the machine running it).
+#
+# A machine (`platform: linux`) rather than an isolate: shellcheck is an
+# Ubuntu package and has no builtin, and the sizing test reads /proc and
+# /sys stand-ins the way the hosts' bash does.
+name: CI runner hosts
+
+on:
+  push:
+    branches: [main]
+    paths: &inputs
+      - infra/ci-runners/**
+      - .infrawrench/ci/ci-runner-hosts.yml
+  pull-request:
+    paths: *inputs
+
+concurrency:
+  group: ci-runner-hosts-${{ commit.branch }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Shellcheck and test
+    platform: linux
+    cwd: /app/infra/ci-runners
+    run: |
+      sudo apt-get update -qq
+      sudo apt-get install -y -qq --no-install-recommends shellcheck >/dev/null
+      shellcheck --version | sed -n 2p
+      shellcheck files/install.sh files/iwci-size tests/*.sh
+      bash tests/iwci-size.sh
+    timeout: 10m

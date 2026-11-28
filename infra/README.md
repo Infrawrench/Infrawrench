@@ -23,7 +23,7 @@ The CF Workers deployables (website, telemetry) are not part of this.
 | Registry, CI identity, Lambda, session gateway, Oracle VM, edge secrets | `infra/terraform` (applied manually)      |
 | Images `web` / `poller` / `github-watcher`, tagged `:<commit sha>`      | `.github/workflows/web-deploy.yml`        |
 | Container registry `registry.infrawrench.com` (CF Worker + R2)          | `infra/registry` (deployed manually)      |
-| Image `bastion-agent`, tagged `:<commit sha>` + `:latest`               | `.github/workflows/bastion-deploy.yml`    |
+| Image `bastion-agent`, tagged `:<commit sha>` + `:latest`               | `.infrawrench/ci/bastion-deploy.yml`      |
 | Workflow egress proxy `egress.infrawrench.com` (CF Worker)              | `.infrawrench/ci/egress-proxy-deploy.yml` |
 | Edge Workers `infrawrench-web` / `infrawrench-poller`                   | `.github/workflows/web-deploy.yml`        |
 | Lambda image `lambda`, tagged `:<commit sha>`                           | `.github/workflows/web-deploy.yml`        |

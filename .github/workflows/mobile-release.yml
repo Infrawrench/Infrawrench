@@ -20,7 +20,7 @@
 # Where it stops: `--auto-submit` uploads to TestFlight. It deliberately does
 # not push App Store review — promoting a build to production stays a human
 # decision in App Store Connect. That is also why this never touches the
-# `preview` builds in mobile-build.yml, which keep running for internal
+# `preview` builds in .infrawrench/ci/mobile-build.yml, which keep running for internal
 # distribution.
 name: Mobile Release (iOS)
 
@@ -28,7 +28,7 @@ on:
   push:
     branches: [main]
     # Only the file the version lives in. Every other mobile change is already
-    # covered by mobile-build.yml's preview build; a release is a deliberate act.
+    # covered by .infrawrench/ci/mobile-build.yml's preview build; a release is a deliberate act.
     paths:
       - "app/packages/mobile/app.config.ts"
       - ".github/workflows/mobile-release.yml"
@@ -148,7 +148,7 @@ jobs:
       # so `production` builds go through `submit.production`. It lands in
       # TestFlight; App Store public review is not triggered from here.
       #
-      # As in mobile-build.yml, `--non-interactive` disables eas-cli's Apple
+      # As in .infrawrench/ci/mobile-build.yml, `--non-interactive` disables eas-cli's Apple
       # capability syncing, so a newly added entitlement still needs a one-time
       # manual enable on the App ID. See KNOWLEDGE.md.
       - name: EAS build and submit iOS (production)

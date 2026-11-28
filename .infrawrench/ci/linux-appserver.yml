@@ -1,0 +1,111 @@
+# yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
+#
+# `linux-appserver/` is a standalone Rust workspace outside the pnpm
+# workspace, so nothing in test.yml reaches it. This is its whole CI.
+#
+# Machines (`platform: linux`), not isolates with `builtin:rust`:
+# - the compositor links libxkbcommon, an Ubuntu package, and building the
+#   test binaries needs its headers and .so (`cargo clippy` does not link and
+#   passes without them, which is how that was once missed);
+# - the toolchain is the one `rust-toolchain.toml` pins, with the musl
+#   targets, which rustup installs and the builtin cannot;
+# - the static builds run inside Alpine, in Docker.
+name: Linux app server
+
+on:
+  push:
+    branches: [main]
+    paths: &inputs
+      - linux-appserver/**
+      - .infrawrench/ci/linux-appserver.yml
+      - .infrawrench/ci/binfmt-arm64.sh
+  pull-request:
+    paths: *inputs
+
+concurrency:
+  group: linux-appserver-${{ commit.branch }}
+  cancel-in-progress: true
+
+jobs:
+  # Formatting first: cheapest check, most likely to fail.
+  check:
+    name: Format, lint and test
+    platform: linux
+    cwd: /app/linux-appserver
+    cache:
+      key: linux-appserver-${{ hashFiles('linux-appserver/Cargo.lock', 'linux-appserver/rust-toolchain.toml') }}
+      restore-keys: ["linux-appserver-"]
+      paths:
+        - /root/.rustup/toolchains
+        - /root/.cargo/registry
+        - /app/linux-appserver/target
+    env:
+      CARGO_TERM_COLOR: always
+    run: |
+      sudo apt-get update -qq
+      sudo apt-get install -y -qq --no-install-recommends libxkbcommon-dev >/dev/null
+
+      # The toolchain file is the single source of truth for the version.
+      rustup show active-toolchain || rustup toolchain install
+
+      cargo fmt --all -- --check
+      cargo clippy --workspace --all-targets -- -D warnings
+      cargo test --workspace
+    cpus: 4
+    memory: 8GiB
+    timeout: 30m
+
+  # Built inside Alpine rather than with a musl cross-toolchain, because the
+  # compositor links libxkbcommon and a static build needs a musl build of
+  # it: Debian and the cross images ship only the glibc one, so the link
+  # fails with `cannot find -lxkbcommon`, and Alpine packages
+  # libxkbcommon-static.
+  #
+  # The machines are x86_64, so the aarch64 build runs its Alpine under
+  # QEMU (binfmt-arm64.sh). That is several times slower than the native
+  # arm64 runner GitHub Actions used, which is why it has the longer
+  # timeout; the workspace's few dependencies keep it within it. Pull
+  # requests only: main's commits were each a pull request's.
+  musl:
+    name: Static build (${{ matrix.target }})
+    if: event == 'pull-request'
+    platform: linux
+    matrix:
+      target: [x86_64-unknown-linux-musl, aarch64-unknown-linux-musl]
+    env:
+      TARGET: ${{ matrix.target }}
+    run: |
+      platform=linux/amd64
+      if [ "$TARGET" = aarch64-unknown-linux-musl ]; then
+        .infrawrench/ci/binfmt-arm64.sh
+        platform=linux/arm64
+      fi
+      iwci-dockerd
+
+      docker run --rm --platform "$platform" -e TARGET \
+        -v "$PWD/linux-appserver:/src" -w /src \
+        public.ecr.aws/docker/library/alpine:3.22 sh -euc '
+          apk add --no-cache curl gcc musl-dev libxkbcommon-dev libxkbcommon-static file
+          curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs > /tmp/rustup-init.sh
+          sh /tmp/rustup-init.sh -y --no-modify-path --profile minimal
+          export PATH=/root/.cargo/bin:$PATH
+          cargo build --release --target "$TARGET" -p iwappd
+
+          binary="target/$TARGET/release/iwappd"
+          file "$binary"
+          # A dynamically linked "static" build fails only on the target
+          # host, days later, so assert it here instead.
+          if file "$binary" | grep -q "dynamically linked"; then
+            echo "error: $binary is dynamically linked; it must be static to run on an unknown host" >&2
+            exit 1
+          fi
+          ls -lh "$binary"
+        '
+      mkdir -p "/app/out/$TARGET"
+      cp "linux-appserver/target/$TARGET/release/iwappd" "/app/out/$TARGET/iwappd"
+    downloads:
+      paths: [out]
+      retention: 7d
+    cpus: 4
+    memory: 8GiB
+    timeout: 90m

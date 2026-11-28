@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
+#
+# Manual escape hatch for poisoned edge-cache entries (e.g. an index.html
+# fallback cached under a hashed /assets/*.css URL during a rolling deploy).
+# Start it from the CI tab on main.
+#
+# The zone token is the Infrawrench CF connection's, lent to this
+# repository's main branch only: a manual run on another branch, whose copy
+# of this file nobody has reviewed, fails before it starts.
+name: Purge Cloudflare cache
+
+on:
+  manual:
+    inputs:
+      urls:
+        description: Space-separated full URLs to purge. Leave empty to purge the whole zone.
+
+jobs:
+  purge:
+    name: Purge infrawrench.com zone cache
+    platform: linux
+    clone: false
+    connections: [Infrawrench CF]
+    env:
+      URLS: ${{ inputs.urls }}
+      ZONE_ID: 678b46e2084a5799afdc5f030980e756
+    run: |
+      if [ -n "$URLS" ]; then
+        # Word splitting on purpose: one URL per word.
+        # shellcheck disable=SC2086
+        BODY="$(printf '%s\n' $URLS | jq -R . | jq -cs '{files: .}')"
+      else
+        BODY='{"purge_everything":true}'
+      fi
+      echo "Purge body: $BODY"
+      curl -sS -X POST "https://api.cloudflare.com/client/v4/zones/$ZONE_ID/purge_cache" \
+        -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+        -H "Content-Type: application/json" \
+        --data "$BODY" > /tmp/purge.json
+      jq . /tmp/purge.json
+      jq -e '.success == true' /tmp/purge.json > /dev/null
+    timeout: 5m

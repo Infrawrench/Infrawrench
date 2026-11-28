@@ -62,7 +62,7 @@ pnpm --filter @infrawrench/web translations:status
 
 Read straight from the `AWS_BULK_PRICING` Workers KV namespace that
 `/api/v1/aws-bulk-pricing` serves, written by
-`.github/workflows/aws-bulk-pricing-sync.yml`. The format belongs to
+`.infrawrench/ci/aws-bulk-pricing-sync.yml`. The format belongs to
 `app/packages/web/src/aws-bulk-pricing/format.ts`; `lib/decode.ts` reads it.
 A busy instance carries tens of thousands of price rows, so the page ships
 current prices for every region plus one region's history (`lib/model.ts`),
@@ -112,7 +112,7 @@ access to the namespace, because the binding is `remote`.
 
 ## Deploying
 
-`.github/workflows/instances-deploy.yml` runs `vinext-cloudflare deploy` on
+`.infrawrench/ci/instances-deploy.yml` runs `vinext-cloudflare deploy` on
 every push to `main` that touches this package. It builds, then deploys the
 generated `dist/server/wrangler.json`, which adds the two Workers Cache
 entrypoints `workersCacheCdnAdapter()` serves ISR pages from. The custom

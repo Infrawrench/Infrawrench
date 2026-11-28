@@ -69,7 +69,7 @@ docker run --rm -v "$PWD:/src" -w /src alpine:3.22 sh -euc '
 
 Alpine specifically, because the compositor links `libxkbcommon` and a static build needs a musl build of it. Debian and the `cross` images carry only the glibc one, so the link fails with `cannot find -lxkbcommon`. The result is ~2.5 MB and `static-pie linked`.
 
-Rust 1.85+ (edition 2024). This module is **not** in `pnpm-workspace.yaml`, `turbo.json`, or the JS CI — `.github/workflows/linux-appserver.yml` runs exactly the three commands above and nothing else reaches it. It _is_ in `cliff.toml`'s `include_paths`, because the desktop app ships this binary and changes to it are user-visible in the desktop changelog.
+Rust 1.85+ (edition 2024). This module is **not** in `pnpm-workspace.yaml`, `turbo.json`, or the JS CI — `.infrawrench/ci/linux-appserver.yml` (Infrawrench CI, on `platform: linux` machines) runs exactly the three commands above, plus the static builds on pull requests, and nothing else reaches it. It _is_ in `cliff.toml`'s `include_paths`, because the desktop app ships this binary and changes to it are user-visible in the desktop changelog.
 
 There are no runtime dependencies beyond `serde`, `thiserror`, `zstd` and `jpeg-encoder`. Everything here ends up on someone else's machine, so the bar for adding one is high — `jpeg-encoder` cleared it by having no transitive dependencies of its own and by pairing with a decoder every browser already ships.
 

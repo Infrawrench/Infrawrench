@@ -6,7 +6,7 @@
  * before the other clouds.)
  *
  * Written by the AWS bulk pricing sync (`web/src/aws-bulk-pricing/warehouse.ts`,
- * run by `.github/workflows/aws-bulk-pricing-sync.yml`) and read, with a
+ * run by `.infrawrench/ci/aws-bulk-pricing-sync.yml`) and read, with a
  * read-only token, by the chat (`instances/lib/chat/`). Both sides take the
  * tables from here: the loader creates them from {@link createTableSql} and
  * encodes rows in {@link TABLES} column order, and the chat's system prompt is

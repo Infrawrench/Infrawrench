@@ -20,7 +20,7 @@
   },
   "version_metadata": { "binding": "CF_VERSION_METADATA" },
   // The namespace the web Worker serves /api/v1/aws-bulk-pricing from, written
-  // by .github/workflows/aws-bulk-pricing-sync.yml. Read-only here. The format
+  // by .infrawrench/ci/aws-bulk-pricing-sync.yml. Read-only here. The format
   // is in app/packages/web/src/aws-bulk-pricing/format.ts. `remote` makes
   // `vite dev` read the real namespace (it is public data) instead of an empty
   // local one; deploys ignore it.

@@ -7,7 +7,7 @@ interface ImportMetaEnv {
 
 declare namespace Cloudflare {
   interface Env {
-    /** AWS bulk pricing data, written by .github/workflows/aws-bulk-pricing-sync.yml. */
+    /** AWS bulk pricing data, written by .infrawrench/ci/aws-bulk-pricing-sync.yml. */
     AWS_BULK_PRICING: KVNamespace;
     /** The chat's saved views (`view:<id>`), email alerts (`alert:<id>`) and their snapshots. */
     INSTANCES_CHAT: KVNamespace;

@@ -3,7 +3,7 @@
 A deployment of [Infrawrench/serverless-registry](https://github.com/Infrawrench/serverless-registry) —
 our fork of [cloudflare/serverless-registry](https://github.com/cloudflare/serverless-registry)
 (Docker Registry v2 API on a Worker, blobs in R2). It holds the bastion agent
-image pushed by `.github/workflows/bastion-deploy.yml`:
+image pushed by `.infrawrench/ci/bastion-deploy.yml`:
 
 - `registry.infrawrench.com/bastion-agent:<commit sha>`
 - `registry.infrawrench.com/bastion-agent:latest`

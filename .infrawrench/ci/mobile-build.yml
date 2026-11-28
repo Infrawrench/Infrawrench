@@ -1,0 +1,72 @@
+# yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
+#
+# EAS preview builds of the mobile app (app/packages/mobile), iOS and
+# Android, for internal distribution. Started by hand from the CI tab. The
+# build itself runs on Expo's servers; this job only hands it over.
+#
+# iOS ad-hoc profiles are rebuilt against the registered device list on every
+# run, so a device added via `eas device:create` since the last build can
+# still install the artifact. That needs an App Store Connect API key on
+# disk, written from EXPO_ASC_API_KEY_BASE64.
+#
+# `--non-interactive` also disables eas-cli's capability syncing: it only
+# syncs when an Apple auth context already exists, and the best-effort
+# authenticate bails out on non-interactive before it can use the ASC key
+# here. Apple auth happens later, when the profile is minted, so CI can
+# rebuild a profile but never registers new capabilities on the App ID.
+# Adding an entitlement to `ios.entitlements` therefore needs a one-time
+# manual enable at developer.apple.com -> Identifiers, or an interactive
+# `eas build` from a workstation; this job then picks it up on the next run.
+# Removing the flag is not an option: the interactive ad-hoc path prompts for
+# device selection.
+#
+# eas-cli is not a workspace dependency, so it is pinned here (and in
+# .github/workflows/mobile-release.yml) instead of letting npx fetch whatever
+# is latest into a job holding EXPO_TOKEN and the ASC key. Keep both pins at
+# or above eas.json `cli.version`.
+name: Mobile build
+
+on:
+  manual: {}
+
+concurrency:
+  group: mobile-build-${{ commit.branch }}
+  cancel-in-progress: true
+
+jobs:
+  eas-preview:
+    name: EAS preview build
+    platform: linux
+    cache:
+      key: mobile-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+      restore-keys: ["mobile-pnpm-"]
+      paths: [/root/.cache/pnpm-store]
+    env:
+      EXPO_ASC_API_KEY_BASE64: ${{ secrets.EXPO_ASC_API_KEY_BASE64 }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_ASC_API_KEY_PATH: /tmp/asc-api-key.p8
+      EXPO_ASC_KEY_ID: ${{ secrets.EXPO_ASC_KEY_ID }}
+      EXPO_ASC_ISSUER_ID: ${{ secrets.EXPO_ASC_ISSUER_ID }}
+      EXPO_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      EXPO_APPLE_TEAM_TYPE: ${{ vars.APPLE_TEAM_TYPE }}
+    run: |
+      pnpm install --frozen-lockfile --store-dir /root/.cache/pnpm-store \
+        --filter . --filter "@infrawrench/mobile..."
+
+      install -m 600 /dev/null "$EXPO_ASC_API_KEY_PATH"
+      printf '%s' "$EXPO_ASC_API_KEY_BASE64" | base64 --decode > "$EXPO_ASC_API_KEY_PATH"
+      unset EXPO_ASC_API_KEY_BASE64
+
+      # eas-cli waits for Expo's queue and builds with no output for long
+      # stretches, and the runner stops a job that prints nothing for five
+      # minutes as stuck.
+      while sleep 120; do echo "Still waiting for EAS ($(date -u +%H:%M:%S) UTC)"; done &
+      heartbeat=$!
+      trap 'kill "$heartbeat" 2>/dev/null || true' EXIT
+
+      cd app/packages/mobile
+      npx -y eas-cli@24.10.0 build --platform all --profile preview --non-interactive \
+        --refresh-ad-hoc-provisioning-profile
+    cpus: 2
+    memory: 6GiB
+    timeout: 3h

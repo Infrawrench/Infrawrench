@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
+#
+# Tests, builds and deploys instances.infrawrench.com (app/packages/instances,
+# vinext on Cloudflare). The deploy builds with Vite, then deploys the
+# generated dist/server/wrangler.json, which adds the Workers Cache
+# entrypoints the ISR pages are served from.
+#
+# A machine (`platform: linux`) runs it as a laptop would: vinext's deploy
+# drives the package's own Wrangler, which loads workerd. The Infrawrench CF
+# connection is lent to the job (CLOUDFLARE_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID); it is lent to this repository's main branch only,
+# so nothing else can deploy.
+#
+# PostHog: the public project key and ingestion host, from the POSTHOG_KEY
+# and POSTHOG_HOST variables, inlined at build time. Unset builds without
+# analytics.
+name: Deploy instances
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app/packages/instances/**
+      - app/packages/analytics/**
+      # The chat's system prompt is built from the warehouse schema, and
+      # alert email goes through server-core's Mailgun transport.
+      - app/packages/server-core/src/aws-pricing-warehouse/**
+      - app/packages/server-core/src/email.ts
+      - app/packages/server-core/src/email-html.ts
+      # The warehouse code above takes its shared constants from client-core.
+      - app/packages/client-core/src/**
+      - pnpm-lock.yaml
+      # A change to the build steps redeploys, rather than waiting for the
+      # next change to the site.
+      - .infrawrench/ci/instances-deploy.yml
+  # A redeploy of main without a change.
+  manual: {}
+
+concurrency:
+  group: instances-deploy-${{ commit.branch }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Test, build and deploy to Cloudflare
+    platform: linux
+    connections: [Infrawrench CF]
+    cache:
+      key: instances-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+      restore-keys: ["instances-pnpm-"]
+      paths: [/root/.cache/pnpm-store]
+    env:
+      VITE_POSTHOG_KEY: ${{ vars.POSTHOG_KEY }}
+      VITE_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+      WRANGLER_SEND_METRICS: "false"
+    run: |
+      pnpm install --frozen-lockfile --store-dir /root/.cache/pnpm-store \
+        --filter . --filter "@infrawrench/instances..."
+      # The warehouse schema and query code in server-core import
+      # @infrawrench/client-core, which resolves through its built dist.
+      pnpm exec turbo run build --filter=@infrawrench/client-core --output-logs=errors-only
+      pnpm --filter @infrawrench/instances test
+      pnpm --filter @infrawrench/instances run deploy
+    cpus: 4
+    memory: 8GiB
+    timeout: 30m

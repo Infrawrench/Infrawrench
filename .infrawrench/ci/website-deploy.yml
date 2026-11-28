@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=../../ci-runner/schema/ci.schema.json
+#
+# Builds the marketing site and docs (app/packages/website, Astro on the
+# Cloudflare adapter) and deploys the `infrawrench-website` Worker.
+#
+# A machine (`platform: linux`) runs it as a laptop would: Astro's image
+# pipeline and the adapter's build load native packages, and the package's
+# own Wrangler (which loads workerd) deploys the generated
+# dist/server/wrangler.json. The Infrawrench CF connection is lent to the
+# job (CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID); it is lent to this
+# repository's main branch only, so nothing else can deploy.
+#
+# PostHog: the public project key (phc_...) and ingestion host, from the
+# POSTHOG_KEY and POSTHOG_HOST variables, inlined at build time. Unset builds
+# without analytics (the host falls back to the package's default).
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app/packages/website/**
+      - app/packages/analytics/**
+      - pnpm-lock.yaml
+      - .infrawrench/ci/website-deploy.yml
+  # A redeploy of main without a change.
+  manual: {}
+
+concurrency:
+  group: website-deploy-${{ commit.branch }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy to Cloudflare
+    platform: linux
+    connections: [Infrawrench CF]
+    cache:
+      key: website-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+      restore-keys: ["website-pnpm-"]
+      paths: [/root/.cache/pnpm-store]
+    env:
+      PUBLIC_POSTHOG_KEY: ${{ vars.POSTHOG_KEY }}
+      PUBLIC_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
+      WRANGLER_SEND_METRICS: "false"
+    run: |
+      pnpm install --frozen-lockfile --store-dir /root/.cache/pnpm-store \
+        --filter . --filter "@infrawrench/website..."
+      pnpm --filter @infrawrench/website build
+      pnpm --filter @infrawrench/website exec wrangler deploy -c dist/server/wrangler.json
+    cpus: 4
+    memory: 8GiB
+    timeout: 30m

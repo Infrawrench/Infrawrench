@@ -3,7 +3,7 @@
  * `src/aws-bulk-pricing/sync.ts`. With a warehouse, also merge AWS's public
  * status page history into its `service_events` table
  * (`src/aws-bulk-pricing/service-events.ts`). Run twice an hour by
- * `.github/workflows/aws-bulk-pricing-sync.yml`.
+ * `.infrawrench/ci/aws-bulk-pricing-sync.yml`.
  *
  *   pnpm --filter @infrawrench/web sync:aws-bulk-pricing
  *

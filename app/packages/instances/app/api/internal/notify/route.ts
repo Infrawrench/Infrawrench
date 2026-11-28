@@ -4,7 +4,7 @@ import { refreshCatalog } from "@/lib/chat/catalog";
 
 /**
  * POST /api/internal/notify: called by the bulk pricing sync
- * (.github/workflows/aws-bulk-pricing-sync.yml) after it loads new data into
+ * (.infrawrench/ci/aws-bulk-pricing-sync.yml) after it loads new data into
  * the warehouse. Re-runs every watched view and emails confirmed subscribers
  * of the ones that changed, and rebuilds the chat's catalog of column values
  * (`lib/chat/catalog.ts`). Bearer `NOTIFY_SECRET`.
