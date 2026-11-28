@@ -200,6 +200,7 @@ export const READER_METHODS = [
   "blame",
   "diffAnchor",
   "mergeability",
+  "landed",
   "merge",
   "updateBranch",
   "listVersions",
@@ -208,6 +209,17 @@ export const READER_METHODS = [
   "mapLines",
 ] as const satisfies ReadonlyArray<keyof RepoReader>;
 export type ReaderMethod = (typeof READER_METHODS)[number];
+
+/**
+ * Every method of `RepoReader` is in `READER_METHODS`, or this fails to
+ * compile naming the one left out. The Worker's reader is built from the list
+ * (`reader-do.ts`), so a method missing from it is not a function there while
+ * every test that uses the queries directly, or a fake, still passes.
+ */
+const everyMethodListed: [Exclude<keyof RepoReader, ReaderMethod>] extends [never]
+  ? true
+  : Exclude<keyof RepoReader, ReaderMethod> = true;
+void everyMethodListed;
 
 /** What a reader call answers across the object's boundary, where an error keeps only its message. */
 export type ReaderReply =
