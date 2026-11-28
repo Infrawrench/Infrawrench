@@ -314,6 +314,21 @@ const handleBranch = async (cx: PushContext, update: Update, branch: string): Pr
   });
 };
 
+/**
+ * Runs a step of a push and logs how long it took when that was long, so a
+ * slow push says which step it spent its time in. Ids and branch names only.
+ */
+const SLOW_STEP_MS = 10_000;
+const timed = async <T>(step: string, run: () => Promise<T>): Promise<T> => {
+  const started = Date.now();
+  try {
+    return await run();
+  } finally {
+    const ms = Date.now() - started;
+    if (ms >= SLOW_STEP_MS) console.warn(`[git] push step ${step} took ${ms} ms`);
+  }
+};
+
 /** One push. Throws only when the database is away, so the message is retried. */
 export const handlePush = async (
   event: GitPushEvent,
@@ -334,6 +349,16 @@ export const handlePush = async (
     userId,
     username: userId ? ((await getNamespaceForUser(userId))?.slug ?? null) : null,
   };
+
+  // CI first, as the mirrors are: a run needs nothing below, and on the
+  // default branch what follows (the Infrastructure scan, settling every
+  // branch page based on it) can take minutes on a large repository, which
+  // CI used to wait out. Every ref, tags and deletions included: CI decides
+  // what starts a run. A retried message announces again and starts
+  // nothing new (CI dedupes on the repository, branch and commit). The pull
+  // request runs of branch pages are announced in `handleBranch`, once the
+  // page exists.
+  for (const update of event.updates) await announcePush(repo, update, cx.username);
 
   const stats = await tryRead(() => reader.stats());
   // The language bar is the default branch's: measured when a push moved it
@@ -367,14 +392,17 @@ export const handlePush = async (
   });
 
   // The Infrastructure tab's roots and estimates, read ahead of the first visit.
-  if (defaultBranch) await scanAhead(reader, repo.repository.id, [defaultBranch.newOid]);
+  if (defaultBranch) {
+    await timed(`scan ${repo.repository.id}`, () =>
+      scanAhead(reader, repo.repository.id, [defaultBranch.newOid]),
+    );
+  }
 
   for (const update of event.updates) {
     if (update.name.startsWith(BRANCH)) {
-      await handleBranch(cx, update, update.name.slice(BRANCH.length));
+      const branch = update.name.slice(BRANCH.length);
+      await timed(`branch ${repo.repository.id} ${branch}`, () => handleBranch(cx, update, branch));
     }
-    // Every ref, tags and deletions included: CI decides what starts a run.
-    await announcePush(repo, update, cx.username);
   }
 };
 
