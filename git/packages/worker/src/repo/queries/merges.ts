@@ -138,7 +138,8 @@ export async function landed(
   // Larger files merged as text than elsewhere: a file a branch changed and the base changed
   // again since (a long KNOWLEDGE.md) is otherwise a `too-large` conflict, and never landed.
   const cache = boundedCache(session, { maxTextBytes: LANDED_TEXT_BYTES });
-  let line: ObjectId[] | null = null;
+  // The base's first-parent line, newest first, read as far back as a head needs it.
+  const line = new FirstParents(cache, baseOid);
   const heads: Array<ReaderLanded["heads"][number]> = [];
   for (const head of input.heads) {
     if (!isObjectId(head) || !(await session.objects.has(head))) {
@@ -153,61 +154,93 @@ export async function landed(
       if (!(error instanceof GitError)) throw error;
       landing = null;
     }
-    if (!landing) {
-      heads.push(null);
-      continue;
-    }
-    line ??= await firstParents(cache, baseOid);
-    heads.push(await landedAt(cache, line, head, landing));
+    heads.push(landing ? await landedAt(cache, line, head, landing) : null);
   }
   return { baseOid, heads };
 }
 
 /**
- * The base's first-parent line, newest first, from its tip back to the search
- * limit. Not stopped at the tip before a push: a page whose branch went
- * before a push to the base is settled by that push, and its commit is older.
+ * A base's first-parent line, newest first, read one commit at a time as far
+ * back as it is asked for, up to `LANDED_SEARCH` commits. Not stopped at the
+ * tip before a push: a page whose branch went before a push to the base is
+ * settled by that push, and the commit it landed in can be weeks older.
  */
-async function firstParents(cache: ObjectCache, tip: ObjectId): Promise<ObjectId[]> {
-  const line = [tip];
-  try {
-    while (line.length < LANDED_SEARCH) {
-      const parent = (await cache.node(line.at(-1)!)).parents[0];
-      if (parent === undefined) break;
-      line.push(parent);
-    }
-  } catch (error) {
-    // A commit of the line that cannot be read ends it there.
-    if (!(error instanceof GitError)) throw error;
+class FirstParents {
+  private readonly oids: ObjectId[];
+  private ended = false;
+
+  constructor(
+    private readonly cache: ObjectCache,
+    tip: ObjectId,
+  ) {
+    this.oids = [tip];
   }
-  return line;
+
+  /** The commit `index` first parents back from the tip, or null past the root or the limit. */
+  async at(index: number): Promise<ObjectId | null> {
+    while (this.oids.length <= index) {
+      if (this.ended || this.oids.length >= LANDED_SEARCH) return null;
+      const parent = (await this.cache.node(this.oids.at(-1)!)).parents[0];
+      if (parent === undefined) {
+        this.ended = true;
+        return null;
+      }
+      this.oids.push(parent);
+    }
+    return this.oids[index]!;
+  }
+
+  /** How many commits of the line have been read. */
+  get length(): number {
+    return this.oids.length;
+  }
 }
 
 /**
- * The oldest commit of `line` (newest first, its first one known to have the
- * head) that has the head, by halving: a change that is in stays in, unless
- * someone reverted it, and then any commit that has it will do.
+ * The oldest commit of the base's first-parent line that has the head, its
+ * tip known to: back 1, 2, 4, 8 commits... until one does not have it (or
+ * the line ends), then halving between the two. A change that is in stays
+ * in, unless someone reverted it, and then any commit that has it will do.
+ * Looking back by doubling costs a handful of trial merges for a branch
+ * merged in the push being handled and finds one merged weeks before.
  */
 async function landedAt(
   cache: ObjectCache,
-  line: readonly ObjectId[],
+  line: FirstParents,
   head: ObjectId,
   atTip: Landing,
 ): Promise<{ readonly landing: Landing; readonly commitOid: string }> {
-  let found = { landing: atTip, commitOid: line[0]! };
+  let found: { readonly landing: Landing; readonly commitOid: string } = {
+    landing: atTip,
+    commitOid: (await line.at(0))!,
+  };
+  // `lo` has it; `hi` is the first index known not to, or one past the end of the line.
   let lo = 0;
-  let hi = line.length - 1;
+  let hi: number | null = null;
   try {
-    while (lo < hi) {
-      const mid = Math.ceil((lo + hi) / 2);
-      const landing = await landedIn(cache, line[mid]!, head);
+    for (let back = 1; hi === null; back *= 2) {
+      const oid = await line.at(back);
+      if (oid === null) {
+        hi = line.length;
+        break;
+      }
+      const landing = await landedIn(cache, oid, head);
+      if (landing) {
+        lo = back;
+        found = { landing, commitOid: oid };
+      } else hi = back;
+    }
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      const oid = (await line.at(mid))!;
+      const landing = await landedIn(cache, oid, head);
       if (landing) {
         lo = mid;
-        found = { landing, commitOid: line[mid]! };
-      } else hi = mid - 1;
+        found = { landing, commitOid: oid };
+      } else hi = mid;
     }
   } catch (error) {
-    // The newest commit that has it is still true.
+    // A commit of the line that cannot be read, or a merge over the limits: the newest found stands.
     if (!(error instanceof GitError)) throw error;
   }
   return found;

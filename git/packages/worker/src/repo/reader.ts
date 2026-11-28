@@ -260,8 +260,12 @@ export interface ReaderMergeability {
 
 /** The most heads one `landed` call measures. */
 export const MAX_LANDED_HEADS = 100;
-/** How far back along the base's first-parent line `landed` looks for the commit a head landed in. */
-export const LANDED_SEARCH = 256;
+/**
+ * How far back along the base's first-parent line `landed` looks for the
+ * commit a head landed in. It doubles its way back, so a branch merged long
+ * ago costs a few more trial merges, not one per commit.
+ */
+export const LANDED_SEARCH = 10_000;
 
 /**
  * Which heads a base branch already has the changes of (`landedIn` in
@@ -271,8 +275,8 @@ export const LANDED_SEARCH = 256;
  * limits); else how it landed, `contained` when the head commit is in the
  * base's history and `applied` when merging it would leave the base's tree as
  * it is (a squash, a cherry-pick), and `commitOid`, the commit on the base's
- * first-parent line that brought it in: the oldest of the newest
- * {@link LANDED_SEARCH} there that has it.
+ * first-parent line that brought it in: the oldest there that has it, within
+ * {@link LANDED_SEARCH} commits of the tip.
  */
 export interface ReaderLanded {
   readonly baseOid: string;
