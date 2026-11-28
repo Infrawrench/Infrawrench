@@ -3777,8 +3777,7 @@ export interface components {
             referenced_tool_ids?: string[];
             /** @default  */
             trigger?: string;
-            /** @default free_form */
-            type?: components["schemas"]["ProcedureType"];
+            type: components["schemas"]["ProcedureType"];
             version_id?: string | null;
             visibility?: components["schemas"]["ProcedureVisibility-Output"] | null;
             written_dynamic_variables?: string[];
