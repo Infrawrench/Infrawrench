@@ -154,7 +154,7 @@ const ENDPOINT: RpEndpoint = {
   env: { MODEL_NAME: "sdxl" },
   registry: null,
   gpu: { pools: ["ADA_24"], count: 1, allowedCudaVersions: [], minCudaVersion: null },
-  workers: { min: 0, max: 5, idleTimeout: 5 },
+  workers: { min: 0, max: 5, idleTimeout: 5, initTimeout: null },
   scaling: { type: "QUEUE_DELAY", queueDelay: 4 },
   dataCenterIds: ["US-KS-2"],
   networkVolumes: ["2q9m7x4c"],
@@ -828,9 +828,12 @@ describe("create forms", () => {
     route("GET", "/v2/catalog/cpus", { cpus: [CPU] });
     route("GET", "/v2/catalog/datacenters", { dataCenters: [DATA_CENTER] });
     route("GET", "/v2/templates", page("templates", [TEMPLATE]));
-    route("GET", "/v2/catalog/templates", {
-      templates: [{ ...TEMPLATE, id: "official1", name: "PyTorch" }],
-      pagination: LAST_PAGE,
+    route("GET", "/v2/catalog/templates", (c: Call) => {
+      expect(c.url.search).toBe("?source=official");
+      return {
+        templates: [{ ...TEMPLATE, id: "official1", name: "PyTorch" }],
+        pagination: LAST_PAGE,
+      };
     });
     route("GET", "/v2/network-volumes", page("networkVolumes", [VOLUME]));
     route("GET", "/v2/registries", { registries: [{ id: "reg1", name: "ghcr" }] });

@@ -92,18 +92,24 @@ const REFRESH: ActionNode = {
   action: { type: "refresh-resource" },
 };
 
-/** What this reads of an Agent API output item, which is one of a dozen kinds. */
+/**
+ * What this reads of an Agent API output item, which is one of a dozen kinds.
+ * `content` is a list of parts on a message but a plain string on others
+ * (`sandbox_read_file`), so it is checked before it is read.
+ */
 interface AgentOutputItem {
   type?: string;
-  content?: Array<{ type?: string; text?: string }>;
+  content?: unknown;
 }
 
 /** Pull the assistant text out of an Agent API `output[]`. */
 export function agentOutputText(output: AgentOutputItem[] | undefined): string {
   const parts: string[] = [];
   for (const item of Array.isArray(output) ? output : []) {
-    if (item.type !== "message") continue;
-    for (const c of item.content ?? []) if (typeof c.text === "string") parts.push(c.text);
+    if (item.type !== "message" || !Array.isArray(item.content)) continue;
+    for (const c of item.content as Array<{ text?: unknown } | null>) {
+      if (typeof c?.text === "string") parts.push(c.text);
+    }
   }
   return parts.join("");
 }

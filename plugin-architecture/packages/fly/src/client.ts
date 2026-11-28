@@ -47,6 +47,7 @@ import {
   type FlyPlatformRegion,
   type FlyVolume,
   type FlyVolumeSnapshot,
+  platformRegions,
 } from "./api.js";
 import {
   flyCiListTagged,
@@ -179,8 +180,7 @@ export class FlyClient implements PluginClient {
   private async regionOptions(opts: { requireMpg?: boolean } = {}): Promise<RegionOption[]> {
     try {
       if (!this.regionCache) {
-        const data = await this.api.get(`/v1/platform/regions`);
-        this.regionCache = data.regions ?? [];
+        this.regionCache = platformRegions(await this.api.get(`/v1/platform/regions`)) ?? [];
       }
       const options = regionOptionsFrom(this.regionCache, opts);
       if (options.length > 0) return options;

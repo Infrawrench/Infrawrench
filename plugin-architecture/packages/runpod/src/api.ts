@@ -5,7 +5,7 @@ import {
   type HostServices,
   type HttpHostServices,
 } from "@infrawrench/plugin-base";
-import type { paths } from "./api-types.gen.js";
+import type { components, paths } from "./api-types.gen.js";
 
 /**
  * Transport for Runpod's three API surfaces, all authenticated with the same
@@ -213,4 +213,18 @@ export class RunpodApi {
 
 export function isStatus(err: unknown, ...statuses: number[]): boolean {
   return err instanceof RunpodApiError && statuses.includes(err.status);
+}
+
+/**
+ * `POST /v2/pods` answers 202 with a queued request instead of a pod only when
+ * the body carries `queue`, which this plugin never sends, so a queued answer
+ * is refused rather than read as a pod.
+ */
+export function createdPod(
+  res: components["schemas"]["Pod"] | components["schemas"]["QueuedPod"],
+): components["schemas"]["Pod"] {
+  if ("queue" in res) {
+    throw new Error(`Runpod queued pod request ${res.id} instead of creating the pod`);
+  }
+  return res;
 }

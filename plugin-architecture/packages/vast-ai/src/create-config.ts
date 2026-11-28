@@ -285,7 +285,6 @@ export async function buildCreateConfig(
           description: "Vast search query for the machines workers run on",
         }),
         num("gpuRamGb", "Minimum VRAM (GB)", 24),
-        num("testWorkers", "Test Workers", 3),
       );
       return { fields };
     }

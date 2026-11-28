@@ -72,7 +72,7 @@ import {
 } from "@infrawrench/plugin-base";
 import { pathEncode } from "@infrawrench/plugin-base";
 
-import type { FlyApi, FlyMachine, FlyMachineConfig } from "./api.js";
+import { platformRegions, type FlyApi, type FlyMachine, type FlyMachineConfig } from "./api.js";
 
 export const CI_DEFAULT_MACHINE = "performance-2x";
 /** Ubuntu 24.04 with curl and CA certificates: what the bootstrap needs. */
@@ -235,7 +235,7 @@ export async function flyCiPreflight(
     }
   }
   try {
-    const { regions } = await api.get("/v1/platform/regions");
+    const regions = platformRegions(await api.get("/v1/platform/regions"));
     if (regions && !regions.some((r) => r.code === where)) {
       problems.push(
         `Fly.io has no region \`${where}\`. Name one such as iad, ord, lhr, fra, nrt or syd.`,

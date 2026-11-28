@@ -185,7 +185,7 @@ describe("Fly CI executor", () => {
   it("names an app deploy token as not enough", async () => {
     const { api } = fly([
       ["GET /v1/apps", () => new FakeHttpReply(401, { error: "unauthorized" })],
-      ["GET /v1/platform/regions", () => ({ regions: [{ code: "iad" }] })],
+      ["GET /v1/platform/regions", () => ({ Regions: [{ code: "iad" }] })],
     ]);
     const result = await flyCiPreflight(api, "acme", "container");
     expect(result.ok).toBe(false);

@@ -67,7 +67,7 @@ import {
   type CiTaggedCompute,
 } from "@infrawrench/plugin-base";
 
-import type { RunpodApi } from "./api.js";
+import { createdPod, type RunpodApi } from "./api.js";
 import type { operations } from "./api-types.gen.js";
 import type { RpGpuType, RpPod } from "./types.js";
 
@@ -343,7 +343,7 @@ export async function runpodCiStart(api: RunpodApi, spec: CiStartSpec): Promise<
     const { gpus } = await api.rest.get("/v2/catalog/gpus");
     return gpus ?? [];
   });
-  const pod = await api.rest.post("/v2/pods", { body });
+  const pod = createdPod(await api.rest.post("/v2/pods", { body }));
   if (!pod?.id) throw new Error("Runpod created no pod");
   return handleOf(pod, spec.region);
 }

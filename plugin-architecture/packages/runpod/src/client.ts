@@ -31,7 +31,7 @@ import {
   type ApiBody,
 } from "@infrawrench/plugin-base";
 import type { operations } from "./api-types.gen.js";
-import { isStatus, RunpodApi } from "./api.js";
+import { createdPod, isStatus, RunpodApi } from "./api.js";
 import {
   runpodCiListTagged,
   runpodCiPreflight,
@@ -70,6 +70,8 @@ import type {
 
 const CACHE_TTL_MS = 60_000;
 const HOURS_PER_MONTH = 730;
+/** Pages of the Hub catalog read for the template picker. */
+const OFFICIAL_TEMPLATE_PAGES = 10;
 
 function str(v: string | null | undefined): string {
   return v === undefined || v === null ? "" : String(v).trim();
@@ -260,9 +262,29 @@ export class RunpodClient implements PluginClient {
   async templatesForPicker(): Promise<Array<RpTemplate & { official?: boolean }>> {
     const [own, catalog] = await Promise.all([
       this.listRaw.templates(),
-      this.api.rest.get("/v2/catalog/templates").catch(() => undefined),
+      this.officialTemplates().catch(() => []),
     ]);
-    return [...own, ...(catalog?.templates ?? []).map((t) => ({ ...t, official: true }))];
+    return [...own, ...catalog.map((t) => ({ ...t, official: true }))];
+  }
+
+  /**
+   * Runpod's official templates from the Hub catalog, which is paged and also
+   * holds verified and community templates. Stops after
+   * `OFFICIAL_TEMPLATE_PAGES` pages: the picker is a convenience, and a
+   * catalog that keeps paging should not hold the form up.
+   */
+  private async officialTemplates(): Promise<RpTemplate[]> {
+    const templates: RpTemplate[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < OFFICIAL_TEMPLATE_PAGES; page++) {
+      const res = await this.api.rest.get("/v2/catalog/templates", {
+        query: { source: "official", ...(cursor ? { cursor } : {}) },
+      });
+      templates.push(...(res.templates ?? []));
+      cursor = res.pagination?.nextCursor ?? undefined;
+      if (!res.pagination?.hasNextPage || !cursor) break;
+    }
+    return templates;
   }
 
   private async gpuCatalog(product: "POD" | "SERVERLESS"): Promise<RpGpuType[]> {
@@ -479,7 +501,7 @@ export class RunpodClient implements PluginClient {
       switch (typeId) {
         case "pod": {
           const body = await this.podCreateBody(fields);
-          const pod = await this.api.rest.post("/v2/pods", { body });
+          const pod = createdPod(await this.api.rest.post("/v2/pods", { body }));
           return mapPod(pod, accountId, undefined);
         }
         case "serverless-endpoint": {

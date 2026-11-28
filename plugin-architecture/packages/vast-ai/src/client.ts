@@ -66,6 +66,11 @@ import type {
 
 const HOURS_PER_MONTH = 730;
 const CACHE_TTL_MS = 60_000;
+/**
+ * The workergroup create requires an offer filter; this is the one Vast
+ * documented as its default before it became required.
+ */
+const DEFAULT_OFFER_FILTER = "verified=true rentable=true rented=false";
 
 function str(v: string | undefined): string {
   return v === undefined || v === null ? "" : String(v).trim();
@@ -514,9 +519,8 @@ export class VastClient implements PluginClient {
             body: {
               endpoint_id: Number(endpointId),
               template_hash: str(fields["templateHash"]),
-              ...(search ? { search_params: search } : {}),
+              search_params: search || DEFAULT_OFFER_FILTER,
               gpu_ram: num(fields["gpuRamGb"], 24),
-              test_workers: num(fields["testWorkers"], 3),
             },
           });
           return mapWorkergroup(
@@ -632,13 +636,17 @@ export class VastClient implements PluginClient {
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }
         case "workergroup": {
-          const body: ApiBody<operations["updateWorkergroup"]> = {};
+          const body: Omit<ApiBody<operations["updateWorkergroup"]>, "endpoint_id"> = {};
           if (fields["searchQuery"] !== undefined) body.search_params = str(fields["searchQuery"]);
           if (fields["gpuRamGb"] !== undefined) body.gpu_ram = num(fields["gpuRamGb"]);
-          if (fields["testWorkers"] !== undefined) body.test_workers = num(fields["testWorkers"]);
           if (fields["launchArgs"] !== undefined) body.launch_args = str(fields["launchArgs"]);
           if (Object.keys(body).length) {
-            await this.api.put(`/api/v0/workergroups/${id}/`, { body });
+            // The update names the workergroup's endpoint, which only the list carries.
+            const current = (await this.raw.workergroups()).find((w) => String(w.id) === id);
+            if (!current?.endpoint_id) throw new Error(`Vast.ai has no workergroup ${id}`);
+            await this.api.put(`/api/v0/workergroups/${id}/`, {
+              body: { ...body, endpoint_id: current.endpoint_id },
+            });
           }
           return runPluginEffect(this.getResource(typeId, resourceId, accountId));
         }

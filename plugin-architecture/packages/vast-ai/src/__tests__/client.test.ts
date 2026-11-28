@@ -280,6 +280,35 @@ describe("other resources", () => {
     expect(calls[1]!.url.pathname).toBe("/api/v0/deployment/644/start/");
   });
 
+  it("creates a workergroup with an offer filter, which Vast requires", async () => {
+    route("POST", "/api/v0/workergroups/", { success: true, id: 31 });
+    await client().createResource("workergroup", "acct", {
+      endpointId: "5",
+      templateHash: "abc",
+      searchQuery: "",
+      gpuRamGb: "24",
+    });
+    expect(calls[0]!.body).toEqual({
+      endpoint_id: 5,
+      template_hash: "abc",
+      search_params: "verified=true rentable=true rented=false",
+      gpu_ram: 24,
+    });
+  });
+
+  it("names the workergroup's endpoint on update", async () => {
+    route("GET", "/api/v0/workergroups/", {
+      success: true,
+      results: [{ id: 31, endpoint_id: 5, template_hash: "abc" }],
+    });
+    route("PUT", "/api/v0/workergroups/31/", { success: true });
+    await client().updateResource("workergroup", "acct:workergroup:31", "acct", {
+      gpuRamGb: "48",
+    });
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect(put.body).toEqual({ gpu_ram: 48, endpoint_id: 5 });
+  });
+
   it("reports the credit balance", async () => {
     route("GET", "/api/v0/users/current/", { id: 42, balance: 12.5 });
     expect(await client().fetchCreditBalance("acct")).toEqual([

@@ -248,7 +248,7 @@ export const WorkergroupResourceType = rt({
         "Vast search query for the machines workers run on, e.g. gpu_name=RTX_4090 num_gpus=1",
     }),
     f("gpuRamGb", "Minimum VRAM (GB)", { kind: "number", required: false }),
-    f("testWorkers", "Test Workers", { kind: "number", required: false }),
+    f("testWorkers", "Test Workers", { kind: "number", required: false, editable: false }),
     f("launchArgs", "Launch Arguments", { required: false }),
     f("createdAt", "Created", { showcase: true, required: false, editable: false }),
   ],

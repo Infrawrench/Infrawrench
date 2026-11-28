@@ -471,6 +471,18 @@ describe("getCreateConfig", () => {
     expect(region?.regions?.[1]?.location).toBe("Paid Place (paid plans)");
   });
 
+  it("region pickers read the list under Regions, as Fly's document now names it", async () => {
+    router([
+      [
+        (u) => u.includes("/v1/platform/regions"),
+        { nearest: "iad", Regions: [{ code: "iad", name: "Ashburn, Virginia (US)" }] },
+      ],
+    ]);
+    const cfg = await client().getCreateConfig("volume");
+    const region = cfg.fields.find((f) => f.key === "region");
+    expect(region?.regions?.map((r) => r.id)).toEqual(["iad"]);
+  });
+
   it("region pickers fall back to the static table when the call fails", async () => {
     router([[(u) => u.includes("/v1/platform/regions"), "boom", 500]]);
     const cfg = await client().getCreateConfig("machine", "acct-1:app:app-one");

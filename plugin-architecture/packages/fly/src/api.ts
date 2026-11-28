@@ -67,7 +67,18 @@ export function flyList<T>(
 /** An operation's JSON body, by its `operationId`. */
 export type FlyBody<Op extends keyof operations> = ApiBody<operations[Op]>;
 
-export type FlyPlatformRegion = ApiListItem<operations["Platform_regions_get"], "regions">;
+export type FlyPlatformRegion = ApiListItem<operations["Platform_regions_get"], "Regions">;
+
+/**
+ * The rows of `GET /v1/platform/regions`. Fly's document names the list
+ * `Regions` (since 2026-11) where it said `regions` before, so either is read.
+ */
+export function platformRegions(
+  data: ApiResponse<operations["Platform_regions_get"]> | undefined,
+): FlyPlatformRegion[] | undefined {
+  const legacy = (data as { regions?: FlyPlatformRegion[] } | undefined)?.regions;
+  return data?.Regions ?? legacy;
+}
 
 /** `created_at` is not in the document; the mapper has always read it when present. */
 export type FlyApp = ApiResponse<operations["Apps_show"]> & { created_at?: string };
